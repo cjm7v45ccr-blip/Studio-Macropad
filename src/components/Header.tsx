@@ -1,7 +1,6 @@
 import React from 'react';
 import { FirmwareStatus, ProfileMode } from '../types/macropod';
 import { Usb, Wifi, Settings, Unplug } from 'lucide-react';
-import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   status: FirmwareStatus;
@@ -66,24 +65,19 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
-          {/* Curated Packs Shortcut */}
+          {/* Curated Packs Shortcut with requested Camera SVG */}
           <button
             onClick={onOpenPresetsModal}
             className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
             title="Explore Curated Profile Packs"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" height="15px" viewBox="0 -960 960 960" width="15px" fill="#e3e3e3">
-              <path d="M400-600ZM280-360Zm240 120v-120h280v120H520ZM160-600v-120h240v120H160Zm0 360v-120h120v120H160Zm280 80h440v-280H440v280ZM80-520h400v-280H80v280Zm0 360h280v-280H80v280Zm440-200Zm160-160v-120H560v-80h120v-120h80v120h120v80H760v120h-80Z"/>
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="&lt;svg xmlns=&quot;http://www.w3.org/2000/svg&quot; height=&quot;24px&quot; viewBox=&quot;0 -960 960 960&quot; width=&quot;24px&quot; fill=&quot;919D96&quot;&gt;&lt;path d=&quot;M440-440ZM120-120q-33 0-56.5-23.5T40-200v-480q0-33 23.5-56.5T120-760h126l74-80h240v80H355l-73 80H120v480h640v-360h80v360q0 33-23.5 56.5T760-120H120Zm640-560v-80h-80v-80h80v-80h80v80h80v80h-80v80h-80ZM440-260q75 0 127.5-52.5T620-440q0-75-52.5-127.5T440-620q-75 0-127.5 52.5T260-440q0 75 52.5 127.5T440-260Zm0-80q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29Z&quot;/&gt;&lt;/svg&gt;"><path d="M80-160h280v-280H80v280Zm80-440v-120h240v120H160Zm-80 80h400v-280H80v280Zm440 280v-120h280v120H520Zm-80 80h440v-280H440v280Zm-280-80v-120h120v120H160Zm240-360Zm320 80q-83 0-141.5-58.5T520-720q0-83 58.5-141.5T720-920q83 0 141.5 58.5T920-720q0 83-58.5 141.5T720-520Zm-20-80h40v-100h100v-40H740v-100h-40v100H600v40h100v100ZM520-360Zm-240 0Z"/></svg>
             <span>Packs</span>
           </button>
         </div>
 
         {/* Right Actions */}
         <div className="flex items-center gap-2">
-          {/* PWA Install / Download Button */}
-          <PWAInstallButton />
-
           {/* Connection Status Button */}
           <button
             onClick={onOpenConnectModal}

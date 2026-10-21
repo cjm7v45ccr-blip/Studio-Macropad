@@ -306,8 +306,6 @@ export default function App() {
       <footer className="border-t border-slate-900/80 py-3.5 px-6 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between max-w-6xl mx-auto w-full gap-2">
         <div className="flex items-center gap-2">
           <span>Studio Pad</span>
-          <span>·</span>
-          <span>ESP32-S3 BLE & Wi-Fi Companion</span>
         </div>
         <div className="font-mono text-slate-500">
           Firmware v3.2-PRO
