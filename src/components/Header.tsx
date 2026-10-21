@@ -1,6 +1,7 @@
 import React from 'react';
 import { FirmwareStatus, ProfileMode } from '../types/macropod';
 import { Usb, Wifi, Settings, Unplug } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   status: FirmwareStatus;
@@ -65,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
-          {/* Curated Packs Shortcut with requested new SVG */}
+          {/* Curated Packs Shortcut */}
           <button
             onClick={onOpenPresetsModal}
             className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
@@ -80,6 +81,9 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right Actions */}
         <div className="flex items-center gap-2">
+          {/* PWA Install / Download Button */}
+          <PWAInstallButton />
+
           {/* Connection Status Button */}
           <button
             onClick={onOpenConnectModal}
