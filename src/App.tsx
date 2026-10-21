@@ -208,22 +208,11 @@ export default function App() {
         
         {/* Hardware Status Ribbon when Disconnected */}
         {!hardwareDriver.isConnected ? (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-900/70 border border-slate-800 text-xs">
-            <div className="flex items-center gap-2.5 text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-amber-400/80 animate-pulse" />
-              <span>
-                <strong className="text-slate-200">Cable Auto-Pairing Active:</strong> MacroPad connects automatically when USB-C is plugged in.
-              </span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => setIsPresetsOpen(true)}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs cursor-pointer transition-colors"
-              >
-                <Usb className="w-3.5 h-3.5 text-sky-400" />
-                <span>Authorize USB Cable</span>
-              </button>
-            </div>
+          <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900/70 border border-slate-800 text-xs text-slate-400">
+            <span className="w-2 h-2 rounded-full bg-amber-400/80 animate-pulse shrink-0" />
+            <span>
+              <strong className="text-slate-200">Cable Auto-Pairing Active:</strong> MacroPad connects automatically when USB-C is plugged in.
+            </span>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3 px-4 py-2 rounded-xl bg-emerald-950/20 border border-emerald-500/20 text-xs text-emerald-300">
