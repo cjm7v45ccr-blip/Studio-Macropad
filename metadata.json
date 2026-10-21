@@ -1,0 +1,6 @@
+{
+  "name": "Studio MacroPad Pro - Flagship Hardware Controller",
+  "description": "Flagship hardware control center and real-time configurator for ESP32 MacroPad devices with custom low-latency key remapping, per-key RGB, and live hardware streaming.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

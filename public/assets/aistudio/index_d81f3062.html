@@ -1,0 +1,1895 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d0f14">
+  <title>Studio Pad OS • Flagship</title>
+  <style>
+    :root{
+      --bg:#090a0f;--surface:#10131c;--surface-2:#161b27;--surface-3:#1f2638;--line:#252d42;
+      --text:#f8fafc;--muted:#94a3b8;--faint:#64748b;--accent:#38bdf8;--accent-hover:#0ea5e9;
+      --accent-ink:#000000;--accent-glow:rgba(56,189,248,0.25);--indigo:#6366f1;
+      --success:#10b981;--warn:#f59e0b;--danger:#ef4444;
+      --radius:12px;--gap:18px;--shadow:0 16px 36px rgba(0,0,0,.5);
+      --sidebar-bg:#0c0e14;--input-bg:#08090e;--kbd-bg:#161c2b;--kbd-border:#2e3852;--kbd-text:#e2e8f0
+    }
+    *{box-sizing:border-box} html{color-scheme:dark}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+    .app{min-height:100vh;display:grid;grid-template-columns:240px minmax(0,1fr)}
+    .sidebar{padding:20px 14px;border-right:1px solid var(--line);background:var(--sidebar-bg);position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:18px}
+    .brand{display:flex;align-items:center;gap:10px;padding:6px 10px}
+    .mark{display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--indigo));color:#000;font-weight:900;font-size:15px;box-shadow:0 0 16px var(--accent-glow)}
+    .brand b{font-size:15px;letter-spacing:.03em;font-weight:800}.brand small{display:block;color:var(--faint);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+    .nav{display:grid;gap:4px}
+    .nav button{width:100%;border:0;border-radius:8px;padding:10px 12px;background:transparent;color:var(--muted);cursor:pointer;text-align:left;display:flex;gap:10px;align-items:center;font-weight:600;font-size:13px;transition:.15s}
+    .nav button:hover{background:var(--surface);color:var(--text)}
+    .nav button.active{color:var(--text);background:var(--surface-2);box-shadow:inset 3px 0 0 var(--accent)}
+    .nav-icon{width:16px;text-align:center;color:var(--faint);font-size:14px}.nav button.active .nav-icon{color:var(--accent)}
+    .side-footer{margin-top:auto;border-top:1px solid var(--line);padding:14px 10px 4px;color:var(--faint);font-size:11px}.side-footer b{color:var(--muted);display:block;font-size:12px}
+    .main{min-width:0}
+    .topbar{min-height:64px;border-bottom:1px solid var(--line);padding:0 clamp(16px,3vw,36px);display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(14px)}
+    .topbar h1{margin:0;font-size:16px;font-weight:800;letter-spacing:-.01em}.topbar .spacer{flex:1}
+    .connection{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;white-space:nowrap}
+    .status-dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+    .status-dot.online{background:var(--success);box-shadow:0 0 10px var(--success)}
+    .status-dot.warn{background:var(--warn)}
+    .icon-button{display:none}
+    .content{max-width:1200px;margin:0 auto;padding:clamp(20px,3vw,36px)}
+    .screen{display:none;animation:enter .15s ease-out}.screen.active{display:block}
+    @keyframes enter{from{opacity:.6;transform:translateY(3px)}to{opacity:1;transform:none}}
+    .eyebrow{color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+    .heading{margin:4px 0 6px;font-size:clamp(22px,2.6vw,28px);font-weight:800;letter-spacing:-.03em}
+    .subhead{margin:0;color:var(--muted);max-width:680px;font-size:13.5px;line-height:1.5}
+    .section-head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin:28px 0 12px}
+    .section-head h2{font-size:15px;font-weight:750;margin:0}.section-head p{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+    .grid{display:grid;gap:var(--gap)}.overview-grid{grid-template-columns:1.1fr .9fr}.two{grid-template-columns:repeat(2,minmax(0,1fr))}.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+    .card.flat{box-shadow:none}.card-title{font-weight:750;font-size:14.5px;margin:0}.card-description{color:var(--muted);font-size:12.5px;margin:4px 0 0;line-height:1.45}
+    .metric{padding:12px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;font-size:13px}.metric:last-child{border:0;padding-bottom:0}.metric:first-of-type{margin-top:8px}.metric span{color:var(--muted)}.metric b{font-weight:700;text-align:right}
+    .device-preview{min-height:240px;display:grid;place-items:center;background:radial-gradient(circle at 50% 40%,color-mix(in srgb,var(--accent) 15%,var(--surface)) 0%,var(--surface) 65%);overflow:hidden}
+    .pad-frame{width:min(100%,400px);padding:22px;background:#08090d;border:2px solid var(--line);border-radius:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 16px 36px rgba(0,0,0,.6)}
+    .pad-top{display:flex;justify-content:space-between;align-items:center;color:#8590a3;font-size:10px;font-weight:800;letter-spacing:.08em}
+    .pad-keys{display:grid;grid-template-columns:repeat(4,1fr) 72px;gap:8px;margin-top:16px}
+    .hardware-key{min-height:70px;border:1px solid #2d3545;background:linear-gradient(180deg,#1a202c,#121620);border-radius:10px;padding:8px 4px;display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center;text-align:center;color:#d8e0ee;font-size:11px;font-weight:750;cursor:pointer;transition:.15s;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 4px 8px rgba(0,0,0,.3)}
+    .hardware-key:hover{border-color:var(--accent);transform:translateY(-1px);color:#fff}
+    .hardware-key.selected{border-color:var(--accent);background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 25%,#1c212d),#141822);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 40%,transparent),inset 0 1px 0 rgba(255,255,255,.15)}
+    .hardware-key small{display:block;color:#8894a8;font-size:9.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+    .dial{border-radius:50%;aspect-ratio:1;min-height:auto;background:radial-gradient(circle,#28303f 0 20%,#171c26 22% 64%,#0c0f15 66%);border:3px solid #2c3444;font-size:9px;color:#a6b2c5;box-shadow:0 4px 10px rgba(0,0,0,.4)}
+    .dial.selected{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 40%,transparent)}
+    button{font:inherit}
+    .button{border:1px solid transparent;background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;transition:.15s;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+    .button:hover{background:var(--accent-hover);transform:translateY(-1px)}
+    .button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+    .button.secondary,.ghost{background:var(--surface-2);border:1px solid var(--line);color:var(--text)}
+    .button.secondary:hover,.ghost:hover{background:var(--surface-3);border-color:var(--accent)}
+    .button.danger{background:var(--danger);color:#fff}.button.danger:hover{filter:brightness(1.1)}
+    .ghost{border-radius:7px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.actions.end{justify-content:flex-end}
+    .pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700}
+    .pill.good{color:var(--success);border-color:color-mix(in srgb,var(--success) 35%,var(--line))}
+    .pill.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,var(--line))}
+    label{font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:5px}
+    input,select{width:100%;border:1px solid var(--line);background:var(--input-bg);color:var(--text);border-radius:8px;padding:9px 12px;font:inherit;font-size:13px;outline:0;transition:.15s}
+    input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+    .field{display:grid;gap:4px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.form-grid .wide{grid-column:1/-1}
+    .hint{color:var(--faint);font-size:11.5px;margin:3px 0 0;line-height:1.4}
+    .seg{display:flex;gap:4px;background:#0c0e14;border:1px solid var(--line);border-radius:9px;padding:3px}
+    .seg button{border:0;background:transparent;color:var(--muted);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:700;transition:.15s}
+    .seg button.active{background:var(--surface-3);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+    .customizer{grid-template-columns:minmax(280px,.82fr) minmax(360px,1.18fr);align-items:start}
+    .preview-card{position:sticky;top:84px}
+    .assignment{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:14px}
+    .assignment-header{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);font-weight:700}
+    .assignment strong{display:block;margin:4px 0 2px;font-size:14px;color:var(--text)}
+    .assignment span{color:var(--faint);font-size:11.5px}
+    .workstation-nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:2px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+    .workstation-nav button{border:0;background:transparent;color:var(--muted);padding:8px 12px;cursor:pointer;font-size:12.5px;font-weight:700;border-bottom:2px solid transparent;white-space:nowrap;transition:.15s}
+    .workstation-nav button:hover{color:var(--text)}
+    .workstation-nav button.active{color:var(--accent);border-bottom-color:var(--accent)}
+    .action-pane{display:none}.action-pane.active{display:block}
+    .library-toolbar{display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:12px}
+    .filter-row{display:flex;gap:5px;flex-wrap:wrap}
+    .filter{border:1px solid var(--line);background:var(--surface-2);color:var(--muted);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11.5px;font-weight:650}
+    .filter.active{background:var(--surface-3);color:var(--text);border-color:var(--accent)}
+    .action-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:440px;overflow-y:auto;padding-right:2px}
+    .action{border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:10px 12px;cursor:pointer;text-align:left;color:var(--text);min-height:76px;transition:.14s}
+    .action:hover{border-color:var(--accent);background:var(--surface-3)}
+    .action.assigned{border-color:var(--success);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--success) 35%,transparent)}
+    .action-top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
+    .action b{font-size:12.5px;display:block}
+    .action-badge{font-size:9.5px;font-weight:750;padding:2px 6px;border-radius:4px;background:var(--surface-3);color:var(--muted);border:1px solid var(--line)}
+    .action span{font-size:11px;color:var(--muted);display:block;margin-top:3px;line-height:1.35}
+    .empty{color:var(--muted);padding:24px 6px;text-align:center;grid-column:1/-1}
+    .builder-box{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:12px}
+    .shortcut-display{display:flex;align-items:center;justify-content:center;gap:6px;min-height:54px;background:var(--bg);border:1px dashed var(--line);border-radius:8px;margin:12px 0 16px;padding:10px;flex-wrap:wrap}
+    .kbd{display:inline-block;padding:4px 9px;font-family:ui-monospace,Menlo,Monaco,monospace;font-size:12px;font-weight:750;background:var(--kbd-bg);border:1px solid var(--kbd-border);border-bottom-width:2px;border-radius:5px;color:var(--kbd-text);box-shadow:0 1px 2px rgba(0,0,0,.2)}
+    .mod-toggles{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 12px}
+    .mod-btn{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:7px;padding:8px 14px;cursor:pointer;font-size:12px;font-weight:700;transition:.15s}
+    .mod-btn:hover{border-color:var(--accent);color:var(--text)}
+    .mod-btn.active{background:var(--accent);color:#000;border-color:var(--accent)}
+    .remote-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+    .remote-btn{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;padding:10px 6px;cursor:pointer;font-size:11.5px;font-weight:700;text-align:center;transition:.14s}
+    .remote-btn:hover{border-color:var(--accent);background:var(--surface-3);transform:translateY(-1px)}
+    .remote-btn:active{transform:translateY(0)}
+    .remote-btn.pwr{background:color-mix(in srgb,var(--danger) 18%,var(--surface));border-color:color-mix(in srgb,var(--danger) 45%,var(--line));color:#ff9fa9}
+    .remote-btn.ok{background:color-mix(in srgb,var(--accent) 18%,var(--surface));border-color:var(--accent)}
+    .apps-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+    .device-card{display:flex;gap:14px;align-items:flex-start}
+    .device-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:10px;background:var(--surface-3);font-size:18px;flex:none}
+    .device-body{min-width:0;flex:1}.device-body h3{font-size:14.5px;margin:0}.device-body p{margin:3px 0;color:var(--muted);font-size:12px}
+    .device-meta{display:flex;gap:10px;flex-wrap:wrap;color:var(--faint);font-size:11px;margin-top:6px}
+    .row-between{display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .profile-card h3{margin:0;font-size:14.5px}.profile-card ul{margin:10px 0;padding-left:16px;color:var(--muted);font-size:12px}.profile-card li+li{margin-top:3px}
+    .code{background:#07090e;border:1px solid var(--line);border-radius:8px;padding:12px;white-space:pre-wrap;overflow:auto;color:#c5cee0;font:11.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+    .table{width:100%;border-collapse:collapse;font-size:12px}.table th{text-align:left;color:var(--muted);font-weight:650}.table td,.table th{padding:9px;border-bottom:1px solid var(--line);vertical-align:top}.table tr:last-child td{border:0}
+    .modal-layer{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;place-items:center;padding:16px;z-index:20;backdrop-filter:blur(6px)}.modal-layer.open{display:grid}
+    .modal{width:min(100%,440px);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+    .modal h2{font-size:17px;margin:0}.modal p{color:var(--muted);font-size:12.5px;line-height:1.45}.modal .field{margin-top:12px}
+    .toast{position:fixed;right:18px;bottom:18px;max-width:380px;padding:12px 16px;background:#1a202c;color:#fff;border:1px solid var(--line);border-radius:9px;box-shadow:var(--shadow);transform:translateY(20px);opacity:0;pointer-events:none;transition:.2s cubic-bezier(0.4, 0, 0.2, 1);z-index:30;font-size:12.5px;font-weight:600}
+    .toast.show{transform:none;opacity:1}
+    .toast.error{border-color:color-mix(in srgb,var(--danger) 75%,var(--line));background:#261316}
+    .toast.success{border-color:color-mix(in srgb,var(--success) 75%,var(--line));background:#0e231b}
+    @media(max-width:920px){
+      .app{grid-template-columns:1fr}
+      .sidebar{position:fixed;z-index:15;left:0;top:0;transform:translateX(-100%);transition:.2s;width:250px;box-shadow:12px 0 30px rgba(0,0,0,.5)}
+      .sidebar.open{transform:none}
+      .icon-button{display:inline-grid;place-items:center;width:32px;height:32px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:7px;cursor:pointer}
+      .content{padding:20px 16px}.preview-card{position:static}.overview-grid,.customizer{grid-template-columns:1fr}
+    }
+    @media(max-width:620px){
+      :root{--gap:14px}.topbar{padding:0 14px;gap:8px}.connection .hide-mobile{display:none}
+      .heading{font-size:22px}.two,.three,.form-grid,.action-list,.remote-grid,.apps-grid{grid-template-columns:1fr}
+      .pad-keys{grid-template-columns:repeat(2,1fr) 68px}.hardware-key{min-height:58px}
+      .library-toolbar{grid-template-columns:1fr}.actions .button{flex:1}.device-card{flex-wrap:wrap}.device-card .actions{width:100%}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+      <div class="brand"><span class="mark">S</span><div><b>STUDIO PAD</b><small>Control Center</small></div></div>
+      <nav class="nav" id="nav">
+        <button class="active" data-screen="overview"><span class="nav-icon">◉</span>Overview</button>
+        <button data-screen="devices"><span class="nav-icon">▣</span>Devices</button>
+        <button data-screen="customize"><span class="nav-icon">◇</span>Customize</button>
+        <button data-screen="profiles"><span class="nav-icon">▤</span>Profiles</button>
+        <button data-screen="automations"><span class="nav-icon">↻</span>Automations</button>
+        <button data-screen="extensions"><span class="nav-icon">⊞</span>Extensions</button>
+        <button data-screen="settings"><span class="nav-icon">⚙</span>Settings</button>
+      </nav>
+      <div class="side-footer"><b id="sideFirmware">Studio Pad Pro</b><span id="sideVersion">Connecting to device…</span></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-button" id="menuButton" aria-label="Open navigation">☰</button>
+        <h1 id="pageTitle">Overview</h1>
+        <span class="spacer"></span>
+        <div class="connection" style="gap:10px;">
+          <button class="ghost" id="btnConnectUSB" style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;">🔌 Connect USB</button>
+          <button class="ghost" id="btnConnectBLE" style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;">📶 Connect Bluetooth</button>
+          <button class="ghost" id="btnDisconnect" style="display:none;align-items:center;gap:5px;padding:5px 10px;">✕ Disconnect</button>
+          <span class="status-dot" id="connectionDot"></span>
+          <span id="connectionLabel">Not connected</span>
+          <span class="hide-mobile" id="activeDevice">Studio MacroPad</span>
+        </div>
+      </header>
+      <div class="content">
+        <!-- SCREEN 1: OVERVIEW -->
+        <section class="screen active" id="overview">
+          <div class="eyebrow">Studio MacroPad Pro</div>
+          <h1 class="heading">A control surface that stays out of your way.</h1>
+          <p class="subhead">Manage hardware states, switch seamlessly between profiles, and fully customize your keys for Windows, macOS, and Vizio SmartCast.</p>
+          <div class="section-head">
+            <div><h2>At a glance</h2><p>Live device status reported by firmware.</p></div>
+            <div class="actions">
+              <button class="button secondary" data-go="customize">Customize controls</button>
+              <button class="button" id="refreshButton">Refresh status</button>
+            </div>
+          </div>
+          <div class="grid overview-grid">
+            <div class="card device-preview">
+              <div class="pad-frame">
+                <div class="pad-top"><span>STUDIO PAD</span><span id="overviewProfile">MAC PROFILE</span></div>
+                <div class="pad-keys" id="overviewPadKeys"></div>
+              </div>
+            </div>
+            <div class="card">
+              <h2 class="card-title">Device health</h2>
+              <div class="metric"><span>Wi-Fi Network</span><b id="metricWifi">Checking…</b></div>
+              <div class="metric"><span>Bluetooth Status</span><b id="metricBle">Checking…</b></div>
+              <div class="metric"><span>Active profile</span><b id="metricProfile">Checking…</b></div>
+              <div class="metric"><span>Free RAM</span><b id="metricHeap">Checking…</b></div>
+            </div>
+          </div>
+          <div class="section-head">
+            <div><h2>Supported features</h2><p>Full hardware control with zero dependencies.</p></div>
+          </div>
+          <div class="grid three">
+            <article class="card flat">
+              <span class="pill good">Universal</span>
+              <h3 class="card-title" style="margin-top:10px">Windows & macOS shortcuts</h3>
+              <p class="card-description">Built-in presets plus custom combinations with Ctrl, Alt, Win, Cmd, and Shift.</p>
+            </article>
+            <article class="card flat">
+              <span class="pill good">SmartCast</span>
+              <h3 class="card-title" style="margin-top:10px">Any TV remote button</h3>
+              <p class="card-description">Navigation, volume, channels, media transport, numbers, and raw codeset/codes.</p>
+            </article>
+            <article class="card flat">
+              <span class="pill good">Text macros</span>
+              <h3 class="card-title" style="margin-top:10px">Type text over BLE</h3>
+              <p class="card-description">Assign any text sequence or command to be typed on key press.</p>
+            </article>
+          </div>
+        </section>
+
+        <!-- SCREEN 2: DEVICES -->
+        <section class="screen" id="devices">
+          <div class="eyebrow">Devices</div>
+          <h1 class="heading">Connected control hardware.</h1>
+          <p class="subhead">Studio MacroPad is the primary physical controller; Vizio SmartCast is an optional local network integration.</p>
+          <div class="section-head"><div><h2>Studio MacroPad</h2><p>Physical hardware controller.</p></div></div>
+          <article class="card device-card">
+            <div class="device-icon">⌘</div>
+            <div class="device-body">
+              <div class="row-between">
+                <div><h3>Studio MacroPad</h3><p id="deviceConnection">Loading connection details…</p></div>
+                <span class="pill good">Active</span>
+              </div>
+              <div class="device-meta">
+                <span id="deviceId">ID: studio-pad</span>
+                <span id="deviceFirmware">Firmware: —</span>
+                <span id="deviceIp">Address: —</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="ghost" data-go="customize">View controls</button>
+              <button class="ghost" data-go="settings">Diagnostics</button>
+            </div>
+          </article>
+          <div class="section-head">
+            <div><h2>Saved integrations</h2><p>Removing an integration clears its saved host and pairing token from Studio Pad.</p></div>
+          </div>
+          <div id="integrationList" class="grid two"></div>
+        </section>
+
+        <!-- SCREEN 3: CUSTOMIZE (FULL CUSTOMIZATION WORKSTATION) -->
+        <section class="screen" id="customize">
+          <div class="eyebrow">Customize</div>
+          <h1 class="heading">Complete control surface customizer.</h1>
+          <p class="subhead">Select a physical control on the pad, choose a preset or build any custom shortcut for Windows, macOS, or any Vizio TV button.</p>
+          <div class="section-head">
+            <div><h2>Control editor</h2><p>Dial rotation controls volume. Dial press and keys 1–4 are fully configurable.</p></div>
+            <span class="pill" id="dirtyPill">Saved</span>
+          </div>
+          <div class="grid customizer">
+            <!-- Left Column: Visual Hardware Preview -->
+            <aside class="card preview-card">
+              <div class="profile-tabs" id="profileTabs"></div>
+              <div class="pad-frame" style="margin-top:14px">
+                <div class="pad-top"><span>STUDIO PAD</span><span id="previewProfile">—</span></div>
+                <div class="pad-keys" id="hardwarePreview"></div>
+              </div>
+              <div class="assignment">
+                <div class="assignment-header">
+                  <span id="selectedControlLabel">Button 1</span>
+                  <span class="action-badge" id="selectedBadge">Active</span>
+                </div>
+                <strong id="selectedActionLabel">—</strong>
+                <span id="selectedCapability">Press action · persisted after Save</span>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="button secondary" id="discardButton" disabled>Discard</button>
+                <button class="button" id="saveProfileButton" disabled>Save profile</button>
+              </div>
+            </aside>
+
+            <!-- Right Column: Full Customization Workstation -->
+            <div class="card">
+              <div class="row-between" style="margin-bottom:12px">
+                <div>
+                  <h2 class="card-title">Assign action to <span id="workstationKeyTarget">Button 1</span></h2>
+                  <p class="card-description">Choose from presets, create custom shortcuts, or configure TV keys.</p>
+                </div>
+                <button class="ghost" id="testActionButton">Test key</button>
+              </div>
+
+              <!-- Workstation Mode Tabs -->
+              <div class="workstation-nav" id="workstationTabs">
+                <button class="active" data-tab="library">Preset Catalog</button>
+                <button data-tab="shortcut">Custom Shortcut</button>
+                <button data-tab="tv">TV Remote</button>
+                <button data-tab="app">TV App Launcher</button>
+                <button data-tab="text">Text Macro</button>
+              </div>
+
+              <!-- PANE 1: PRESET CATALOG -->
+              <div class="action-pane active" id="paneLibrary">
+                <div class="library-toolbar">
+                  <input id="actionSearch" type="search" placeholder="Search presets (e.g. Copy, Netflix, F13, Vol)...">
+                  <div class="filter-row" id="categoryFilters"></div>
+                </div>
+                <div class="action-list" id="actionList"></div>
+              </div>
+
+              <!-- PANE 2: CUSTOM SHORTCUT BUILDER (WINDOWS & MACOS) -->
+              <div class="action-pane" id="paneShortcut">
+                <div class="builder-box">
+                  <div class="row-between">
+                    <label>Target Operating System</label>
+                    <div class="seg" id="osSeg">
+                      <button class="active" data-os="win">Windows</button>
+                      <button data-os="mac">macOS</button>
+                    </div>
+                  </div>
+                  <label style="margin-top:12px">Modifier Keys</label>
+                  <div class="mod-toggles" id="modToggles">
+                    <button class="mod-btn" data-mod="ctrl">Ctrl</button>
+                    <button class="mod-btn" data-mod="shift">Shift</button>
+                    <button class="mod-btn" data-mod="alt">Alt / Option</button>
+                    <button class="mod-btn" data-mod="gui">Win / Cmd</button>
+                  </div>
+                  <div class="form-grid">
+                    <div class="field">
+                      <label for="scKeySelect">Key</label>
+                      <select id="scKeySelect">
+                        <optgroup label="Letters">
+                          <option value="a">A</option><option value="b">B</option><option value="c">C</option><option value="d">D</option><option value="e">E</option><option value="f">F</option><option value="g">G</option><option value="h">H</option><option value="i">I</option><option value="j">J</option><option value="k">K</option><option value="l">L</option><option value="m">M</option><option value="n">N</option><option value="o">O</option><option value="p">P</option><option value="q">Q</option><option value="r">R</option><option value="s">S</option><option value="t">T</option><option value="u">U</option><option value="v">V</option><option value="w">W</option><option value="x">X</option><option value="y">Y</option><option value="z">Z</option>
+                        </optgroup>
+                        <optgroup label="Numbers">
+                          <option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option>
+                        </optgroup>
+                        <optgroup label="Navigation & Editing">
+                          <option value="enter">Enter / Return</option><option value="esc">Escape</option><option value="tab">Tab</option><option value="space">Space</option><option value="backspace">Backspace</option><option value="delete">Delete</option><option value="insert">Insert</option><option value="up">Arrow Up</option><option value="down">Arrow Down</option><option value="left">Arrow Left</option><option value="right">Arrow Right</option><option value="home">Home</option><option value="end">End</option><option value="pageup">Page Up</option><option value="pagedown">Page Down</option><option value="capslock">Caps Lock</option>
+                        </optgroup>
+                        <optgroup label="Function Keys">
+                          <option value="f1">F1</option><option value="f2">F2</option><option value="f3">F3</option><option value="f4">F4</option><option value="f5">F5</option><option value="f6">F6</option><option value="f7">F7</option><option value="f8">F8</option><option value="f9">F9</option><option value="f10">F10</option><option value="f11">F11</option><option value="f12">F12</option><option value="f13">F13</option><option value="f14">F14</option><option value="f15">F15</option><option value="f16">F16</option><option value="f17">F17</option><option value="f18">F18</option><option value="f19">F19</option><option value="f20">F20</option><option value="f21">F21</option><option value="f22">F22</option><option value="f23">F23</option><option value="f24">F24</option>
+                        </optgroup>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="scCustomKey">Or type custom single key</label>
+                      <input id="scCustomKey" maxlength="1" placeholder="e.g. / or [">
+                    </div>
+                  </div>
+                  <label style="margin-top:12px">Shortcut Preview</label>
+                  <div class="shortcut-display" id="scPreview">
+                    <span class="kbd">Select modifiers & key</span>
+                  </div>
+                  <div class="actions end">
+                    <button class="button" id="btnApplyShortcut">Apply Shortcut to Selected Key</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- PANE 3: FULL TV REMOTE (ANY BUTTON ON THE TV) -->
+              <div class="action-pane" id="paneTv">
+                <div class="builder-box">
+                  <div class="row-between" style="margin-bottom:8px">
+                    <label>Click action behavior:</label>
+                    <div class="seg" id="tvModeSeg">
+                      <button class="active" data-behavior="stage">Assign to Selected Key</button>
+                      <button data-behavior="live">Send Directly to TV</button>
+                    </div>
+                  </div>
+                  <div class="remote-grid">
+                    <button class="remote-btn pwr" data-tv="TV:POWER">⏻ Power</button>
+                    <button class="remote-btn" data-tv="TV:INPUT">Input</button>
+                    <button class="remote-btn" data-tv="TV:MENU">Menu</button>
+                    <button class="remote-btn" data-tv="TV:INFO">Info</button>
+                    <button class="remote-btn" data-tv="TV:HOME">Home</button>
+                    <button class="remote-btn ok" data-tv="TV:UP">▲ Up</button>
+                    <button class="remote-btn" data-tv="TV:GUIDE">Guide</button>
+                    <button class="remote-btn" data-tv="TV:CC">CC</button>
+                    <button class="remote-btn ok" data-tv="TV:LEFT">◀ Left</button>
+                    <button class="remote-btn ok" data-tv="TV:OK">● OK</button>
+                    <button class="remote-btn ok" data-tv="TV:RIGHT">▶ Right</button>
+                    <button class="remote-btn" data-tv="TV:BACK">Back</button>
+                    <button class="remote-btn" data-tv="TV:VOL_UP">Vol +</button>
+                    <button class="remote-btn ok" data-tv="TV:DOWN">▼ Down</button>
+                    <button class="remote-btn" data-tv="TV:CH_UP">Ch ▲</button>
+                    <button class="remote-btn" data-tv="TV:EXIT">Exit</button>
+                    <button class="remote-btn" data-tv="TV:VOL_DOWN">Vol -</button>
+                    <button class="remote-btn" data-tv="TV:MUTE">Mute</button>
+                    <button class="remote-btn" data-tv="TV:CH_DOWN">Ch ▼</button>
+                    <button class="remote-btn" data-tv="TV:PREV_CH">Prev Ch</button>
+                    <button class="remote-btn" data-tv="TV:PLAY">▶ Play</button>
+                    <button class="remote-btn" data-tv="TV:PAUSE">⏸ Pause</button>
+                    <button class="remote-btn" data-tv="TV:STOP">⏹ Stop</button>
+                    <button class="remote-btn" data-tv="TV:REWIND">⏪ Rewind</button>
+                  </div>
+                  <div class="divider" style="margin:16px 0; border-top:1px solid var(--line);"></div>
+                  <label>Raw Vizio TV Command (Any Codeset & Code)</label>
+                  <p class="hint">Send any arbitrary SmartCast command not on the standard remote.</p>
+                  <div class="form-grid" style="margin-top:8px">
+                    <div class="field">
+                      <label for="rawCodeset">Codeset</label>
+                      <input type="number" id="rawCodeset" min="0" max="255" value="5">
+                    </div>
+                    <div class="field">
+                      <label for="rawCode">Code</label>
+                      <input type="number" id="rawCode" min="0" max="255" value="1">
+                    </div>
+                  </div>
+                  <div class="actions end" style="margin-top:12px">
+                    <button class="button" id="btnApplyRawTv">Apply Raw TV Command</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- PANE 4: TV APP LAUNCHER -->
+              <div class="action-pane" id="paneApp">
+                <div class="builder-box">
+                  <label>Quick App Launcher</label>
+                  <div class="apps-grid">
+                    <button class="remote-btn" data-app="APP:YOUTUBE">YouTube</button>
+                    <button class="remote-btn" data-app="APP:NETFLIX">Netflix</button>
+                    <button class="remote-btn" data-app="APP:DISNEY">Disney+</button>
+                    <button class="remote-btn" data-app="APP:PRIME">Prime Video</button>
+                    <button class="remote-btn" data-app="APP:TUBI">Tubi</button>
+                    <button class="remote-btn" data-app="APP:APPLETV">Apple TV+</button>
+                  </div>
+                  <div class="divider" style="margin:16px 0; border-top:1px solid var(--line);"></div>
+                  <label>Custom SmartCast App Launcher</label>
+                  <div class="form-grid" style="margin-top:8px">
+                    <div class="field">
+                      <label for="customAppId">App ID</label>
+                      <input id="customAppId" placeholder="e.g. 1, 2, 75">
+                    </div>
+                    <div class="field">
+                      <label for="customAppNs">Namespace</label>
+                      <select id="customAppNs">
+                        <option value="5">5 (Standard Web App)</option>
+                        <option value="4">4 (HTML5 Media)</option>
+                        <option value="3">3 (Native SmartCast)</option>
+                      </select>
+                    </div>
+                    <div class="field wide">
+                      <label for="customAppUrl">App Launch URL (optional)</label>
+                      <input id="customAppUrl" placeholder="https://www.youtube.com/tv">
+                    </div>
+                  </div>
+                  <div class="actions end" style="margin-top:12px">
+                    <button class="button" id="btnApplyCustomApp">Apply App Launch</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- PANE 5: TEXT MACRO -->
+              <div class="action-pane" id="paneText">
+                <div class="builder-box">
+                  <label for="textMacroInput">Type Text Keystrokes</label>
+                  <p class="hint">When pressed, Studio Pad will type this text string over Bluetooth keyboard.</p>
+                  <div class="field" style="margin-top:8px">
+                    <input id="textMacroInput" maxlength="40" placeholder="e.g. git status or contact@example.com">
+                    <span class="hint" id="textMacroCount">0 / 40 characters</span>
+                  </div>
+                  <div class="actions end" style="margin-top:12px">
+                    <button class="button" id="btnApplyTextMacro">Apply Text to Key</button>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- SCREEN 4: PROFILES -->
+        <section class="screen" id="profiles">
+          <div class="eyebrow">Profiles</div>
+          <h1 class="heading">Two hardware profiles, toggled by MODE.</h1>
+          <p class="subhead">The hardware supports two persistent slots (Mac and TV). Rename them, copy assignments, or export a backup.</p>
+          <div class="section-head"><div><h2>Hardware profiles</h2><p>Saved in ESP32 flash memory.</p></div></div>
+          <div id="profileManager" class="grid two"></div>
+          <div class="section-head"><div><h2>Backup & restore</h2><p>Backups include profile names and action assignments.</p></div></div>
+          <div class="card">
+            <div class="actions">
+              <button class="button secondary" id="exportButton">Export configuration</button>
+              <label class="button" for="importFile">Restore configuration<input id="importFile" type="file" accept="application/json,.json" hidden></label>
+            </div>
+            <p class="hint">Restores are verified before changes are applied.</p>
+          </div>
+        </section>
+
+        <!-- SCREEN 5: AUTOMATIONS -->
+        <section class="screen" id="automations">
+          <div class="eyebrow">Automations</div>
+          <h1 class="heading">No background automations.</h1>
+          <p class="subhead">Studio Pad runs self-contained firmware without arbitrary background watchers.</p>
+          <div class="card">
+            <span class="pill warn">Architectural boundary</span>
+            <h2 class="card-title" style="margin-top:12px">Desktop companion boundary</h2>
+            <p class="card-description">Any automation host sends versioned commands to the local API rather than executing unvetted code on the ESP32.</p>
+          </div>
+        </section>
+
+        <!-- SCREEN 6: EXTENSIONS -->
+        <section class="screen" id="extensions">
+          <div class="eyebrow">Extensions</div>
+          <h1 class="heading">Extension boundary.</h1>
+          <p class="subhead">Core functionality remains offline and self-contained.</p>
+          <div class="grid two">
+            <div class="card">
+              <h2 class="card-title">Extension manifest contract</h2>
+              <p class="card-description">Desktop companion format.</p>
+              <pre class="code">{
+  "schema": "studio-pad-extension",
+  "version": 1,
+  "id": "com.example.actions",
+  "api": { "min": 1, "max": 1 },
+  "permissions": ["actions:register"],
+  "entry": "desktop-host-only"
+}</pre>
+            </div>
+            <div class="card">
+              <h2 class="card-title">Trust model</h2>
+              <table class="table">
+                <tr><th>Component</th><th>May do</th></tr>
+                <tr><td>ESP32 core</td><td>Serve UI and validate actions.</td></tr>
+                <tr><td>Desktop host</td><td>Manage reviewed extensions.</td></tr>
+                <tr><td>Extension</td><td>Declare actions; never run on device.</td></tr>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCREEN 7: SETTINGS -->
+        <section class="screen" id="settings">
+          <div class="eyebrow">Settings</div>
+          <h1 class="heading">Connections, appearance, and recovery.</h1>
+          <p class="subhead">Hardware settings live on Studio Pad. Appearance is saved in this browser.</p>
+          <div class="section-head"><div><h2>Wi-Fi network <span class="pill">Device</span></h2><p>Connect Studio Pad to your local network.</p></div></div>
+          <div class="card">
+            <div class="form-grid">
+              <div class="field"><label for="wifiSsid">Network name (SSID)</label><input id="wifiSsid" maxlength="32" placeholder="Your Wi-Fi network name"></div>
+              <div class="field"><label for="wifiPass">Password</label><input id="wifiPass" type="password" maxlength="63" placeholder="Wi-Fi password"></div>
+            </div>
+            <div class="actions end" style="margin-top:14px"><button class="button" id="saveWifiButton">Save Wi-Fi</button></div>
+          </div>
+
+          <div class="section-head"><div><h2>Vizio SmartCast TV <span class="pill">Device</span></h2><p>Connect to a Vizio TV on your local network for remote control.</p></div></div>
+          <div class="card">
+            <div class="form-grid">
+              <div class="field"><label for="tvHost">TV IP address or hostname</label><input id="tvHost" maxlength="63" placeholder="e.g. 192.168.1.100"></div>
+              <div class="field"><label for="tvPort">Port</label><input id="tvPort" type="number" min="1" max="65535" value="7345"></div>
+              <div class="field"><label for="tvToken">Auth token (leave blank to keep existing)</label><input id="tvToken" placeholder="Filled automatically after pairing"></div>
+              <div class="field"><label for="tvPin">Pairing PIN (shown on TV screen)</label><input id="tvPin" maxlength="8" placeholder="e.g. 1234"></div>
+            </div>
+            <div class="actions" style="margin-top:14px">
+              <button class="button secondary" id="saveTvButton">Save TV config</button>
+              <button class="button secondary" id="testTvButton">Test TV connection</button>
+              <button class="button" id="pairStartButton">Request PIN</button>
+              <button class="button" id="pairSubmitButton">Submit PIN</button>
+            </div>
+            <p class="hint">To pair: enter the TV's IP, click "Request PIN", enter the PIN shown on the TV, then click "Submit PIN".</p>
+          </div>
+
+          <div class="section-head"><div><h2>Appearance <span class="pill">This browser</span></h2><p>Display theme and density.</p></div></div>
+          <div class="card">
+            <div class="form-grid">
+              <div class="field"><label for="themeSelect">Theme</label><select id="themeSelect"><option value="dark">Dark</option><option value="light">Light</option><option value="system">System</option></select></div>
+              <div class="field"><label for="accentInput">Accent color</label><input id="accentInput" type="color" value="#38bdf8"></div>
+              <div class="field"><label for="densitySelect">Density</label><select id="densitySelect"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
+              <div class="field"><label for="motionSelect">Motion</label><select id="motionSelect"><option value="full">Standard</option><option value="reduced">Reduced</option></select></div>
+            </div>
+            <div class="actions end" style="margin-top:14px"><button class="ghost" id="resetAppearance">Reset appearance</button></div>
+          </div>
+
+          <div class="section-head"><div><h2>Recovery <span class="pill warn">Destructive</span></h2><p>Restore default key mappings.</p></div></div>
+          <div class="card">
+            <div class="actions"><button class="button danger" id="resetProfilesButton">Restore profile defaults</button></div>
+          </div>
+
+          <div class="section-head"><div><h2>Diagnostics</h2><p>Device diagnostics.</p></div></div>
+          <div class="card"><pre class="code" id="diagnostics">Loading diagnostics…</pre></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-layer" id="modalLayer" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <h2 id="modalTitle">Confirm action</h2>
+      <p id="modalMessage"></p>
+      <div class="field" id="modalInputWrap">
+        <label id="modalInputLabel" for="modalInput"></label>
+        <input id="modalInput">
+      </div>
+      <div class="actions end" style="margin-top:16px">
+        <button class="button secondary" id="modalCancel">Cancel</button>
+        <button class="button danger" id="modalConfirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    const ACTIONS = [
+      ['media','Media & Audio','MEDIA:PLAY_PAUSE','Play / Pause','Toggle media playback','BLE'],
+      ['media','Media & Audio','MEDIA:MUTE','Mute','Toggle system audio mute','BLE'],
+      ['media','Media & Audio','MEDIA:VOL_UP','Volume Up','Increase system volume','BLE'],
+      ['media','Media & Audio','MEDIA:VOL_DOWN','Volume Down','Decrease system volume','BLE'],
+      ['media','Media & Audio','MEDIA:NEXT','Next Track','Skip to next track','BLE'],
+      ['media','Media & Audio','MEDIA:PREV','Previous Track','Return to previous track','BLE'],
+      ['keyboard','Function Keys','KEY:F13','F13','Assignable shortcut key','BLE'],
+      ['keyboard','Function Keys','KEY:F14','F14','Assignable shortcut key','BLE'],
+      ['keyboard','Function Keys','KEY:F15','F15','Assignable shortcut key','BLE'],
+      ['keyboard','Function Keys','KEY:F16','F16','Assignable shortcut key','BLE'],
+      ['productivity','macOS','MACRO:COPY','Copy (Mac)','Command + C','Mac'],
+      ['productivity','macOS','MACRO:PASTE','Paste (Mac)','Command + V','Mac'],
+      ['productivity','macOS','MACRO:CUT','Cut (Mac)','Command + X','Mac'],
+      ['productivity','macOS','MACRO:UNDO','Undo (Mac)','Command + Z','Mac'],
+      ['productivity','macOS','MACRO:REDO','Redo (Mac)','Command + Shift + Z','Mac'],
+      ['productivity','macOS','MACRO:SELECT_ALL','Select All (Mac)','Command + A','Mac'],
+      ['productivity','macOS','MACRO:SAVE','Save (Mac)','Command + S','Mac'],
+      ['productivity','macOS','MACRO:SPOTLIGHT','Spotlight','Command + Space','Mac'],
+      ['productivity','macOS','MACRO:LOCK','Lock Screen (Mac)','Control + Command + Q','Mac'],
+      ['productivity','macOS','MACRO:NEW_TAB','New Tab (Mac)','Command + T','Mac'],
+      ['productivity','macOS','MACRO:CLOSE_TAB','Close Tab (Mac)','Command + W','Mac'],
+      ['windows','Windows','WIN:COPY','Copy (Win)','Ctrl + C','Win'],
+      ['windows','Windows','WIN:PASTE','Paste (Win)','Ctrl + V','Win'],
+      ['windows','Windows','WIN:CUT','Cut (Win)','Ctrl + X','Win'],
+      ['windows','Windows','WIN:UNDO','Undo (Win)','Ctrl + Z','Win'],
+      ['windows','Windows','WIN:REDO','Redo (Win)','Ctrl + Y','Win'],
+      ['windows','Windows','WIN:SELECT_ALL','Select All (Win)','Ctrl + A','Win'],
+      ['windows','Windows','WIN:SAVE','Save (Win)','Ctrl + S','Win'],
+      ['windows','Windows','WIN:NEW_TAB','New Tab (Win)','Ctrl + T','Win'],
+      ['windows','Windows','WIN:CLOSE_TAB','Close Tab (Win)','Ctrl + W','Win'],
+      ['windows','Windows','WIN:LOCK','Lock PC (Win)','Windows + L','Win'],
+      ['windows','Windows','WIN:SEARCH','Windows Search','Windows + S','Win'],
+      ['windows','Windows','WIN:EXPLORER','File Explorer','Windows + E','Win'],
+      ['windows','Windows','WIN:TASK_MGR','Task Manager','Ctrl + Shift + Esc','Win'],
+      ['windows','Windows','WIN:SNIP','Snipping Tool','Windows + Shift + S','Win'],
+      ['windows','Windows','WIN:DESKTOP','Show Desktop','Windows + D','Win'],
+      ['windows','Windows','WIN:RUN','Run Dialog','Windows + R','Win'],
+      ['tv','TV Remote','TV:POWER','TV Power','Power on/off toggle','TV'],
+      ['tv','TV Remote','TV:VOL_UP','TV Volume Up','Increase TV audio volume','TV'],
+      ['tv','TV Remote','TV:VOL_DOWN','TV Volume Down','Decrease TV audio volume','TV'],
+      ['tv','TV Remote','TV:MUTE','TV Mute','Toggle TV audio mute','TV'],
+      ['tv','TV Remote','TV:HOME','TV Home','SmartCast home menu','TV'],
+      ['tv','TV Remote','TV:BACK','TV Back','Return to previous screen','TV'],
+      ['tv','TV Remote','TV:OK','TV Select / OK','Confirm selection','TV'],
+      ['tv','TV Remote','TV:INPUT','TV Input','Cycle video input sources','TV'],
+      ['tv','TV Remote','TV:UP','TV Up','D-Pad Up navigation','TV'],
+      ['tv','TV Remote','TV:DOWN','TV Down','D-Pad Down navigation','TV'],
+      ['tv','TV Remote','TV:LEFT','TV Left','D-Pad Left navigation','TV'],
+      ['tv','TV Remote','TV:RIGHT','TV Right','D-Pad Right navigation','TV'],
+      ['tv','TV Remote','TV:EXIT','TV Exit','Exit current menu/app','TV'],
+      ['tv','TV Remote','TV:MENU','TV Menu','TV settings menu','TV'],
+      ['tv','TV Remote','TV:INFO','TV Info','Display program info banner','TV'],
+      ['tv','TV Remote','TV:GUIDE','TV Guide','Open TV channel guide','TV'],
+      ['tv','TV Remote','TV:CC','Closed Captions','Toggle subtitles / CC','TV'],
+      ['tv','TV Remote','TV:CH_UP','Channel Up','Next channel','TV'],
+      ['tv','TV Remote','TV:CH_DOWN','Channel Down','Previous channel','TV'],
+      ['tv','TV Remote','TV:PREV_CH','Previous Channel','Jump to last channel','TV'],
+      ['tv','TV Remote','TV:PLAY','TV Play','Resume playback','TV'],
+      ['tv','TV Remote','TV:PAUSE','TV Pause','Pause playback','TV'],
+      ['tv','TV Remote','TV:STOP','TV Stop','Stop playback','TV'],
+      ['tv','TV Remote','TV:REWIND','TV Rewind','Rewind media','TV'],
+      ['tv','TV Remote','TV:FFWD','TV Fast Forward','Fast forward media','TV'],
+      ['apps','Streaming','APP:YOUTUBE','YouTube','Launch YouTube TV app','App'],
+      ['apps','Streaming','APP:DISNEY','Disney+','Launch Disney+ app','App'],
+      ['apps','Streaming','APP:TUBI','Tubi','Launch Tubi TV app','App'],
+      ['apps','Streaming','APP:NETFLIX','Netflix','Launch Netflix app','App'],
+      ['apps','Streaming','APP:PRIME','Prime Video','Launch Amazon Prime Video','App'],
+      ['apps','Streaming','APP:APPLETV','Apple TV+','Launch Apple TV+ app','App']
+    ].map(([category,categoryLabel,id,name,description,badge]) => ({category,categoryLabel,id,name,description,badge}));
+
+    const SLOTS = [
+      {id:'b1',label:'Button 1'},{id:'b2',label:'Button 2'},
+      {id:'b3',label:'Button 3'},{id:'b4',label:'Button 4'},
+      {id:'dial',label:'Dial press'}
+    ];
+
+    const $ = id => document.getElementById(id);
+    const state = {
+      status: null, screen: 'overview', profile: 'MAC', selected: 'b1',
+      draft: null, dirty: false, category: 'all', search: '',
+      statusSequence: 0, modalAction: null, prefs: null,
+      workstationTab: 'library',
+      shortcutOS: 'win',
+      shortcutMods: new Set(),
+      shortcutKey: 'c',
+      tvClickBehavior: 'stage'
+    };
+
+    const defaultPrefs = {theme:'dark',accent:'#38bdf8',density:'comfortable',motion:'full'};
+    function getPrefs(){try{return {...defaultPrefs,...JSON.parse(localStorage.getItem('studio-pad-ui')||'{}')}}catch(_){return {...defaultPrefs}}}
+    function setPrefs(p){state.prefs={...state.prefs,...p};localStorage.setItem('studio-pad-ui',JSON.stringify(state.prefs));applyPrefs();}
+
+    function applyPrefs(){
+      const p = state.prefs;
+      const system = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      const light = (p.theme === 'system' ? system : p.theme) === 'light';
+      document.documentElement.style.colorScheme = light ? 'light' : 'dark';
+      document.documentElement.style.setProperty('--accent', p.accent);
+      document.documentElement.style.setProperty('--gap', p.density === 'compact' ? '14px' : '20px');
+      if (light) {
+        [['--bg','#f6f8fb'],['--surface','#ffffff'],['--surface-2','#edf1f7'],['--surface-3','#e2e7f1'],
+         ['--line','#d5dce8'],['--text','#141824'],['--muted','#5c667a'],['--faint','#7e8a9f'],
+         ['--sidebar-bg','#ffffff'],['--input-bg','#ffffff'],
+         ['--kbd-bg','#eef2f8'],['--kbd-border','#cbd5e1'],['--kbd-text','#1e293b']
+        ].forEach(([k,v]) => document.documentElement.style.setProperty(k, v));
+      } else {
+        ['--bg:#090a0f','--surface:#10131c','--surface-2:#161b27','--surface-3:#1f2638','--line:#252d42',
+         '--text:#f8fafc','--muted:#94a3b8','--faint:#64748b','--sidebar-bg:#0c0e14','--input-bg:#08090e',
+         '--kbd-bg:#161c2b','--kbd-border:#2e3852','--kbd-text:#e2e8f0'
+        ].forEach(x => { const [k,v] = x.split(':'); document.documentElement.style.setProperty(k, v); });
+      }
+      document.documentElement.style.setProperty('scroll-behavior', p.motion === 'reduced' ? 'auto' : 'smooth');
+    }
+
+    function toast(message, type='success'){
+      const t = $('toast');
+      if(!t) return;
+      t.textContent = message;
+      t.className = 'toast show ' + type;
+      clearTimeout(toast.timer);
+      toast.timer = setTimeout(() => t.className = 'toast', 3600);
+    }
+
+    function actionById(id){
+      if(!id) return {id:'',name:'None',description:'No action',badge:'—'};
+      const found = ACTIONS.find(a => a.id === id);
+      if(found) return found;
+
+      if(id.startsWith('SHORTCUT:')){
+        const parts = id.split(':');
+        const mods = parts[1] ? parts[1].split(',').filter(Boolean) : [];
+        const key = parts[2] || '';
+        const modLabels = mods.map(m => {
+          if(m==='ctrl') return 'Ctrl';
+          if(m==='shift') return 'Shift';
+          if(m==='alt'||m==='opt') return 'Alt/Opt';
+          if(m==='gui'||m==='win'||m==='cmd') return 'Win/Cmd';
+          return m;
+        });
+        const keyLabel = key.length === 1 ? key.toUpperCase() : (key[0].toUpperCase() + key.slice(1));
+        const full = [...modLabels, keyLabel].join(' + ');
+        return {id, name: full, description: 'Custom Keystroke Shortcut', badge:'Custom'};
+      }
+
+      if(id.startsWith('TVKEY:')){
+        const parts = id.split(':');
+        return {id, name: `TV Key (${parts[1]}, ${parts[2]})`, description: `Raw SmartCast Codeset ${parts[1]}, Code ${parts[2]}`, badge:'TV'};
+      }
+
+      if(id.startsWith('TVAPP:')){
+        const parts = id.split(':');
+        const appId = parts[1] || '';
+        const url = parts.slice(3).join(':');
+        return {id, name: `Launch App ${appId}`, description: url || `SmartCast App ID ${appId}`, badge:'App'};
+      }
+
+      if(id.startsWith('TEXT:')){
+        const text = id.slice(5);
+        return {id, name: `Type "${text}"`, description: 'Types text sequence over BLE', badge:'Text'};
+      }
+
+      return {id, name: id, description: 'Custom action', badge:'Custom'};
+    }
+
+    // ====================================================================
+    // BULLETPROOF HARDWARE DRIVER (USB CABLE, BLUETOOTH & HTTP)
+    // ====================================================================
+    let serialPort = null, serialWriter = null, serialReader = null;
+    let bleDevice = null, bleChar = null;
+    let activeTransport = null;
+    let pendingResolver = null;
+    let rxBuffer = "";
+
+    const BLE_SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const BLE_CHAR_UUID    = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    const CACHE_KEY        = "studio-pad-profiles-cache";
+
+    function loadLocalProfiles() {
+      try {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) return JSON.parse(cached);
+      } catch (_) {}
+      return null;
+    }
+
+    function saveLocalProfiles(profiles) {
+      try {
+        if (profiles) localStorage.setItem(CACHE_KEY, JSON.stringify(profiles));
+      } catch (_) {}
+    }
+
+    function updateConnectionUI(connected, label) {
+      if (connected) {
+        $('connectionDot').className = 'status-dot online';
+        $('connectionLabel').textContent = label;
+        if ($('btnDisconnect')) $('btnDisconnect').style.display = 'inline-flex';
+        if ($('btnConnectUSB')) $('btnConnectUSB').style.display = 'none';
+        if ($('btnConnectBLE')) $('btnConnectBLE').style.display = 'none';
+      } else {
+        $('connectionDot').className = 'status-dot';
+        $('connectionLabel').textContent = label || 'Not connected';
+        if ($('btnDisconnect')) $('btnDisconnect').style.display = 'none';
+        if ($('btnConnectUSB')) $('btnConnectUSB').style.display = 'inline-flex';
+        if ($('btnConnectBLE')) $('btnConnectBLE').style.display = 'inline-flex';
+      }
+    }
+
+    async function disconnectDevice() {
+      try {
+        if (serialReader) {
+          await serialReader.cancel().catch(() => {});
+          serialReader.releaseLock();
+          serialReader = null;
+        }
+        if (serialWriter) {
+          serialWriter.releaseLock();
+          serialWriter = null;
+        }
+        if (serialPort) {
+          await serialPort.close().catch(() => {});
+          serialPort = null;
+        }
+        if (bleDevice && bleDevice.gatt.connected) {
+          bleDevice.gatt.disconnect();
+          bleDevice = null;
+          bleChar = null;
+        }
+      } catch (_) {}
+      activeTransport = null;
+      updateConnectionUI(false, 'Disconnected');
+      toast("Device disconnected.");
+    }
+
+    async function connectSerial() {
+      if (!navigator.serial) {
+        toast("Web Serial requires Chrome, Edge, or Brave.", "error");
+        return;
+      }
+      try {
+        if (!serialPort || !serialPort.readable) {
+          serialPort = await navigator.serial.requestPort();
+          await serialPort.open({ baudRate: 115200 });
+        }
+        
+        if (serialPort.writable && !serialWriter) {
+          serialWriter = serialPort.writable.getWriter();
+        }
+
+        activeTransport = 'serial';
+        updateConnectionUI(true, 'USB Connected');
+        toast("Connected to Studio Pad via USB!");
+        
+        readSerialStream();
+        await refreshStatus({keepDraft: false});
+      } catch (e) {
+        if (e.message && e.message.includes("already open")) {
+          activeTransport = 'serial';
+          updateConnectionUI(true, 'USB Connected');
+          toast("Reconnected to open USB port!");
+          await refreshStatus({keepDraft: false});
+        } else {
+          toast(e.message, "error");
+        }
+      }
+    }
+
+    async function readSerialStream() {
+      const textDecoder = new TextDecoderStream();
+      serialPort.readable.pipeTo(textDecoder.writable);
+      serialReader = textDecoder.readable.getReader();
+      try {
+        while (true) {
+          const { value, done } = await serialReader.read();
+          if (done) break;
+          if (value) handleIncomingData(value);
+        }
+      } catch (_) {}
+    }
+
+    async function connectBluetooth() {
+      if (!navigator.bluetooth) {
+        toast("Web Bluetooth requires Chrome, Edge, or Bluefy.", "error");
+        return;
+      }
+      try {
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: "Studio" }],
+          optionalServices: [BLE_SERVICE_UUID]
+        });
+        const server = await bleDevice.gatt.connect();
+        const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+        bleChar = await service.getCharacteristic(BLE_CHAR_UUID);
+        await bleChar.startNotifications();
+        bleChar.addEventListener('characteristicvaluechanged', e => {
+          handleIncomingData(new TextDecoder().decode(e.target.value));
+        });
+        activeTransport = 'ble';
+        updateConnectionUI(true, 'BLE Connected');
+        toast("Connected over Bluetooth!");
+        await refreshStatus({keepDraft: false});
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    }
+
+    function handleIncomingData(chunk) {
+      rxBuffer += chunk;
+      if (rxBuffer.includes('\n')) {
+        let lines = rxBuffer.split('\n');
+        rxBuffer = lines.pop();
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('{') && pendingResolver) {
+            try {
+              const json = JSON.parse(trimmed);
+              const resolve = pendingResolver;
+              pendingResolver = null;
+              resolve(json);
+            } catch (_) {}
+          }
+        }
+      }
+    }
+
+    // Direct hardware API (Serial, BLE & HTTP fetch fallback with AbortController)
+    async function api(path, {method='GET', data, timeout=6000}={}){
+      if (!activeTransport) {
+        if (window.location.protocol.startsWith('http') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeout);
+          try {
+            const opts = {
+              method,
+              headers: { 'Content-Type': 'application/json' },
+              signal: controller.signal
+            };
+            if (data && method !== 'GET') opts.body = JSON.stringify(data);
+            const res = await fetch(path, opts);
+            clearTimeout(timer);
+            return await res.json();
+          } catch (err) {
+            clearTimeout(timer);
+            throw err;
+          }
+        }
+        return { ok: false, message: "Not connected" };
+      }
+
+      return new Promise(async (resolve, reject) => {
+        const timer = setTimeout(() => {
+          if (pendingResolver === resolve) {
+            pendingResolver = null;
+            reject(new Error("Device did not respond."));
+          }
+        }, timeout);
+
+        pendingResolver = res => {
+          clearTimeout(timer);
+          resolve(res);
+        };
+
+        const payload = JSON.stringify({ path, method, ...data }) + "\n";
+        const encoded = new TextEncoder().encode(payload);
+        try {
+          if (activeTransport === 'serial') {
+            await serialWriter.write(encoded);
+          } else if (activeTransport === 'ble') {
+            await bleChar.writeValue(encoded);
+          }
+        } catch (err) {
+          clearTimeout(timer);
+          pendingResolver = null;
+          reject(err);
+        }
+      });
+    }
+
+    // Fail-safe normalization layer: converts any flat or nested firmware payload into a clean object
+    function normalizeStatus(raw) {
+      if (!raw) return null;
+      const wifi_connected = raw.connection?.wifi_connected ?? raw.wifi_connected ?? false;
+      const ip = raw.connection?.ip ?? raw.ip ?? '192.168.4.1';
+      const ble_connected = raw.connection?.ble_connected ?? raw.ble_connected ?? false;
+      const free_heap = raw.diagnostics?.free_heap ?? raw.heap ?? 0;
+      const tv_host = raw.tv?.host ?? raw.tv_ip ?? '';
+      const tv_port = raw.tv?.port ?? raw.tv_port ?? 7345;
+      const tv_paired = raw.tv?.paired ?? raw.has_auth ?? false;
+      const tv_configured = raw.tv?.configured ?? (tv_host.length > 0);
+      const ssid = raw.ssid ?? '';
+      const dev_name = raw.device?.name ?? "Studio MacroPad Pro";
+      const dev_fw = raw.device?.firmware ?? "3.2-PRO";
+
+      let activeProfile = raw.profiles?.active ?? raw.mode ?? "MAC";
+      let profileItems = raw.profiles?.items;
+
+      if (!profileItems || !profileItems.length) {
+        const cached = loadLocalProfiles();
+        if (cached && cached.items && cached.items.length) {
+          profileItems = cached.items;
+          activeProfile = cached.active || activeProfile;
+        } else {
+          profileItems = [
+            {
+              id: 'MAC',
+              name: 'Mac',
+              controls: {
+                b1: raw.mac_b1 ?? raw.b1 ?? 'MEDIA:PLAY_PAUSE',
+                b2: raw.mac_b2 ?? raw.b2 ?? 'KEY:F13',
+                b3: raw.mac_b3 ?? raw.b3 ?? 'KEY:F14',
+                b4: raw.mac_b4 ?? raw.b4 ?? 'KEY:F15',
+                dial: raw.mac_dial ?? 'MEDIA:MUTE'
+              }
+            },
+            {
+              id: 'TV',
+              name: 'TV',
+              controls: {
+                b1: raw.tv_b1 ?? 'TV:POWER',
+                b2: raw.tv_b2 ?? 'APP:YOUTUBE',
+                b3: raw.tv_b3 ?? 'APP:DISNEY',
+                b4: raw.tv_b4 ?? 'APP:TUBI',
+                dial: raw.tv_dial ?? 'TV:MUTE'
+              }
+            }
+          ];
+        }
+      }
+
+      return {
+        api_version: raw.api_version ?? 1,
+        device: { name: dev_name, firmware: dev_fw },
+        connection: { wifi_connected, ip, ble_connected },
+        tv: { configured: tv_configured, paired: tv_paired, host: tv_host, port: tv_port },
+        profiles: { active: activeProfile, items: profileItems },
+        diagnostics: { free_heap },
+        ssid
+      };
+    }
+
+    function profile(id = state.profile){ 
+      return state.status?.profiles?.items?.find(p => p.id === id) || state.status?.profiles?.items?.[0]; 
+    }
+    
+    function same(a,b){ return JSON.stringify(a) === JSON.stringify(b); }
+
+    async function pending(button, work){
+      if(!button) return work();
+      const old = button.textContent;
+      button.disabled = true;
+      button.dataset.pending = 'true';
+      try{ return await work(); }
+      finally{ button.disabled = false; delete button.dataset.pending; button.textContent = old; }
+    }
+
+    function go(screen){
+      state.screen = screen;
+      document.querySelectorAll('.screen').forEach(e => e.classList.toggle('active', e.id === screen));
+      document.querySelectorAll('#nav button').forEach(e => e.classList.toggle('active', e.dataset.screen === screen));
+      $('pageTitle').textContent = screen[0].toUpperCase() + screen.slice(1);
+      $('sidebar').classList.remove('open');
+      if(screen==='customize') renderCustomizer();
+      if(screen==='profiles') renderProfiles();
+      if(screen==='devices') renderDevices();
+      if(screen==='settings') renderSettings();
+    }
+
+    function renderStatus(){
+      const s = state.status;
+      if(!s) return;
+      const wifi = s.connection.wifi_connected;
+      const ip = s.connection.ip || '—';
+      $('connectionDot').className = 'status-dot ' + (wifi ? 'online' : 'warn');
+      $('connectionLabel').textContent = wifi ? `Connected · ${ip}` : 'Setup portal · ' + ip;
+      $('activeDevice').textContent = s.device.name;
+      $('sideFirmware').textContent = s.device.name;
+      $('sideVersion').textContent = 'Firmware ' + s.device.firmware;
+      const activeProf = profile(s.profiles.active);
+      $('overviewProfile').textContent = ((activeProf?.name || s.profiles.active) + ' PROFILE').toUpperCase();
+      $('metricWifi').textContent = wifi ? ip : 'Setup portal (192.168.4.1)';
+      $('metricBle').textContent = s.connection.ble_connected ? 'Connected' : 'Waiting for connection';
+      $('metricProfile').textContent = activeProf?.name || s.profiles.active;
+      $('metricHeap').textContent = (s.diagnostics.free_heap || '—') + ' bytes';
+      $('deviceConnection').textContent = wifi ? 'Reachable at ' + ip : 'Available via setup portal at ' + ip;
+      $('deviceFirmware').textContent = 'Firmware: ' + s.device.firmware;
+      $('deviceIp').textContent = 'Address: ' + ip;
+
+      const ovKeys = $('overviewPadKeys');
+      if (ovKeys) {
+        ovKeys.replaceChildren();
+        const activeControls = activeProf?.controls || {};
+        SLOTS.forEach(slot => {
+          const act = actionById(activeControls[slot.id]);
+          const btn = element('button', {
+            className: 'hardware-key ' + (slot.id === 'dial' ? 'dial' : ''),
+            title: `Customize ${slot.label} (${act.name})`,
+            onClick: () => {
+              state.selected = slot.id;
+              go('customize');
+            }
+          }, [
+            element('span', { text: slot.id === 'dial' ? 'DIAL' : slot.label.replace('Button ', 'B') }),
+            element('small', { text: act.name })
+          ]);
+          ovKeys.append(btn);
+        });
+      }
+      $('diagnostics').textContent = JSON.stringify({
+        apiVersion: s.api_version,
+        firmware: s.device.firmware,
+        wifiConnected: wifi,
+        ip,
+        bluetoothConnected: s.connection.ble_connected,
+        activeProfile: s.profiles.active,
+        tvConfigured: s.tv.configured,
+        tvPaired: s.tv.paired,
+        freeHeap: s.diagnostics.free_heap
+      }, null, 2);
+    }
+
+    async function refreshStatus({keepDraft=true}={}){
+      // Don't show errors if not connected yet
+      if (!activeTransport) {
+        $('connectionDot').className = 'status-dot';
+        $('connectionLabel').textContent = 'Not connected';
+        return;
+      }
+      const seq = ++state.statusSequence;
+      try{
+        const raw = await api('/api/status');
+        if(seq !== state.statusSequence || !raw || raw.ok === false) return;
+        state.status = normalizeStatus(raw);
+        if(!keepDraft || !state.dirty){
+          state.profile = state.status.profiles.active;
+          state.draft = {...profile(state.status.profiles.active).controls};
+          state.dirty = false;
+        }
+        renderStatus();
+        renderDevices();
+        renderSettings();
+        if(state.screen==='customize') renderCustomizer();
+        if(state.screen==='profiles') renderProfiles();
+      } catch(error){
+        $('connectionDot').className = 'status-dot warn';
+        $('connectionLabel').textContent = 'Connection unavailable';
+        toast(error.message, 'error');
+      }
+    }
+
+    function markDirty(){
+      const saved = profile()?.controls || {};
+      state.dirty = !same(state.draft, saved);
+      $('dirtyPill').textContent = state.dirty ? 'Unsaved changes' : 'Saved';
+      $('dirtyPill').className = 'pill ' + (state.dirty ? 'warn' : 'good');
+      $('saveProfileButton').disabled = !state.dirty;
+      $('discardButton').disabled = !state.dirty;
+    }
+
+    function element(tag, props={}, children=[]){
+      const e = document.createElement(tag);
+      Object.entries(props).forEach(([k,v]) => {
+        if(k==='className') e.className = v;
+        else if(k==='text') e.textContent = v;
+        else if(k.startsWith('on')) e.addEventListener(k.slice(2), v);
+        else e.setAttribute(k, v);
+      });
+      children.forEach(c => e.append(c));
+      return e;
+    }
+
+    function stageAction(actionId){
+      state.draft[state.selected] = actionId;
+      renderCustomizer();
+      toast('Action staged. Click "Save profile" to write to flash.');
+    }
+
+    function renderCustomizer(){
+      if(!state.status) return;
+      const p = profile();
+      if(!p) return;
+      if(!state.draft) state.draft = {...p.controls};
+
+      // Profile Switcher Tabs
+      const tabs = $('profileTabs');
+      tabs.replaceChildren();
+      state.status.profiles.items.forEach(item => {
+        const switchProfile = () => {
+          state.profile = item.id;
+          state.draft = {...profile(item.id).controls};
+          state.dirty = false;
+          renderCustomizer();
+        };
+        tabs.append(element('button', {
+          className: 'filter ' + (item.id === state.profile ? 'active' : ''),
+          text: item.name,
+          onClick: () => {
+            if(state.dirty) openConfirm({
+              title: 'Discard staged changes?',
+              message: 'Switching profiles discards unsaved changes.',
+              confirm: 'Discard',
+              action: switchProfile
+            });
+            else switchProfile();
+          }
+        }));
+      });
+
+      $('previewProfile').textContent = p.name.toUpperCase();
+
+      // Hardware Keys Preview
+      const preview = $('hardwarePreview');
+      preview.replaceChildren();
+      SLOTS.forEach(slot => {
+        const a = actionById(state.draft[slot.id]);
+        const key = element('button', {
+          className: 'hardware-key ' + (slot.id==='dial' ? 'dial ' : '') + (slot.id===state.selected ? 'selected' : ''),
+          'aria-label': `${slot.label}: ${a.name}`,
+          onClick: () => { state.selected = slot.id; renderCustomizer(); }
+        }, [
+          element('span', {text: slot.id==='dial' ? 'DIAL' : slot.label.replace('Button ','B')}),
+          element('small', {text: a.name})
+        ]);
+        preview.append(key);
+      });
+
+      const current = actionById(state.draft[state.selected]);
+      const currentSlot = SLOTS.find(s => s.id === state.selected);
+      $('selectedControlLabel').textContent = currentSlot.label;
+      $('selectedActionLabel').textContent = current.name;
+      $('selectedBadge').textContent = current.badge || 'Active';
+      $('selectedCapability').textContent = state.selected==='dial'
+        ? 'Dial press action · rotation stays volume control'
+        : 'Button press action · persisted in flash';
+      $('workstationKeyTarget').textContent = currentSlot.label;
+
+      markDirty();
+      renderWorkstation();
+    }
+
+    function renderWorkstation(){
+      const categories = [
+        ['all','All'],
+        ['windows','Windows'],
+        ['productivity','macOS'],
+        ['media','Media & Audio'],
+        ['tv','TV Remote'],
+        ['apps','Streaming'],
+        ['keyboard','Function Keys']
+      ];
+      const filters = $('categoryFilters');
+      filters.replaceChildren();
+      categories.forEach(([id, label]) => {
+        filters.append(element('button', {
+          className: 'filter ' + (state.category === id ? 'active' : ''),
+          text: label,
+          onClick: () => { state.category = id; renderActions(); }
+        }));
+      });
+      renderActions();
+      updateShortcutPreview();
+    }
+
+    function renderActions(){
+      const list = $('actionList');
+      list.replaceChildren();
+      const query = state.search.trim().toLowerCase();
+      const visible = ACTIONS.filter(a =>
+        (state.category === 'all' || a.category === state.category) &&
+        (!query || `${a.name} ${a.description} ${a.categoryLabel} ${a.badge}`.toLowerCase().includes(query))
+      );
+      if(!visible.length){
+        list.append(element('p', {className: 'empty', text: 'No preset actions match this search.'}));
+        return;
+      }
+      visible.forEach(a => {
+        const btn = element('button', {
+          className: 'action ' + (state.draft[state.selected] === a.id ? 'assigned' : ''),
+          onClick: () => stageAction(a.id)
+        }, [
+          element('div', {className: 'action-top'}, [
+            element('b', {text: a.name}),
+            element('span', {className: 'action-badge', text: a.badge})
+          ]),
+          element('span', {text: a.description})
+        ]);
+        list.append(btn);
+      });
+    }
+
+    function updateShortcutPreview(){
+      const preview = $('scPreview');
+      preview.replaceChildren();
+      const mods = Array.from(state.shortcutMods);
+      const customKey = $('scCustomKey')?.value.trim();
+      const key = customKey || $('scKeySelect')?.value || 'c';
+
+      const os = state.shortcutOS;
+      const modLabels = mods.map(m => {
+        if(m==='ctrl') return os === 'mac' ? 'Control' : 'Ctrl';
+        if(m==='shift') return 'Shift';
+        if(m==='alt') return os === 'mac' ? 'Option' : 'Alt';
+        if(m==='gui') return os === 'mac' ? 'Command' : 'Windows';
+        return m;
+      });
+
+      if(!modLabels.length && !key){
+        preview.append(element('span', {className:'kbd', text:'Select modifiers & key'}));
+        return;
+      }
+
+      const all = [...modLabels, key.length === 1 ? key.toUpperCase() : key.toUpperCase()];
+      all.forEach((k, i) => {
+        if(i > 0) preview.append(document.createTextNode(' + '));
+        preview.append(element('span', {className:'kbd', text: k}));
+      });
+    }
+
+    async function saveProfile(){
+      const b = $('saveProfileButton');
+      await pending(b, async () => {
+        try{
+          if (activeTransport) {
+            try {
+              await api('/api/profile/save', {
+                method: 'POST',
+                data: { profile: state.profile, ...state.draft }
+              });
+            } catch(_) {
+              await api('/api/customizer/save', {
+                method: 'POST',
+                data: { profile: state.profile, slot: state.selected, action: state.draft[state.selected] }
+              });
+            }
+          }
+          profile().controls = {...state.draft};
+          state.dirty = false;
+          saveLocalProfiles(state.status.profiles);
+          renderCustomizer();
+          renderStatus();
+          toast(activeTransport ? 'Profile saved to Studio Pad flash memory!' : 'Saved to browser cache (connect USB to flash to device).');
+        } catch(e){
+          toast(e.message, 'error');
+        }
+      });
+    }
+
+    function renderDevices(){
+      if(!state.status) return;
+      const host = state.status.tv.host;
+      const list = $('integrationList');
+      list.replaceChildren();
+      if(!state.status.tv.configured){
+        list.append(element('article', {className: 'card'}, [
+          element('h3', {className: 'card-title', text: 'No saved integrations'}),
+          element('p', {className: 'card-description', text: 'Configure Vizio SmartCast from Settings to enable direct TV control.'}),
+          element('div', {className: 'actions', style: 'margin-top:14px'}, [
+            element('button', {className: 'button secondary', text: 'Configure Vizio', onClick: () => go('settings')})
+          ])
+        ]));
+      } else {
+        const detail = state.status.tv.paired ? 'Paired token stored on Studio Pad.' : 'Host saved; pairing not completed.';
+        list.append(element('article', {className: 'card device-card'}, [
+          element('div', {className: 'device-icon', text: 'TV'}),
+          element('div', {className: 'device-body'}, [
+            element('div', {className: 'row-between'}, [
+              element('div', {}, [element('h3', {text: 'Vizio SmartCast TV'}), element('p', {text: detail})]),
+              element('span', {className: 'pill ' + (state.status.tv.paired ? 'good' : 'warn'), text: state.status.tv.paired ? 'Paired' : 'Needs pairing'})
+            ]),
+            element('div', {className: 'device-meta'}, [
+              element('span', {text: 'Host: ' + (host || '—')}),
+              element('span', {text: 'Port: ' + state.status.tv.port})
+            ])
+          ]),
+          element('div', {className: 'actions'}, [
+            element('button', {className: 'ghost', text: 'Test', onClick: testTv}),
+            element('button', {className: 'button danger', text: 'Forget', onClick: () => openConfirm({
+              title: 'Forget Vizio SmartCast TV?',
+              message: 'This removes the saved TV host and pairing token from Studio Pad flash memory.',
+              word: 'FORGET',
+              confirm: 'Forget device',
+              action: forgetTv
+            })})
+          ])
+        ]));
+      }
+    }
+
+    function renderProfiles(){
+      if(!state.status) return;
+      const container = $('profileManager');
+      container.replaceChildren();
+      state.status.profiles.items.forEach(p => {
+        const input = element('input', {value: p.name, maxlength: '20', 'aria-label': `${p.id} profile name`});
+        const select = element('select', {'aria-label': `Copy ${p.name} mappings from`});
+        state.status.profiles.items.filter(o => o.id !== p.id).forEach(o => select.append(element('option', {value: o.id, text: 'Copy from ' + o.name})));
+        const names = SLOTS.map(s => actionById(p.controls[s.id]).name);
+        const card = element('article', {className: 'card profile-card'}, [
+          element('div', {className: 'row-between'}, [
+            element('h3', {text: p.name}),
+            element('span', {className: 'pill ' + (p.id === state.status.profiles.active ? 'good' : ''), text: p.id === state.status.profiles.active ? 'Active' : 'MODE slot'})
+          ]),
+          element('div', {className: 'field', style: 'margin-top:12px'}, [
+            element('label', {text: 'Profile name'}),
+            input
+          ]),
+          element('ul', {}, SLOTS.map((s, i) => element('li', {text: `${s.label}: ${names[i]}`}))),
+          element('div', {className: 'actions'}, [
+            element('button', {className: 'button secondary', text: 'Rename', onClick: async ev => {
+              const button = ev.currentTarget;
+              await pending(button, async () => {
+                try{
+                  await api('/api/profile/rename', {method: 'POST', data: {profile: p.id, name: input.value.trim()}});
+                  p.name = input.value.trim();
+                  renderStatus();
+                  renderProfiles();
+                  toast('Profile renamed.');
+                } catch(e){ toast(e.message, 'error'); }
+              });
+            }}),
+            select,
+            element('button', {className: 'ghost', text: 'Copy', onClick: async ev => {
+              const source = select.value;
+              openConfirm({
+                title: 'Replace ' + p.name + ' assignments?',
+                message: 'This copies all press assignments from ' + (profile(source)?.name || source) + ' to ' + p.name + '.',
+                confirm: 'Copy assignments',
+                action: async () => {
+                  const button = ev.currentTarget;
+                  await pending(button, async () => {
+                    try{
+                      await api('/api/profile/copy', {method: 'POST', data: {source, target: p.id}});
+                      p.controls = {...profile(source).controls};
+                      if(state.profile === p.id && !state.dirty) state.draft = {...p.controls};
+                      renderProfiles();
+                      renderCustomizer();
+                      toast('Assignments copied to ' + p.name + '.');
+                    } catch(e){ toast(e.message, 'error'); }
+                  });
+                }
+              });
+            }})
+          ])
+        ]);
+        container.append(card);
+      });
+    }
+
+    function renderSettings(){
+      if(!state.status) return;
+      const s = state.status;
+      if($('wifiSsid')) $('wifiSsid').value = s.ssid || '';
+      if($('tvHost')) $('tvHost').value = s.tv.host || '';
+      if($('tvPort')) $('tvPort').value = s.tv.port || 7345;
+      $('themeSelect').value = state.prefs.theme;
+      $('accentInput').value = state.prefs.accent;
+      $('densitySelect').value = state.prefs.density;
+      $('motionSelect').value = state.prefs.motion;
+      renderStatus();
+    }
+
+    async function testTv(source){
+      const button = source && source.currentTarget ? source.currentTarget : source;
+      const work = async () => {
+        try{
+          const r = await api('/api/tv/test', {method: 'POST', data: {}});
+          toast(r.message || 'TV responded successfully.');
+        } catch(e){ toast(e.message, 'error'); }
+      };
+      if(button) return pending(button, work);
+      return work();
+    }
+
+    async function forgetTv(){
+      try{
+        try {
+          await api('/api/tv/forget', {method: 'POST', data: {confirm: 'FORGET'}});
+        } catch(_) {
+          await api('/api/token/save', {method: 'POST', data: {tv_ip: '', tv_port: 7345, token: ''}});
+        }
+        $('tvHost').value = '';
+        $('tvToken').value = '';
+        toast('Vizio configuration removed from Studio Pad.');
+        await refreshStatus({keepDraft: true});
+      } catch(e){ toast(e.message, 'error'); }
+    }
+
+    function openConfirm({title, message, word='', confirm='Confirm', action}){
+      state.modalAction = action;
+      $('modalTitle').textContent = title;
+      $('modalMessage').textContent = message;
+      $('modalConfirm').textContent = confirm;
+      $('modalInputWrap').style.display = word ? 'grid' : 'none';
+      $('modalInputLabel').textContent = word ? `Type ${word} to continue` : '';
+      $('modalInput').value = '';
+      $('modalInput').dataset.word = word;
+      $('modalLayer').classList.add('open');
+      setTimeout(() => word ? $('modalInput').focus() : $('modalConfirm').focus(), 0);
+    }
+
+    function closeModal(){
+      $('modalLayer').classList.remove('open');
+      state.modalAction = null;
+    }
+
+    function downloadConfig(data){
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'studio-pad-backup.json';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }
+
+    async function restoreConfig(file){
+      try{
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if(data.schema !== 'studio-pad-config' || data.version !== 1) {
+          throw new Error('Choose a valid Studio Pad configuration backup (schema version 1).');
+        }
+        openConfirm({
+          title: 'Restore configuration?',
+          message: 'This replaces both saved profile names and their 10 press assignments. Network and TV pairing remain untouched.',
+          confirm: 'Restore',
+          action: async () => {
+            try{
+              await api('/api/config/import', {method: 'POST', data});
+              state.dirty = false;
+              toast('Configuration restored to Studio Pad.');
+              await refreshStatus({keepDraft: false});
+            } catch(e){ toast(e.message, 'error'); }
+          }
+        });
+      } catch(e){
+        toast(e.message || 'Could not read that backup file.', 'error');
+      } finally {
+        $('importFile').value = '';
+      }
+    }
+
+    function switchWorkstationTab(tabName){
+      state.workstationTab = tabName;
+      document.querySelectorAll('#workstationTabs button').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === tabName);
+      });
+      const panes = {
+        library: 'paneLibrary',
+        shortcut: 'paneShortcut',
+        tv: 'paneTv',
+        app: 'paneApp',
+        text: 'paneText'
+      };
+      Object.entries(panes).forEach(([k, id]) => {
+        const el = $(id);
+        if(el) el.classList.toggle('active', k === tabName);
+      });
+    }
+
+    async function sendDirectTvAction(actionId) {
+      if(actionId.startsWith('TV:')) {
+        const keyMap = {
+          'TV:POWER': [11, 2], 'TV:VOL_UP': [5, 1], 'TV:VOL_DOWN': [5, 0], 'TV:MUTE': [5, 4],
+          'TV:HOME': [4, 3], 'TV:BACK': [4, 0], 'TV:OK': [3, 2], 'TV:INPUT': [7, 1],
+          'TV:UP': [3, 0], 'TV:DOWN': [3, 1], 'TV:LEFT': [3, 3], 'TV:RIGHT': [3, 5],
+          'TV:EXIT': [4, 0], 'TV:MENU': [4, 8], 'TV:INFO': [4, 15], 'TV:GUIDE': [4, 12],
+          'TV:CC': [4, 20], 'TV:CH_UP': [8, 1], 'TV:CH_DOWN': [8, 0], 'TV:PREV_CH': [8, 2],
+          'TV:PLAY': [2, 0], 'TV:PAUSE': [2, 1], 'TV:STOP': [2, 3], 'TV:REWIND': [2, 4], 'TV:FFWD': [2, 5]
+        };
+        const codes = keyMap[actionId];
+        if(codes) {
+          try {
+            await api('/api/test/key', { method: 'POST', data: { codeset: codes[0], code: codes[1] } });
+            toast(`Sent ${actionId.replace('TV:','')} to TV.`);
+          } catch(err) { toast(err.message, 'error'); }
+        }
+      } else if (actionId.startsWith('APP:')) {
+        const appMap = {
+          'APP:YOUTUBE': ['1', 5, 'https://www.youtube.com/tv'],
+          'APP:DISNEY': ['75', 4, 'https://cd-dmgz.bamgrid.com/bbd/vizio_tv/index.html'],
+          'APP:TUBI': ['4', 3, ''],
+          'APP:NETFLIX': ['2', 5, ''],
+          'APP:PRIME': ['8', 4, ''],
+          'APP:APPLETV': ['128', 4, '']
+        };
+        const app = appMap[actionId];
+        if(app) {
+          try {
+            await api('/api/test/app', { method: 'POST', data: { appId: app[0], nameSpace: app[1], message: app[2] } });
+            toast(`Launched ${actionId.replace('APP:','')} on TV.`);
+          } catch(err) { toast(err.message, 'error'); }
+        }
+      }
+    }
+
+    function bind(){
+      state.prefs = getPrefs();
+      applyPrefs();
+
+      // Connection Buttons (USB Cable, Bluetooth, Disconnect)
+      $('btnConnectUSB')?.addEventListener('click', connectSerial);
+      $('btnConnectBLE')?.addEventListener('click', connectBluetooth);
+      $('btnDisconnect')?.addEventListener('click', disconnectDevice);
+      
+      // Navigation
+      document.querySelectorAll('#nav button').forEach(b => b.addEventListener('click', () => go(b.dataset.screen)));
+      document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
+      $('menuButton').addEventListener('click', () => $('sidebar').classList.toggle('open'));
+      document.addEventListener('click', e => {
+        if($('sidebar').classList.contains('open') && !$('sidebar').contains(e.target) && e.target !== $('menuButton')) {
+          $('sidebar').classList.remove('open');
+        }
+      });
+
+      // Overview
+      $('refreshButton').addEventListener('click', e => pending(e.currentTarget, () => refreshStatus({keepDraft: true})));
+
+      // Customizer Workstation Tabs
+      document.querySelectorAll('#workstationTabs button').forEach(b => {
+        b.addEventListener('click', () => switchWorkstationTab(b.dataset.tab));
+      });
+
+      // Library search
+      $('actionSearch').addEventListener('input', e => {
+        state.search = e.target.value;
+        renderActions();
+      });
+
+      // Actions in Customizer
+      $('saveProfileButton').addEventListener('click', saveProfile);
+      $('discardButton').addEventListener('click', () => {
+        state.draft = {...profile().controls};
+        state.dirty = false;
+        renderCustomizer();
+        toast('Staged changes discarded.');
+      });
+
+      $('testActionButton')?.addEventListener('click', e => pending(e.currentTarget, async () => {
+        const act = state.draft[state.selected];
+        if (!activeTransport && !window.location.protocol.startsWith('http')) {
+          toast('Connect via USB or Bluetooth to test actions on device.', 'error');
+          return;
+        }
+        try{
+          if (act.startsWith('TV:') || act.startsWith('APP:')) {
+            await sendDirectTvAction(act);
+          } else {
+            const r = await api('/api/test/action', { method: 'POST', data: { action: act } });
+            toast(r.message || 'Key action dispatched.');
+          }
+        } catch(err){ toast(err.message, 'error'); }
+      }));
+
+      // Shortcut Builder Handlers
+      document.querySelectorAll('#osSeg button').forEach(b => {
+        b.addEventListener('click', () => {
+          document.querySelectorAll('#osSeg button').forEach(x => x.classList.remove('active'));
+          b.classList.add('active');
+          state.shortcutOS = b.dataset.os;
+          const isMac = state.shortcutOS === 'mac';
+          const modBtns = document.querySelectorAll('#modToggles .mod-btn');
+          modBtns[0].textContent = isMac ? 'Control' : 'Ctrl';
+          modBtns[1].textContent = 'Shift';
+          modBtns[2].textContent = isMac ? 'Option' : 'Alt';
+          modBtns[3].textContent = isMac ? 'Command' : 'Windows';
+          updateShortcutPreview();
+        });
+      });
+
+      document.querySelectorAll('#modToggles .mod-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          const mod = b.dataset.mod;
+          if(state.shortcutMods.has(mod)) {
+            state.shortcutMods.delete(mod);
+            b.classList.remove('active');
+          } else {
+            state.shortcutMods.add(mod);
+            b.classList.add('active');
+          }
+          updateShortcutPreview();
+        });
+      });
+
+      $('scKeySelect').addEventListener('change', () => {
+        $('scCustomKey').value = '';
+        updateShortcutPreview();
+      });
+
+      $('scCustomKey').addEventListener('input', e => {
+        if(e.target.value) updateShortcutPreview();
+      });
+
+      $('btnApplyShortcut').addEventListener('click', () => {
+        const mods = Array.from(state.shortcutMods).sort().join(',');
+        const key = $('scCustomKey').value.trim().toLowerCase() || $('scKeySelect').value;
+        if(!key) { toast('Select or enter a key.', 'error'); return; }
+        const shortcutId = `SHORTCUT:${mods}:${key}`;
+        stageAction(shortcutId);
+      });
+
+      // TV Mode Segment (Assign vs Live Send)
+      document.querySelectorAll('#tvModeSeg button').forEach(b => {
+        b.addEventListener('click', () => {
+          document.querySelectorAll('#tvModeSeg button').forEach(x => x.classList.remove('active'));
+          b.classList.add('active');
+          state.tvClickBehavior = b.dataset.behavior;
+        });
+      });
+
+      // TV Remote Keypad Handlers
+      document.querySelectorAll('.remote-btn[data-tv]').forEach(b => {
+        b.addEventListener('click', () => {
+          if (state.tvClickBehavior === 'live') {
+            sendDirectTvAction(b.dataset.tv);
+          } else {
+            stageAction(b.dataset.tv);
+          }
+        });
+      });
+
+      $('btnApplyRawTv').addEventListener('click', () => {
+        const cs = Number($('rawCodeset').value);
+        const code = Number($('rawCode').value);
+        if(isNaN(cs) || isNaN(code) || cs < 0 || code < 0) {
+          toast('Enter a valid codeset and code.', 'error');
+          return;
+        }
+        stageAction(`TVKEY:${cs}:${code}`);
+      });
+
+      // TV App Launcher Handlers
+      document.querySelectorAll('.remote-btn[data-app]').forEach(b => {
+        b.addEventListener('click', () => {
+          if (state.tvClickBehavior === 'live') {
+            sendDirectTvAction(b.dataset.app);
+          } else {
+            stageAction(b.dataset.app);
+          }
+        });
+      });
+
+      $('btnApplyCustomApp').addEventListener('click', () => {
+        const appId = $('customAppId').value.trim();
+        const ns = $('customAppNs').value;
+        const url = $('customAppUrl').value.trim();
+        if(!appId) { toast('Enter an App ID (e.g. 1, 2, 75).', 'error'); return; }
+        stageAction(`TVAPP:${appId}:${ns}:${url}`);
+      });
+
+      // Text Macro Handlers
+      $('textMacroInput').addEventListener('input', e => {
+        $('textMacroCount').textContent = `${e.target.value.length} / 40 characters`;
+      });
+
+      $('btnApplyTextMacro').addEventListener('click', () => {
+        const text = $('textMacroInput').value.trim();
+        if(!text) { toast('Enter text to type.', 'error'); return; }
+        stageAction(`TEXT:${text}`);
+      });
+
+      // Backup & Profiles
+      $('exportButton').addEventListener('click', e => pending(e.currentTarget, async () => {
+        try{
+          const r = await api('/api/config/export').catch(() => ({
+            schema: 'studio-pad-config',
+            version: 1,
+            exported_at: new Date().toISOString(),
+            profiles: state.status.profiles
+          }));
+          downloadConfig(r);
+          toast('Configuration backup downloaded.');
+        } catch(err){ toast(err.message, 'error'); }
+      }));
+
+      $('importFile').addEventListener('change', e => {
+        if(e.target.files[0]) restoreConfig(e.target.files[0]);
+      });
+
+      // Appearance Settings
+      $('themeSelect').addEventListener('change', e => setPrefs({theme: e.target.value}));
+      $('accentInput').addEventListener('input', e => setPrefs({accent: e.target.value}));
+      $('densitySelect').addEventListener('change', e => setPrefs({density: e.target.value}));
+      $('motionSelect').addEventListener('change', e => setPrefs({motion: e.target.value}));
+      $('resetAppearance').addEventListener('click', () => {
+        state.prefs = {...defaultPrefs};
+        localStorage.removeItem('studio-pad-ui');
+        applyPrefs();
+        renderSettings();
+        toast('Appearance settings reset.');
+      });
+
+      // Network & TV Settings
+      $('saveWifiButton')?.addEventListener('click', e => pending(e.currentTarget, async () => {
+        try{
+          const r = await api('/api/wifi', {
+            method: 'POST',
+            data: { ssid: $('wifiSsid').value.trim(), pass: $('wifiPass').value }
+          });
+          $('wifiPass').value = '';
+          toast(r.message || 'Wi-Fi credentials saved. Reconnecting...');
+          setTimeout(() => refreshStatus({keepDraft: true}), 1500);
+        } catch(err){ toast(err.message, 'error'); }
+      }));
+
+      $('saveTvButton')?.addEventListener('click', e => pending(e.currentTarget, async () => {
+        try{
+          const r = await api('/api/token/save', {
+            method: 'POST',
+            data: { tv_ip: $('tvHost').value.trim(), tv_port: Number($('tvPort').value), token: $('tvToken').value.trim() }
+          });
+          $('tvToken').value = '';
+          toast(r.message || 'TV settings saved.');
+          await refreshStatus({keepDraft: true});
+        } catch(err){ toast(err.message, 'error'); }
+      }));
+
+      $('testTvButton')?.addEventListener('click', testTv);
+      $('pairStartButton')?.addEventListener('click', e => pending(e.currentTarget, async () => {
+        try{
+          const r = await api('/api/pair/start', {
+            method: 'POST',
+            data: { tv_ip: $('tvHost').value.trim(), tv_port: Number($('tvPort').value) }
+          });
+          toast(r.message || 'PIN requested! Look at top of TV screen.');
+        } catch(err){ toast(err.message, 'error'); }
+      }));
+
+      $('pairSubmitButton')?.addEventListener('click', e => pending(e.currentTarget, async () => {
+        try{
+          const r = await api('/api/pair/submit', {
+            method: 'POST',
+            data: { pin: $('tvPin').value.trim() }
+          });
+          $('tvPin').value = '';
+          toast(r.message || 'Pairing complete!');
+          await refreshStatus({keepDraft: true});
+        } catch(err){ toast(err.message, 'error'); }
+      }));
+
+      // Recovery
+      $('resetProfilesButton')?.addEventListener('click', () => {
+        openConfirm({
+          title: 'Restore profile defaults?',
+          message: 'This replaces all press assignments with firmware defaults. Wi-Fi and TV pairings remain intact.',
+          word: 'RESET',
+          confirm: 'Restore defaults',
+          action: async () => {
+            try{
+              await api('/api/device/reset-settings', {method: 'POST', data: {confirm: 'RESET'}});
+              state.dirty = false;
+              toast('Profile defaults restored.');
+              await refreshStatus({keepDraft: false});
+            } catch(e){ toast(e.message, 'error'); }
+          }
+        });
+      });
+
+      // Modal & Keyboard Listeners
+      $('modalCancel')?.addEventListener('click', closeModal);
+      $('modalLayer')?.addEventListener('click', e => { if(e.target === $('modalLayer')) closeModal(); });
+      $('modalConfirm')?.addEventListener('click', async () => {
+        const word = $('modalInput')?.dataset.word;
+        if(word && $('modalInput')?.value.trim() !== word) {
+          toast(`Type ${word} to confirm.`, 'error');
+          return;
+        }
+        const action = state.modalAction;
+        closeModal();
+        if(action) await action();
+      });
+      $('modalInput')?.addEventListener('keydown', e => { if(e.key === 'Enter') $('modalConfirm')?.click(); });
+      document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
+    }
+
+    bind();
+    // Initialize UI cleanly without triggering network calls
+    state.status = normalizeStatus({});
+    renderStatus();
+    renderCustomizer();
+    renderProfiles();
+    $('connectionDot').className = 'status-dot';
+    $('connectionLabel').textContent = 'Click Connect USB to start';
+  })();
+  </script>
+</body>
+</html>

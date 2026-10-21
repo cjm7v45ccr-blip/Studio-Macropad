@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #08090d;
+  color: #f1f5f9;
+}
+
+/* Custom scrollbar for high density lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #232a3b;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3b4661;
+}
+
+/* Tactile keycap styling */
+.keycap-bevel {
+  background: linear-gradient(180deg, #1e2433 0%, #121622 100%);
+  box-shadow: 
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -2px 4px 0 rgba(0, 0, 0, 0.5),
+    0 4px 10px rgba(0, 0, 0, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.keycap-pressed {
+  transform: translateY(2px) scale(0.98);
+  box-shadow: 
+    inset 0 2px 4px 0 rgba(0, 0, 0, 0.7),
+    0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* Metallic rotary dial texture */
+.knurled-dial {
+  background: 
+    radial-gradient(circle at 35% 35%, #2a3346 0%, #151a25 50%, #0d1017 100%);
+  box-shadow:
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -2px 6px 0 rgba(0, 0, 0, 0.8),
+    0 6px 16px rgba(0, 0, 0, 0.6);
+}
