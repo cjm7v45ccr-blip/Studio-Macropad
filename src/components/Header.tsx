@@ -1,10 +1,10 @@
 import React from 'react';
-import { FirmwareStatus, ProfileMode } from '../types/macropod';
-import { Usb, Wifi, Settings, Unplug } from 'lucide-react';
+import { ConnectionMode, FirmwareStatus, ProfileMode } from '../types/macropod';
+import { Usb, Wifi, Bluetooth, Settings, Unplug } from 'lucide-react';
 
 interface HeaderProps {
   status: FirmwareStatus;
-  connectionMode: 'usb' | 'wifi' | 'disconnected';
+  connectionMode: ConnectionMode;
   isConnected: boolean;
   onToggleMode: () => void;
   onOpenConnectModal: () => void;
@@ -82,7 +82,9 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenConnectModal}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer border ${
-              isConnected
+              connectionMode === 'bluetooth'
+                ? 'bg-blue-500/10 border-blue-500/30 text-blue-300 hover:border-blue-400'
+                : isConnected
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:border-emerald-400'
                 : 'bg-slate-900 border-slate-800 hover:border-sky-400/60 text-slate-300'
             }`}
@@ -92,6 +94,12 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <Usb className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="font-mono text-emerald-200">USB Connected</span>
+              </>
+            ) : connectionMode === 'bluetooth' ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                <Bluetooth className="w-3.5 h-3.5 text-blue-400" />
+                <span className="font-mono text-blue-200">Bluetooth</span>
               </>
             ) : connectionMode === 'wifi' ? (
               <>

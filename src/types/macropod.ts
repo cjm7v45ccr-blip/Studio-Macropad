@@ -5,6 +5,8 @@
 
 export type SlotId = 'b1' | 'b2' | 'b3' | 'b4' | 'dial';
 export type ProfileMode = 'MAC' | 'TV';
+export type ConnectionMode = 'usb' | 'bluetooth' | 'wifi' | 'disconnected';
+export type AutoScanChannel = 'usb' | 'bluetooth' | 'wifi' | 'idle';
 
 export interface MacropodProfile {
   id: ProfileMode;

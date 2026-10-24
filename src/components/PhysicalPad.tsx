@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FirmwareStatus, ProfileMode, SlotId } from '../types/macropod';
+import { ConnectionMode, FirmwareStatus, ProfileMode, SlotId } from '../types/macropod';
 import { getActionDetails } from '../data/actionLibrary';
 import { OledScreen } from './OledScreen';
 import { RotateCw, RotateCcw, Volume2, VolumeX } from 'lucide-react';
@@ -8,6 +8,7 @@ import { soundEngine } from '../services/soundEffects';
 interface PhysicalPadProps {
   status: FirmwareStatus | null;
   isConnected: boolean;
+  connectionMode: ConnectionMode;
   selectedSlot: SlotId;
   onSelectSlot: (slot: SlotId) => void;
   onToggleMode: () => void;
@@ -18,6 +19,7 @@ interface PhysicalPadProps {
 export const PhysicalPad: React.FC<PhysicalPadProps> = ({
   status,
   isConnected,
+  connectionMode,
   selectedSlot,
   onSelectSlot,
   onToggleMode,
@@ -93,9 +95,10 @@ export const PhysicalPad: React.FC<PhysicalPadProps> = ({
             mode={activeMode}
             toast={activeToast}
             wifiConnected={!!status?.wifi_connected}
-            bleConnected={!!status?.connection?.ble_connected}
+            bleConnected={!!status?.connection?.ble_connected || connectionMode === 'bluetooth'}
             ip={status?.ip || '192.168.4.1'}
             isConnected={isConnected}
+            connectionMode={connectionMode}
           />
 
           {/* Right Controls: LEDs and Mode Button */}
@@ -112,7 +115,7 @@ export const PhysicalPad: React.FC<PhysicalPadProps> = ({
 
               <div className="flex flex-col items-center gap-0.5">
                 <span className={`w-2 h-2 rounded-full transition-all ${
-                  status?.connection?.ble_connected
+                  connectionMode === 'bluetooth' || status?.connection?.ble_connected
                     ? 'bg-blue-400 shadow-[0_0_8px_#60a5fa]'
                     : 'bg-slate-700'
                 }`} />

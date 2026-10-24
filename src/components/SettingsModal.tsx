@@ -98,7 +98,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const isTvPaired = status.has_auth || status.tv?.paired;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="w-full max-w-lg rounded-2xl bg-[#0d1017] border border-slate-800 shadow-2xl p-6 space-y-4">
         
         {/* Header */}

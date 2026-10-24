@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { hardwareDriver } from './services/hardwareDriver';
-import { FirmwareStatus, ProfileMode, SlotId } from './types/macropod';
+import { AutoScanChannel, ConnectionMode, FirmwareStatus, ProfileMode, SlotId } from './types/macropod';
 import { Header } from './components/Header';
 import { PhysicalPad } from './components/PhysicalPad';
 import { KeyRemapper } from './components/KeyRemapper';
@@ -13,10 +13,12 @@ import { ConnectModal } from './components/ConnectModal';
 import { SettingsModal } from './components/SettingsModal';
 import { PresetGalleryModal } from './components/PresetGalleryModal';
 import { ProfilePreset } from './data/presetProfiles';
-import { CheckCircle2, AlertCircle, Usb } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Usb, Bluetooth, Wifi } from 'lucide-react';
 
 export default function App() {
   const [status, setStatus] = useState<FirmwareStatus>(hardwareDriver.getStatus());
+  const [connectionMode, setConnectionMode] = useState<ConnectionMode>(hardwareDriver.connectionMode);
+  const [autoScanChannel, setAutoScanChannel] = useState<AutoScanChannel>(hardwareDriver.autoScanState);
   const [selectedSlot, setSelectedSlot] = useState<SlotId>('b1');
   const [activeToast, setActiveToast] = useState<string | null>(null);
 
@@ -32,12 +34,14 @@ export default function App() {
     setBannerToast({ message, type });
     setTimeout(() => {
       setBannerToast(prev => (prev?.message === message ? null : prev));
-    }, 2800);
+    }, 3200);
   };
 
   useEffect(() => {
     const unsubStatus = hardwareDriver.onStatus(newStatus => {
       setStatus({ ...newStatus });
+      setConnectionMode(hardwareDriver.connectionMode);
+      setAutoScanChannel(hardwareDriver.autoScanState);
     });
 
     const unsubToast = hardwareDriver.onToast(msg => {
@@ -45,9 +49,14 @@ export default function App() {
       setTimeout(() => setActiveToast(null), 1200);
     });
 
+    const unsubBanner = hardwareDriver.onBanner((msg, type) => {
+      showBanner(msg, type);
+    });
+
     return () => {
       unsubStatus();
       unsubToast();
+      unsubBanner();
     };
   }, []);
 
@@ -106,7 +115,7 @@ export default function App() {
 
   const handleTestAction = async (actionId: string) => {
     if (!hardwareDriver.isConnected) {
-      showBanner('Connect MacroPad via USB or Wi-Fi to test on device', 'error');
+      showBanner('Connect MacroPad via USB, Bluetooth, or Wi-Fi to test on device', 'error');
       return;
     }
     try {
@@ -193,25 +202,69 @@ export default function App() {
     <div className="min-h-screen bg-[#08090d] text-slate-100 flex flex-col font-sans selection:bg-sky-500/20 selection:text-sky-300 relative">
       
       {/* Full-Viewport No Device Connected Overlay */}
-      {!hardwareDriver.isConnected && (
+      {connectionMode === 'disconnected' && (
         <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-[#0d1017] border border-slate-800 rounded-2xl max-w-md w-full p-8 shadow-2xl text-center space-y-6">
             <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mx-auto shadow-inner">
               <AlertCircle className="w-8 h-8 animate-pulse" />
             </div>
+
             <div className="space-y-2">
               <h2 className="text-xl font-bold text-slate-100">No Device Connected</h2>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Studio MacroPad is currently offline. Plug in your USB-C cable or enter your Wi-Fi IP address to establish live hardware link and flash profiles.
+                Automatically looking for an open USB-C, Bluetooth, or Wi-Fi connection. Plug in a cable at any time to switch to wired USB.
               </p>
             </div>
-            <div className="pt-2 flex flex-col gap-3">
+
+            {/* Live Open-Channel Auto-Scan Status */}
+            <div className="flex items-center justify-center gap-3 py-2 px-3 rounded-xl bg-slate-950 border border-slate-800/80 text-[11px] font-mono text-slate-400">
+              <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping shrink-0" />
+              <span>
+                {autoScanChannel === 'usb'
+                  ? 'Checking USB-C Cable...'
+                  : autoScanChannel === 'bluetooth'
+                  ? 'Scanning Bluetooth LE...'
+                  : autoScanChannel === 'wifi'
+                  ? 'Checking Saved Wi-Fi...'
+                  : 'Listening for USB Cable & Bluetooth'}
+              </span>
+            </div>
+
+            <div className="pt-1 flex flex-col gap-2.5">
               <button
-                onClick={() => setIsConnectOpen(true)}
+                onClick={async () => {
+                  try {
+                    await hardwareDriver.connectBluetooth();
+                  } catch (err: any) {
+                    showBanner(err.message || 'Bluetooth connection failed', 'error');
+                  }
+                }}
+                className="w-full py-3 rounded-xl bg-blue-500 hover:bg-blue-400 text-slate-950 font-bold text-xs cursor-pointer shadow-lg transition-all flex items-center justify-center gap-2"
+              >
+                <Bluetooth className="w-4 h-4" />
+                <span>Connect via Bluetooth</span>
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    await hardwareDriver.connectSerial();
+                  } catch (err: any) {
+                    showBanner(err.message || 'USB connection failed', 'error');
+                  }
+                }}
                 className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs cursor-pointer shadow-lg transition-all flex items-center justify-center gap-2"
               >
                 <Usb className="w-4 h-4" />
-                <span>Connect MacroPad Now</span>
+                <span>Connect USB-C Cable</span>
+              </button>
+
+              <button
+                onClick={() => setIsConnectOpen(true)}
+                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold text-xs cursor-pointer transition-all flex items-center justify-center gap-2"
+              >
+                <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Connect via Wi-Fi IP</span>
               </button>
             </div>
           </div>
@@ -221,8 +274,8 @@ export default function App() {
       {/* Top Header */}
       <Header
         status={status}
-        connectionMode={hardwareDriver.connectionMode}
-        isConnected={hardwareDriver.isConnected}
+        connectionMode={connectionMode}
+        isConnected={connectionMode !== 'disconnected'}
         onToggleMode={handleToggleMode}
         onOpenConnectModal={() => setIsConnectOpen(true)}
         onOpenSettingsModal={() => setIsSettingsOpen(true)}
@@ -239,7 +292,8 @@ export default function App() {
           <div className="lg:col-span-5">
             <PhysicalPad
               status={status}
-              isConnected={hardwareDriver.isConnected}
+              isConnected={connectionMode !== 'disconnected'}
+              connectionMode={connectionMode}
               selectedSlot={selectedSlot}
               onSelectSlot={setSelectedSlot}
               onToggleMode={handleToggleMode}
@@ -268,9 +322,11 @@ export default function App() {
       <ConnectModal
         isOpen={isConnectOpen}
         onClose={() => setIsConnectOpen(false)}
-        isConnected={hardwareDriver.isConnected}
-        connectionMode={hardwareDriver.connectionMode}
+        isConnected={connectionMode !== 'disconnected'}
+        connectionMode={connectionMode}
+        autoScanChannel={autoScanChannel}
         onConnectSerial={() => hardwareDriver.connectSerial()}
+        onConnectBluetooth={() => hardwareDriver.connectBluetooth()}
         onConnectWifi={ip => hardwareDriver.connectWifi(ip)}
         onDisconnect={() => hardwareDriver.disconnect()}
       />
@@ -299,7 +355,7 @@ export default function App() {
 
       {/* Banner Toast Notification */}
       {bannerToast && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl text-xs font-semibold animate-in slide-in-from-bottom-2 duration-150">
+        <div className="fixed bottom-6 right-6 z-[70] flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl text-xs font-semibold animate-in slide-in-from-bottom-2 duration-150">
           {bannerToast.type === 'success' ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           ) : (
