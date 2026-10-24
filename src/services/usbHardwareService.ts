@@ -343,13 +343,14 @@ class UsbHardwareService {
           name: profile.name,
           buttonCount: ALL_KEYS.length,
           activeLayer: profile.activeLayerIndex,
+          layers: profile.layers,
           debounceMs: settings.globalDebounceMs,
           pollingRateHz: settings.pollingRateHz
         });
       } catch (_) {}
       return {
         syncedHardware: true,
-        message: `Saved "${profile.name}" to ${this.connectionInfo.deviceName} over USB cable`
+        message: `Saved "${profile.name}" button macros & config to ${this.connectionInfo.deviceName} over USB cable`
       };
     }
 
