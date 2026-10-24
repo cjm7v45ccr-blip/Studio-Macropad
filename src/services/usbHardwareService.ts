@@ -1,4 +1,5 @@
 import {
+  ActionBinding,
   DeviceConnectionInfo,
   KeyId,
   StudioProfile,
@@ -10,8 +11,37 @@ type HardwareKeyListener = (keyId: KeyId, pressed: boolean) => void;
 type HardwareEncoderListener = (event: {
   type: 'cw' | 'ccw' | 'press' | 'release';
 }) => void;
+type HardwareConfigListener = (config: any) => void;
 
 const ALL_KEYS: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5'];
+
+export function actionStrToBinding(str: string): ActionBinding {
+  if (!str) return { type: 'none', value: '' };
+  const upper = str.toUpperCase();
+  if (upper.startsWith('MEDIA:')) {
+    const sub = upper.slice(6);
+    if (sub === 'PLAY_PAUSE') return { type: 'media', value: 'Play / Pause' };
+    if (sub === 'MUTE') return { type: 'media', value: 'Mute' };
+    if (sub === 'VOL_UP' || sub === 'VOLUME_UP') return { type: 'media', value: 'Volume Up' };
+    if (sub === 'VOL_DOWN' || sub === 'VOLUME_DOWN') return { type: 'media', value: 'Volume Down' };
+    if (sub === 'NEXT') return { type: 'media', value: 'Next Track' };
+    if (sub === 'PREV') return { type: 'media', value: 'Previous Track' };
+    return { type: 'media', value: sub };
+  }
+  if (upper.startsWith('SHORTCUT:')) {
+    const parts = str.slice(9).split(':');
+    const mods = parts[0] || 'cmd';
+    const key = parts[1] || 'c';
+    return { type: 'shortcut', value: `${mods.toUpperCase()}+${key.toUpperCase()}` };
+  }
+  if (upper.startsWith('TEXT:')) {
+    return { type: 'text', value: str.slice(5) };
+  }
+  if (upper.startsWith('TV:') || upper.startsWith('APP:') || upper.startsWith('MACRO:')) {
+    return { type: 'system', value: str };
+  }
+  return { type: 'none', value: '' };
+}
 
 class UsbHardwareService {
   private hidDevice: any = null;
@@ -30,6 +60,7 @@ class UsbHardwareService {
   private connListeners = new Set<ConnectionListener>();
   private keyListeners = new Set<HardwareKeyListener>();
   private encListeners = new Set<HardwareEncoderListener>();
+  private configListeners = new Set<HardwareConfigListener>();
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -67,6 +98,13 @@ class UsbHardwareService {
     this.encListeners.add(fn);
     return () => {
       this.encListeners.delete(fn);
+    };
+  }
+
+  public onHardwareConfig(fn: HardwareConfigListener) {
+    this.configListeners.add(fn);
+    return () => {
+      this.configListeners.delete(fn);
     };
   }
 
@@ -297,6 +335,9 @@ class UsbHardwareService {
         }
         if (msg.event === 'encoder') {
           this.encListeners.forEach(fn => fn({ type: msg.dir || 'cw' }));
+        }
+        if (msg.mac_b1 || msg.tv_b1 || msg.profiles || msg.ok) {
+          this.configListeners.forEach(fn => fn(msg));
         }
       } catch (_) {}
     }

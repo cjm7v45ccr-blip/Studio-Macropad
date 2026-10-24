@@ -71,10 +71,33 @@ export default function App() {
       }
     });
 
+    const unsubConfig = usbHardware.onHardwareConfig(cfg => {
+      if (cfg.mac_b1 || cfg.mac_b2 || cfg.mac_b3 || cfg.mac_b4 || cfg.mac_dial) {
+        studio.syncHardwareBindings('Mac', {
+          b1: cfg.mac_b1,
+          b2: cfg.mac_b2,
+          b3: cfg.mac_b3,
+          b4: cfg.mac_b4,
+          dial: cfg.mac_dial
+        });
+      }
+      if (cfg.tv_b1 || cfg.tv_b2 || cfg.tv_b3 || cfg.tv_b4 || cfg.tv_dial) {
+        studio.syncHardwareBindings('TV', {
+          b1: cfg.tv_b1,
+          b2: cfg.tv_b2,
+          b3: cfg.tv_b3,
+          b4: cfg.tv_b4,
+          dial: cfg.tv_dial
+        });
+      }
+      showToast('Detected & synced macros from hardware');
+    });
+
     return () => {
       unsubConn();
       unsubKeys();
       unsubEnc();
+      unsubConfig();
     };
   }, []);
 

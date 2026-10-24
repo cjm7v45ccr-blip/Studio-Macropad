@@ -23,6 +23,7 @@ import {
   buildDefaultEncoder
 } from '../data/presetTemplates';
 import { soundEngine } from '../services/soundEffects';
+import { actionStrToBinding } from '../services/usbHardwareService';
 
 const STORAGE_KEY = 'studio_macropad_workspace_v3_5key';
 
@@ -567,6 +568,29 @@ export function useStudioState(onToast: (msg: string) => void) {
     onToast('Restored factory defaults');
   };
 
+  const syncHardwareBindings = useCallback((targetProfileName: string, map: { b1?: string; b2?: string; b3?: string; b4?: string; dial?: string }) => {
+    commitChange(prev => ({
+      ...prev,
+      profiles: prev.profiles.map(p => {
+        if (p.name.toUpperCase().includes(targetProfileName.toUpperCase()) || p.id.toUpperCase().includes(targetProfileName.toUpperCase())) {
+          const nextLayers = [...p.layers] as StudioProfile['layers'];
+          const l0 = { ...nextLayers[0], keys: { ...nextLayers[0].keys } };
+          if (map.b1) l0.keys.k1 = { ...l0.keys.k1, triggers: { ...l0.keys.k1.triggers, tap: actionStrToBinding(map.b1) } };
+          if (map.b2) l0.keys.k2 = { ...l0.keys.k2, triggers: { ...l0.keys.k2.triggers, tap: actionStrToBinding(map.b2) } };
+          if (map.b3) l0.keys.k3 = { ...l0.keys.k3, triggers: { ...l0.keys.k3.triggers, tap: actionStrToBinding(map.b3) } };
+          if (map.b4) l0.keys.k4 = { ...l0.keys.k4, triggers: { ...l0.keys.k4.triggers, tap: actionStrToBinding(map.b4) } };
+          if (map.dial) {
+            const activeMode = l0.encoder.modes.find(m => m.id === l0.encoder.activeModeId) || l0.encoder.modes[0];
+            activeMode.press.tap = actionStrToBinding(map.dial);
+          }
+          nextLayers[0] = l0;
+          return { ...p, layers: nextLayers };
+        }
+        return p;
+      })
+    }), false);
+  }, [commitChange]);
+
   return {
     profiles: snapshot.profiles,
     activeProfile,
@@ -607,6 +631,7 @@ export function useStudioState(onToast: (msg: string) => void) {
     importProfileJson,
     exportFullBackup,
     importFullBackup,
-    factoryReset
+    factoryReset,
+    syncHardwareBindings
   };
 }
