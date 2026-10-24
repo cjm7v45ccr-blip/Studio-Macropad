@@ -190,25 +190,11 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#08090d] text-slate-100 flex flex-col font-sans selection:bg-sky-500/20 selection:text-sky-300">
+    <div className="min-h-screen bg-[#08090d] text-slate-100 flex flex-col font-sans selection:bg-sky-500/20 selection:text-sky-300 relative">
       
-      {/* Top Header */}
-      <Header
-        status={status}
-        connectionMode={hardwareDriver.connectionMode}
-        isConnected={hardwareDriver.isConnected}
-        onToggleMode={handleToggleMode}
-        onOpenConnectModal={() => setIsConnectOpen(true)}
-        onOpenSettingsModal={() => setIsSettingsOpen(true)}
-        onOpenPresetsModal={() => setIsPresetsOpen(true)}
-      />
-
-      {/* Main Studio Workspace */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        
       {/* Full-Viewport No Device Connected Overlay */}
       {!hardwareDriver.isConnected && (
-        <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-[#0d1017] border border-slate-800 rounded-2xl max-w-md w-full p-8 shadow-2xl text-center space-y-6">
             <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mx-auto shadow-inner">
               <AlertCircle className="w-8 h-8 animate-pulse" />
@@ -232,6 +218,20 @@ export default function App() {
         </div>
       )}
 
+      {/* Top Header */}
+      <Header
+        status={status}
+        connectionMode={hardwareDriver.connectionMode}
+        isConnected={hardwareDriver.isConnected}
+        onToggleMode={handleToggleMode}
+        onOpenConnectModal={() => setIsConnectOpen(true)}
+        onOpenSettingsModal={() => setIsSettingsOpen(true)}
+        onOpenPresetsModal={() => setIsPresetsOpen(true)}
+      />
+
+      {/* Main Studio Workspace */}
+      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        
         {/* Responsive Grid: Physical Device + Control Remapper */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
