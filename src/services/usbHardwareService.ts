@@ -321,9 +321,8 @@ class UsbHardwareService {
 
     if (this.connectionInfo.transport === 'webhid' && this.hidDevice) {
       try {
-        // Send compact 32-byte QMK/VIA style config header packet (5 buttons + encoder, no RGB)
         const packet = new Uint8Array(32);
-        packet[0] = 0x11; // CMD_SET_CONFIG
+        packet[0] = 0x11;
         packet[1] = profile.activeLayerIndex & 0x03;
         packet[2] = ALL_KEYS.length;
         packet[3] = settings.globalDebounceMs & 0xff;
@@ -337,20 +336,54 @@ class UsbHardwareService {
 
     if (this.connectionInfo.transport === 'webserial' && this.serialWriter) {
       try {
+        const activeLayer = profile.layers[profile.activeLayerIndex] || profile.layers[0];
+        const activeMode = activeLayer.encoder.modes.find(m => m.id === activeLayer.encoder.activeModeId) || activeLayer.encoder.modes[0];
+
+        const bindingToActionStr = (b: any): string => {
+          if (!b || b.type === 'none') return 'MEDIA:PLAY_PAUSE';
+          if (b.type === 'media') {
+            const val = (b.value || '').toLowerCase();
+            if (val.includes('play')) return 'MEDIA:PLAY_PAUSE';
+            if (val.includes('mute')) return 'MEDIA:MUTE';
+            if (val.includes('vol up') || val.includes('volume up')) return 'MEDIA:VOL_UP';
+            if (val.includes('vol down') || val.includes('volume down')) return 'MEDIA:VOL_DOWN';
+            if (val.includes('next')) return 'MEDIA:NEXT';
+            if (val.includes('prev')) return 'MEDIA:PREV';
+            return 'MEDIA:PLAY_PAUSE';
+          }
+          if (b.type === 'shortcut') {
+            const parts = (b.value || 'c').split('+').map((p: string) => p.trim().toLowerCase());
+            const key = parts.pop() || 'c';
+            const mods = parts.join(',');
+            return `SHORTCUT:${mods || 'cmd'}:${key}`;
+          }
+          if (b.type === 'text') {
+            return `TEXT:${b.value}`;
+          }
+          if (b.type === 'system') {
+            const val = (b.value || '').toLowerCase();
+            if (val.includes('screenshot')) return 'MACRO:SAVE';
+            if (val.includes('lock')) return 'MACRO:LOCK';
+            return 'MACRO:SPOTLIGHT';
+          }
+          return 'MEDIA:PLAY_PAUSE';
+        };
+
         await this.sendSerialJson({
-          path: '/api/studio/sync',
-          profileId: profile.id,
-          name: profile.name,
-          buttonCount: ALL_KEYS.length,
-          activeLayer: profile.activeLayerIndex,
-          layers: profile.layers,
-          debounceMs: settings.globalDebounceMs,
-          pollingRateHz: settings.pollingRateHz
+          path: '/api/profile/save',
+          profile: profile.id.includes('tv') ? 'TV' : 'MAC',
+          b1: bindingToActionStr(activeLayer.keys.k1?.triggers.tap),
+          b2: bindingToActionStr(activeLayer.keys.k2?.triggers.tap),
+          b3: bindingToActionStr(activeLayer.keys.k3?.triggers.tap),
+          b4: bindingToActionStr(activeLayer.keys.k4?.triggers.tap),
+          dial: bindingToActionStr(activeMode?.press.tap || activeLayer.keys.k5?.triggers.tap),
+          enc_cw: bindingToActionStr(activeMode?.cw),
+          enc_ccw: bindingToActionStr(activeMode?.ccw)
         });
       } catch (_) {}
       return {
         syncedHardware: true,
-        message: `Saved "${profile.name}" button macros & config to ${this.connectionInfo.deviceName} over USB cable`
+        message: `Synced "${profile.name}" directly to hardware device firmware over USB cable`
       };
     }
 
