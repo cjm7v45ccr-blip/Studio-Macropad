@@ -206,24 +206,31 @@ export default function App() {
       {/* Main Studio Workspace */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
         
-        {/* Hardware Status Ribbon when Disconnected */}
-        {!hardwareDriver.isConnected ? (
-          <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900/70 border border-slate-800 text-xs text-slate-400">
-            <span className="w-2 h-2 rounded-full bg-amber-400/80 animate-pulse shrink-0" />
-            <span>
-              <strong className="text-slate-200">Cable Auto-Pairing Active:</strong> MacroPad connects automatically when USB-C is plugged in.
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between gap-3 px-4 py-2 rounded-xl bg-emerald-950/20 border border-emerald-500/20 text-xs text-emerald-300">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>
-                Hardware Live Link Established ({hardwareDriver.connectionMode.toUpperCase()}) · Instant NVS Flash Sync
-              </span>
+      {/* Full-Viewport No Device Connected Overlay */}
+      {!hardwareDriver.isConnected && (
+        <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0d1017] border border-slate-800 rounded-2xl max-w-md w-full p-8 shadow-2xl text-center space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mx-auto shadow-inner">
+              <AlertCircle className="w-8 h-8 animate-pulse" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-bold text-slate-100">No Device Connected</h2>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Studio MacroPad is currently offline. Plug in your USB-C cable or enter your Wi-Fi IP address to establish live hardware link and flash profiles.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col gap-3">
+              <button
+                onClick={() => setIsConnectOpen(true)}
+                className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs cursor-pointer shadow-lg transition-all flex items-center justify-center gap-2"
+              >
+                <Usb className="w-4 h-4" />
+                <span>Connect MacroPad Now</span>
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
         {/* Responsive Grid: Physical Device + Control Remapper */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
