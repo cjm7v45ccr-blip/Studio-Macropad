@@ -70,7 +70,8 @@ import {
   CheckSquare,
   CircleOff
 } from 'lucide-react';
-import { ActionBinding, MacroItem } from '../types/studio';
+import { ActionBinding, CustomMacroItem } from '../types/studio';
+import { bindingToFirmwareAction, describeFirmwareAction } from './firmwareCatalog';
 
 export interface IconEntry {
   id: string;
@@ -96,14 +97,14 @@ export const ICON_LIBRARY: IconEntry[] = [
   // Meetings & Stream
   { id: 'mic', label: 'Mic On', category: 'Stream & Calls', keywords: ['mic', 'microphone', 'voice', 'audio'], component: Mic },
   { id: 'mic-off', label: 'Mic Mute', category: 'Stream & Calls', keywords: ['mute', 'mic', 'zoom', 'obs'], component: MicOff },
-  { id: 'video', label: 'Camera On', category: 'Stream & Calls', keywords: ['video', 'camera', 'webcam', 'zoom'], component: Video },
+  { id: 'video', label: 'Camera / Video', category: 'Stream & Calls', keywords: ['video', 'camera', 'youtube', 'stream'], component: Video },
   { id: 'video-off', label: 'Camera Off', category: 'Stream & Calls', keywords: ['video', 'hide', 'webcam'], component: VideoOff },
   { id: 'radio', label: 'Go Live / Stream', category: 'Stream & Calls', keywords: ['live', 'broadcast', 'obs', 'stream'], component: Radio },
-  { id: 'monitor-up', label: 'Share Screen', category: 'Stream & Calls', keywords: ['share', 'screen', 'present'], component: MonitorUp },
-  { id: 'clapperboard', label: 'Scene / Take', category: 'Stream & Calls', keywords: ['scene', 'obs', 'slate', 'clip'], component: Clapperboard },
+  { id: 'monitor-up', label: 'Input / Share', category: 'Stream & Calls', keywords: ['share', 'screen', 'hdmi', 'input'], component: MonitorUp },
+  { id: 'clapperboard', label: 'Cinema / App', category: 'Stream & Calls', keywords: ['scene', 'movie', 'tv', 'clip'], component: Clapperboard },
   { id: 'hand', label: 'Raise Hand', category: 'Stream & Calls', keywords: ['hand', 'zoom', 'question'], component: Hand },
-  { id: 'message-square', label: 'Chat', category: 'Stream & Calls', keywords: ['chat', 'messages', 'panel'], component: MessageSquare },
-  { id: 'phone-off', label: 'End Call', category: 'Stream & Calls', keywords: ['leave', 'hangup', 'end', 'zoom'], component: PhoneOff },
+  { id: 'message-square', label: 'Captions / Chat', category: 'Stream & Calls', keywords: ['chat', 'cc', 'captions'], component: MessageSquare },
+  { id: 'phone-off', label: 'Close / Exit', category: 'Stream & Calls', keywords: ['leave', 'exit', 'close', 'stop'], component: PhoneOff },
 
   // Creative & Video Editing
   { id: 'scissors', label: 'Cut / Blade', category: 'Creative', keywords: ['cut', 'razor', 'blade', 'split', 'trim'], component: Scissors },
@@ -113,54 +114,54 @@ export const ICON_LIBRARY: IconEntry[] = [
   { id: 'wand', label: 'Select / Magic', category: 'Creative', keywords: ['wand', 'lasso', 'select', 'grade'], component: Wand2 },
   { id: 'crop', label: 'Crop / Frame', category: 'Creative', keywords: ['crop', 'frame', 'figma', 'slice'], component: Crop },
   { id: 'palette', label: 'Color Grade', category: 'Creative', keywords: ['color', 'davinci', 'lut', 'palette'], component: Palette },
-  { id: 'layers', label: 'Layers', category: 'Creative', keywords: ['layer', 'stack', 'group', 'component'], component: Layers },
+  { id: 'layers', label: 'Mode / Switch', category: 'Creative', keywords: ['layer', 'mode', 'profile', 'switch'], component: Layers },
   { id: 'zoom-in', label: 'Zoom In', category: 'Creative', keywords: ['zoom', 'magnify', 'plus'], component: ZoomIn },
   { id: 'zoom-out', label: 'Zoom Out', category: 'Creative', keywords: ['zoom', 'minus', 'fit'], component: ZoomOut },
   { id: 'bookmark', label: 'Marker', category: 'Creative', keywords: ['marker', 'flag', 'timeline', 'in', 'out'], component: Bookmark },
   { id: 'move', label: 'Transform / Move', category: 'Creative', keywords: ['move', 'transform', 'pan'], component: Move },
-  { id: 'sliders', label: 'Adjustments', category: 'Creative', keywords: ['mixer', 'adjust', 'inspector'], component: Sliders },
+  { id: 'sliders', label: 'Settings / Menu', category: 'Creative', keywords: ['mixer', 'adjust', 'menu', 'settings'], component: Sliders },
 
   // Code & Development
-  { id: 'terminal', label: 'Terminal', category: 'Code', keywords: ['terminal', 'shell', 'bash', 'cli'], component: Terminal },
+  { id: 'terminal', label: 'Terminal / Task', category: 'Code', keywords: ['terminal', 'shell', 'task', 'cli'], component: Terminal },
   { id: 'code', label: 'Code / Format', category: 'Code', keywords: ['code', 'format', 'vscode', 'editor'], component: Code2 },
   { id: 'git-branch', label: 'Git Branch', category: 'Code', keywords: ['git', 'branch', 'checkout'], component: GitBranch },
   { id: 'git-commit', label: 'Git Commit', category: 'Code', keywords: ['git', 'commit', 'push'], component: GitCommitHorizontal },
   { id: 'bug', label: 'Debug', category: 'Code', keywords: ['debug', 'breakpoint', 'inspect'], component: Bug },
-  { id: 'play-circle', label: 'Run Build', category: 'Code', keywords: ['run', 'build', 'compile', 'task'], component: PlayCircle },
+  { id: 'play-circle', label: 'Run / Launch', category: 'Code', keywords: ['run', 'launch', 'prime', 'app'], component: PlayCircle },
   { id: 'columns', label: 'Split Editor', category: 'Code', keywords: ['split', 'pane', 'columns'], component: Columns2 },
 
   // Productivity & System
   { id: 'copy', label: 'Copy', category: 'System', keywords: ['copy', 'duplicate'], component: Copy },
   { id: 'paste', label: 'Paste', category: 'System', keywords: ['paste', 'clipboard'], component: ClipboardPaste },
-  { id: 'undo', label: 'Undo', category: 'System', keywords: ['undo', 'back', 'revert'], component: Undo2 },
+  { id: 'undo', label: 'Undo / Back', category: 'System', keywords: ['undo', 'back', 'revert'], component: Undo2 },
   { id: 'redo', label: 'Redo', category: 'System', keywords: ['redo', 'forward'], component: Redo2 },
   { id: 'save', label: 'Save', category: 'System', keywords: ['save', 'export', 'disk'], component: Save },
   { id: 'search', label: 'Search / Spotlight', category: 'System', keywords: ['search', 'find', 'spotlight', 'palette'], component: Search },
-  { id: 'command', label: 'Command', category: 'System', keywords: ['command', 'shortcut', 'macro', 'key'], component: Command },
-  { id: 'camera', label: 'Screenshot', category: 'System', keywords: ['screenshot', 'capture', 'snip'], component: Camera },
+  { id: 'command', label: 'Shortcut / Key', category: 'System', keywords: ['command', 'shortcut', 'macro', 'key'], component: Command },
+  { id: 'camera', label: 'Screenshot / Snip', category: 'System', keywords: ['screenshot', 'capture', 'snip'], component: Camera },
   { id: 'maximize', label: 'Fullscreen', category: 'System', keywords: ['fullscreen', 'window', 'zen', 'maximize'], component: Maximize2 },
-  { id: 'layout-grid', label: 'App Grid / Expose', category: 'System', keywords: ['apps', 'mission', 'grid', 'windows'], component: LayoutGrid },
+  { id: 'layout-grid', label: 'Guide / Grid', category: 'System', keywords: ['apps', 'guide', 'grid', 'windows'], component: LayoutGrid },
   { id: 'sun', label: 'Brightness Up', category: 'System', keywords: ['brightness', 'light', 'sun'], component: Sun },
-  { id: 'moon', label: 'Sleep / Do Not Disturb', category: 'System', keywords: ['sleep', 'dark', 'moon', 'dnd'], component: Moon },
+  { id: 'moon', label: 'Sleep / Night', category: 'System', keywords: ['sleep', 'dark', 'moon', 'dnd'], component: Moon },
   { id: 'lock', label: 'Lock Screen', category: 'System', keywords: ['lock', 'security', 'password'], component: Lock },
-  { id: 'power', label: 'Power', category: 'System', keywords: ['power', 'shutdown', 'toggle'], component: Power },
-  { id: 'globe', label: 'Open URL', category: 'System', keywords: ['web', 'browser', 'url', 'link'], component: Globe },
-  { id: 'folder', label: 'Open Folder', category: 'System', keywords: ['folder', 'file', 'finder', 'explorer'], component: FolderOpen },
-  { id: 'file-text', label: 'Text Snippet', category: 'System', keywords: ['text', 'snippet', 'note', 'paste'], component: FileText },
-  { id: 'webhook', label: 'Webhook / API', category: 'System', keywords: ['webhook', 'http', 'home assistant', 'api'], component: Webhook },
-  { id: 'zap', label: 'Macro / Multi', category: 'System', keywords: ['macro', 'multi', 'sequence', 'automation'], component: Zap },
-  { id: 'mouse', label: 'Mouse Action', category: 'System', keywords: ['mouse', 'click', 'scroll', 'cursor'], component: MousePointerClick },
-  { id: 'monitor', label: 'Display / Studio', category: 'System', keywords: ['monitor', 'display', 'desktop'], component: Monitor },
-  { id: 'tv', label: 'Smart TV', category: 'System', keywords: ['tv', 'remote', 'hdmi'], component: Tv },
-  { id: 'check-square', label: 'Task / Done', category: 'System', keywords: ['task', 'todo', 'check'], component: CheckSquare },
-  { id: 'sparkles', label: 'Preset / Effect', category: 'System', keywords: ['effect', 'clean', 'auto'], component: Sparkles },
+  { id: 'power', label: 'Power', category: 'System', keywords: ['power', 'tv', 'shutdown', 'toggle'], component: Power },
+  { id: 'globe', label: 'Browser Tab', category: 'System', keywords: ['web', 'browser', 'tab', 'link'], component: Globe },
+  { id: 'folder', label: 'File Explorer', category: 'System', keywords: ['folder', 'file', 'finder', 'explorer'], component: FolderOpen },
+  { id: 'file-text', label: 'Text Macro', category: 'System', keywords: ['text', 'snippet', 'note', 'paste'], component: FileText },
+  { id: 'webhook', label: 'Network', category: 'System', keywords: ['network', 'http', 'api'], component: Webhook },
+  { id: 'zap', label: 'Macro', category: 'System', keywords: ['macro', 'multi', 'sequence', 'automation'], component: Zap },
+  { id: 'mouse', label: 'Click', category: 'System', keywords: ['mouse', 'click', 'select'], component: MousePointerClick },
+  { id: 'monitor', label: 'Desktop / Display', category: 'System', keywords: ['monitor', 'display', 'desktop', 'appletv'], component: Monitor },
+  { id: 'tv', label: 'Smart TV', category: 'System', keywords: ['tv', 'remote', 'hdmi', 'netflix'], component: Tv },
+  { id: 'check-square', label: 'OK / Select All', category: 'System', keywords: ['ok', 'select', 'check'], component: CheckSquare },
+  { id: 'sparkles', label: 'Info / Streaming', category: 'System', keywords: ['disney', 'info', 'effect'], component: Sparkles },
 
   // Navigation
-  { id: 'arrow-up', label: 'Up', category: 'Navigation', keywords: ['up', 'arrow', 'scroll'], component: ArrowUp },
-  { id: 'arrow-down', label: 'Down', category: 'Navigation', keywords: ['down', 'arrow', 'scroll'], component: ArrowDown },
-  { id: 'arrow-left', label: 'Left / Step Back', category: 'Navigation', keywords: ['left', 'arrow', 'step'], component: ArrowLeft },
-  { id: 'arrow-right', label: 'Right / Step Fwd', category: 'Navigation', keywords: ['right', 'arrow', 'step'], component: ArrowRight },
-  { id: 'none', label: 'Disabled', category: 'Navigation', keywords: ['none', 'empty', 'off'], component: CircleOff }
+  { id: 'arrow-up', label: 'Up', category: 'Navigation', keywords: ['up', 'arrow', 'channel'], component: ArrowUp },
+  { id: 'arrow-down', label: 'Down', category: 'Navigation', keywords: ['down', 'arrow', 'channel'], component: ArrowDown },
+  { id: 'arrow-left', label: 'Left', category: 'Navigation', keywords: ['left', 'arrow', 'step'], component: ArrowLeft },
+  { id: 'arrow-right', label: 'Right', category: 'Navigation', keywords: ['right', 'arrow', 'step'], component: ArrowRight },
+  { id: 'none', label: 'Unassigned', category: 'Navigation', keywords: ['none', 'empty', 'off'], component: CircleOff }
 ];
 
 export const KeycapIcon: React.FC<{
@@ -187,37 +188,13 @@ export const KeycapIcon: React.FC<{
   return <IconComp className={className} style={style} />;
 };
 
-export function summarizeAction(binding: ActionBinding, macros: MacroItem[] = []): string {
-  if (!binding || binding.type === 'none') return 'Disabled';
-  switch (binding.type) {
-    case 'shortcut':
-      return binding.value ? `Keystroke: ${binding.value}` : 'Unassigned Shortcut';
-    case 'text':
-      return binding.value
-        ? `Text: "${binding.value.slice(0, 22)}${binding.value.length > 22 ? '…' : ''}"`
-        : 'Empty Text Snippet';
-    case 'macro': {
-      const m = macros.find(item => item.id === binding.value);
-      return m ? `Macro: ${m.name}` : 'Select Macro';
-    }
-    case 'media':
-      return `Media: ${binding.value || 'Play / Pause'}`;
-    case 'system':
-      return `System: ${binding.value || 'Screenshot'}`;
-    case 'open':
-      return `${(binding.meta?.openTargetType || 'url').toUpperCase()}: ${binding.value || 'Target'}`;
-    case 'mouse':
-      return `Mouse: ${(binding.meta?.mouseAction || binding.value || 'left_click').replace(/_/g, ' ')}`;
-    case 'layer':
-      if (binding.meta?.layerSwitchMode === 'profile') {
-        return `Switch Profile`;
-      }
-      return `${binding.meta?.layerSwitchMode === 'momentary' ? 'Hold' : 'Toggle'} Layer ${(binding.meta?.targetLayerIndex ?? 0) + 1}`;
-    case 'webhook':
-      return `${binding.meta?.webhookMethod || 'POST'} ${binding.value || 'Webhook'}`;
-    case 'multi':
-      return `Multi-Action (${binding.meta?.multiSteps?.length || 0} steps)`;
-    default:
-      return 'Disabled';
+export function summarizeAction(binding: ActionBinding, customMacros: CustomMacroItem[] = []): string {
+  const raw = bindingToFirmwareAction(binding);
+  if (!raw) return 'Unassigned (Sync USB or choose action)';
+  const matchedMacro = customMacros.find(m => m.action === raw);
+  if (matchedMacro) {
+    return `${matchedMacro.name} (${raw})`;
   }
+  const info = describeFirmwareAction(raw);
+  return `${info.fullLabel}`;
 }

@@ -1,109 +1,54 @@
 export type KeyId = 'k1' | 'k2' | 'k3' | 'k4' | 'k5';
 export type ControlId = KeyId | 'encoder';
 
+export type HardwareProfileId = 'MAC' | 'TV';
+export type HardwareSlotId = 'b1' | 'b2' | 'b3' | 'b4' | 'dial' | 'enc_cw' | 'enc_ccw';
+
 export type SidebarSection = 'device' | 'macros' | 'library' | 'settings';
 export type CanvasViewMode = 'edit' | 'test';
 export type EncoderPlacement = 'grid' | 'top';
 
-export type TriggerType = 'tap' | 'hold' | 'double_tap' | 'tap_hold';
+export type TriggerType = 'tap';
 
 export type ActionType =
+  | 'mac_macro'
+  | 'win_macro'
+  | 'media'
   | 'shortcut'
   | 'text'
-  | 'macro'
-  | 'media'
-  | 'system'
-  | 'open'
-  | 'mouse'
-  | 'layer'
-  | 'webhook'
-  | 'multi'
+  | 'tv'
+  | 'tv_app'
   | 'none';
-
-export interface MultiStepAction {
-  id: string;
-  type: Exclude<ActionType, 'multi' | 'none'>;
-  value: string;
-  label: string;
-  delayAfterMs: number;
-}
 
 export interface ActionBinding {
   type: ActionType;
-  /** Shortcut combo e.g. "Cmd+Shift+P", or media code, or text snippet, or macro ID, etc. */
+  /** Exact ESP32 firmware action string, e.g. "MEDIA:PLAY_PAUSE", "SHORTCUT:cmd,shift:4", "TV:POWER", or "" when unassigned */
   value: string;
-  /** Secondary metadata depending on type */
-  meta?: {
-    openTargetType?: 'app' | 'file' | 'url';
-    mouseAction?:
-      | 'left_click'
-      | 'right_click'
-      | 'middle_click'
-      | 'double_click'
-      | 'scroll_up'
-      | 'scroll_down'
-      | 'scroll_left'
-      | 'scroll_right'
-      | 'move_xy';
-    mouseAmount?: number;
-    mouseY?: number;
-    layerSwitchMode?: 'momentary' | 'toggle' | 'profile';
-    targetLayerIndex?: number;
-    targetProfileId?: string;
-    webhookMethod?: 'POST' | 'GET' | 'PUT';
-    webhookPayload?: string;
-    multiSteps?: MultiStepAction[];
-  };
 }
 
 export interface KeyAppearance {
   label: string;
   icon: string; // Icon registry key OR data:image/... custom upload URL
   labelColor: string;
-}
-
-export interface KeyAdvancedConfig {
-  debounceOverrideMs: number; // 0 = use global
-  repeatWhileHeld: boolean;
-  repeatRateMs: number;
-  delayBeforeFiringMs: number;
+  customLabel?: boolean;
+  customIcon?: boolean;
 }
 
 export interface KeyControlConfig {
   id: KeyId;
-  triggers: Record<TriggerType, ActionBinding>;
-  appearance: KeyAppearance;
-  advanced: KeyAdvancedConfig;
-}
-
-export interface EncoderModeConfig {
-  id: string;
-  name: string;
-  color: string;
-  cw: ActionBinding;
-  ccw: ActionBinding;
-  press: {
+  slot?: 'b1' | 'b2' | 'b3' | 'b4';
+  isModeSwitch?: boolean;
+  triggers: {
     tap: ActionBinding;
-    hold: ActionBinding;
-    double_tap: ActionBinding;
   };
-  pressRotate: {
-    cw: ActionBinding;
-    ccw: ActionBinding;
-  };
-}
-
-export interface EncoderFeelConfig {
-  sensitivity: number; // 1..8 steps per action
-  acceleration: boolean;
-  invertDirection: boolean;
+  appearance: KeyAppearance;
 }
 
 export interface EncoderControlConfig {
-  activeModeId: string;
-  clickCyclesModes: boolean;
-  modes: EncoderModeConfig[];
-  feel: EncoderFeelConfig;
+  dial: ActionBinding;
+  cw: ActionBinding;
+  ccw: ActionBinding;
+  color: string;
 }
 
 export interface LayerConfig {
@@ -115,52 +60,46 @@ export interface LayerConfig {
 }
 
 export interface StudioProfile {
-  id: string;
+  id: HardwareProfileId;
   name: string;
-  appHint?: string;
-  activeLayerIndex: number; // 0..3
-  layers: [LayerConfig, LayerConfig, LayerConfig, LayerConfig];
+  activeLayerIndex: 0;
+  layers: [LayerConfig];
 }
 
-export type MacroStepType = 'key_down' | 'key_up' | 'delay' | 'text' | 'mouse';
-export type MacroRepeatMode = 'once' | 'count' | 'while_held';
-
-export interface MacroStep {
-  id: string;
-  type: MacroStepType;
-  value: string; // key code, text content, or mouse button
-  delayMs?: number; // used when type === 'delay'
-}
-
-export interface MacroItem {
+export interface CustomMacroItem {
   id: string;
   name: string;
-  folderId: string;
-  repeatMode: MacroRepeatMode;
-  repeatCount: number;
-  steps: MacroStep[];
+  action: string; // Valid ESP32 firmware action string (SHORTCUT:..., TEXT:..., TVKEY:..., TVAPP:..., etc.)
+  createdAt: string;
+  source?: 'device' | 'user';
 }
 
-export interface MacroFolder {
-  id: string;
-  name: string;
-}
-
-export interface PresetTemplate {
-  id: string;
-  name: string;
-  category: 'Creative' | 'Code' | 'Streaming' | 'Media & Comms' | 'Productivity';
-  description: string;
-  accentColor: string;
-  icon: string;
-  buildProfile: (nameOverride?: string) => StudioProfile;
+export interface HardwareBackupPayload {
+  schema: 'studio-pad-config';
+  version: 1;
+  mac_name: string;
+  tv_name: string;
+  mac_b1: string;
+  mac_b2: string;
+  mac_b3: string;
+  mac_b4: string;
+  mac_dial: string;
+  mac_enc_cw: string;
+  mac_enc_ccw: string;
+  tv_b1: string;
+  tv_b2: string;
+  tv_b3: string;
+  tv_b4: string;
+  tv_dial: string;
+  tv_enc_cw: string;
+  tv_enc_ccw: string;
 }
 
 export interface UserPreset {
   id: string;
   name: string;
   createdAt: string;
-  profile: StudioProfile;
+  backup: HardwareBackupPayload;
 }
 
 export type KeyboardLayoutId =
@@ -178,10 +117,9 @@ export interface StudioSettings {
   theme: ThemeMode;
   accentColor: string;
   keyboardLayout: KeyboardLayoutId;
-  pollingRateHz: 125 | 250 | 500 | 1000;
-  globalDebounceMs: number;
   encoderPlacement: EncoderPlacement;
   soundEnabled: boolean;
+  autoSyncOnEdit: boolean;
 }
 
 export interface ConflictWarning {
@@ -196,9 +134,25 @@ export interface LiveInputEvent {
   controlLabel: string;
   triggerLabel: string;
   actionSummary: string;
+  dispatchedHardware?: boolean;
 }
 
-export type UsbTransport = 'webhid' | 'webserial' | 'disconnected';
+export type UsbTransport = 'webserial' | 'disconnected';
+
+export interface HardwareTelemetry {
+  activeProfile: HardwareProfileId;
+  wifiConnected: boolean;
+  ip: string;
+  ssid: string;
+  bleConnected: boolean;
+  freeHeap: number;
+  httpApiEnabled: boolean;
+  tvConfigured: boolean;
+  tvPaired: boolean;
+  tvHost: string;
+  tvPort: number;
+  connectionType: string;
+}
 
 export interface DeviceConnectionInfo {
   connected: boolean;
@@ -206,4 +160,6 @@ export interface DeviceConnectionInfo {
   deviceName: string;
   firmwareVersion: string;
   vendorProduct?: string;
+  lastSyncedAt?: string;
+  telemetry?: HardwareTelemetry;
 }

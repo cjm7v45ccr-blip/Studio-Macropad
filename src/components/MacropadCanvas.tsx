@@ -1,746 +1,572 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   CanvasViewMode,
   ConflictWarning,
   ControlId,
+  CustomMacroItem,
+  DeviceConnectionInfo,
   EncoderPlacement,
+  HardwareProfileId,
   KeyId,
   LayerConfig,
-  LiveInputEvent,
-  MacroItem
+  LiveInputEvent
 } from '../types/studio';
 import { KeycapIcon, summarizeAction } from '../data/iconRegistry';
-import { ALL_KEY_IDS } from '../data/presetTemplates';
+import { describeFirmwareAction } from '../data/firmwareCatalog';
 import { soundEngine } from '../services/soundEffects';
 import {
+  AlertTriangle,
   RotateCcw,
   RotateCw,
-  AlertTriangle,
+  Trash2,
   SlidersHorizontal,
   Play,
-  LayoutGrid,
-  Rows2
+  Usb,
+  RefreshCw,
+  Bluetooth,
+  Wifi
 } from 'lucide-react';
 
 interface MacropadCanvasProps {
+  activeProfileId: HardwareProfileId;
+  activeProfileName: string;
   layer: LayerConfig;
-  layers: LayerConfig[];
-  activeLayerIndex: number;
-  onSelectLayer: (idx: number) => void;
   selectedControl: ControlId;
-  onSelectControl: (id: ControlId) => void;
   viewMode: CanvasViewMode;
-  onChangeViewMode?: (mode: CanvasViewMode) => void;
   encoderPlacement: EncoderPlacement;
-  onChangeEncoderPlacement?: (placement: EncoderPlacement) => void;
   conflicts: ConflictWarning[];
-  macros: MacroItem[];
-  onCycleEncoderMode?: () => void;
-  /** Live external hardware press state */
-  hardwarePressedKeys?: Set<KeyId>;
-  hardwareEncoderSpin?: { dir: 'cw' | 'ccw'; seq: number } | null;
+  customMacros: CustomMacroItem[];
+  connection: DeviceConnectionInfo;
+  isSyncedWithHardware: boolean;
+  onSelectControl: (id: ControlId) => void;
+  onChangeViewMode: (mode: CanvasViewMode) => void;
+  onChangeEncoderPlacement: (placement: EncoderPlacement) => void;
+  onToggleHardwareMode: () => void;
+  onOpenConnectModal: () => void;
+  onPullFromUsb: () => void;
+  onExecuteHardwareAction: (actionStr: string) => Promise<boolean>;
 }
 
+const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5'];
+
 export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
+  activeProfileId,
+  activeProfileName,
   layer,
-  layers,
-  activeLayerIndex,
-  onSelectLayer,
   selectedControl,
-  onSelectControl,
   viewMode,
-  onChangeViewMode,
   encoderPlacement,
-  onChangeEncoderPlacement,
   conflicts,
-  macros,
-  onCycleEncoderMode,
-  hardwarePressedKeys,
-  hardwareEncoderSpin
+  customMacros,
+  connection,
+  isSyncedWithHardware,
+  onSelectControl,
+  onChangeViewMode,
+  onChangeEncoderPlacement,
+  onToggleHardwareMode,
+  onOpenConnectModal,
+  onPullFromUsb,
+  onExecuteHardwareAction
 }) => {
-  const [pressedKeys, setPressedKeys] = useState<Set<KeyId>>(new Set());
+  const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [knobAngle, setKnobAngle] = useState(0);
   const [knobPressed, setKnobPressed] = useState(false);
-  const [holdKnobToggle, setHoldKnobToggle] = useState(false);
-  const [encoderBadge, setEncoderBadge] = useState<'CW' | 'CCW' | null>(null);
-  const [liveEvents, setLiveEvents] = useState<LiveInputEvent[]>([]);
+  const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
 
-  const badgeTimerRef = useRef<number | null>(null);
-  const holdTimerRef = useRef<Record<string, number>>({});
-  const lastTapRef = useRef<Record<string, number>>({});
-
-  const activeEncoderMode =
-    layer.encoder.modes.find(m => m.id === layer.encoder.activeModeId) || layer.encoder.modes[0];
-
-  // React to incoming USB hardware encoder turns
-  useEffect(() => {
-    if (!hardwareEncoderSpin) return;
-    triggerEncoderTurn(hardwareEncoderSpin.dir, false);
-  }, [hardwareEncoderSpin?.seq]);
-
-  // Keyboard test shortcuts in Test View (1-5 for keys, [ and ] for encoder)
-  useEffect(() => {
-    if (viewMode !== 'test') return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.repeat) return;
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      const digitMatch = e.key >= '1' && e.key <= '5' ? Number(e.key) - 1 : -1;
-      if (digitMatch >= 0) {
-        const kid = ALL_KEY_IDS[digitMatch];
-        triggerKeyPressDown(kid);
-      } else if (e.key === ']') {
-        triggerEncoderTurn('cw', e.shiftKey || holdKnobToggle);
-      } else if (e.key === '[') {
-        triggerEncoderTurn('ccw', e.shiftKey || holdKnobToggle);
-      }
-    };
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      const digitMatch = e.key >= '1' && e.key <= '5' ? Number(e.key) - 1 : -1;
-      if (digitMatch >= 0) {
-        const kid = ALL_KEY_IDS[digitMatch];
-        triggerKeyRelease(kid);
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-    };
-  }, [viewMode, layer, holdKnobToggle]);
-
-  const appendLiveEvent = (controlLabel: string, triggerLabel: string, actionSummary: string) => {
+  const pushLog = (
+    controlLabel: string,
+    triggerLabel: string,
+    actionSummary: string,
+    dispatchedHardware = false
+  ) => {
     const now = new Date();
-    const ts = now.toTimeString().split(' ')[0];
-    setLiveEvents(prev => [
+    const timestamp = now.toTimeString().slice(0, 8);
+    setTestLog(prev => [
       {
-        id: `${Date.now()}-${Math.random()}`,
-        timestamp: ts,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp,
         controlLabel,
         triggerLabel,
-        actionSummary
+        actionSummary,
+        dispatchedHardware
       },
-      ...prev.slice(0, 5)
+      ...prev.slice(0, 14)
     ]);
   };
 
-  const triggerKeyPressDown = (kid: KeyId) => {
+  const hasConflict = (id: ControlId) =>
+    conflicts.some(c => c.controlA === id || c.controlB === id);
+
+  const handleKeyPressDown = (kid: KeyId) => {
+    setPressedKey(kid);
     soundEngine.playKeyClick();
-    setPressedKeys(prev => new Set(prev).add(kid));
+  };
 
-    if (viewMode === 'test') {
-      const keyCfg = layer.keys[kid];
-      if (!keyCfg) return;
-      holdTimerRef.current[kid] = window.setTimeout(() => {
-        delete holdTimerRef.current[kid];
-        if (keyCfg.triggers.hold.type !== 'none') {
-          appendLiveEvent(
-            `Key ${kid.slice(1)} (${keyCfg.appearance.label})`,
-            'Hold',
-            summarizeAction(keyCfg.triggers.hold, macros)
-          );
-          if (keyCfg.triggers.hold.type === 'layer') {
-            const idx = keyCfg.triggers.hold.meta?.targetLayerIndex ?? 0;
-            onSelectLayer(idx);
-          }
-        }
-      }, 420);
+  const handleKeyPressUp = async (kid: KeyId) => {
+    setPressedKey(null);
+
+    if (viewMode === 'edit') {
+      onSelectControl(kid);
+      return;
     }
-  };
 
-  const triggerKeyRelease = (kid: KeyId) => {
-    setPressedKeys(prev => {
-      const next = new Set(prev);
-      next.delete(kid);
-      return next;
-    });
+    // Live Hardware Test Mode
+    const cfg = layer.keys[kid];
+    if (!cfg) return;
 
-    if (viewMode === 'test') {
-      const keyCfg = layer.keys[kid];
-      if (!keyCfg) return;
-      if (holdTimerRef.current[kid]) {
-        clearTimeout(holdTimerRef.current[kid]);
-        delete holdTimerRef.current[kid];
-
-        const now = Date.now();
-        const prevTap = lastTapRef.current[kid] || 0;
-        if (now - prevTap < 280 && keyCfg.triggers.double_tap.type !== 'none') {
-          lastTapRef.current[kid] = 0;
-          appendLiveEvent(
-            `Key ${kid.slice(1)} (${keyCfg.appearance.label})`,
-            'Double-Tap',
-            summarizeAction(keyCfg.triggers.double_tap, macros)
-          );
-        } else {
-          lastTapRef.current[kid] = now;
-          appendLiveEvent(
-            `Key ${kid.slice(1)} (${keyCfg.appearance.label})`,
-            'Tap',
-            summarizeAction(keyCfg.triggers.tap, macros)
-          );
-          if (keyCfg.triggers.tap.type === 'layer') {
-            const idx = keyCfg.triggers.tap.meta?.targetLayerIndex ?? 0;
-            onSelectLayer(idx);
-          }
-        }
-      }
-    }
-  };
-
-  const handleKeyPointerDown = (kid: KeyId) => {
-    onSelectControl(kid);
-    triggerKeyPressDown(kid);
-  };
-
-  const handleKeyPointerUp = (kid: KeyId) => {
-    triggerKeyRelease(kid);
-  };
-
-  const triggerEncoderTurn = (rawDir: 'cw' | 'ccw', isHoldingKnob: boolean) => {
-    const effectiveDir = layer.encoder.feel.invertDirection
-      ? rawDir === 'cw'
-        ? 'ccw'
-        : 'cw'
-      : rawDir;
-
-    soundEngine.playDialTick();
-    setKnobAngle(prev => prev + (rawDir === 'cw' ? 20 : -20));
-    setEncoderBadge(effectiveDir === 'cw' ? 'CW' : 'CCW');
-
-    if (badgeTimerRef.current) clearTimeout(badgeTimerRef.current);
-    badgeTimerRef.current = window.setTimeout(() => setEncoderBadge(null), 650);
-
-    if (viewMode === 'test' && activeEncoderMode) {
-      const binding = isHoldingKnob
-        ? activeEncoderMode.pressRotate[effectiveDir]
-        : activeEncoderMode[effectiveDir];
-
-      appendLiveEvent(
-        `Encoder (${activeEncoderMode.name})`,
-        isHoldingKnob ? `Press + ${effectiveDir.toUpperCase()}` : `Rotate ${effectiveDir.toUpperCase()}`,
-        summarizeAction(binding, macros)
+    if (cfg.isModeSwitch || kid === 'k5') {
+      onToggleHardwareMode();
+      pushLog(
+        'MODE (GPIO 23)',
+        'Tap',
+        `Switched editor view to ${activeProfileId === 'MAC' ? 'TV' : 'MAC'}`
       );
+      return;
+    }
+
+    const slotLabel = (cfg.slot || kid).toUpperCase();
+    const rawAction = cfg.triggers.tap.value;
+    const summary = summarizeAction(cfg.triggers.tap, customMacros);
+
+    if (connection.connected && rawAction) {
+      const sent = await onExecuteHardwareAction(rawAction);
+      pushLog(slotLabel, 'Tap', summary, sent);
+    } else {
+      pushLog(slotLabel, 'Tap', summary, false);
     }
   };
 
-  const handleEncoderClick = () => {
-    soundEngine.playKeyClick();
-    onSelectControl('encoder');
-    setKnobPressed(true);
-    setTimeout(() => setKnobPressed(false), 160);
+  const triggerEncoderSpin = async (dir: 'cw' | 'ccw') => {
+    setKnobAngle(a => a + (dir === 'cw' ? 24 : -24));
+    soundEngine.playDialTick();
 
-    if (viewMode === 'test') {
-      if (layer.encoder.clickCyclesModes && onCycleEncoderMode) {
-        onCycleEncoderMode();
-        appendLiveEvent('Encoder', 'Click (Cycle Mode)', 'Switched active encoder mode');
-      } else if (activeEncoderMode) {
-        appendLiveEvent(
-          `Encoder (${activeEncoderMode.name})`,
-          'Press (Tap)',
-          summarizeAction(activeEncoderMode.press.tap, macros)
-        );
-      }
+    if (viewMode === 'edit') {
+      onSelectControl('encoder');
+      return;
+    }
+
+    const binding = dir === 'cw' ? layer.encoder.cw : layer.encoder.ccw;
+    const summary = summarizeAction(binding, customMacros);
+    const label = dir === 'cw' ? 'Turn CW' : 'Turn CCW';
+
+    if (connection.connected && binding.value) {
+      const sent = await onExecuteHardwareAction(binding.value);
+      pushLog('Encoder', label, summary, sent);
+    } else {
+      pushLog('Encoder', label, summary, false);
     }
   };
 
   const handleEncoderWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    onSelectControl('encoder');
-    const dir = e.deltaY < 0 ? 'cw' : 'ccw';
-    triggerEncoderTurn(dir, e.shiftKey || holdKnobToggle);
+    triggerEncoderSpin(e.deltaY > 0 ? 'cw' : 'ccw');
   };
 
-  const conflictControlSet = new Set<ControlId>();
-  conflicts.forEach(c => {
-    conflictControlSet.add(c.controlA);
-    conflictControlSet.add(c.controlB);
-  });
+  const handleEncoderPressDown = () => {
+    setKnobPressed(true);
+    soundEngine.playKeyClick();
+  };
 
-  const renderOledReadout = (fullWidth: boolean) => (
-    <div className={`flex flex-col gap-1.5 ${fullWidth ? 'w-full mb-4' : 'min-w-[144px] flex-1'}`}>
-      <div className="px-3.5 py-2.5 rounded-xl bg-[#07080B] border border-white/10 shadow-inner space-y-1">
-        <div className="flex items-center justify-between gap-2 text-[10px] font-mono text-zinc-400">
-          <span>{layer.name.toUpperCase().slice(0, 14)}</span>
-          <span className="font-semibold text-zinc-200">
-            {activeEncoderMode?.name.toUpperCase() || 'ENC'}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-mono text-zinc-100 truncate tabular-nums">
-            {encoderBadge
-              ? `DIAL · ${encoderBadge}`
-              : pressedKeys.size > 0 || (hardwarePressedKeys && hardwarePressedKeys.size > 0)
-              ? `ACTIVE · KEY ${Array.from(pressedKeys)[0]?.slice(1) || Array.from(hardwarePressedKeys || [])[0]?.slice(1)}`
-              : viewMode === 'test'
-              ? 'READY · 5-KEY'
-              : '5 KEYS · 1 DIAL'}
-          </span>
-          {layer.encoder.modes.length > 1 && (
-            <div className="flex items-center gap-1" title="Encoder Modes">
-              {layer.encoder.modes.map(m => (
-                <span
-                  key={m.id}
-                  className="w-1.5 h-1.5 rounded-full bg-zinc-200 transition-opacity"
-                  style={{
-                    opacity: m.id === activeEncoderMode?.id ? 0.95 : 0.22
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {viewMode === 'test' && (
-        <button
-          type="button"
-          onClick={() => setHoldKnobToggle(v => !v)}
-          style={
-            holdKnobToggle
-              ? { borderColor: 'var(--accent)', backgroundColor: 'rgba(var(--accent-rgb), 0.18)' }
-              : undefined
-          }
-          className="px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-white/10 text-[10px] font-mono text-zinc-300 hover:text-white cursor-pointer transition-colors whitespace-nowrap text-center"
-          title="Simulate holding down the encoder while rotating"
-        >
-          {holdKnobToggle ? 'Holding Knob: ON' : 'Hold + Turn: OFF'}
-        </button>
-      )}
-    </div>
-  );
-
-  const renderEncoderKnobControl = (compactCell: boolean) => {
-    const isEncoderSelected = selectedControl === 'encoder';
-
-    if (compactCell) {
-      return (
-        <div
-          className="relative w-[92px] h-[92px] sm:w-[100px] sm:h-[100px] flex flex-col items-center justify-center"
-          onWheel={handleEncoderWheel}
-        >
-          {/* Subtle CCW / CW Stepper Triggers */}
-          <button
-            type="button"
-            onClick={() => {
-              onSelectControl('encoder');
-              triggerEncoderTurn('ccw', holdKnobToggle);
-            }}
-            className="absolute top-0.5 left-0.5 z-10 w-5 h-5 rounded-md bg-zinc-900/95 hover:bg-zinc-800 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            title="Rotate Counter-Clockwise (or scroll wheel down)"
-          >
-            <RotateCcw className="w-2.5 h-2.5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              onSelectControl('encoder');
-              triggerEncoderTurn('cw', holdKnobToggle);
-            }}
-            className="absolute top-0.5 right-0.5 z-10 w-5 h-5 rounded-md bg-zinc-900/95 hover:bg-zinc-800 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            title="Rotate Clockwise (or scroll wheel up)"
-          >
-            <RotateCw className="w-2.5 h-2.5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleEncoderClick}
-            style={
-              isEncoderSelected
-                ? {
-                    boxShadow: `0 0 0 2px var(--accent), 0 0 18px rgba(var(--accent-rgb), 0.42)`
-                  }
-                : undefined
-            }
-            className={`relative w-[74px] h-[74px] sm:w-[80px] sm:h-[80px] rounded-full encoder-ring p-2 flex items-center justify-center cursor-pointer transition-transform duration-150 ${
-              knobPressed || holdKnobToggle ? 'scale-95' : 'hover:scale-[1.03]'
-            }`}
-            title="Click to select Encoder · Scroll wheel to rotate"
-          >
-            <div
-              className="w-full h-full rounded-full encoder-cap relative flex items-center justify-center transition-transform duration-150 ease-out"
-              style={{ transform: `rotate(${knobAngle}deg)` }}
-            >
-              <span
-                className="absolute top-1.5 w-1.5 h-2.5 rounded-full"
-                style={{ backgroundColor: activeEncoderMode?.color || 'var(--accent)' }}
-              />
-            </div>
-          </button>
-
-          {encoderBadge && (
-            <span
-              style={{ backgroundColor: 'var(--accent)' }}
-              className="absolute -bottom-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white shadow-md pointer-events-none z-20"
-            >
-              {encoderBadge}
-            </span>
-          )}
-        </div>
-      );
+  const handleEncoderPressUp = async () => {
+    setKnobPressed(false);
+    if (viewMode === 'edit') {
+      onSelectControl('encoder');
+      return;
     }
 
-    return (
-      <div className="flex items-center gap-2.5">
-        <button
-          type="button"
-          onClick={() => {
-            onSelectControl('encoder');
-            triggerEncoderTurn('ccw', holdKnobToggle);
-          }}
-          className="w-7 h-7 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-colors cursor-pointer"
-          title="Rotate Counter-Clockwise (or scroll wheel down on knob)"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-        </button>
+    const binding = layer.encoder.dial;
+    const summary = summarizeAction(binding, customMacros);
+    if (connection.connected && binding.value) {
+      const sent = await onExecuteHardwareAction(binding.value);
+      pushLog('Encoder', 'Dial Push', summary, sent);
+    } else {
+      pushLog('Encoder', 'Dial Push', summary, false);
+    }
+  };
 
-        <div className="relative flex items-center justify-center" onWheel={handleEncoderWheel}>
+  const renderEncoderUnit = (size: 'compact' | 'large') => {
+    const isSelected = selectedControl === 'encoder' && viewMode === 'edit';
+    const outerDim = size === 'large' ? 'w-28 h-28' : 'w-24 h-24';
+    const innerDim = size === 'large' ? 'w-20 h-20' : 'w-16 h-16';
+    const dialInfo = describeFirmwareAction(layer.encoder.dial.value);
+    const cwInfo = describeFirmwareAction(layer.encoder.cw.value);
+    const ccwInfo = describeFirmwareAction(layer.encoder.ccw.value);
+
+    return (
+      <div className="flex flex-col items-center justify-center gap-1.5">
+        <div className="relative flex items-center justify-center">
+          {/* CCW Quick Spin */}
           <button
             type="button"
-            onClick={handleEncoderClick}
-            style={
-              isEncoderSelected
-                ? {
-                    boxShadow: `0 0 0 2px var(--accent), 0 0 20px rgba(var(--accent-rgb), 0.42)`
-                  }
-                : undefined
-            }
-            className={`relative w-[72px] h-[72px] rounded-full encoder-ring p-2 flex items-center justify-center cursor-pointer transition-transform duration-150 ${
-              knobPressed || holdKnobToggle ? 'scale-95' : 'hover:scale-[1.02]'
-            }`}
-            title="Click to select Encoder · Scroll wheel to rotate"
+            onClick={e => {
+              e.stopPropagation();
+              triggerEncoderSpin('ccw');
+            }}
+            title={`CCW: ${ccwInfo.fullLabel}`}
+            className="p-1.5 rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/25 transition-colors cursor-pointer"
           >
-            <div
-              className="w-full h-full rounded-full encoder-cap relative flex items-center justify-center transition-transform duration-150 ease-out"
-              style={{ transform: `rotate(${knobAngle}deg)` }}
-            >
-              <span
-                className="absolute top-1.5 w-1.5 h-2.5 rounded-full"
-                style={{ backgroundColor: activeEncoderMode?.color || 'var(--accent)' }}
-              />
-            </div>
+            <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
-          {encoderBadge && (
-            <span
-              style={{ backgroundColor: 'var(--accent)' }}
-              className="absolute -top-2.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-md pointer-events-none"
+          {/* Physical Knurled Encoder */}
+          <div
+            role="button"
+            tabIndex={0}
+            onWheel={handleEncoderWheel}
+            onMouseDown={handleEncoderPressDown}
+            onMouseUp={handleEncoderPressUp}
+            onMouseLeave={() => setKnobPressed(false)}
+            style={{
+              borderColor: isSelected ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
+              boxShadow: isSelected
+                ? '0 0 0 3px rgba(var(--accent-rgb), 0.28), 0 12px 24px rgba(0,0,0,0.45)'
+                : '0 10px 22px rgba(0,0,0,0.45), inset 0 1px 1px rgba(255,255,255,0.08)'
+            }}
+            className={`${outerDim} mx-1 rounded-full bg-gradient-to-b from-[#262A34] to-[#171A21] border-2 flex items-center justify-center transition-all cursor-pointer select-none ${
+              knobPressed ? 'scale-95' : 'hover:scale-[1.02]'
+            }`}
+          >
+            <div
+              style={{
+                borderColor: layer.encoder.color,
+                transform: `rotate(${knobAngle}deg)`
+              }}
+              className={`${innerDim} rounded-full bg-[#12141A] border-2 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner`}
             >
-              {encoderBadge}
-            </span>
-          )}
+              <span
+                className="w-1.5 h-3 rounded-full absolute top-1.5"
+                style={{ backgroundColor: layer.encoder.color }}
+              />
+              <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-400">
+                DIAL
+              </span>
+            </div>
+          </div>
+
+          {/* CW Quick Spin */}
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation();
+              triggerEncoderSpin('cw');
+            }}
+            title={`CW: ${cwInfo.fullLabel}`}
+            className="p-1.5 rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/25 transition-colors cursor-pointer"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            onSelectControl('encoder');
-            triggerEncoderTurn('cw', holdKnobToggle);
-          }}
-          className="w-7 h-7 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-colors cursor-pointer"
-          title="Rotate Clockwise (or scroll wheel up on knob)"
-        >
-          <RotateCw className="w-3.5 h-3.5" />
-        </button>
+        <span className="text-[10px] font-mono text-zinc-400 tracking-tight text-center max-w-[140px] truncate">
+          {dialInfo.shortLabel} · {ccwInfo.shortLabel}/{cwInfo.shortLabel}
+        </span>
       </div>
     );
   };
 
-  const renderKeycap = (kid: KeyId) => {
-    const idx = ALL_KEY_IDS.indexOf(kid);
-    const keyCfg = layer.keys[kid];
-    if (!keyCfg) return null;
+  const renderKeycap = (kid: KeyId, index: number) => {
+    const cfg = layer.keys[kid];
+    const isSelected = selectedControl === kid && viewMode === 'edit';
+    const isDown = pressedKey === kid;
+    const conflict = hasConflict(kid);
+    const isUnassigned = !cfg.isModeSwitch && !cfg.triggers.tap.value;
 
-    const isPhysicallyDown = pressedKeys.has(kid) || Boolean(hardwarePressedKeys?.has(kid));
-    const isSelected = selectedControl === kid;
-    const hasConflict = conflictControlSet.has(kid);
-    const hasSecondaryTriggers =
-      keyCfg.triggers.hold.type !== 'none' ||
-      keyCfg.triggers.double_tap.type !== 'none' ||
-      keyCfg.triggers.tap_hold.type !== 'none';
+    const badgeText = cfg.isModeSwitch
+      ? 'MODE'
+      : (cfg.slot || `b${index + 1}`).toUpperCase();
 
     return (
       <button
         key={kid}
         type="button"
-        onMouseDown={() => handleKeyPointerDown(kid)}
-        onMouseUp={() => handleKeyPointerUp(kid)}
+        onMouseDown={() => handleKeyPressDown(kid)}
+        onMouseUp={() => handleKeyPressUp(kid)}
         onMouseLeave={() => {
-          if (pressedKeys.has(kid)) handleKeyReleaseClean(kid);
+          if (pressedKey === kid) setPressedKey(null);
         }}
-        style={
-          isSelected
-            ? {
-                borderColor: 'var(--accent)',
-                boxShadow: `0 0 0 2px var(--accent), 0 0 18px rgba(var(--accent-rgb), 0.38), inset 0 1px 1px rgba(255,255,255,0.16)`
-              }
-            : {
-                borderColor: isPhysicallyDown
-                  ? 'rgba(255, 255, 255, 0.42)'
-                  : 'rgba(255, 255, 255, 0.1)'
-              }
-        }
-        className={`relative w-[92px] h-[92px] sm:w-[100px] sm:h-[100px] rounded-[13px] keycap-surface border flex flex-col items-center justify-between p-2.5 cursor-pointer group ${
-          isPhysicallyDown ? 'keycap-depressed' : ''
-        }`}
+        style={{
+          borderColor: isSelected
+            ? 'var(--accent)'
+            : conflict
+            ? '#F59E0B'
+            : cfg.isModeSwitch
+            ? 'rgba(56,189,248,0.35)'
+            : 'rgba(255,255,255,0.09)',
+          boxShadow: isSelected
+            ? '0 0 0 3px rgba(var(--accent-rgb), 0.25), 0 8px 18px rgba(0,0,0,0.4)'
+            : isDown
+            ? '0 2px 4px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.4)'
+            : '0 8px 0 #101217, 0 12px 20px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.1)'
+        }}
+        className={`relative w-28 h-28 rounded-2xl bg-gradient-to-b from-[#252933] to-[#1B1E26] border-2 p-2.5 flex flex-col items-center justify-between select-none transition-all cursor-pointer ${
+          isDown ? 'translate-y-1.5' : 'hover:-translate-y-0.5'
+        } ${isUnassigned ? 'opacity-80' : ''}`}
       >
-        {/* Top Micro Row: Key Index + Multi-trigger / Conflict Indicator */}
-        <div className="w-full flex items-center justify-between text-[10px] font-mono text-zinc-500 tabular-nums">
-          <span className={isPhysicallyDown ? 'text-zinc-200 font-bold' : ''}>{idx + 1}</span>
-          <div className="flex items-center gap-1">
-            {hasConflict && (
-              <span title="Duplicate action conflict on this layer">
-                <AlertTriangle className="w-3 h-3 text-amber-400" />
-              </span>
-            )}
-            {hasSecondaryTriggers && (
-              <span
-                className="w-1.5 h-1.5 rounded-full bg-zinc-400"
-                title="Multiple triggers configured (Hold / Double-tap)"
-              />
-            )}
-          </div>
+        {/* Top Row: Hardware Slot Label (B1..B4 / MODE) + Warning */}
+        <div className="w-full flex items-center justify-between">
+          <span
+            className={`font-mono text-[10px] leading-none font-semibold ${
+              cfg.isModeSwitch ? 'text-sky-400' : 'text-zinc-400'
+            }`}
+          >
+            {badgeText}
+          </span>
+          {conflict ? (
+            <AlertTriangle className="w-3 h-3 text-amber-400" />
+          ) : cfg.triggers.tap.value ? (
+            <span
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: cfg.appearance.labelColor }}
+            />
+          ) : null}
         </div>
 
-        {/* Center Custom Icon */}
-        <div className="my-auto flex items-center justify-center transition-transform duration-150 group-hover:scale-105">
+        {/* Center Icon */}
+        <div className="my-auto flex items-center justify-center">
           <KeycapIcon
-            icon={keyCfg.appearance.icon}
-            className="w-5 h-5 sm:w-6 sm:h-6"
-            style={{ color: keyCfg.appearance.labelColor || '#F3F4F6' }}
+            icon={cfg.appearance.icon}
+            className="w-6 h-6 transition-transform"
+            style={{ color: cfg.appearance.labelColor }}
           />
         </div>
 
-        {/* Bottom Custom Label */}
+        {/* Bottom Legend */}
         <span
-          className="w-full text-center text-[11px] font-semibold truncate leading-tight"
-          style={{ color: keyCfg.appearance.labelColor || '#F3F4F6' }}
+          className={`text-[11px] font-medium truncate max-w-full tracking-tight ${
+            isUnassigned ? 'text-zinc-500 italic' : 'text-zinc-200'
+          }`}
         >
-          {keyCfg.appearance.label || `Key ${idx + 1}`}
+          {cfg.appearance.label}
         </span>
       </button>
     );
   };
 
+  const telemetry = connection.telemetry;
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-between p-4 sm:p-6 overflow-y-auto select-none">
-      {/* Top Canvas Toolbar */}
-      <div className="w-full max-w-2xl flex flex-wrap items-center justify-between gap-3">
-        {/* Compact Layer Bar for viewports < xl */}
-        <div className="flex xl:hidden items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
-          {layers.map((l, idx) => {
-            const active = idx === activeLayerIndex;
-            return (
-              <button
-                key={l.id}
-                type="button"
-                onClick={() => onSelectLayer(idx)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs cursor-pointer whitespace-nowrap ${
-                  active
-                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold'
-                    : 'text-[var(--text-secondary)]'
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: l.color }} />
-                <span>{l.name}</span>
-              </button>
-            );
-          })}
+    <div className="flex-1 flex flex-col items-center justify-between p-6 overflow-y-auto relative">
+      {/* Top Canvas Controls */}
+      <div className="w-full max-w-2xl flex items-center justify-between gap-3 flex-wrap">
+        {/* Edit vs Live USB Test Toggle */}
+        <div className="flex items-center p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
+          <button
+            type="button"
+            onClick={() => onChangeViewMode('edit')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+              viewMode === 'edit'
+                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+            }`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Configure</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onChangeViewMode('test')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+              viewMode === 'test'
+                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+            }`}
+          >
+            <Play className="w-3.5 h-3.5" />
+            <span>Live Hardware Test</span>
+          </button>
         </div>
 
-        {onChangeViewMode && (
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
-            <button
-              type="button"
-              onClick={() => onChangeViewMode('edit')}
-              style={
-                viewMode === 'edit'
-                  ? { backgroundColor: 'var(--accent)', color: '#FFFFFF' }
-                  : undefined
-              }
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                viewMode === 'edit'
-                  ? 'font-semibold shadow-sm'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>Edit view</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onChangeViewMode('test')}
-              style={
-                viewMode === 'test'
-                  ? { backgroundColor: 'var(--accent)', color: '#FFFFFF' }
-                  : undefined
-              }
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                viewMode === 'test'
-                  ? 'font-semibold shadow-sm'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Play className="w-3.5 h-3.5" />
-              <span>Test view</span>
-            </button>
-          </div>
-        )}
-
-        {onChangeEncoderPlacement && (
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] ml-auto">
-            <button
-              type="button"
-              onClick={() => onChangeEncoderPlacement('grid')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer whitespace-nowrap ${
-                encoderPlacement === 'grid'
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-              }`}
-              title="Compact 2×3 deck: 5 buttons + rotary encoder in top-right slot"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>2×3 Deck</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onChangeEncoderPlacement('top')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer whitespace-nowrap ${
-                encoderPlacement === 'top'
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-              }`}
-              title="Place rotary encoder above the 5-key switch plate"
-            >
-              <Rows2 className="w-3.5 h-3.5" />
-              <span>Top Dial</span>
-            </button>
-          </div>
-        )}
+        {/* Encoder Layout Option */}
+        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
+          <span className="text-[11px] text-[var(--text-muted)] px-2">Dial View:</span>
+          <button
+            type="button"
+            onClick={() => onChangeEncoderPlacement('grid')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+              encoderPlacement === 'grid'
+                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+            }`}
+          >
+            2×3 Grid
+          </button>
+          <button
+            type="button"
+            onClick={() => onChangeEncoderPlacement('top')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+              encoderPlacement === 'top'
+                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+            }`}
+          >
+            Top Crown
+          </button>
+        </div>
       </div>
 
-      {/* Center Hero: Top-Down Precision CNC 5-Button Macropad (No RGB) */}
-      <div className="my-auto py-6 flex flex-col items-center">
-        {/* USB Cable Top Port Detail */}
-        <div className="w-14 h-2.5 rounded-t-md bg-zinc-800 border-x border-t border-white/15 shadow-inner" />
+      {/* Zero-Preset USB Sync Status Banner */}
+      {!connection.connected && !isSyncedWithHardware && (
+        <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <Usb className="w-4 h-4 text-[var(--accent)] shrink-0" />
+            <div className="text-xs text-[var(--text-secondary)]">
+              <strong className="text-[var(--text-primary)]">Zero presets loaded.</strong>{' '}
+              Connect your MacroPad via USB to pull its live `MAC` & `TV` macros directly into the studio.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenConnectModal}
+            style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+          >
+            Connect USB Port
+          </button>
+        </div>
+      )}
 
-        <div className="chassis-shell rounded-[26px] p-6 w-[364px] sm:w-[396px] transition-all">
-          {encoderPlacement === 'grid' ? (
-            <>
-              {/* Monochrome OLED Status Strip */}
-              {renderOledReadout(true)}
+      {/* Center: Physical Anodized Aluminum MacroPad */}
+      <div className="my-auto py-6 flex flex-col items-center justify-center">
+        <div
+          className="rounded-[34px] p-7 bg-gradient-to-b from-[#20232C] to-[#14161C] border border-white/10 shadow-[0_28px_60px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.08)]"
+          style={{ minWidth: '340px' }}
+        >
+          {/* Simulated 128x64 SSD1306 Hardware OLED Strip */}
+          <div className="mb-6 px-3.5 py-2.5 rounded-xl bg-[#090B0E] border border-white/10 shadow-inner flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: layer.color }}
+              />
+              <span className="font-mono text-[11px] font-bold text-sky-300 uppercase tracking-wider">
+                {activeProfileName} ({activeProfileId})
+              </span>
+            </div>
 
-              {/* Recessed 2×3 Switch Plate: [Key 1] [Key 2] [Encoder] / [Key 3] [Key 4] [Key 5] */}
-              <div className="chassis-well rounded-2xl p-3.5">
-                <div className="grid grid-cols-3 gap-3 place-items-center">
-                  {renderKeycap('k1')}
-                  {renderKeycap('k2')}
-                  {renderEncoderKnobControl(true)}
-                  {renderKeycap('k3')}
-                  {renderKeycap('k4')}
-                  {renderKeycap('k5')}
-                </div>
+            <div className="flex items-center gap-2.5 font-mono text-[10px]">
+              {connection.connected ? (
+                <>
+                  <span
+                    className={`flex items-center gap-1 ${
+                      telemetry?.bleConnected ? 'text-sky-400' : 'text-zinc-600'
+                    }`}
+                    title={telemetry?.bleConnected ? 'BLE Keyboard Connected' : 'BLE Idle'}
+                  >
+                    <Bluetooth className="w-3 h-3" />
+                    <span>BLE</span>
+                  </span>
+                  <span
+                    className={`flex items-center gap-1 ${
+                      telemetry?.wifiConnected ? 'text-emerald-400' : 'text-zinc-600'
+                    }`}
+                    title={
+                      telemetry?.wifiConnected
+                        ? `Wi-Fi: ${telemetry.ssid || telemetry.ip}`
+                        : 'Wi-Fi Offline'
+                    }
+                  >
+                    <Wifi className="w-3 h-3" />
+                    <span>{telemetry?.wifiConnected ? 'WIFI' : 'OFF'}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onPullFromUsb}
+                    title="Re-read hardware bindings over USB"
+                    className="text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" />
+                    <span>LIVE</span>
+                  </button>
+                </>
+              ) : (
+                <span className="text-zinc-500">
+                  {viewMode === 'test' ? 'SIM TEST' : 'USB OFFLINE'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {encoderPlacement === 'top' ? (
+            <div className="flex flex-col items-center gap-6">
+              {renderEncoderUnit('large')}
+              <div className="grid grid-cols-3 gap-4 justify-items-center">
+                {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
-            </>
+            </div>
           ) : (
-            <>
-              {/* Upper Header: Monochrome OLED + Rotary Encoder */}
-              <div className="flex items-center justify-between gap-4 pb-4 mb-4 border-b border-white/8">
-                {renderOledReadout(false)}
-                {renderEncoderKnobControl(false)}
-              </div>
-
-              {/* Recessed 5-Button Switch Plate: 3 on Top Row + 2 Centered on Bottom Row */}
-              <div className="chassis-well rounded-2xl p-3.5 space-y-3">
-                <div className="grid grid-cols-3 gap-3 place-items-center">
-                  {renderKeycap('k1')}
-                  {renderKeycap('k2')}
-                  {renderKeycap('k3')}
-                </div>
-                <div className="flex items-center justify-center gap-3">
-                  {renderKeycap('k4')}
-                  {renderKeycap('k5')}
-                </div>
-              </div>
-            </>
+            <div className="grid grid-cols-3 gap-4 items-center justify-items-center">
+              {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
+              {renderEncoderUnit('compact')}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Bottom Readout: Live Test Monitor in Test View, or Subtle Hint in Edit View */}
-      <div className="w-full max-w-2xl">
-        {viewMode === 'test' ? (
-          <div className="rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-3.5 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-[var(--text-primary)]">
-                Live Input Debugger
+      {/* Bottom: Conflict Alert or Live Hardware Test Feed */}
+      <div className="w-full max-w-2xl space-y-2">
+        {conflicts.length > 0 && viewMode === 'edit' && (
+          <div className="px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-300">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>{conflicts[0].summary}</span>
+          </div>
+        )}
+
+        {viewMode === 'test' && (
+          <div className="rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-3.5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-[var(--text-secondary)]">
+                Live Input Tester{' '}
+                {connection.connected
+                  ? '— Clicking keys or dial executes `/api/test/action` live on your MacroPad'
+                  : '— Connect USB to fire real actions on your MacroPad'}
               </span>
-              <span className="text-[11px] font-mono text-[var(--text-muted)]">
-                Press keys 1–5, [ / ] to spin dial, or click controls above
-              </span>
+              {testLog.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTestLog([])}
+                  className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Clear</span>
+                </button>
+              )}
             </div>
-            {liveEvents.length === 0 ? (
-              <div className="py-3 text-center text-xs text-[var(--text-muted)]">
-                Press any of the 5 keycaps or rotate the encoder knob to inspect triggered actions in real time.
-              </div>
+
+            {testLog.length === 0 ? (
+              <p className="text-xs text-[var(--text-muted)] py-2">
+                Click B1–B4, press the Dial, or spin CW/CCW above to test your synced macros.
+              </p>
             ) : (
-              <div className="space-y-1 max-h-28 overflow-y-auto">
-                {liveEvents.map(ev => (
+              <div className="max-h-28 overflow-y-auto space-y-1 font-mono text-[11px]">
+                {testLog.map(item => (
                   <div
-                    key={ev.id}
-                    className="flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] text-xs"
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 py-1 px-2 rounded bg-[var(--bg-input)]"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
-                        {ev.timestamp}
+                      <span className="text-[var(--text-muted)]">{item.timestamp}</span>
+                      <span className="font-semibold text-[var(--text-primary)]">
+                        {item.controlLabel}
                       </span>
-                      <span className="font-semibold text-[var(--text-primary)] whitespace-nowrap">
-                        {ev.controlLabel}
+                      <span className="px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] text-[10px] text-[var(--accent)]">
+                        {item.triggerLabel}
                       </span>
-                      <span className="text-[var(--text-muted)]">·</span>
-                      <span
-                        className="font-mono text-[11px] whitespace-nowrap"
-                        style={{ color: 'var(--accent)' }}
-                      >
-                        {ev.triggerLabel}
-                      </span>
+                      {item.dispatchedHardware && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 text-[9px] font-bold">
+                          USB SENT
+                        </span>
+                      )}
                     </div>
-                    <span className="font-mono text-[11px] text-[var(--text-secondary)] truncate">
-                      {ev.actionSummary}
+                    <span className="text-[var(--text-secondary)] truncate">
+                      {item.actionSummary}
                     </span>
                   </div>
                 ))}
               </div>
             )}
           </div>
-        ) : (
-          <div className="flex items-center justify-center gap-3 text-xs text-[var(--text-muted)]">
-            <span>Click any of the 5 buttons or rotary encoder to edit</span>
-            <span aria-hidden="true">·</span>
-            <span>Scroll over encoder knob to test rotation</span>
-            <span aria-hidden="true">·</span>
-            <span>Switch to Test view to debug Hold & Double-tap</span>
-          </div>
         )}
       </div>
     </div>
   );
-
-  function handleKeyReleaseClean(kid: KeyId) {
-    if (holdTimerRef.current[kid]) {
-      clearTimeout(holdTimerRef.current[kid]);
-      delete holdTimerRef.current[kid];
-    }
-    setPressedKeys(prev => {
-      const next = new Set(prev);
-      next.delete(kid);
-      return next;
-    });
-  }
 };
