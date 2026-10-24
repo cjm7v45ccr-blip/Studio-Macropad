@@ -1,7 +1,6 @@
 import {
   DeviceConnectionInfo,
   KeyId,
-  LightingConfig,
   StudioProfile,
   StudioSettings
 } from '../types/studio';
@@ -12,7 +11,7 @@ type HardwareEncoderListener = (event: {
   type: 'cw' | 'ccw' | 'press' | 'release';
 }) => void;
 
-const ALL_KEYS: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
+const ALL_KEYS: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5'];
 
 class UsbHardwareService {
   private hidDevice: any = null;
@@ -88,6 +87,12 @@ class UsbHardwareService {
 
     const navSerial = (navigator as any).serial;
     if (navSerial) {
+      navSerial.addEventListener('connect', async () => {
+        if (!this.serialPort) {
+          await this.tryAutoConnectSerial();
+        }
+      });
+
       navSerial.addEventListener('disconnect', (e: any) => {
         if (this.serialPort && (!e.target || e.target === this.serialPort)) {
           this.cleanupSerial();
@@ -95,6 +100,9 @@ class UsbHardwareService {
         }
       });
     }
+
+    // Instantly attempt background auto-pairing with pre-granted ports on startup
+    this.tryAutoConnectSerial();
   }
 
   private setDisconnected() {
@@ -105,6 +113,46 @@ class UsbHardwareService {
       firmwareVersion: 'v3.4.0'
     };
     this.emitConnection();
+  }
+
+  public async tryAutoConnectSerial(): Promise<boolean> {
+    if (!this.browserSupportsWebSerial || this.serialPort) return false;
+    try {
+      const ports = await (navigator as any).serial.getPorts();
+      if (ports && ports.length > 0) {
+        return await this.openPort(ports[0]);
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  private async openPort(port: any): Promise<boolean> {
+    if (this.serialPort) return true;
+    try {
+      await port.open({ baudRate: 115200 });
+      this.serialPort = port;
+      this.serialWriter = port.writable?.getWriter();
+
+      const info = port.getInfo?.() || {};
+      const vid = info.usbVendorId ? info.usbVendorId.toString(16).padStart(4, '0').toUpperCase() : '303A';
+      const pid = info.usbProductId ? info.usbProductId.toString(16).padStart(4, '0').toUpperCase() : '1001';
+
+      this.connectionInfo = {
+        connected: true,
+        transport: 'webserial',
+        deviceName: 'Studio Pad Pro',
+        firmwareVersion: 'v3.4.0',
+        vendorProduct: `${vid}:${pid}`
+      };
+      this.emitConnection();
+
+      this.readSerialLoop(port);
+      await this.sendSerialJson({ path: '/api/status' }).catch(() => {});
+      return true;
+    } catch (_) {
+      await this.cleanupSerial();
+      return false;
+    }
   }
 
   public async connectWebHid(): Promise<boolean> {
@@ -147,7 +195,7 @@ class UsbHardwareService {
   private handleHidInputReport = (event: any) => {
     try {
       const data = new Uint8Array(event.data.buffer);
-      // Protocol byte 0: 0x01 = key matrix state, 0x02 = encoder delta
+      // Protocol byte 0: 0x01 = key matrix state (0..4), 0x02 = encoder delta
       if (data[0] === 0x01 && data.length >= 3) {
         const keyIndex = data[1];
         const pressed = data[2] > 0;
@@ -273,13 +321,12 @@ class UsbHardwareService {
 
     if (this.connectionInfo.transport === 'webhid' && this.hidDevice) {
       try {
-        // Send compact 32-byte QMK/VIA style config header packet
+        // Send compact 32-byte QMK/VIA style config header packet (5 buttons + encoder, no RGB)
         const packet = new Uint8Array(32);
         packet[0] = 0x11; // CMD_SET_CONFIG
         packet[1] = profile.activeLayerIndex & 0x03;
-        packet[2] = Math.round((profile.lighting.brightness / 100) * 255);
-        packet[3] = Math.round((profile.lighting.speed / 100) * 255);
-        packet[4] = settings.globalDebounceMs & 0xff;
+        packet[2] = ALL_KEYS.length;
+        packet[3] = settings.globalDebounceMs & 0xff;
         await this.hidDevice.sendReport(0x00, packet);
       } catch (_) {}
       return {
@@ -294,14 +341,10 @@ class UsbHardwareService {
           path: '/api/studio/sync',
           profileId: profile.id,
           name: profile.name,
+          buttonCount: ALL_KEYS.length,
           activeLayer: profile.activeLayerIndex,
           debounceMs: settings.globalDebounceMs,
-          pollingRateHz: settings.pollingRateHz,
-          lighting: {
-            effect: profile.lighting.effect,
-            brightness: profile.lighting.brightness,
-            speed: profile.lighting.speed
-          }
+          pollingRateHz: settings.pollingRateHz
         });
       } catch (_) {}
       return {
@@ -314,26 +357,6 @@ class UsbHardwareService {
       syncedHardware: false,
       message: `Saved "${profile.name}"`
     };
-  }
-
-  public async streamLightingPreview(lighting: LightingConfig) {
-    if (!this.connectionInfo.connected) return;
-    try {
-      if (this.connectionInfo.transport === 'webhid' && this.hidDevice) {
-        const packet = new Uint8Array(32);
-        packet[0] = 0x07; // VIA RGB_MATRIX_SET_VALUE
-        packet[1] = Math.round((lighting.brightness / 100) * 255);
-        packet[2] = Math.round((lighting.speed / 100) * 255);
-        await this.hidDevice.sendReport(0x00, packet);
-      } else if (this.connectionInfo.transport === 'webserial' && this.serialWriter) {
-        await this.sendSerialJson({
-          path: '/api/rgb/preview',
-          effect: lighting.effect,
-          brightness: lighting.brightness,
-          speed: lighting.speed
-        });
-      }
-    } catch (_) {}
   }
 
   private async cleanupSerial() {

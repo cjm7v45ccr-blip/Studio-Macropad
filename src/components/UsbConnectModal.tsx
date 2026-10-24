@@ -79,7 +79,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
         </div>
 
         <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-          Plug in your macropad with a USB cable to stream live key press feedback, preview RGB lighting, and flash profiles directly from Chrome or Edge.
+          Plug in your macropad with a USB cable to stream live key press feedback, test rotary encoder inputs, and flash profiles directly from Chrome or Edge.
         </p>
 
         {errorMsg && (

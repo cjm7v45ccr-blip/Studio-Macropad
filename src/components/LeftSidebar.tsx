@@ -3,7 +3,6 @@ import { SidebarSection } from '../types/studio';
 import {
   Grid3X3,
   Zap,
-  Sparkles,
   Library,
   Sliders,
   Volume2,
@@ -25,7 +24,6 @@ const NAV_ITEMS: {
 }[] = [
   { id: 'device', label: 'Device', icon: Grid3X3 },
   { id: 'macros', label: 'Macros', icon: Zap },
-  { id: 'lighting', label: 'Lighting', icon: Sparkles },
   { id: 'library', label: 'Library', icon: Library },
   { id: 'settings', label: 'Settings', icon: Sliders }
 ];

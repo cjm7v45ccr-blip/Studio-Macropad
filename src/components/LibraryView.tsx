@@ -4,7 +4,7 @@ import {
   StudioProfile,
   UserPreset
 } from '../types/studio';
-import { PRESET_TEMPLATES, ALL_KEY_IDS } from '../data/presetTemplates';
+import { PRESET_TEMPLATES } from '../data/presetTemplates';
 import { KeycapIcon } from '../data/iconRegistry';
 import {
   Download,
@@ -13,7 +13,8 @@ import {
   BookmarkPlus,
   Trash2,
   Check,
-  Search
+  Search,
+  Disc
 } from 'lucide-react';
 
 interface LibraryViewProps {
@@ -112,13 +113,38 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   const renderMiniGrid = (sampleProfile: StudioProfile) => {
     const l1 = sampleProfile.layers[0];
+    const modeName = l1.encoder.modes[0]?.name || 'Dial';
+    const slots: ('k1' | 'k2' | 'encoder' | 'k3' | 'k4' | 'k5')[] = [
+      'k1',
+      'k2',
+      'encoder',
+      'k3',
+      'k4',
+      'k5'
+    ];
     return (
       <div className="grid grid-cols-3 gap-1.5 p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-        {ALL_KEY_IDS.map(kid => {
-          const k = l1.keys[kid];
+        {slots.map(slot => {
+          if (slot === 'encoder') {
+            return (
+              <div
+                key="encoder"
+                className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)]"
+                title={`Rotary Encoder: ${modeName}`}
+              >
+                <Disc className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span className="text-[9px] font-mono text-[var(--text-primary)] truncate max-w-full">
+                  {modeName}
+                </span>
+              </div>
+            );
+          }
+
+          const k = l1.keys[slot];
+          if (!k) return null;
           return (
             <div
-              key={kid}
+              key={slot}
               className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)]"
               title={`${k.appearance.label}`}
             >
@@ -317,7 +343,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 Save Current Layout to My Presets
               </div>
               <div className="text-[11px] text-[var(--text-muted)]">
-                Captures all 4 layers, encoder modes, and RGB lighting from "{activeProfile.name}"
+                Captures all 4 layers, 5 button triggers, and encoder modes from "{activeProfile.name}"
               </div>
             </div>
 

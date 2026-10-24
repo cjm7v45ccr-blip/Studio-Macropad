@@ -15,7 +15,6 @@ import { MacropadCanvas } from './components/MacropadCanvas';
 import { ButtonInspector } from './components/ButtonInspector';
 import { EncoderInspector } from './components/EncoderInspector';
 import { MacroEditorView } from './components/MacroEditorView';
-import { LightingView } from './components/LightingView';
 import { LibraryView } from './components/LibraryView';
 import { SettingsView } from './components/SettingsView';
 import { UsbConnectModal } from './components/UsbConnectModal';
@@ -90,7 +89,7 @@ export default function App() {
 
   const selectedKeyConfig =
     selectedControl !== 'encoder'
-      ? studio.activeLayer.keys[selectedControl]
+      ? studio.activeLayer.keys[selectedControl] || studio.activeLayer.keys.k1
       : null;
 
   const selectedKeyNumber =
@@ -140,7 +139,6 @@ export default function App() {
               layers={studio.activeProfile.layers}
               activeLayerIndex={studio.activeProfile.activeLayerIndex}
               onSelectLayer={studio.selectLayer}
-              lighting={studio.activeProfile.lighting}
               selectedControl={selectedControl}
               onSelectControl={setSelectedControl}
               viewMode={viewMode}
@@ -201,19 +199,6 @@ export default function App() {
             onUpdateMacros={studio.updateMacros}
             onUpdateFolders={studio.updateMacroFolders}
             onToast={showToast}
-          />
-        )}
-
-        {activeSection === 'lighting' && (
-          <LightingView
-            layer={studio.activeLayer}
-            layers={studio.activeProfile.layers}
-            activeLayerIndex={studio.activeProfile.activeLayerIndex}
-            onSelectLayer={studio.selectLayer}
-            lighting={studio.activeProfile.lighting}
-            onUpdateLighting={studio.updateLighting}
-            encoderPlacement={studio.settings.encoderPlacement}
-            macros={studio.macros}
           />
         )}
 

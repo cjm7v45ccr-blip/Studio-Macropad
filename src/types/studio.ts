@@ -1,9 +1,9 @@
-export type KeyId = 'k1' | 'k2' | 'k3' | 'k4' | 'k5' | 'k6' | 'k7' | 'k8' | 'k9';
+export type KeyId = 'k1' | 'k2' | 'k3' | 'k4' | 'k5';
 export type ControlId = KeyId | 'encoder';
 
-export type SidebarSection = 'device' | 'macros' | 'lighting' | 'library' | 'settings';
+export type SidebarSection = 'device' | 'macros' | 'library' | 'settings';
 export type CanvasViewMode = 'edit' | 'test';
-export type EncoderPlacement = 'top' | 'side';
+export type EncoderPlacement = 'grid' | 'top';
 
 export type TriggerType = 'tap' | 'hold' | 'double_tap' | 'tap_hold';
 
@@ -35,7 +35,16 @@ export interface ActionBinding {
   /** Secondary metadata depending on type */
   meta?: {
     openTargetType?: 'app' | 'file' | 'url';
-    mouseAction?: 'left_click' | 'right_click' | 'middle_click' | 'double_click' | 'scroll_up' | 'scroll_down' | 'scroll_left' | 'scroll_right' | 'move_xy';
+    mouseAction?:
+      | 'left_click'
+      | 'right_click'
+      | 'middle_click'
+      | 'double_click'
+      | 'scroll_up'
+      | 'scroll_down'
+      | 'scroll_left'
+      | 'scroll_right'
+      | 'move_xy';
     mouseAmount?: number;
     mouseY?: number;
     layerSwitchMode?: 'momentary' | 'toggle' | 'profile';
@@ -97,17 +106,6 @@ export interface EncoderControlConfig {
   feel: EncoderFeelConfig;
 }
 
-export type LightingEffect = 'solid' | 'breathing' | 'rainbow' | 'reactive' | 'ripple';
-
-export interface LightingConfig {
-  effect: LightingEffect;
-  brightness: number; // 0..100
-  speed: number; // 0..100
-  useLayerColor: boolean;
-  perKeyColors: Record<KeyId, string>;
-  encoderRingColor: string;
-}
-
 export interface LayerConfig {
   id: string;
   name: string;
@@ -122,7 +120,6 @@ export interface StudioProfile {
   appHint?: string;
   activeLayerIndex: number; // 0..3
   layers: [LayerConfig, LayerConfig, LayerConfig, LayerConfig];
-  lighting: LightingConfig;
 }
 
 export type MacroStepType = 'key_down' | 'key_up' | 'delay' | 'text' | 'mouse';

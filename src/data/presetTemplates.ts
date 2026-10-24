@@ -5,14 +5,13 @@ import {
   KeyControlConfig,
   KeyId,
   LayerConfig,
-  LightingConfig,
   MacroFolder,
   MacroItem,
   PresetTemplate,
   StudioProfile
 } from '../types/studio';
 
-export const ALL_KEY_IDS: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
+export const ALL_KEY_IDS: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5'];
 
 export const LAYER_DEFAULT_COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B'];
 
@@ -143,7 +142,7 @@ export function buildDefaultEncoder(primaryModeOverride?: Partial<EncoderModeCon
 export function buildSecondaryLayer(index: number, name: string, color: string): LayerConfig {
   const keys = {} as Record<KeyId, KeyControlConfig>;
   ALL_KEY_IDS.forEach((kid, idx) => {
-    if (idx === 8) {
+    if (idx === 4) {
       keys[kid] = makeKey(kid, 'Layer 1', 'layers', {
         type: 'layer',
         value: '0',
@@ -165,29 +164,6 @@ export function buildSecondaryLayer(index: number, name: string, color: string):
   };
 }
 
-export function buildLighting(baseColor: string, keyPalette?: Partial<Record<KeyId, string>>): LightingConfig {
-  const perKeyColors: Record<KeyId, string> = {
-    k1: baseColor,
-    k2: baseColor,
-    k3: baseColor,
-    k4: baseColor,
-    k5: baseColor,
-    k6: baseColor,
-    k7: baseColor,
-    k8: baseColor,
-    k9: baseColor,
-    ...keyPalette
-  };
-  return {
-    effect: 'reactive',
-    brightness: 82,
-    speed: 48,
-    useLayerColor: false,
-    perKeyColors,
-    encoderRingColor: baseColor
-  };
-}
-
 function makeProfileFromKeys(
   id: string,
   name: string,
@@ -195,8 +171,7 @@ function makeProfileFromKeys(
   accent: string,
   layer1Name: string,
   keys: Record<KeyId, KeyControlConfig>,
-  encoderOverride?: Partial<EncoderModeConfig>,
-  keyColors?: Partial<Record<KeyId, string>>
+  encoderOverride?: Partial<EncoderModeConfig>
 ): StudioProfile {
   const l1: LayerConfig = {
     id: 'layer-1',
@@ -206,7 +181,7 @@ function makeProfileFromKeys(
     encoder: buildDefaultEncoder(encoderOverride)
   };
   const l2 = buildSecondaryLayer(1, 'Media & Audio', '#8B5CF6');
-  l3MediaPopulate(l2);
+  populateMediaLayer(l2);
   const l3 = buildSecondaryLayer(2, 'Navigation', '#10B981');
   const l4 = buildSecondaryLayer(3, 'Macros & Fn', '#F59E0B');
 
@@ -215,21 +190,16 @@ function makeProfileFromKeys(
     name,
     appHint,
     activeLayerIndex: 0,
-    layers: [l1, l2, l3, l4],
-    lighting: buildLighting(accent, keyColors)
+    layers: [l1, l2, l3, l4]
   };
 }
 
-function l3MediaPopulate(layer: LayerConfig) {
+function populateMediaLayer(layer: LayerConfig) {
   layer.keys.k1 = makeKey('k1', 'Prev', 'skip-back', { type: 'media', value: 'Previous Track' });
   layer.keys.k2 = makeKey('k2', 'Play/Pause', 'play', { type: 'media', value: 'Play / Pause' });
   layer.keys.k3 = makeKey('k3', 'Next', 'skip-forward', { type: 'media', value: 'Next Track' });
-  layer.keys.k4 = makeKey('k4', 'Vol Down', 'volume-1', { type: 'media', value: 'Volume Down' });
-  layer.keys.k5 = makeKey('k5', 'Mute', 'volume-x', { type: 'media', value: 'Mute' });
-  layer.keys.k6 = makeKey('k6', 'Vol Up', 'volume-2', { type: 'media', value: 'Volume Up' });
-  layer.keys.k7 = makeKey('k7', 'Bright -', 'moon', { type: 'system', value: 'Brightness Down' });
-  layer.keys.k8 = makeKey('k8', 'Bright +', 'sun', { type: 'system', value: 'Brightness Up' });
-  layer.keys.k9 = makeKey('k9', 'Main Layer', 'layers', {
+  layer.keys.k4 = makeKey('k4', 'Mute', 'volume-x', { type: 'media', value: 'Mute' });
+  layer.keys.k5 = makeKey('k5', 'Main Layer', 'layers', {
     type: 'layer',
     value: '0',
     meta: { layerSwitchMode: 'toggle', targetLayerIndex: 0 }
@@ -241,7 +211,7 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
     id: 'preset-productivity',
     name: 'General Productivity',
     category: 'Productivity',
-    description: 'Essential daily shortcuts: Spotlight launcher, clipboard power tools, window snapping, screenshot, and media.',
+    description: 'Essential 5-key daily deck: Spotlight launcher, Copy/Paste with plain-paste hold, Undo/Redo, Screenshot, and Layer shift.',
     accentColor: '#3B82F6',
     icon: 'layout-grid',
     buildProfile: (nameOverride?: string) =>
@@ -253,21 +223,18 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
         'Core Actions',
         {
           k1: makeKey('k1', 'Launcher', 'search', { type: 'shortcut', value: 'Cmd+Space' }, {
-            hold: { type: 'open', value: 'https://google.com', meta: { openTargetType: 'url' } }
+            hold: { type: 'system', value: 'Lock Screen' }
           }),
-          k2: makeKey('k2', 'Copy', 'copy', { type: 'shortcut', value: 'Cmd+C' }),
-          k3: makeKey('k3', 'Paste', 'paste', { type: 'shortcut', value: 'Cmd+V' }, {
+          k2: makeKey('k2', 'Capture', 'camera', { type: 'system', value: 'Screenshot' }),
+          k3: makeKey('k3', 'Copy', 'copy', { type: 'shortcut', value: 'Cmd+C' }, {
+            double_tap: { type: 'shortcut', value: 'Cmd+X' }
+          }),
+          k4: makeKey('k4', 'Paste', 'paste', { type: 'shortcut', value: 'Cmd+V' }, {
             hold: { type: 'shortcut', value: 'Cmd+Shift+V' }
           }),
-          k4: makeKey('k4', 'Undo', 'undo', { type: 'shortcut', value: 'Cmd+Z' }),
-          k5: makeKey('k5', 'Redo', 'redo', { type: 'shortcut', value: 'Cmd+Shift+Z' }),
-          k6: makeKey('k6', 'Capture', 'camera', { type: 'system', value: 'Screenshot' }),
-          k7: makeKey('k7', 'Play/Pause', 'play', { type: 'media', value: 'Play / Pause' }),
-          k8: makeKey('k8', 'Lock OS', 'lock', { type: 'system', value: 'Lock Screen' }),
-          k9: makeKey('k9', 'Layer 2', 'layers', {
-            type: 'layer',
-            value: '1',
-            meta: { layerSwitchMode: 'momentary', targetLayerIndex: 1 }
+          k5: makeKey('k5', 'Undo', 'undo', { type: 'shortcut', value: 'Cmd+Z' }, {
+            hold: { type: 'layer', value: '1', meta: { layerSwitchMode: 'momentary', targetLayerIndex: 1 } },
+            double_tap: { type: 'shortcut', value: 'Cmd+Shift+Z' }
           })
         }
       )
@@ -276,7 +243,7 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
     id: 'preset-vscode',
     name: 'VS Code',
     category: 'Code',
-    description: 'Command palette, integrated terminal, split pane, quick search, git commit macro, and step debugger.',
+    description: 'Command palette, quick file search, integrated terminal, git stage macro, and step debugger with rotary scroll.',
     accentColor: '#0EA5E9',
     icon: 'code',
     buildProfile: (nameOverride?: string) =>
@@ -290,12 +257,10 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
           k1: makeKey('k1', 'Palette', 'command', { type: 'shortcut', value: 'Cmd+Shift+P' }),
           k2: makeKey('k2', 'Find File', 'search', { type: 'shortcut', value: 'Cmd+P' }),
           k3: makeKey('k3', 'Terminal', 'terminal', { type: 'shortcut', value: 'Ctrl+`' }),
-          k4: makeKey('k4', 'Split Pane', 'columns', { type: 'shortcut', value: 'Cmd+\\' }),
-          k5: makeKey('k5', 'Format', 'code', { type: 'shortcut', value: 'Shift+Alt+F' }),
-          k6: makeKey('k6', 'Git Push', 'git-commit', { type: 'macro', value: 'macro-git-sync' }),
-          k7: makeKey('k7', 'Debug', 'bug', { type: 'shortcut', value: 'F5' }),
-          k8: makeKey('k8', 'Comment', 'file-text', { type: 'shortcut', value: 'Cmd+/' }),
-          k9: makeKey('k9', 'Zen Mode', 'maximize', { type: 'shortcut', value: 'Cmd+K' })
+          k4: makeKey('k4', 'Git Sync', 'git-commit', { type: 'macro', value: 'macro-git-sync' }),
+          k5: makeKey('k5', 'Debug', 'bug', { type: 'shortcut', value: 'F5' }, {
+            hold: { type: 'shortcut', value: 'Shift+Alt+F' }
+          })
         },
         {
           name: 'Tab / Scroll',
@@ -313,7 +278,7 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
     id: 'preset-photoshop',
     name: 'Photoshop',
     category: 'Creative',
-    description: 'Brush size rotary dial, Eyedropper, Lasso, Undo/Redo history, Transform, New Layer, and Export.',
+    description: 'Brush size rotary dial, Brush/Eraser tap-hold, Eyedropper sample, Lasso, Undo/Redo, and Free Transform.',
     accentColor: '#2563EB',
     icon: 'brush',
     buildProfile: (nameOverride?: string) =>
@@ -324,15 +289,17 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
         '#2563EB',
         'Retouch & Brush',
         {
-          k1: makeKey('k1', 'Brush', 'brush', { type: 'shortcut', value: 'B' }),
+          k1: makeKey('k1', 'Brush', 'brush', { type: 'shortcut', value: 'B' }, {
+            hold: { type: 'shortcut', value: 'E' }
+          }),
           k2: makeKey('k2', 'Sample', 'pipette', { type: 'shortcut', value: 'I' }),
           k3: makeKey('k3', 'Lasso', 'wand', { type: 'shortcut', value: 'L' }),
-          k4: makeKey('k4', 'Undo', 'undo', { type: 'shortcut', value: 'Cmd+Z' }),
-          k5: makeKey('k5', 'Transform', 'move', { type: 'shortcut', value: 'Cmd+T' }),
-          k6: makeKey('k6', 'New Layer', 'layers', { type: 'shortcut', value: 'Cmd+Shift+N' }),
-          k7: makeKey('k7', 'Fit View', 'maximize', { type: 'shortcut', value: 'Cmd+0' }),
-          k8: makeKey('k8', 'Deselect', 'crop', { type: 'shortcut', value: 'Cmd+D' }),
-          k9: makeKey('k9', 'Export', 'save', { type: 'shortcut', value: 'Cmd+Alt+Shift+W' })
+          k4: makeKey('k4', 'Transform', 'move', { type: 'shortcut', value: 'Cmd+T' }, {
+            hold: { type: 'shortcut', value: 'Cmd+Shift+N' }
+          }),
+          k5: makeKey('k5', 'Undo', 'undo', { type: 'shortcut', value: 'Cmd+Z' }, {
+            double_tap: { type: 'shortcut', value: 'Cmd+Shift+Z' }
+          })
         },
         {
           name: 'Brush Size',
@@ -350,7 +317,7 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
     id: 'preset-premiere',
     name: 'Premiere Pro',
     category: 'Creative',
-    description: 'Frame-accurate jog dial, Razor blade, Ripple delete, In/Out markers, timeline zoom, and quick export.',
+    description: 'Frame-accurate jog dial, Razor blade, Ripple delete, In/Out markers, and Play/Stop transport.',
     accentColor: '#8B5CF6',
     icon: 'clapperboard',
     buildProfile: (nameOverride?: string) =>
@@ -361,15 +328,15 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
         '#8B5CF6',
         'Timeline Edit',
         {
-          k1: makeKey('k1', 'Mark In', 'bookmark', { type: 'shortcut', value: 'I' }),
-          k2: makeKey('k2', 'Razor Cut', 'scissors', { type: 'shortcut', value: 'C' }),
-          k3: makeKey('k3', 'Mark Out', 'bookmark', { type: 'shortcut', value: 'O' }),
+          k1: makeKey('k1', 'Mark In', 'bookmark', { type: 'shortcut', value: 'I' }, {
+            hold: { type: 'shortcut', value: 'M' }
+          }),
+          k2: makeKey('k2', 'Mark Out', 'bookmark', { type: 'shortcut', value: 'O' }),
+          k3: makeKey('k3', 'Razor Cut', 'scissors', { type: 'shortcut', value: 'C' }),
           k4: makeKey('k4', 'Ripple Del', 'wand', { type: 'shortcut', value: 'Shift+Delete' }),
-          k5: makeKey('k5', 'Play/Stop', 'play', { type: 'shortcut', value: 'Space' }),
-          k6: makeKey('k6', 'Add Marker', 'sparkles', { type: 'shortcut', value: 'M' }),
-          k7: makeKey('k7', 'Undo', 'undo', { type: 'shortcut', value: 'Cmd+Z' }),
-          k8: makeKey('k8', 'Zoom Fit', 'zoom-in', { type: 'shortcut', value: '\\' }),
-          k9: makeKey('k9', 'Export', 'save', { type: 'shortcut', value: 'Cmd+M' })
+          k5: makeKey('k5', 'Play/Stop', 'play', { type: 'shortcut', value: 'Space' }, {
+            hold: { type: 'shortcut', value: 'Cmd+M' }
+          })
         },
         {
           name: 'Jog Frame',
@@ -387,7 +354,7 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
     id: 'preset-davinci',
     name: 'DaVinci Resolve',
     category: 'Creative',
-    description: 'Color grading nodes, Blade edit, bypass grade preview, still grab, and jog/shuttle control.',
+    description: 'Split clip, Blade mode, Serial color node, Bypass LUT preview, Grab Still, and rotary clip scrub.',
     accentColor: '#F43F5E',
     icon: 'palette',
     buildProfile: (nameOverride?: string) =>
@@ -399,14 +366,12 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
         'Edit & Color',
         {
           k1: makeKey('k1', 'Split Clip', 'scissors', { type: 'shortcut', value: 'Cmd+\\' }),
-          k2: makeKey('k2', 'Blade Mode', 'wand', { type: 'shortcut', value: 'B' }),
-          k3: makeKey('k3', 'Select', 'mouse', { type: 'shortcut', value: 'A' }),
-          k4: makeKey('k4', 'Serial Node', 'layers', { type: 'shortcut', value: 'Alt+S' }),
-          k5: makeKey('k5', 'Bypass LUT', 'palette', { type: 'shortcut', value: 'Shift+D' }),
-          k6: makeKey('k6', 'Grab Still', 'camera', { type: 'shortcut', value: 'Cmd+Alt+G' }),
-          k7: makeKey('k7', 'Prev Clip', 'skip-back', { type: 'shortcut', value: 'ArrowUp' }),
-          k8: makeKey('k8', 'Next Clip', 'skip-forward', { type: 'shortcut', value: 'ArrowDown' }),
-          k9: makeKey('k9', 'Cinema', 'maximize', { type: 'shortcut', value: 'Cmd+F' })
+          k2: makeKey('k2', 'Blade Mode', 'wand', { type: 'shortcut', value: 'B' }, {
+            hold: { type: 'shortcut', value: 'A' }
+          }),
+          k3: makeKey('k3', 'Serial Node', 'layers', { type: 'shortcut', value: 'Alt+S' }),
+          k4: makeKey('k4', 'Bypass LUT', 'palette', { type: 'shortcut', value: 'Shift+D' }),
+          k5: makeKey('k5', 'Grab Still', 'camera', { type: 'shortcut', value: 'Cmd+Alt+G' })
         },
         {
           name: 'Scrub Clip',
@@ -420,7 +385,7 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
     id: 'preset-obs',
     name: 'OBS / Streaming',
     category: 'Streaming',
-    description: 'Instant scene switching, mic mute indicator, replay buffer save, stream webhook trigger, and audio fader.',
+    description: 'Instant scene switching, mic mute toggle, replay buffer save, Go Live macro, and rotary audio fader.',
     accentColor: '#10B981',
     icon: 'radio',
     buildProfile: (nameOverride?: string) =>
@@ -432,20 +397,12 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
         'Live Broadcast',
         {
           k1: makeKey('k1', 'Main Cam', 'video', { type: 'shortcut', value: 'Ctrl+Shift+F1' }, { labelColor: '#6EE7B7' }),
-          k2: makeKey('k2', 'Desktop', 'monitor-up', { type: 'shortcut', value: 'Ctrl+Shift+F2' }),
-          k3: makeKey('k3', 'BRB Slate', 'clapperboard', { type: 'shortcut', value: 'Ctrl+Shift+F3' }),
-          k4: makeKey('k4', 'Mute Mic', 'mic-off', { type: 'shortcut', value: 'Ctrl+Shift+M' }, { labelColor: '#FCA5A5' }),
-          k5: makeKey('k5', 'Save Clip', 'bookmark', { type: 'shortcut', value: 'Ctrl+Shift+R' }),
-          k6: makeKey('k6', 'Studio UI', 'columns', { type: 'shortcut', value: 'Ctrl+Shift+T' }),
-          k7: makeKey('k7', 'SFX Horn', 'volume-2', { type: 'webhook', value: 'http://localhost:4455/api/sfx/airhorn', meta: { webhookMethod: 'POST' } }),
-          k8: makeKey('k8', 'Key Light', 'sun', { type: 'webhook', value: 'http://homeassistant.local:8123/api/webhook/keylight', meta: { webhookMethod: 'POST' } }),
-          k9: makeKey('k9', 'Go Live', 'radio', { type: 'macro', value: 'macro-obs-live' }, { labelColor: '#FDE68A' })
-        },
-        undefined,
-        {
-          k1: '#10B981',
-          k4: '#EF4444',
-          k9: '#F59E0B'
+          k2: makeKey('k2', 'Desktop', 'monitor-up', { type: 'shortcut', value: 'Ctrl+Shift+F2' }, {
+            hold: { type: 'shortcut', value: 'Ctrl+Shift+F3' }
+          }),
+          k3: makeKey('k3', 'Mute Mic', 'mic-off', { type: 'shortcut', value: 'Ctrl+Shift+M' }, { labelColor: '#FCA5A5' }),
+          k4: makeKey('k4', 'Save Clip', 'bookmark', { type: 'shortcut', value: 'Ctrl+Shift+R' }),
+          k5: makeKey('k5', 'Go Live', 'radio', { type: 'macro', value: 'macro-obs-live' }, { labelColor: '#FDE68A' })
         }
       )
   },
@@ -453,7 +410,7 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
     id: 'preset-figma',
     name: 'Figma',
     category: 'Creative',
-    description: 'Auto-layout, component creation, frame tool, color picker, UI hide, and smooth canvas zoom.',
+    description: 'Frame tool, Auto-layout, Create Component, Color Eyedropper, Quick Actions, and smooth rotary canvas zoom.',
     accentColor: '#A855F7',
     icon: 'pen-tool',
     buildProfile: (nameOverride?: string) =>
@@ -467,12 +424,10 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
           k1: makeKey('k1', 'Frame', 'crop', { type: 'shortcut', value: 'F' }),
           k2: makeKey('k2', 'Auto Layout', 'layout-grid', { type: 'shortcut', value: 'Shift+A' }),
           k3: makeKey('k3', 'Component', 'layers', { type: 'shortcut', value: 'Alt+Cmd+K' }),
-          k4: makeKey('k4', 'Pen Tool', 'pen-tool', { type: 'shortcut', value: 'P' }),
-          k5: makeKey('k5', 'Color Pick', 'pipette', { type: 'shortcut', value: 'Ctrl+C' }),
-          k6: makeKey('k6', 'Quick Run', 'command', { type: 'shortcut', value: 'Cmd+/' }),
-          k7: makeKey('k7', 'Hide UI', 'maximize', { type: 'shortcut', value: 'Cmd+\\' }),
-          k8: makeKey('k8', 'Present', 'play', { type: 'shortcut', value: 'Alt+Cmd+Enter' }),
-          k9: makeKey('k9', 'Export PNG', 'save', { type: 'shortcut', value: 'Cmd+Shift+E' })
+          k4: makeKey('k4', 'Color Pick', 'pipette', { type: 'shortcut', value: 'Ctrl+C' }),
+          k5: makeKey('k5', 'Quick Run', 'command', { type: 'shortcut', value: 'Cmd+/' }, {
+            hold: { type: 'shortcut', value: 'Cmd+Shift+E' }
+          })
         },
         {
           name: 'Canvas Zoom',
@@ -486,7 +441,7 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
     id: 'preset-spotify',
     name: 'Spotify',
     category: 'Media & Comms',
-    description: 'Dedicated tactile music deck: Play/Pause, Track Skip, Like Song, Shuffle, Repeat, and precision Volume.',
+    description: 'Dedicated 5-key tactile music deck: Previous, Play/Pause, Next Track, Like Song, Shuffle, and precision rotary Volume.',
     accentColor: '#22C55E',
     icon: 'play',
     buildProfile: (nameOverride?: string) =>
@@ -501,11 +456,9 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
           k2: makeKey('k2', 'Play/Pause', 'play', { type: 'media', value: 'Play / Pause' }),
           k3: makeKey('k3', 'Next', 'skip-forward', { type: 'media', value: 'Next Track' }),
           k4: makeKey('k4', 'Like Song', 'heart', { type: 'shortcut', value: 'Alt+Shift+B' }),
-          k5: makeKey('k5', 'Shuffle', 'shuffle', { type: 'shortcut', value: 'Cmd+S' }),
-          k6: makeKey('k6', 'Repeat', 'repeat', { type: 'shortcut', value: 'Cmd+R' }),
-          k7: makeKey('k7', 'Search', 'search', { type: 'shortcut', value: 'Cmd+L' }),
-          k8: makeKey('k8', 'Mute', 'volume-x', { type: 'media', value: 'Mute' }),
-          k9: makeKey('k9', 'Open App', 'globe', { type: 'open', value: 'Spotify', meta: { openTargetType: 'app' } })
+          k5: makeKey('k5', 'Shuffle', 'shuffle', { type: 'shortcut', value: 'Cmd+S' }, {
+            hold: { type: 'open', value: 'Spotify', meta: { openTargetType: 'app' } }
+          })
         }
       )
   },
@@ -513,7 +466,7 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
     id: 'preset-zoom',
     name: 'Zoom Meetings',
     category: 'Media & Comms',
-    description: 'Zero-fumble conference controls: Mic Mute, Video Toggle, Share Screen, Raise Hand, Record, and Leave Call.',
+    description: 'Zero-fumble conference controls: Mic Mute, Camera Toggle, Share Screen, Raise Hand, and Leave Call.',
     accentColor: '#38BDF8',
     icon: 'video',
     buildProfile: (nameOverride?: string) =>
@@ -527,18 +480,10 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
           k1: makeKey('k1', 'Mute Mic', 'mic-off', { type: 'shortcut', value: 'Cmd+Shift+A' }, { labelColor: '#FCA5A5' }),
           k2: makeKey('k2', 'Camera', 'video', { type: 'shortcut', value: 'Cmd+Shift+V' }),
           k3: makeKey('k3', 'Share', 'monitor-up', { type: 'shortcut', value: 'Cmd+Shift+S' }, { labelColor: '#86EFAC' }),
-          k4: makeKey('k4', 'Raise Hand', 'hand', { type: 'shortcut', value: 'Alt+Y' }),
-          k5: makeKey('k5', 'Chat', 'message-square', { type: 'shortcut', value: 'Cmd+Shift+H' }),
-          k6: makeKey('k6', 'Gallery', 'layout-grid', { type: 'shortcut', value: 'Cmd+Shift+W' }),
-          k7: makeKey('k7', 'Record', 'radio', { type: 'shortcut', value: 'Cmd+Shift+R' }),
-          k8: makeKey('k8', 'Fullscreen', 'maximize', { type: 'shortcut', value: 'Cmd+Shift+F' }),
-          k9: makeKey('k9', 'Leave Call', 'phone-off', { type: 'shortcut', value: 'Cmd+W' }, { labelColor: '#FDA4AF' })
-        },
-        undefined,
-        {
-          k1: '#EF4444',
-          k3: '#22C55E',
-          k9: '#F43F5E'
+          k4: makeKey('k4', 'Raise Hand', 'hand', { type: 'shortcut', value: 'Alt+Y' }, {
+            hold: { type: 'shortcut', value: 'Cmd+Shift+H' }
+          }),
+          k5: makeKey('k5', 'Leave Call', 'phone-off', { type: 'shortcut', value: 'Cmd+W' }, { labelColor: '#FDA4AF' })
         }
       )
   }

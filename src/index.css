@@ -126,32 +126,3 @@ body {
     inset 0 -2px 5px rgba(0, 0, 0, 0.7);
 }
 
-/* RGB Lighting Keyframe Animations */
-@keyframes rgb-breathe {
-  0%, 100% {
-    opacity: 0.28;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes rgb-rainbow {
-  0% { filter: hue-rotate(0deg); }
-  100% { filter: hue-rotate(360deg); }
-}
-
-.animate-rgb-breathe {
-  animation: rgb-breathe var(--rgb-duration, 2.8s) ease-in-out infinite;
-}
-
-.animate-rgb-rainbow {
-  animation: rgb-rainbow var(--rgb-duration, 4s) linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-rgb-breathe,
-  .animate-rgb-rainbow {
-    animation: none;
-  }
-}

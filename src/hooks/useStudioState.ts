@@ -6,7 +6,6 @@ import {
   KeyControlConfig,
   KeyId,
   LayerConfig,
-  LightingConfig,
   MacroFolder,
   MacroItem,
   StudioProfile,
@@ -20,11 +19,12 @@ import {
   DEFAULT_MACRO_FOLDERS,
   PRESET_TEMPLATES,
   makeKey,
-  emptyAction
+  emptyAction,
+  buildDefaultEncoder
 } from '../data/presetTemplates';
 import { soundEngine } from '../services/soundEffects';
 
-const STORAGE_KEY = 'studio_macropad_workspace_v2';
+const STORAGE_KEY = 'studio_macropad_workspace_v3_5key';
 
 interface WorkspaceSnapshot {
   profiles: StudioProfile[];
@@ -51,9 +51,49 @@ const DEFAULT_SETTINGS: StudioSettings = {
   keyboardLayout: 'us_qwerty',
   pollingRateHz: 1000,
   globalDebounceMs: 12,
-  encoderPlacement: 'top',
+  encoderPlacement: 'grid',
   soundEnabled: true
 };
+
+function normalizeProfile(raw: any): StudioProfile {
+  const fallback = PRESET_TEMPLATES[0].buildProfile(raw?.name || 'Imported Profile');
+  if (!raw || !Array.isArray(raw.layers) || raw.layers.length < 4) {
+    return fallback;
+  }
+
+  const normalizedLayers = raw.layers.slice(0, 4).map((layer: any, lIdx: number): LayerConfig => {
+    const keys = {} as Record<KeyId, KeyControlConfig>;
+    ALL_KEY_IDS.forEach((kid, kIdx) => {
+      const candidate = layer?.keys?.[kid];
+      if (candidate && candidate.triggers && candidate.appearance && candidate.advanced) {
+        keys[kid] = candidate;
+      } else {
+        keys[kid] = makeKey(kid, `Key ${kIdx + 1}`, 'none', emptyAction());
+      }
+    });
+
+    return {
+      id: layer?.id || `layer-${lIdx + 1}`,
+      name: layer?.name || `Layer ${lIdx + 1}`,
+      color: layer?.color || fallback.layers[lIdx].color,
+      keys,
+      encoder: layer?.encoder && Array.isArray(layer.encoder.modes)
+        ? layer.encoder
+        : buildDefaultEncoder()
+    };
+  }) as StudioProfile['layers'];
+
+  return {
+    id: raw.id || `prof-${Date.now()}`,
+    name: raw.name || 'Custom Profile',
+    appHint: raw.appHint,
+    activeLayerIndex:
+      typeof raw.activeLayerIndex === 'number' && raw.activeLayerIndex >= 0 && raw.activeLayerIndex < 4
+        ? raw.activeLayerIndex
+        : 0,
+    layers: normalizedLayers
+  };
+}
 
 function hexToRgbString(hex: string): string {
   const clean = hex.replace('#', '');
@@ -72,13 +112,23 @@ export function useStudioState(onToast: (msg: string) => void) {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed.profiles) && parsed.profiles.length > 0) {
+          const safeProfiles = parsed.profiles.map(normalizeProfile);
+          const safePlacement =
+            parsed.settings?.encoderPlacement === 'top' ? 'top' : 'grid';
           return {
-            profiles: parsed.profiles,
-            activeProfileId: parsed.activeProfileId || parsed.profiles[0].id,
+            profiles: safeProfiles,
+            activeProfileId: parsed.activeProfileId || safeProfiles[0].id,
             macros: parsed.macros || DEFAULT_MACROS,
             macroFolders: parsed.macroFolders || DEFAULT_MACRO_FOLDERS,
-            userPresets: parsed.userPresets || [],
-            settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }
+            userPresets: (parsed.userPresets || []).map((up: any) => ({
+              ...up,
+              profile: normalizeProfile(up.profile)
+            })),
+            settings: {
+              ...DEFAULT_SETTINGS,
+              ...(parsed.settings || {}),
+              encoderPlacement: safePlacement
+            }
           };
         }
       }
@@ -137,12 +187,12 @@ export function useStudioState(onToast: (msg: string) => void) {
       try {
         const encoded = hash.slice('#preset='.length);
         const decoded = JSON.parse(decodeURIComponent(atob(encoded)));
-        if (decoded && Array.isArray(decoded.layers) && decoded.layers.length === 4) {
-          const imported: StudioProfile = {
+        if (decoded && Array.isArray(decoded.layers) && decoded.layers.length >= 4) {
+          const imported: StudioProfile = normalizeProfile({
             ...decoded,
             id: `prof-${Date.now()}`,
             name: `${decoded.name || 'Shared'} (Imported)`
-          };
+          });
           setSnapshot(prev => ({
             ...prev,
             profiles: [...prev.profiles, imported],
@@ -228,8 +278,8 @@ export function useStudioState(onToast: (msg: string) => void) {
     const seen = new Map<string, KeyId>();
 
     for (const kid of ALL_KEY_IDS) {
-      const tap = activeLayer.keys[kid].triggers.tap;
-      if (tap.type === 'none' || !tap.value) continue;
+      const tap = activeLayer.keys[kid]?.triggers.tap;
+      if (!tap || tap.type === 'none' || !tap.value) continue;
       const signature = `${tap.type}:${tap.value.toLowerCase()}`;
       const existingKey = seen.get(signature);
       if (existingKey) {
@@ -408,18 +458,11 @@ export function useStudioState(onToast: (msg: string) => void) {
     });
   };
 
-  const updateLighting = (nextLighting: LightingConfig) => {
-    updateActiveProfile(p => ({
-      ...p,
-      lighting: nextLighting
-    }));
-  };
-
   const applyTemplateToActiveProfile = (templateProfile: StudioProfile) => {
+    const normalized = normalizeProfile(templateProfile);
     updateActiveProfile(p => ({
       ...p,
-      layers: JSON.parse(JSON.stringify(templateProfile.layers)),
-      lighting: JSON.parse(JSON.stringify(templateProfile.lighting)),
+      layers: JSON.parse(JSON.stringify(normalized.layers)),
       activeLayerIndex: 0
     }));
     onToast(`Applied "${templateProfile.name}" layout to ${activeProfile.name}`);
@@ -441,17 +484,18 @@ export function useStudioState(onToast: (msg: string) => void) {
   };
 
   const importProfileJson = (prof: StudioProfile) => {
+    const safeProf = normalizeProfile(prof);
     commitChange(prev => ({
       ...prev,
-      profiles: [...prev.profiles, prof],
-      activeProfileId: prof.id
+      profiles: [...prev.profiles, safeProf],
+      activeProfileId: safeProf.id
     }));
-    onToast(`Imported profile "${prof.name}"`);
+    onToast(`Imported profile "${safeProf.name}"`);
   };
 
   const exportFullBackup = () => {
     const full = {
-      schema: 'studio-pad-workspace-v2',
+      schema: 'studio-pad-workspace-v3-5key',
       exportedAt: new Date().toISOString(),
       ...snapshot,
       userPresets,
@@ -476,14 +520,25 @@ export function useStudioState(onToast: (msg: string) => void) {
           onToast('Invalid backup file');
           return;
         }
+        const safeProfiles = parsed.profiles.map(normalizeProfile);
         setSnapshot({
-          profiles: parsed.profiles,
-          activeProfileId: parsed.activeProfileId || parsed.profiles[0].id,
+          profiles: safeProfiles,
+          activeProfileId: parsed.activeProfileId || safeProfiles[0].id,
           macros: parsed.macros || DEFAULT_MACROS,
           macroFolders: parsed.macroFolders || DEFAULT_MACRO_FOLDERS
         });
-        if (Array.isArray(parsed.userPresets)) setUserPresets(parsed.userPresets);
-        if (parsed.settings) setSettings({ ...DEFAULT_SETTINGS, ...parsed.settings });
+        if (Array.isArray(parsed.userPresets)) {
+          setUserPresets(
+            parsed.userPresets.map((up: any) => ({
+              ...up,
+              profile: normalizeProfile(up.profile)
+            }))
+          );
+        }
+        if (parsed.settings) {
+          const safePlacement = parsed.settings.encoderPlacement === 'top' ? 'top' : 'grid';
+          setSettings({ ...DEFAULT_SETTINGS, ...parsed.settings, encoderPlacement: safePlacement });
+        }
         setPast([]);
         setFuture([]);
         setHasUnsavedChanges(true);
@@ -540,7 +595,6 @@ export function useStudioState(onToast: (msg: string) => void) {
     resetKey,
     updateEncoder,
     cycleEncoderMode,
-    updateLighting,
     updateMacros: (nextMacros: MacroItem[]) =>
       commitChange(prev => ({ ...prev, macros: nextMacros })),
     updateMacroFolders: (nextFolders: MacroFolder[]) =>
