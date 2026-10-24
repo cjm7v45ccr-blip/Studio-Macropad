@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ConnectionMode, FirmwareStatus, ProfileMode, SlotId } from '../types/macropod';
+import { FirmwareStatus, ProfileMode, SlotId } from '../types/macropod';
 import { getActionDetails } from '../data/actionLibrary';
 import { OledScreen } from './OledScreen';
 import { RotateCw, RotateCcw, Volume2, VolumeX } from 'lucide-react';
@@ -8,7 +8,6 @@ import { soundEngine } from '../services/soundEffects';
 interface PhysicalPadProps {
   status: FirmwareStatus | null;
   isConnected: boolean;
-  connectionMode: ConnectionMode;
   selectedSlot: SlotId;
   onSelectSlot: (slot: SlotId) => void;
   onToggleMode: () => void;
@@ -19,7 +18,6 @@ interface PhysicalPadProps {
 export const PhysicalPad: React.FC<PhysicalPadProps> = ({
   status,
   isConnected,
-  connectionMode,
   selectedSlot,
   onSelectSlot,
   onToggleMode,
@@ -75,10 +73,10 @@ export const PhysicalPad: React.FC<PhysicalPadProps> = ({
   };
 
   const keys: { slot: SlotId; label: string; pin: string }[] = [
-    { slot: 'b1', label: 'B1', pin: 'GPIO 4' },
-    { slot: 'b2', label: 'B2', pin: 'GPIO 5' },
-    { slot: 'b3', label: 'B3', pin: 'GPIO 6' },
-    { slot: 'b4', label: 'B4', pin: 'GPIO 7' }
+    { slot: 'b1', label: 'B1', pin: 'GPIO 26' },
+    { slot: 'b2', label: 'B2', pin: 'GPIO 27' },
+    { slot: 'b3', label: 'B3', pin: 'GPIO 14' },
+    { slot: 'b4', label: 'B4', pin: 'GPIO 16' }
   ];
 
   return (
@@ -94,11 +92,7 @@ export const PhysicalPad: React.FC<PhysicalPadProps> = ({
           <OledScreen
             mode={activeMode}
             toast={activeToast}
-            wifiConnected={!!status?.wifi_connected}
-            bleConnected={!!status?.connection?.ble_connected || connectionMode === 'bluetooth'}
-            ip={status?.ip || '192.168.4.1'}
             isConnected={isConnected}
-            connectionMode={connectionMode}
           />
 
           {/* Right Controls: LEDs and Mode Button */}
@@ -115,7 +109,7 @@ export const PhysicalPad: React.FC<PhysicalPadProps> = ({
 
               <div className="flex flex-col items-center gap-0.5">
                 <span className={`w-2 h-2 rounded-full transition-all ${
-                  connectionMode === 'bluetooth' || status?.connection?.ble_connected
+                  isConnected && status?.connection?.ble_connected
                     ? 'bg-blue-400 shadow-[0_0_8px_#60a5fa]'
                     : 'bg-slate-700'
                 }`} />

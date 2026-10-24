@@ -6,16 +6,46 @@
 }
 
 :root {
+  --bg-canvas: #0E0F13;
+  --bg-panel: #16181F;
+  --bg-elevated: #1D202A;
+  --bg-input: #111319;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --text-primary: #F3F4F6;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
+  --accent: #3B82F6;
+  --accent-rgb: 59, 130, 246;
   color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg-canvas: #F3F4F8;
+  --bg-panel: #FFFFFF;
+  --bg-elevated: #EBEEF5;
+  --bg-input: #F8F9FC;
+  --border-subtle: rgba(15, 23, 42, 0.09);
+  --border-strong: rgba(15, 23, 42, 0.18);
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #64748B;
+  color-scheme: light;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #08090d;
-  color: #f1f5f9;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  margin: 0;
+  overflow-x: hidden;
 }
 
-/* Custom scrollbar for high density lists */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom subtle scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -24,36 +54,104 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #232a3b;
+  background: rgba(148, 163, 184, 0.2);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3b4661;
+  background: rgba(148, 163, 184, 0.35);
 }
 
-/* Tactile keycap styling */
-.keycap-bevel {
-  background: linear-gradient(180deg, #1e2433 0%, #121622 100%);
-  box-shadow: 
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 -2px 4px 0 rgba(0, 0, 0, 0.5),
-    0 4px 10px rgba(0, 0, 0, 0.5),
-    0 1px 2px rgba(0, 0, 0, 0.6);
-}
-
-.keycap-pressed {
-  transform: translateY(2px) scale(0.98);
-  box-shadow: 
-    inset 0 2px 4px 0 rgba(0, 0, 0, 0.7),
-    0 1px 2px rgba(0, 0, 0, 0.4);
-}
-
-/* Metallic rotary dial texture */
-.knurled-dial {
-  background: 
-    radial-gradient(circle at 35% 35%, #2a3346 0%, #151a25 50%, #0d1017 100%);
+/* Hardware Chassis & Tactile Keycaps */
+.chassis-shell {
+  background: linear-gradient(165deg, #202430 0%, #141720 55%, #0E1016 100%);
   box-shadow:
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -2px 6px 0 rgba(0, 0, 0, 0.8),
-    0 6px 16px rgba(0, 0, 0, 0.6);
+    0 28px 60px -15px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(255, 255, 255, 0.09),
+    inset 0 1px 1px rgba(255, 255, 255, 0.12),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.65);
+}
+
+.chassis-well {
+  background: #0A0B0F;
+  box-shadow:
+    inset 0 3px 8px rgba(0, 0, 0, 0.85),
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.keycap-surface {
+  background: linear-gradient(180deg, #232734 0%, #181B24 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.14),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.55),
+    0 5px 10px rgba(0, 0, 0, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.75);
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1), border-color 150ms ease;
+}
+
+.keycap-surface:hover {
+  background: linear-gradient(180deg, #292E3D 0%, #1C202B 100%);
+}
+
+.keycap-depressed {
+  transform: translateY(3px) scale(0.965) !important;
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.75),
+    0 1px 2px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Precision Knurled Rotary Encoder */
+.encoder-ring {
+  background: conic-gradient(
+    from 0deg,
+    #282D3C,
+    #161922,
+    #2F3546,
+    #141720,
+    #2A3040,
+    #161922,
+    #2D3344,
+    #151821,
+    #282D3C
+  );
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 1px 2px rgba(255, 255, 255, 0.18);
+}
+
+.encoder-cap {
+  background: radial-gradient(circle at 32% 28%, #2E3446 0%, #1A1E29 58%, #11131B 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    inset 0 -2px 5px rgba(0, 0, 0, 0.7);
+}
+
+/* RGB Lighting Keyframe Animations */
+@keyframes rgb-breathe {
+  0%, 100% {
+    opacity: 0.28;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes rgb-rainbow {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+
+.animate-rgb-breathe {
+  animation: rgb-breathe var(--rgb-duration, 2.8s) ease-in-out infinite;
+}
+
+.animate-rgb-rainbow {
+  animation: rgb-rainbow var(--rgb-duration, 4s) linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rgb-breathe,
+  .animate-rgb-rainbow {
+    animation: none;
+  }
 }
