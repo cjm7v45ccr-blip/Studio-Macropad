@@ -7,6 +7,7 @@ import {
   DeviceConnectionInfo,
   EncoderSubControlId,
   HardwareProfileId,
+  KeyId,
   SidebarSection
 } from './types/studio';
 import {
@@ -116,7 +117,7 @@ export default function App() {
       setConnectModalError(null);
       await usbHardware.connectDemoMode();
       setConnectModalOpen(false);
-      showToast('Started Demo Mode — all 7 controls and settings are active');
+      showToast('Started Demo Mode — all 11 controls and settings are active');
     } catch (err: any) {
       showToast(err?.message || 'Could not start Demo Mode', 'error');
     }
@@ -196,7 +197,7 @@ export default function App() {
       : 'dial';
 
   const selectedKeyConfig = !isEncoderControlSelected
-    ? studio.activeLayer.keys[selectedControl as 'k1' | 'k2' | 'k3' | 'k4' | 'k5'] ||
+    ? studio.activeLayer.keys[selectedControl as KeyId] ||
       studio.activeLayer.keys.k1
     : null;
 
@@ -445,7 +446,7 @@ export default function App() {
         }
         description={
           pendingCopyPair
-            ? `All 7 controls on ${pendingCopyPair.target} will be overwritten with ${pendingCopyPair.source}'s bindings.`
+            ? `All 11 controls on ${pendingCopyPair.target} will be overwritten with ${pendingCopyPair.source}'s bindings.`
             : ''
         }
         confirmLabel={
@@ -482,16 +483,26 @@ export default function App() {
               ·
             </span>
             <span className="font-mono text-[var(--text-secondary)] tabular-nums shrink-0">
-              {activeRepeatJob.totalIterations !== null
+              {activeRepeatJob.activeStepIndex !== undefined
+                ? `Step ${String(activeRepeatJob.activeStepIndex + 1).padStart(2, '0')}${
+                    activeRepeatJob.activeStepPhase === 'delay' ? ' wait' : ''
+                  }`
+                : activeRepeatJob.totalIterations !== null
                 ? `${activeRepeatJob.currentIteration}/${activeRepeatJob.totalIterations}`
                 : `Cycle ${activeRepeatJob.currentIteration}`}
             </span>
-            <span className="text-[var(--text-muted)] hidden sm:inline" aria-hidden="true">
-              ·
-            </span>
-            <span className="font-mono text-[var(--text-muted)] tabular-nums hidden sm:inline shrink-0">
-              {activeRepeatJob.delayMs}ms
-            </span>
+            {activeRepeatJob.totalIterations !== 1 && (
+              <>
+                <span className="text-[var(--text-muted)] hidden sm:inline" aria-hidden="true">
+                  ·
+                </span>
+                <span className="font-mono text-[var(--text-muted)] tabular-nums hidden sm:inline shrink-0">
+                  {activeRepeatJob.totalIterations !== null
+                    ? `${activeRepeatJob.currentIteration}/${activeRepeatJob.totalIterations}`
+                    : `Cycle ${activeRepeatJob.currentIteration}`}
+                </span>
+              </>
+            )}
           </div>
           <button
             type="button"

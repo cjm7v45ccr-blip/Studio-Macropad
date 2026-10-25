@@ -1,9 +1,20 @@
-export type KeyId = 'k1' | 'k2' | 'k3' | 'k4' | 'k5';
+export type KeyId = 'k1' | 'k2' | 'k3' | 'k4' | 'k5' | 'k6' | 'k7' | 'k8' | 'k9';
 export type EncoderSubControlId = 'dial' | 'enc_cw' | 'enc_ccw';
 export type ControlId = KeyId | 'encoder' | EncoderSubControlId;
 
 export type HardwareProfileId = 'MAC' | 'TV';
-export type HardwareSlotId = 'b1' | 'b2' | 'b3' | 'b4' | 'dial' | 'enc_cw' | 'enc_ccw';
+export type HardwareSlotId =
+  | 'b1'
+  | 'b2'
+  | 'b3'
+  | 'b4'
+  | 'b5'
+  | 'b6'
+  | 'b7'
+  | 'b8'
+  | 'dial'
+  | 'enc_cw'
+  | 'enc_ccw';
 export type HardwareFlashSlot = HardwareSlotId | 'mode';
 
 export type SyncStatusPill = 'Synced' | 'Saving' | 'Out of sync' | 'Disconnected';
@@ -24,10 +35,19 @@ export type ActionType =
   | 'tv_app'
   | 'none';
 
+export type MacroStepActionType =
+  | 'shortcut'
+  | 'text'
+  | 'key'
+  | 'media'
+  | 'os_action'
+  | 'tv'
+  | 'delay';
+
 export interface MacroStepConfig {
   id: string;
   label: string;
-  actionType: 'text' | 'key' | 'delay';
+  actionType: MacroStepActionType;
   value: string;
   delayMs: number;
   repeatCount: number;
@@ -57,6 +77,8 @@ export interface ActiveRepeatJob {
   currentIteration: number;
   totalIterations: number | null; // null when looping until stopped
   delayMs: number;
+  activeStepIndex?: number;
+  activeStepPhase?: 'action' | 'delay';
 }
 
 export interface ActionBinding {
@@ -77,7 +99,7 @@ export interface KeyAppearance {
 
 export interface KeyControlConfig {
   id: KeyId;
-  slot?: 'b1' | 'b2' | 'b3' | 'b4';
+  slot?: 'b1' | 'b2' | 'b3' | 'b4' | 'b5' | 'b6' | 'b7' | 'b8';
   isModeSwitch?: boolean;
   triggers: {
     tap: ActionBinding;
@@ -181,6 +203,10 @@ export interface HardwareBackupPayload {
   mac_b2: string;
   mac_b3: string;
   mac_b4: string;
+  mac_b5?: string;
+  mac_b6?: string;
+  mac_b7?: string;
+  mac_b8?: string;
   mac_dial: string;
   mac_enc_cw?: string;
   mac_enc_ccw?: string;
@@ -188,6 +214,10 @@ export interface HardwareBackupPayload {
   tv_b2: string;
   tv_b3: string;
   tv_b4: string;
+  tv_b5?: string;
+  tv_b6?: string;
+  tv_b7?: string;
+  tv_b8?: string;
   tv_dial: string;
   tv_enc_cw?: string;
   tv_enc_ccw?: string;

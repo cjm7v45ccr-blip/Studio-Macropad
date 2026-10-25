@@ -401,7 +401,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           }`}
           title={
             connection.connected
-              ? 'Write all 7 slots per profile to MacroPad via /api/profile/save'
+              ? 'Write all 11 slots per profile to MacroPad via /api/profile/save'
               : 'Open browser port picker and connect USB pad'
           }
         >

@@ -13,7 +13,7 @@ export const OledScreen: React.FC<OledScreenProps> = ({
   isConnected
 }) => {
   return (
-    <div className="relative w-44 h-22 rounded-md bg-[#02060a] border-2 border-slate-700/80 p-2 shadow-inner flex flex-col justify-between font-mono select-none overflow-hidden text-cyan-300">
+    <div className="relative w-44 h-22 rounded-xl bg-[#02060a] border-2 border-cyan-500/40 p-2.5 shadow-[0_0_18px_rgba(6,182,212,0.28)] flex flex-col justify-between font-mono select-none overflow-hidden text-cyan-300">
       
       {/* Top Status Bar (OLED 128x12) */}
       <div className="flex items-center justify-between text-[9px] border-b border-cyan-400/20 pb-1 tracking-wider">

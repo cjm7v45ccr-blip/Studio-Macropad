@@ -1030,7 +1030,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <DiffConfirmModal
         isOpen={resetProfilesModalOpen}
         title="Reset both profiles to factory defaults?"
-        description="All 14 controls across MAC and TV will be restored to factory actions. Wi-Fi and TV pairing remain untouched."
+        description="All 22 controls across MAC and TV will be restored to factory actions. Wi-Fi and TV pairing remain untouched."
         confirmLabel="Reset Both Profiles"
         tone="danger"
         requireWord="RESET"

@@ -56,21 +56,29 @@ interface MacropadCanvasProps {
   onExecuteHardwareBinding: (binding: ActionBinding) => Promise<boolean>;
 }
 
-const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5'];
+const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
 
 const SLOT_TO_KEY: Record<string, KeyId> = {
   b1: 'k1',
   b2: 'k2',
   b3: 'k3',
   b4: 'k4',
-  mode: 'k5'
+  b5: 'k5',
+  b6: 'k6',
+  b7: 'k7',
+  b8: 'k8',
+  mode: 'k9'
 };
 
-const SEVEN_CONTROLS: { id: ControlId; label: string }[] = [
+const ELEVEN_CONTROLS: { id: ControlId; label: string }[] = [
   { id: 'k1', label: 'Key 1' },
   { id: 'k2', label: 'Key 2' },
   { id: 'k3', label: 'Key 3' },
   { id: 'k4', label: 'Key 4' },
+  { id: 'k5', label: 'Key 5' },
+  { id: 'k6', label: 'Key 6' },
+  { id: 'k7', label: 'Key 7' },
+  { id: 'k8', label: 'Key 8' },
   { id: 'dial', label: 'Knob Press' },
   { id: 'enc_cw', label: 'Turn Right' },
   { id: 'enc_ccw', label: 'Turn Left' }
@@ -239,12 +247,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         return;
       }
 
-      // Mechanical Key Press (`b1`..`b4` or `mode`)
+      // Mechanical Key Press (`b1`..`b8` or `mode`)
       const mappedKey = SLOT_TO_KEY[rawSlot];
       if (mappedKey) {
         soundEngine.playKeyClick();
         triggerSlotFlash(rawSlot as HardwareFlashSlot);
-        if (mappedKey === 'k5') {
+        if (mappedKey === 'k9') {
           return;
         }
         const keyCfg = currLayer.keys[mappedKey];
@@ -284,7 +292,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         k2: 'b2',
         k3: 'b3',
         k4: 'b4',
-        k5: 'mode'
+        k5: 'b5',
+        k6: 'b6',
+        k7: 'b7',
+        k8: 'b8',
+        k9: 'mode'
       };
       usbHardware.simulateDemoPadInput(slotMap[kid]);
       return;
@@ -293,7 +305,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const cfg = layer.keys[kid];
     if (!cfg) return;
 
-    if (cfg.isModeSwitch || kid === 'k5') {
+    if (cfg.isModeSwitch || kid === 'k9') {
       onToggleHardwareMode();
       pushLog(
         'Mode',
@@ -564,7 +576,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             ? '0 2px 4px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.4)'
             : '0 6px 0 #101217, 0 10px 18px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.1)'
         }}
-        className={`relative w-[88px] h-[88px] sm:w-28 sm:h-28 rounded-2xl bg-gradient-to-b from-[#252933] to-[#1B1E26] border-2 p-2 sm:p-2.5 flex flex-col items-center justify-between select-none transition-all cursor-pointer ${
+        className={`relative w-[82px] h-[82px] sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-b from-[#252933] to-[#1B1E26] border-2 p-2 sm:p-2.5 flex flex-col items-center justify-between select-none transition-all cursor-pointer ${
           isDown ? 'translate-y-1' : 'hover:-translate-y-0.5'
         } ${isUnassigned && !isFlashed ? 'opacity-80' : ''}`}
       >
@@ -643,7 +655,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
 
         <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
-          <span className="text-[11px] text-[var(--text-muted)] px-1.5 hidden sm:inline">
+          <span className="text-[11px] text-[var(--text-muted)] px-1.5 hidden sm:inline whitespace-nowrap">
             Knob Layout:
           </span>
           <button
@@ -655,7 +667,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
-            2×3 Grid
+            Side Knob
           </button>
           <button
             type="button"
@@ -727,11 +739,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
       )}
 
-      {/* Center: Physical Anodized Aluminum MacroPad + 7-Control Quick Bar */}
-      <div className="my-auto py-4 sm:py-6 flex flex-col items-center justify-center w-full gap-3.5">
-        <div className="w-full max-w-[348px] sm:max-w-[420px] rounded-[28px] sm:rounded-[34px] p-4 sm:p-7 bg-gradient-to-b from-[#20232C] to-[#14161C] border border-white/10 shadow-[0_28px_60px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.08)]">
+      {/* Center: Physical Anodized Aluminum 9-Button MacroPad + 11-Control Quick Bar */}
+      <div className="my-auto py-3 sm:py-5 flex flex-col items-center justify-center w-full gap-3.5">
+        <div
+          className={`w-full ${
+            encoderPlacement === 'top'
+              ? 'max-w-[340px] sm:max-w-[392px]'
+              : 'max-w-[340px] sm:max-w-[536px]'
+          } rounded-[28px] sm:rounded-[34px] p-4 sm:p-6 bg-gradient-to-b from-[#20232C] to-[#14161C] border border-white/10 shadow-[0_28px_60px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.08)]`}
+        >
           {/* 128x64 SSD1306 Hardware OLED Strip */}
-          <div className="mb-4 sm:mb-6 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-[#090B0E] border border-white/10 shadow-inner flex items-center justify-between gap-2">
+          <div className="mb-4 sm:mb-5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-[#090B0E] border border-white/10 shadow-inner flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span
                 className="w-2 h-2 rounded-full shrink-0"
@@ -786,28 +804,32 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </div>
 
           {encoderPlacement === 'top' ? (
-            <div className="flex flex-col items-center gap-4 sm:gap-6">
+            <div className="flex flex-col items-center gap-4 sm:gap-5">
               {renderEncoderUnit('large')}
-              <div className="grid grid-cols-3 gap-2.5 sm:gap-4 justify-items-center">
+              <div className="grid grid-cols-3 gap-2.5 sm:gap-3 justify-items-center">
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-2.5 sm:gap-4 items-center justify-items-center">
-              {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
-              {renderEncoderUnit('compact')}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5">
+              <div className="order-2 sm:order-1 grid grid-cols-3 gap-2.5 sm:gap-3 justify-items-center">
+                {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
+              </div>
+              <div className="order-1 sm:order-2 flex flex-col items-center justify-center sm:pl-5 sm:border-l sm:border-white/10 sm:self-stretch">
+                {renderEncoderUnit('large')}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Direct 7-Control Selector Strip (Configure mode) */}
+        {/* Direct 11-Control Selector Strip (Configure mode) */}
         {viewMode === 'edit' && (
           <div
             role="group"
-            aria-label="Select one of the 7 programmable controls"
+            aria-label="Select one of the 11 programmable controls"
             className="w-full max-w-2xl flex items-center justify-center gap-1.5 flex-wrap"
           >
-            {SEVEN_CONTROLS.map(ctrl => {
+            {ELEVEN_CONTROLS.map(ctrl => {
               const active =
                 selectedControl === ctrl.id ||
                 (selectedControl === 'encoder' && ctrl.id === 'dial');
@@ -877,6 +899,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     { slot: 'b2', label: 'Key 2' },
                     { slot: 'b3', label: 'Key 3' },
                     { slot: 'b4', label: 'Key 4' },
+                    { slot: 'b5', label: 'Key 5' },
+                    { slot: 'b6', label: 'Key 6' },
+                    { slot: 'b7', label: 'Key 7' },
+                    { slot: 'b8', label: 'Key 8' },
                     { slot: 'dial', label: 'Knob', icon: Disc },
                     { slot: 'enc_ccw', label: 'Turn Left' },
                     { slot: 'enc_cw', label: 'Turn Right' },

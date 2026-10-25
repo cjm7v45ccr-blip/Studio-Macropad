@@ -93,8 +93,8 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     }
   }, [selectionKey, trackedSelectionKey, keyConfig.triggers.tap]);
 
-  // Dedicated Mode Switch Inspector
-  if (keyConfig.isModeSwitch || keyConfig.id === 'k5') {
+  // Dedicated Mode Switch Inspector (9th physical button)
+  if (keyConfig.isModeSwitch || keyConfig.id === 'k9') {
     return (
       <aside className="w-full lg:w-[400px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col lg:h-full overflow-hidden">
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">

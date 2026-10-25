@@ -21,8 +21,10 @@ import {
   UserPreset
 } from '../types/studio';
 import {
+  ACTION_KEY_IDS,
+  ButtonSlotId,
   KEY_TO_SLOT,
-  buildBlankHardwareProfiles,
+  SLOT_TO_ACTION_KEY,
   buildHardwareProfile
 } from '../data/presetTemplates';
 import {
@@ -87,9 +89,17 @@ function readStoredPadRecord(deviceId: string): StoredPadRecord | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || !parsed.profiles) return null;
+    const rawProfiles = parsed.profiles as SerializedPadProfiles;
+    const normalizedProfiles: SerializedPadProfiles = {
+      active: rawProfiles.active === 'TV' ? 'TV' : 'MAC',
+      mac_name: rawProfiles.mac_name || 'Mac',
+      tv_name: rawProfiles.tv_name || 'TV',
+      mac: { ...FACTORY_DEFAULT_SLOTS.MAC, ...(rawProfiles.mac || {}) },
+      tv: { ...FACTORY_DEFAULT_SLOTS.TV, ...(rawProfiles.tv || {}) }
+    };
     return {
       rev: typeof parsed.rev === 'number' ? parsed.rev : 0,
-      profiles: parsed.profiles as SerializedPadProfiles,
+      profiles: normalizedProfiles,
       dirty: Boolean(parsed.dirty),
       repeatConfigs: parsed.repeatConfigs || {}
     };
@@ -120,6 +130,10 @@ export function extractProfileSlots(profile: StudioProfile): Record<HardwareSlot
     b2: bindingToFirmwareAction(layer.keys.k2.triggers.tap),
     b3: bindingToFirmwareAction(layer.keys.k3.triggers.tap),
     b4: bindingToFirmwareAction(layer.keys.k4.triggers.tap),
+    b5: bindingToFirmwareAction(layer.keys.k5.triggers.tap),
+    b6: bindingToFirmwareAction(layer.keys.k6.triggers.tap),
+    b7: bindingToFirmwareAction(layer.keys.k7.triggers.tap),
+    b8: bindingToFirmwareAction(layer.keys.k8.triggers.tap),
     dial: bindingToFirmwareAction(layer.encoder.dial),
     enc_cw: bindingToFirmwareAction(layer.encoder.cw),
     enc_ccw: bindingToFirmwareAction(layer.encoder.ccw)
@@ -132,7 +146,7 @@ export function extractRepeatMapFromProfiles(
   const map: SlotRepeatMap = {};
   for (const prof of profiles) {
     const layer = prof.layers[0];
-    (['k1', 'k2', 'k3', 'k4'] as const).forEach(kid => {
+    ACTION_KEY_IDS.forEach(kid => {
       const slot = KEY_TO_SLOT[kid];
       const rc = layer.keys[kid].triggers.tap.repeatConfig;
       if (rc) map[`${prof.id}:${slot}`] = rc;
@@ -158,10 +172,10 @@ export function getBindingForProfileSlot(
   const prof = profiles.find(p => p.id === profileId);
   if (!prof) return undefined;
   const layer = prof.layers[0];
-  if (slot === 'b1') return layer.keys.k1.triggers.tap;
-  if (slot === 'b2') return layer.keys.k2.triggers.tap;
-  if (slot === 'b3') return layer.keys.k3.triggers.tap;
-  if (slot === 'b4') return layer.keys.k4.triggers.tap;
+  if (slot in SLOT_TO_ACTION_KEY) {
+    const kid = SLOT_TO_ACTION_KEY[slot as ButtonSlotId];
+    return layer.keys[kid].triggers.tap;
+  }
   if (slot === 'dial') return layer.encoder.dial;
   if (slot === 'enc_cw') return layer.encoder.cw;
   if (slot === 'enc_ccw') return layer.encoder.ccw;
@@ -198,6 +212,10 @@ export function statusPacketToSerializedProfiles(
       b2: macItem?.controls?.b2 ?? pkt.mac_b2 ?? FACTORY_DEFAULT_SLOTS.MAC.b2,
       b3: macItem?.controls?.b3 ?? pkt.mac_b3 ?? FACTORY_DEFAULT_SLOTS.MAC.b3,
       b4: macItem?.controls?.b4 ?? pkt.mac_b4 ?? FACTORY_DEFAULT_SLOTS.MAC.b4,
+      b5: macItem?.controls?.b5 ?? pkt.mac_b5 ?? FACTORY_DEFAULT_SLOTS.MAC.b5,
+      b6: macItem?.controls?.b6 ?? pkt.mac_b6 ?? FACTORY_DEFAULT_SLOTS.MAC.b6,
+      b7: macItem?.controls?.b7 ?? pkt.mac_b7 ?? FACTORY_DEFAULT_SLOTS.MAC.b7,
+      b8: macItem?.controls?.b8 ?? pkt.mac_b8 ?? FACTORY_DEFAULT_SLOTS.MAC.b8,
       dial: macItem?.controls?.dial ?? pkt.mac_dial ?? FACTORY_DEFAULT_SLOTS.MAC.dial,
       enc_cw: macItem?.controls?.enc_cw ?? FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
       enc_ccw: macItem?.controls?.enc_ccw ?? FACTORY_DEFAULT_SLOTS.MAC.enc_ccw
@@ -207,6 +225,10 @@ export function statusPacketToSerializedProfiles(
       b2: tvItem?.controls?.b2 ?? pkt.tv_b2 ?? FACTORY_DEFAULT_SLOTS.TV.b2,
       b3: tvItem?.controls?.b3 ?? pkt.tv_b3 ?? FACTORY_DEFAULT_SLOTS.TV.b3,
       b4: tvItem?.controls?.b4 ?? pkt.tv_b4 ?? FACTORY_DEFAULT_SLOTS.TV.b4,
+      b5: tvItem?.controls?.b5 ?? pkt.tv_b5 ?? FACTORY_DEFAULT_SLOTS.TV.b5,
+      b6: tvItem?.controls?.b6 ?? pkt.tv_b6 ?? FACTORY_DEFAULT_SLOTS.TV.b6,
+      b7: tvItem?.controls?.b7 ?? pkt.tv_b7 ?? FACTORY_DEFAULT_SLOTS.TV.b7,
+      b8: tvItem?.controls?.b8 ?? pkt.tv_b8 ?? FACTORY_DEFAULT_SLOTS.TV.b8,
       dial: tvItem?.controls?.dial ?? pkt.tv_dial ?? FACTORY_DEFAULT_SLOTS.TV.dial,
       enc_cw: tvItem?.controls?.enc_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc_cw,
       enc_ccw: tvItem?.controls?.enc_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc_ccw
@@ -238,7 +260,7 @@ function serializedProfilesToStudioProfiles(
     repeatConfigs
   );
 
-  (['k1', 'k2', 'k3', 'k4'] as const).forEach(kid => {
+  ACTION_KEY_IDS.forEach(kid => {
     const slot = KEY_TO_SLOT[kid];
     const mOv = overrides[`MAC:${kid}`];
     if (mOv) {
@@ -323,6 +345,10 @@ export function buildBackupFromProfiles(
     mac_b2: mac.b2 || FACTORY_DEFAULT_SLOTS.MAC.b2,
     mac_b3: mac.b3 || FACTORY_DEFAULT_SLOTS.MAC.b3,
     mac_b4: mac.b4 || FACTORY_DEFAULT_SLOTS.MAC.b4,
+    mac_b5: mac.b5 || FACTORY_DEFAULT_SLOTS.MAC.b5,
+    mac_b6: mac.b6 || FACTORY_DEFAULT_SLOTS.MAC.b6,
+    mac_b7: mac.b7 || FACTORY_DEFAULT_SLOTS.MAC.b7,
+    mac_b8: mac.b8 || FACTORY_DEFAULT_SLOTS.MAC.b8,
     mac_dial: mac.dial || FACTORY_DEFAULT_SLOTS.MAC.dial,
     mac_enc_cw: mac.enc_cw || FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
     mac_enc_ccw: mac.enc_ccw || FACTORY_DEFAULT_SLOTS.MAC.enc_ccw,
@@ -330,6 +356,10 @@ export function buildBackupFromProfiles(
     tv_b2: tv.b2 || FACTORY_DEFAULT_SLOTS.TV.b2,
     tv_b3: tv.b3 || FACTORY_DEFAULT_SLOTS.TV.b3,
     tv_b4: tv.b4 || FACTORY_DEFAULT_SLOTS.TV.b4,
+    tv_b5: tv.b5 || FACTORY_DEFAULT_SLOTS.TV.b5,
+    tv_b6: tv.b6 || FACTORY_DEFAULT_SLOTS.TV.b6,
+    tv_b7: tv.b7 || FACTORY_DEFAULT_SLOTS.TV.b7,
+    tv_b8: tv.b8 || FACTORY_DEFAULT_SLOTS.TV.b8,
     tv_dial: tv.dial || FACTORY_DEFAULT_SLOTS.TV.dial,
     tv_enc_cw: tv.enc_cw || FACTORY_DEFAULT_SLOTS.TV.enc_cw,
     tv_enc_ccw: tv.enc_ccw || FACTORY_DEFAULT_SLOTS.TV.enc_ccw
@@ -771,14 +801,8 @@ export function useStudioState(
         const rawDir = String(e.dir || '').toLowerCase();
         let hwSlot: HardwareSlotId | null = null;
 
-        if (
-          rawSlot === 'b1' ||
-          rawSlot === 'b2' ||
-          rawSlot === 'b3' ||
-          rawSlot === 'b4' ||
-          rawSlot === 'dial'
-        ) {
-          hwSlot = rawSlot;
+        if (rawSlot in SLOT_TO_ACTION_KEY || rawSlot === 'dial') {
+          hwSlot = rawSlot as HardwareSlotId;
         } else if (
           rawSlot === 'enc_cw' ||
           rawSlot === 'cw' ||
@@ -978,7 +1002,7 @@ export function useStudioState(
     const warnings: ConflictWarning[] = [];
     const seen = new Map<string, KeyId>();
 
-    for (const kid of ['k1', 'k2', 'k3', 'k4'] as const) {
+    for (const kid of ACTION_KEY_IDS) {
       const tap = activeLayer.keys[kid]?.triggers.tap;
       const act = bindingToFirmwareAction(tap);
       if (!act) continue;
@@ -1258,14 +1282,8 @@ export function useStudioState(
         if (prof.id !== profileId) return prof;
         const layer = prof.layers[0];
 
-        if (slot === 'b1' || slot === 'b2' || slot === 'b3' || slot === 'b4') {
-          const kid = (slot === 'b1'
-            ? 'k1'
-            : slot === 'b2'
-            ? 'k2'
-            : slot === 'b3'
-            ? 'k3'
-            : 'k4') as 'k1' | 'k2' | 'k3' | 'k4';
+        if (slot in SLOT_TO_ACTION_KEY) {
+          const kid = SLOT_TO_ACTION_KEY[slot as ButtonSlotId];
 
           const existingApp = layer.keys[kid].appearance;
           const nextAppearance = deriveAppearanceForAction(
@@ -1354,7 +1372,7 @@ export function useStudioState(
   );
 
   /**
-   * Atomically updates multiple or all 7 slots on a single profile (used by Presets, My Presets, Knob Presets, Swap Directions)
+   * Atomically updates multiple or all 11 slots on a single profile (used by Presets, My Presets, Knob Presets, Swap Directions)
    */
   const assignProfileSlots = useCallback(
     async (
@@ -1373,6 +1391,10 @@ export function useStudioState(
         b2: partialSlots.b2 ?? (currentSlots.b2 || FACTORY_DEFAULT_SLOTS[profileId].b2),
         b3: partialSlots.b3 ?? (currentSlots.b3 || FACTORY_DEFAULT_SLOTS[profileId].b3),
         b4: partialSlots.b4 ?? (currentSlots.b4 || FACTORY_DEFAULT_SLOTS[profileId].b4),
+        b5: partialSlots.b5 ?? (currentSlots.b5 || FACTORY_DEFAULT_SLOTS[profileId].b5),
+        b6: partialSlots.b6 ?? (currentSlots.b6 || FACTORY_DEFAULT_SLOTS[profileId].b6),
+        b7: partialSlots.b7 ?? (currentSlots.b7 || FACTORY_DEFAULT_SLOTS[profileId].b7),
+        b8: partialSlots.b8 ?? (currentSlots.b8 || FACTORY_DEFAULT_SLOTS[profileId].b8),
         dial: partialSlots.dial ?? (currentSlots.dial || FACTORY_DEFAULT_SLOTS[profileId].dial),
         enc_cw:
           partialSlots.enc_cw ?? (currentSlots.enc_cw || FACTORY_DEFAULT_SLOTS[profileId].enc_cw),
@@ -1469,7 +1491,7 @@ export function useStudioState(
 
   const updateKeyBinding = useCallback(
     (kid: KeyId, binding: ActionBinding) => {
-      if (kid === 'k5') return;
+      if (kid === 'k9') return;
       const slot = KEY_TO_SLOT[kid];
       assignSlotAction(activeProfile.id, slot, binding);
     },
@@ -1478,7 +1500,7 @@ export function useStudioState(
 
   const updateKeyAppearance = useCallback(
     (kid: KeyId, patch: Partial<KeyAppearance>) => {
-      if (kid === 'k5') return;
+      if (kid === 'k9') return;
       setSnapshot(prev => {
         const nextProfiles = prev.profiles.map(prof => {
           if (prof.id !== activeProfile.id) return prof;
@@ -1518,7 +1540,7 @@ export function useStudioState(
 
   const resetKeyAppearance = useCallback(
     (kid: KeyId) => {
-      if (kid === 'k5') return;
+      if (kid === 'k9') return;
       const slot = KEY_TO_SLOT[kid];
       const tap = activeLayer.keys[kid].triggers.tap;
       const currentAct = bindingToFirmwareAction(tap);
@@ -1670,7 +1692,7 @@ export function useStudioState(
   }, []);
 
   /**
-   * Restores a `studio-pad-config` JSON backup (supports both 7-slot and legacy 5-slot files!)
+   * Restores a `studio-pad-config` JSON backup (supports 11-slot and legacy 5/7-slot files)
    */
   const applyHardwareBackup = useCallback(
     async (backup: HardwareBackupPayload, repeatConfigs?: SlotRepeatMap) => {
@@ -1680,17 +1702,21 @@ export function useStudioState(
       const prevMacSlots = extractProfileSlots(prevMacProf);
       const prevTvSlots = extractProfileSlots(prevTvProf);
 
-      const isFiveSlotFile =
-        !backup.mac_enc_cw &&
-        !backup.mac_enc_ccw &&
-        !backup.tv_enc_cw &&
-        !backup.tv_enc_ccw;
+      const isLegacyFile =
+        !backup.mac_b5 &&
+        !backup.mac_b8 &&
+        !backup.tv_b5 &&
+        !backup.tv_b8;
 
       const macSlots: Record<HardwareSlotId, string> = {
         b1: backup.mac_b1 || FACTORY_DEFAULT_SLOTS.MAC.b1,
         b2: backup.mac_b2 || FACTORY_DEFAULT_SLOTS.MAC.b2,
         b3: backup.mac_b3 || FACTORY_DEFAULT_SLOTS.MAC.b3,
         b4: backup.mac_b4 || FACTORY_DEFAULT_SLOTS.MAC.b4,
+        b5: backup.mac_b5 || prevMacSlots.b5 || FACTORY_DEFAULT_SLOTS.MAC.b5,
+        b6: backup.mac_b6 || prevMacSlots.b6 || FACTORY_DEFAULT_SLOTS.MAC.b6,
+        b7: backup.mac_b7 || prevMacSlots.b7 || FACTORY_DEFAULT_SLOTS.MAC.b7,
+        b8: backup.mac_b8 || prevMacSlots.b8 || FACTORY_DEFAULT_SLOTS.MAC.b8,
         dial: backup.mac_dial || FACTORY_DEFAULT_SLOTS.MAC.dial,
         enc_cw:
           backup.mac_enc_cw || prevMacSlots.enc_cw || FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
@@ -1703,6 +1729,10 @@ export function useStudioState(
         b2: backup.tv_b2 || FACTORY_DEFAULT_SLOTS.TV.b2,
         b3: backup.tv_b3 || FACTORY_DEFAULT_SLOTS.TV.b3,
         b4: backup.tv_b4 || FACTORY_DEFAULT_SLOTS.TV.b4,
+        b5: backup.tv_b5 || prevTvSlots.b5 || FACTORY_DEFAULT_SLOTS.TV.b5,
+        b6: backup.tv_b6 || prevTvSlots.b6 || FACTORY_DEFAULT_SLOTS.TV.b6,
+        b7: backup.tv_b7 || prevTvSlots.b7 || FACTORY_DEFAULT_SLOTS.TV.b7,
+        b8: backup.tv_b8 || prevTvSlots.b8 || FACTORY_DEFAULT_SLOTS.TV.b8,
         dial: backup.tv_dial || FACTORY_DEFAULT_SLOTS.TV.dial,
         enc_cw: backup.tv_enc_cw || prevTvSlots.enc_cw || FACTORY_DEFAULT_SLOTS.TV.enc_cw,
         enc_ccw: backup.tv_enc_ccw || prevTvSlots.enc_ccw || FACTORY_DEFAULT_SLOTS.TV.enc_ccw
@@ -1736,9 +1766,9 @@ export function useStudioState(
         prevSnap,
         nextSnap,
         () => usbHardware.importHardwareConfig(backup),
-        isFiveSlotFile
-          ? 'Restored legacy 5-slot backup (preserved knob turn bindings)'
-          : 'Restored 7-slot backup configuration'
+        isLegacyFile
+          ? 'Restored legacy backup configuration (Keys 5–8 preserved)'
+          : 'Restored 11-control backup configuration'
       );
     },
     [runConnectedWrite]
@@ -1766,6 +1796,10 @@ export function useStudioState(
       mac_b2: payload.mac_b2,
       mac_b3: payload.mac_b3,
       mac_b4: payload.mac_b4,
+      mac_b5: payload.mac_b5 || FACTORY_DEFAULT_SLOTS.MAC.b5,
+      mac_b6: payload.mac_b6 || FACTORY_DEFAULT_SLOTS.MAC.b6,
+      mac_b7: payload.mac_b7 || FACTORY_DEFAULT_SLOTS.MAC.b7,
+      mac_b8: payload.mac_b8 || FACTORY_DEFAULT_SLOTS.MAC.b8,
       mac_dial: payload.mac_dial,
       mac_enc_cw: payload.mac_enc_cw,
       mac_enc_ccw: payload.mac_enc_ccw,
@@ -1773,6 +1807,10 @@ export function useStudioState(
       tv_b2: payload.tv_b2,
       tv_b3: payload.tv_b3,
       tv_b4: payload.tv_b4,
+      tv_b5: payload.tv_b5 || FACTORY_DEFAULT_SLOTS.TV.b5,
+      tv_b6: payload.tv_b6 || FACTORY_DEFAULT_SLOTS.TV.b6,
+      tv_b7: payload.tv_b7 || FACTORY_DEFAULT_SLOTS.TV.b7,
+      tv_b8: payload.tv_b8 || FACTORY_DEFAULT_SLOTS.TV.b8,
       tv_dial: payload.tv_dial,
       tv_enc_cw: payload.tv_enc_cw,
       tv_enc_ccw: payload.tv_enc_ccw

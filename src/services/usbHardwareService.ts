@@ -61,11 +61,19 @@ export interface FirmwareStatusPacket {
   mac_b2?: string;
   mac_b3?: string;
   mac_b4?: string;
+  mac_b5?: string;
+  mac_b6?: string;
+  mac_b7?: string;
+  mac_b8?: string;
   mac_dial?: string;
   tv_b1?: string;
   tv_b2?: string;
   tv_b3?: string;
   tv_b4?: string;
+  tv_b5?: string;
+  tv_b6?: string;
+  tv_b7?: string;
+  tv_b8?: string;
   tv_dial?: string;
 }
 
@@ -549,7 +557,25 @@ class PadLinkService {
             controls: { ...d.tv }
           }
         ]
-      }
+      },
+      mac_b1: d.mac.b1,
+      mac_b2: d.mac.b2,
+      mac_b3: d.mac.b3,
+      mac_b4: d.mac.b4,
+      mac_b5: d.mac.b5,
+      mac_b6: d.mac.b6,
+      mac_b7: d.mac.b7,
+      mac_b8: d.mac.b8,
+      mac_dial: d.mac.dial,
+      tv_b1: d.tv.b1,
+      tv_b2: d.tv.b2,
+      tv_b3: d.tv.b3,
+      tv_b4: d.tv.b4,
+      tv_b5: d.tv.b5,
+      tv_b6: d.tv.b6,
+      tv_b7: d.tv.b7,
+      tv_b8: d.tv.b8,
+      tv_dial: d.tv.dial
     };
   }
 
@@ -618,6 +644,10 @@ class PadLinkService {
         b2: obj.b2,
         b3: obj.b3,
         b4: obj.b4,
+        b5: obj.b5,
+        b6: obj.b6,
+        b7: obj.b7,
+        b8: obj.b8,
         dial: obj.dial,
         enc_cw: obj.enc_cw,
         enc_ccw: obj.enc_ccw
@@ -667,6 +697,10 @@ class PadLinkService {
         mac_b2: d.mac.b2,
         mac_b3: d.mac.b3,
         mac_b4: d.mac.b4,
+        mac_b5: d.mac.b5,
+        mac_b6: d.mac.b6,
+        mac_b7: d.mac.b7,
+        mac_b8: d.mac.b8,
         mac_dial: d.mac.dial,
         mac_enc_cw: d.mac.enc_cw,
         mac_enc_ccw: d.mac.enc_ccw,
@@ -674,6 +708,10 @@ class PadLinkService {
         tv_b2: d.tv.b2,
         tv_b3: d.tv.b3,
         tv_b4: d.tv.b4,
+        tv_b5: d.tv.b5,
+        tv_b6: d.tv.b6,
+        tv_b7: d.tv.b7,
+        tv_b8: d.tv.b8,
         tv_dial: d.tv.dial,
         tv_enc_cw: d.tv.enc_cw,
         tv_enc_ccw: d.tv.enc_ccw
@@ -689,6 +727,10 @@ class PadLinkService {
         b2: obj.mac_b2 || d.mac.b2,
         b3: obj.mac_b3 || d.mac.b3,
         b4: obj.mac_b4 || d.mac.b4,
+        b5: obj.mac_b5 || d.mac.b5,
+        b6: obj.mac_b6 || d.mac.b6,
+        b7: obj.mac_b7 || d.mac.b7,
+        b8: obj.mac_b8 || d.mac.b8,
         dial: obj.mac_dial || d.mac.dial,
         enc_cw: obj.mac_enc_cw || d.mac.enc_cw,
         enc_ccw: obj.mac_enc_ccw || d.mac.enc_ccw
@@ -698,6 +740,10 @@ class PadLinkService {
         b2: obj.tv_b2 || d.tv.b2,
         b3: obj.tv_b3 || d.tv.b3,
         b4: obj.tv_b4 || d.tv.b4,
+        b5: obj.tv_b5 || d.tv.b5,
+        b6: obj.tv_b6 || d.tv.b6,
+        b7: obj.tv_b7 || d.tv.b7,
+        b8: obj.tv_b8 || d.tv.b8,
         dial: obj.tv_dial || d.tv.dial,
         enc_cw: obj.tv_enc_cw || d.tv.enc_cw,
         enc_ccw: obj.tv_enc_ccw || d.tv.enc_ccw
@@ -1218,17 +1264,31 @@ class PadLinkService {
         );
       }
     }
-    const res = await this.call({
+    const reqObj = {
       path: '/api/profile/save',
       profile,
       b1: slots.b1,
       b2: slots.b2,
       b3: slots.b3,
       b4: slots.b4,
+      b5: slots.b5,
+      b6: slots.b6,
+      b7: slots.b7,
+      b8: slots.b8,
       dial: slots.dial,
       enc_cw: slots.enc_cw,
       enc_ccw: slots.enc_ccw
-    });
+    };
+
+    if (!this.demoModeActive && JSON.stringify(reqObj).length + 1 > 1536) {
+      let lastRes: { ok: boolean; rev?: number; message?: string } = { ok: true };
+      for (const slotId of HARDWARE_SLOTS) {
+        lastRes = await this.saveSlotBinding(profile, slotId, slots[slotId]);
+      }
+      return lastRes;
+    }
+
+    const res = await this.call(reqObj);
     if (!res?.ok) {
       throw new Error(res?.message || 'Device rejected profile payload.');
     }
@@ -1283,28 +1343,72 @@ class PadLinkService {
   public async importHardwareConfig(
     backup: HardwareBackupPayload
   ): Promise<{ ok: boolean; rev?: number; message?: string }> {
+    const macName = sanitizeFirmwareAlias(backup.mac_name, 'MAC');
+    const tvName = sanitizeFirmwareAlias(backup.tv_name, 'TV');
+    const macSlots: Record<HardwareSlotId, string> = {
+      b1: backup.mac_b1 || FACTORY_DEFAULT_SLOTS.MAC.b1,
+      b2: backup.mac_b2 || FACTORY_DEFAULT_SLOTS.MAC.b2,
+      b3: backup.mac_b3 || FACTORY_DEFAULT_SLOTS.MAC.b3,
+      b4: backup.mac_b4 || FACTORY_DEFAULT_SLOTS.MAC.b4,
+      b5: backup.mac_b5 || FACTORY_DEFAULT_SLOTS.MAC.b5,
+      b6: backup.mac_b6 || FACTORY_DEFAULT_SLOTS.MAC.b6,
+      b7: backup.mac_b7 || FACTORY_DEFAULT_SLOTS.MAC.b7,
+      b8: backup.mac_b8 || FACTORY_DEFAULT_SLOTS.MAC.b8,
+      dial: backup.mac_dial || FACTORY_DEFAULT_SLOTS.MAC.dial,
+      enc_cw: backup.mac_enc_cw || FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
+      enc_ccw: backup.mac_enc_ccw || FACTORY_DEFAULT_SLOTS.MAC.enc_ccw
+    };
+    const tvSlots: Record<HardwareSlotId, string> = {
+      b1: backup.tv_b1 || FACTORY_DEFAULT_SLOTS.TV.b1,
+      b2: backup.tv_b2 || FACTORY_DEFAULT_SLOTS.TV.b2,
+      b3: backup.tv_b3 || FACTORY_DEFAULT_SLOTS.TV.b3,
+      b4: backup.tv_b4 || FACTORY_DEFAULT_SLOTS.TV.b4,
+      b5: backup.tv_b5 || FACTORY_DEFAULT_SLOTS.TV.b5,
+      b6: backup.tv_b6 || FACTORY_DEFAULT_SLOTS.TV.b6,
+      b7: backup.tv_b7 || FACTORY_DEFAULT_SLOTS.TV.b7,
+      b8: backup.tv_b8 || FACTORY_DEFAULT_SLOTS.TV.b8,
+      dial: backup.tv_dial || FACTORY_DEFAULT_SLOTS.TV.dial,
+      enc_cw: backup.tv_enc_cw || FACTORY_DEFAULT_SLOTS.TV.enc_cw,
+      enc_ccw: backup.tv_enc_ccw || FACTORY_DEFAULT_SLOTS.TV.enc_ccw
+    };
+
     const payload: Record<string, any> = {
       path: '/api/config/import',
       schema: 'studio-pad-config',
       version: 1,
-      mac_name: sanitizeFirmwareAlias(backup.mac_name, 'MAC'),
-      tv_name: sanitizeFirmwareAlias(backup.tv_name, 'TV'),
-      mac_b1: backup.mac_b1,
-      mac_b2: backup.mac_b2,
-      mac_b3: backup.mac_b3,
-      mac_b4: backup.mac_b4,
-      mac_dial: backup.mac_dial,
-      tv_b1: backup.tv_b1,
-      tv_b2: backup.tv_b2,
-      tv_b3: backup.tv_b3,
-      tv_b4: backup.tv_b4,
-      tv_dial: backup.tv_dial
+      mac_name: macName,
+      tv_name: tvName,
+      mac_b1: macSlots.b1,
+      mac_b2: macSlots.b2,
+      mac_b3: macSlots.b3,
+      mac_b4: macSlots.b4,
+      mac_b5: macSlots.b5,
+      mac_b6: macSlots.b6,
+      mac_b7: macSlots.b7,
+      mac_b8: macSlots.b8,
+      mac_dial: macSlots.dial,
+      tv_b1: tvSlots.b1,
+      tv_b2: tvSlots.b2,
+      tv_b3: tvSlots.b3,
+      tv_b4: tvSlots.b4,
+      tv_b5: tvSlots.b5,
+      tv_b6: tvSlots.b6,
+      tv_b7: tvSlots.b7,
+      tv_b8: tvSlots.b8,
+      tv_dial: tvSlots.dial
     };
 
-    if (backup.mac_enc_cw) payload.mac_enc_cw = backup.mac_enc_cw;
-    if (backup.mac_enc_ccw) payload.mac_enc_ccw = backup.mac_enc_ccw;
-    if (backup.tv_enc_cw) payload.tv_enc_cw = backup.tv_enc_cw;
-    if (backup.tv_enc_ccw) payload.tv_enc_ccw = backup.tv_enc_ccw;
+    if (backup.mac_enc_cw) payload.mac_enc_cw = macSlots.enc_cw;
+    if (backup.mac_enc_ccw) payload.mac_enc_ccw = macSlots.enc_ccw;
+    if (backup.tv_enc_cw) payload.tv_enc_cw = tvSlots.enc_cw;
+    if (backup.tv_enc_ccw) payload.tv_enc_ccw = tvSlots.enc_ccw;
+
+    if (!this.demoModeActive && JSON.stringify(payload).length + 1 > 1536) {
+      await this.saveFullProfile('MAC', macSlots);
+      await this.saveFullProfile('TV', tvSlots);
+      await this.renameProfile('MAC', macName);
+      return await this.renameProfile('TV', tvName);
+    }
 
     const res = await this.call(payload, 4000);
     if (!res?.ok) {

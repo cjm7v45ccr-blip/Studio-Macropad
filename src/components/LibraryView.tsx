@@ -80,7 +80,7 @@ type PendingModalAction =
       rows: DiffPreviewRow[];
     };
 
-function buildSevenSlotDiffRows(
+function buildSlotDiffRows(
   profileLabel: string,
   beforeSlots: Record<HardwareSlotId, string>,
   afterSlots: Record<HardwareSlotId, string>
@@ -136,7 +136,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   ) => {
     const currentProf = targetProfId === 'MAC' ? macProfile : tvProfile;
     const beforeSlots = extractProfileSlots(currentProf);
-    const rows = buildSevenSlotDiffRows(targetProfId, beforeSlots, preset.bindings);
+    const rows = buildSlotDiffRows(targetProfId, beforeSlots, preset.bindings);
     setPendingAction({
       kind: 'curated_preset',
       preset,
@@ -148,27 +148,48 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const openMyPresetPreview = (userPreset: UserPreset, targetProfId: HardwareProfileId) => {
     const currentProf = targetProfId === 'MAC' ? macProfile : tvProfile;
     const beforeSlots = extractProfileSlots(currentProf);
-    const savedSlots: Record<HardwareSlotId, string> = userPreset.profileSlots || {
-      b1:
-        targetProfId === 'MAC' ? userPreset.backup.mac_b1 : userPreset.backup.tv_b1,
-      b2:
-        targetProfId === 'MAC' ? userPreset.backup.mac_b2 : userPreset.backup.tv_b2,
-      b3:
-        targetProfId === 'MAC' ? userPreset.backup.mac_b3 : userPreset.backup.tv_b3,
-      b4:
-        targetProfId === 'MAC' ? userPreset.backup.mac_b4 : userPreset.backup.tv_b4,
-      dial:
-        targetProfId === 'MAC' ? userPreset.backup.mac_dial : userPreset.backup.tv_dial,
-      enc_cw:
-        (targetProfId === 'MAC'
-          ? userPreset.backup.mac_enc_cw
-          : userPreset.backup.tv_enc_cw) || FACTORY_DEFAULT_SLOTS[targetProfId].enc_cw,
-      enc_ccw:
-        (targetProfId === 'MAC'
-          ? userPreset.backup.mac_enc_ccw
-          : userPreset.backup.tv_enc_ccw) || FACTORY_DEFAULT_SLOTS[targetProfId].enc_ccw
-    };
-    const rows = buildSevenSlotDiffRows(targetProfId, beforeSlots, savedSlots);
+    const savedSlots: Record<HardwareSlotId, string> = userPreset.profileSlots
+      ? {
+          ...FACTORY_DEFAULT_SLOTS[targetProfId],
+          ...userPreset.profileSlots
+        }
+      : {
+          b1:
+            targetProfId === 'MAC' ? userPreset.backup.mac_b1 : userPreset.backup.tv_b1,
+          b2:
+            targetProfId === 'MAC' ? userPreset.backup.mac_b2 : userPreset.backup.tv_b2,
+          b3:
+            targetProfId === 'MAC' ? userPreset.backup.mac_b3 : userPreset.backup.tv_b3,
+          b4:
+            targetProfId === 'MAC' ? userPreset.backup.mac_b4 : userPreset.backup.tv_b4,
+          b5:
+            (targetProfId === 'MAC'
+              ? userPreset.backup.mac_b5
+              : userPreset.backup.tv_b5) || FACTORY_DEFAULT_SLOTS[targetProfId].b5,
+          b6:
+            (targetProfId === 'MAC'
+              ? userPreset.backup.mac_b6
+              : userPreset.backup.tv_b6) || FACTORY_DEFAULT_SLOTS[targetProfId].b6,
+          b7:
+            (targetProfId === 'MAC'
+              ? userPreset.backup.mac_b7
+              : userPreset.backup.tv_b7) || FACTORY_DEFAULT_SLOTS[targetProfId].b7,
+          b8:
+            (targetProfId === 'MAC'
+              ? userPreset.backup.mac_b8
+              : userPreset.backup.tv_b8) || FACTORY_DEFAULT_SLOTS[targetProfId].b8,
+          dial:
+            targetProfId === 'MAC' ? userPreset.backup.mac_dial : userPreset.backup.tv_dial,
+          enc_cw:
+            (targetProfId === 'MAC'
+              ? userPreset.backup.mac_enc_cw
+              : userPreset.backup.tv_enc_cw) || FACTORY_DEFAULT_SLOTS[targetProfId].enc_cw,
+          enc_ccw:
+            (targetProfId === 'MAC'
+              ? userPreset.backup.mac_enc_ccw
+              : userPreset.backup.tv_enc_ccw) || FACTORY_DEFAULT_SLOTS[targetProfId].enc_ccw
+        };
+    const rows = buildSlotDiffRows(targetProfId, beforeSlots, savedSlots);
     setPendingAction({
       kind: 'my_preset',
       preset: userPreset,
@@ -183,7 +204,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     const tgtProf = target === 'MAC' ? macProfile : tvProfile;
     const srcSlots = extractProfileSlots(srcProf);
     const tgtSlots = extractProfileSlots(tgtProf);
-    const rows = buildSevenSlotDiffRows(target, tgtSlots, srcSlots);
+    const rows = buildSlotDiffRows(target, tgtSlots, srcSlots);
     setPendingAction({
       kind: 'copy_profile',
       source,
@@ -193,12 +214,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   const openResetBothConfirm = () => {
-    const macRows = buildSevenSlotDiffRows(
+    const macRows = buildSlotDiffRows(
       'MAC',
       extractProfileSlots(macProfile),
       FACTORY_DEFAULT_SLOTS.MAC
     );
-    const tvRows = buildSevenSlotDiffRows(
+    const tvRows = buildSlotDiffRows(
       'TV',
       extractProfileSlots(tvProfile),
       FACTORY_DEFAULT_SLOTS.TV
@@ -242,7 +263,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               Profiles, Presets & Backups
             </h1>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Preview and apply 7-control presets, save your own layouts, copy profiles, or download and restore JSON backups.
+              Preview and apply 11-control presets, save your own layouts, copy profiles, or download and restore JSON backups.
             </p>
           </div>
 
@@ -290,14 +311,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         </div>
 
-        {/* Section 1: 6 Built-In Presets (each previews a 7-control diff before applying) */}
+        {/* Section 1: 6 Built-In Presets (each previews an 11-control diff before applying) */}
         <section className="space-y-4">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-              Built-In Presets (6 Layouts · All 7 Controls)
+              Built-In Presets (6 Layouts · All 11 Controls)
             </h2>
             <p className="text-xs text-[var(--text-muted)]">
-              Every preset previews a before/after diff across Keys 1–4, Knob Press, Turn Right, and Turn Left before writing.
+              Every preset previews a before/after diff across Keys 1–8, Knob Press, Turn Right, and Turn Left before writing.
             </p>
           </div>
 
@@ -389,7 +410,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 My presets ({userPresets.length})
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Save your current profile under a custom name so you can reapply all 7 controls anytime.
+                Save your current profile under a custom name so you can reapply all 11 controls anytime.
               </p>
             </div>
 
@@ -484,7 +505,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               <span className="text-[var(--text-primary)]">
                                 {
                                   describeFirmwareAction(
-                                    snap.profileSlots![s],
+                                    snap.profileSlots![s] ||
+                                      FACTORY_DEFAULT_SLOTS[defaultTarget][s],
                                     snap.repeatConfigs?.[`${defaultTarget}:${s}`]
                                   ).shortLabel
                                 }
@@ -543,7 +565,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <span>Copy MAC → TV</span>
               </div>
               <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                Previews the 7-slot diff and copies all MAC bindings onto the TV profile.
+                Previews the 11-slot diff and copies all MAC bindings onto the TV profile.
               </p>
             </div>
             <button
@@ -564,7 +586,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <span>Copy TV → MAC</span>
               </div>
               <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                Previews the 7-slot diff and copies all TV bindings onto the MAC profile.
+                Previews the 11-slot diff and copies all TV bindings onto the MAC profile.
               </p>
             </div>
             <button
@@ -585,7 +607,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <span>Reset both profiles</span>
               </div>
               <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                Asks you to type <span className="font-mono font-semibold">RESET</span> and restores all 14 controls to factory defaults while keeping Wi-Fi & TV pairing.
+                Asks you to type <span className="font-mono font-semibold">RESET</span> and restores all 22 controls to factory defaults while keeping Wi-Fi & TV pairing.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -624,17 +646,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         }
         description={
           pendingAction?.kind === 'curated_preset' || pendingAction?.kind === 'my_preset'
-            ? `Review the 7 control changes that will be written to ${pendingAction.targetProfile}.`
+            ? `Review the 11 control changes that will be written to ${pendingAction.targetProfile}.`
             : pendingAction?.kind === 'copy_profile'
-            ? `All 7 controls on ${pendingAction.target} will be overwritten with ${pendingAction.source}'s bindings.`
-            : 'This restores all 14 controls across MAC and TV to factory defaults. Wi-Fi and SmartCast TV pairing are preserved.'
+            ? `All 11 controls on ${pendingAction.target} will be overwritten with ${pendingAction.source}'s bindings.`
+            : 'This restores all 22 controls across MAC and TV to factory defaults. Wi-Fi and SmartCast TV pairing are preserved.'
         }
         confirmLabel={
           pendingAction?.kind === 'reset_both'
             ? 'Reset Both Profiles'
             : pendingAction?.kind === 'copy_profile'
             ? `Copy ${pendingAction.source} → ${pendingAction.target}`
-            : 'Apply Preset (7 Controls)'
+            : 'Apply Preset (11 Controls)'
         }
         tone={pendingAction?.kind === 'reset_both' ? 'danger' : 'accent'}
         requireWord={pendingAction?.kind === 'reset_both' ? 'RESET' : undefined}

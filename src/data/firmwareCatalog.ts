@@ -6,6 +6,7 @@ import {
   HardwareSlotId,
   KeyAppearance,
   KeyboardLayoutId,
+  MacroStepConfig,
   TextMacroRepeatConfig
 } from '../types/studio';
 
@@ -14,6 +15,10 @@ export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
   'b2',
   'b3',
   'b4',
+  'b5',
+  'b6',
+  'b7',
+  'b8',
   'dial',
   'enc_cw',
   'enc_ccw'
@@ -24,6 +29,10 @@ export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; 
   b2: { short: 'Key 2', full: 'Key 2 (B2)', pin: '' },
   b3: { short: 'Key 3', full: 'Key 3 (B3)', pin: '' },
   b4: { short: 'Key 4', full: 'Key 4 (B4)', pin: '' },
+  b5: { short: 'Key 5', full: 'Key 5 (B5)', pin: '' },
+  b6: { short: 'Key 6', full: 'Key 6 (B6)', pin: '' },
+  b7: { short: 'Key 7', full: 'Key 7 (B7)', pin: '' },
+  b8: { short: 'Key 8', full: 'Key 8 (B8)', pin: '' },
   dial: { short: 'Knob Press', full: 'Knob Press (Dial)', pin: '' },
   enc_cw: { short: 'Turn Right', full: 'Turn Right (CW)', pin: '' },
   enc_ccw: { short: 'Turn Left', full: 'Turn Left (CCW)', pin: '' }
@@ -38,6 +47,10 @@ export const FACTORY_DEFAULT_SLOTS: Record<
     b2: 'KEY:F13',
     b3: 'KEY:F14',
     b4: 'KEY:F15',
+    b5: 'MACRO:COPY',
+    b6: 'MACRO:PASTE',
+    b7: 'MACRO:UNDO',
+    b8: 'MACRO:SAVE',
     dial: 'MEDIA:MUTE',
     enc_cw: 'MEDIA:VOL_UP',
     enc_ccw: 'MEDIA:VOL_DOWN'
@@ -47,6 +60,10 @@ export const FACTORY_DEFAULT_SLOTS: Record<
     b2: 'APP:YOUTUBE',
     b3: 'APP:DISNEY',
     b4: 'APP:TUBI',
+    b5: 'APP:NETFLIX',
+    b6: 'APP:PRIME',
+    b7: 'TV:INFO',
+    b8: 'TV:HOME',
     dial: 'TV:MUTE',
     enc_cw: 'TV:VOL_UP',
     enc_ccw: 'TV:VOL_DOWN'
@@ -506,7 +523,257 @@ export function formatShortcutPretty(action: string): string {
  * - If text + other key or custom key delay -> `TEXT:<text>` (follow-up key & repeats run over USB)
  * - If button-only (empty text + followUpKey) -> `SHORTCUT::<key>` or `KEY:F13..16`
  */
+/**
+ * Converts an individual MacroStepConfig into its underlying firmware action string.
+ * Returns '' for pure 'delay' steps or incomplete inputs.
+ */
+export function stepToFirmwareAction(step: MacroStepConfig): string {
+  if (!step || step.actionType === 'delay') return '';
+  if (step.actionType === 'text') {
+    const check = validateTextMacroInput(step.value, 123);
+    if (!check.valid || !step.value) return '';
+    return `TEXT:${step.value}`;
+  }
+  if (step.actionType === 'key') {
+    if (!step.value || !isSupportedFirmwareKey(step.value)) return '';
+    return buildFirmwareShortcut([], step.value);
+  }
+  if (
+    step.actionType === 'shortcut' ||
+    step.actionType === 'media' ||
+    step.actionType === 'os_action' ||
+    step.actionType === 'tv'
+  ) {
+    return isValidFirmwareAction(step.value) ? step.value : '';
+  }
+  return '';
+}
+
+export function describeMacroStep(step: MacroStepConfig): {
+  shortLabel: string;
+  fullLabel: string;
+} {
+  if (step.actionType === 'delay') {
+    const ms = Math.max(0, step.delayMs || 0);
+    return {
+      shortLabel: `Wait ${ms} ms`,
+      fullLabel: `Wait ${ms} ms`
+    };
+  }
+  if (step.actionType === 'text') {
+    const preview = step.value.replace(/\s+/g, ' ').trim();
+    if (!preview) return { shortLabel: 'Type Text', fullLabel: 'Type Text (empty)' };
+    return {
+      shortLabel: `"${preview.slice(0, 10)}"`,
+      fullLabel: `Type "${preview.slice(0, 28)}${preview.length > 28 ? '…' : ''}"`
+    };
+  }
+  if (step.actionType === 'key') {
+    const keyLabel = (step.value || 'enter').toUpperCase();
+    return {
+      shortLabel: keyLabel,
+      fullLabel: `Press ${keyLabel}`
+    };
+  }
+  const fw = stepToFirmwareAction(step);
+  if (!fw) {
+    return {
+      shortLabel: step.label || 'Step',
+      fullLabel: step.label || 'Incomplete Action'
+    };
+  }
+  const desc = describeFirmwareAction(fw);
+  return {
+    shortLabel: desc.shortLabel,
+    fullLabel: desc.fullLabel
+  };
+}
+
+/**
+ * Calculates total sequential delay (in ms) across all steps in a single cycle:
+ * - For 'delay' steps: delayMs * repeatCount
+ * - For action steps: intra-step repeat delays `(repeatCount - 1) * delayMs`
+ *   plus post-step transition delay `delayMs` if followed by another step.
+ */
+export function calculateStepsTiming(steps: MacroStepConfig[]): {
+  totalDelayMs: number;
+  actionStepCount: number;
+} {
+  let totalDelayMs = 0;
+  let actionStepCount = 0;
+
+  steps.forEach((step, idx) => {
+    const repeats = Math.max(1, step.repeatCount || 1);
+    const delay = Math.max(0, step.delayMs || 0);
+    const isLast = idx === steps.length - 1;
+
+    if (step.actionType === 'delay') {
+      totalDelayMs += delay * repeats;
+    } else {
+      actionStepCount += 1;
+      if (repeats > 1) {
+        totalDelayMs += (repeats - 1) * delay;
+      }
+      if (!isLast) {
+        totalDelayMs += delay;
+      }
+    }
+  });
+
+  return { totalDelayMs, actionStepCount };
+}
+
+/**
+ * Converts any stored firmware action + optional repeatConfig into visual MacroStepConfig items
+ * so opening any slot or saved macro in MacroEditorView populates the step list cleanly.
+ */
+export function actionToMacroSteps(
+  action: string,
+  repeatConfig?: TextMacroRepeatConfig
+): MacroStepConfig[] {
+  if (repeatConfig?.steps && repeatConfig.steps.length > 0) {
+    return repeatConfig.steps.map((s, idx) => ({
+      ...s,
+      id: s.id || `step-${Date.now()}-${idx}`
+    }));
+  }
+
+  const stamp = Date.now();
+
+  if (repeatConfig || action.startsWith('TEXT:')) {
+    const cfg = parseTextConfigFromFirmwareAction(action, repeatConfig);
+    const built: MacroStepConfig[] = [];
+    if (cfg.text.length > 0) {
+      built.push({
+        id: `step-${stamp}-1`,
+        label: 'Type Text',
+        actionType: 'text',
+        value: cfg.text,
+        delayMs: cfg.followUpKey ? Math.max(0, cfg.keyDelayMs) : 0,
+        repeatCount: 1
+      });
+    }
+    if (cfg.followUpKey) {
+      built.push({
+        id: `step-${stamp}-2`,
+        label: 'Press Key',
+        actionType: 'key',
+        value: cfg.followUpKey,
+        delayMs: 0,
+        repeatCount: 1
+      });
+    }
+    if (built.length > 0) return built;
+  }
+
+  if (!action) return [];
+
+  if (action.startsWith('SHORTCUT:')) {
+    const parsed = parseFirmwareShortcut(action);
+    if (parsed.mods.length === 0) {
+      return [
+        {
+          id: `step-${stamp}-1`,
+          label: 'Press Key',
+          actionType: 'key',
+          value: parsed.key,
+          delayMs: 0,
+          repeatCount: 1
+        }
+      ];
+    }
+    return [
+      {
+        id: `step-${stamp}-1`,
+        label: 'Keyboard Shortcut',
+        actionType: 'shortcut',
+        value: action,
+        delayMs: 0,
+        repeatCount: 1
+      }
+    ];
+  }
+
+  if (action.startsWith('MEDIA:') || action.startsWith('KEY:')) {
+    return [
+      {
+        id: `step-${stamp}-1`,
+        label: 'Media & Function',
+        actionType: 'media',
+        value: action,
+        delayMs: 0,
+        repeatCount: 1
+      }
+    ];
+  }
+
+  if (action.startsWith('MACRO:') || action.startsWith('WIN:')) {
+    return [
+      {
+        id: `step-${stamp}-1`,
+        label: 'System Action',
+        actionType: 'os_action',
+        value: action,
+        delayMs: 0,
+        repeatCount: 1
+      }
+    ];
+  }
+
+  if (
+    action.startsWith('TV:') ||
+    action.startsWith('APP:') ||
+    action.startsWith('TVKEY:') ||
+    action.startsWith('TVAPP:')
+  ) {
+    return [
+      {
+        id: `step-${stamp}-1`,
+        label: 'TV Action',
+        actionType: 'tv',
+        value: action,
+        delayMs: 0,
+        repeatCount: 1
+      }
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * Build the base single-step ESP32 firmware action for a Text/Button Repeat or Multi-Step configuration.
+ * - If steps are present:
+ *   - Special native optimization: 2 steps [text (0ms, 1x), key=enter (1x)] -> `TEXT:<text>\n`
+ *   - Otherwise uses the first valid non-delay step's firmware action string as the slot's base action
+ * - Legacy fallback when steps is empty: uses `text` / `followUpKey`
+ */
 export function buildFirmwareActionFromTextConfig(cfg: TextMacroRepeatConfig): string {
+  if (cfg.steps && cfg.steps.length > 0) {
+    // Check if every non-delay step is valid first
+    const nonDelaySteps = cfg.steps.filter(s => s.actionType !== 'delay');
+    if (nonDelaySteps.length === 0) return '';
+    for (const st of nonDelaySteps) {
+      if (!stepToFirmwareAction(st)) return '';
+    }
+
+    // Native optimization for [Text -> Enter with 0ms delay]
+    if (
+      cfg.steps.length === 2 &&
+      cfg.steps[0].actionType === 'text' &&
+      cfg.steps[0].delayMs <= 0 &&
+      (cfg.steps[0].repeatCount || 1) === 1 &&
+      cfg.steps[1].actionType === 'key' &&
+      cfg.steps[1].value === 'enter' &&
+      (cfg.steps[1].repeatCount || 1) === 1 &&
+      validateTextMacroInput(cfg.steps[0].value, 122).valid
+    ) {
+      return `TEXT:${cfg.steps[0].value}\n`;
+    }
+
+    return stepToFirmwareAction(nonDelaySteps[0]);
+  }
+
   const hasNativeTrailingNewline =
     cfg.text.length > 0 && cfg.followUpKey === 'enter' && cfg.keyDelayMs <= 0;
   const maxTextChars = hasNativeTrailingNewline ? 122 : 123;
@@ -562,11 +829,26 @@ export function parseTextConfigFromFirmwareAction(
 }
 
 /**
- * Returns true if the config requires USB follow-up actions beyond the ESP32's single base action
+ * Returns true if the config requires multi-step / timed USB execution beyond a single native action
  */
 export function requiresUsbSequenceExecution(cfg?: TextMacroRepeatConfig): boolean {
   if (!cfg) return false;
   if (cfg.loopUntilStopped || cfg.repeatCount > 1) return true;
+  if (cfg.steps && cfg.steps.length > 0) {
+    const isNativeTwoStepTextEnter =
+      cfg.steps.length === 2 &&
+      cfg.steps[0].actionType === 'text' &&
+      cfg.steps[0].delayMs <= 0 &&
+      (cfg.steps[0].repeatCount || 1) === 1 &&
+      cfg.steps[1].actionType === 'key' &&
+      cfg.steps[1].value === 'enter' &&
+      (cfg.steps[1].repeatCount || 1) === 1;
+    if (isNativeTwoStepTextEnter) return false;
+    if (cfg.steps.length > 1) return true;
+    const only = cfg.steps[0];
+    if ((only.repeatCount || 1) > 1) return true;
+    return false;
+  }
   if (cfg.text.length > 0 && cfg.followUpKey) {
     if (cfg.followUpKey !== 'enter' || cfg.keyDelayMs > 0) {
       return true;
@@ -580,9 +862,28 @@ export function formatTextRepeatSummary(cfg: TextMacroRepeatConfig): {
   fullLabel: string;
 } {
   if (cfg.steps && cfg.steps.length > 0) {
+    const { totalDelayMs } = calculateStepsTiming(cfg.steps);
     const stepCount = cfg.steps.length;
-    const shortLabel = `Macro (${stepCount} steps)`.slice(0, 12);
-    const fullLabel = `Multi-Step Sequence (${stepCount} steps with per-step repeat intervals)`;
+    const firstNonDelay = cfg.steps.find(s => s.actionType !== 'delay') || cfg.steps[0];
+    const firstDesc = describeMacroStep(firstNonDelay);
+
+    if (stepCount === 1 && !cfg.loopUntilStopped && (cfg.repeatCount || 1) <= 1 && (firstNonDelay.repeatCount || 1) <= 1) {
+      return firstDesc;
+    }
+
+    const prefix = cfg.loopUntilStopped
+      ? '∞ '
+      : (cfg.repeatCount || 1) > 1
+      ? `${cfg.repeatCount}× `
+      : '';
+    const shortLabel = `${prefix}${stepCount} Steps`.slice(0, 12);
+    const delayPart = totalDelayMs > 0 ? ` · ${totalDelayMs} ms delay` : '';
+    const cyclePart = cfg.loopUntilStopped
+      ? ` · Loop @ ${cfg.repeatDelayMs} ms`
+      : (cfg.repeatCount || 1) > 1
+      ? ` · ${cfg.repeatCount}× @ ${cfg.repeatDelayMs} ms`
+      : '';
+    const fullLabel = `${stepCount} steps (${firstDesc.shortLabel}${stepCount > 1 ? '…' : ''})${delayPart}${cyclePart}`;
     return { shortLabel, fullLabel };
   }
 
@@ -714,13 +1015,23 @@ export function describeFirmwareAction(
     };
   }
 
-  if (repeatConfig && (repeatConfig.text || repeatConfig.followUpKey)) {
+  if (
+    repeatConfig &&
+    (repeatConfig.text ||
+      repeatConfig.followUpKey ||
+      (repeatConfig.steps && repeatConfig.steps.length > 0))
+  ) {
     const summary = formatTextRepeatSummary(repeatConfig);
     return {
       shortLabel: summary.shortLabel,
       fullLabel: summary.fullLabel,
-      description: trimmed.replace(/\n/g, '\\n'),
-      icon: repeatConfig.loopUntilStopped || repeatConfig.repeatCount > 1 ? 'repeat' : 'file-text',
+      description: summary.fullLabel,
+      icon:
+        repeatConfig.loopUntilStopped ||
+        repeatConfig.repeatCount > 1 ||
+        (repeatConfig.steps && repeatConfig.steps.length > 1)
+          ? 'repeat'
+          : 'file-text',
       color: '#34D399'
     };
   }

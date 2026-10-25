@@ -62,14 +62,13 @@ export const PresetGalleryModal: React.FC<PresetGalleryModalProps> = ({
                 <p className="text-[11px] text-slate-400 max-w-sm">
                   {preset.description}
                 </p>
-                <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 pt-1">
-                  <span>B1: {preset.bindings.b1.split(':')[1] || preset.bindings.b1}</span>
-                  <span>·</span>
-                  <span>B2: {preset.bindings.b2.split(':')[1] || preset.bindings.b2}</span>
-                  <span>·</span>
-                  <span>B3: {preset.bindings.b3.split(':')[1] || preset.bindings.b3}</span>
-                  <span>·</span>
-                  <span>B4: {preset.bindings.b4.split(':')[1] || preset.bindings.b4}</span>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-mono text-slate-500 pt-1">
+                  {(['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8'] as const).map((slot, idx) => (
+                    <React.Fragment key={slot}>
+                      {idx > 0 && <span>·</span>}
+                      <span>Key {idx + 1}: {preset.bindings[slot].split(':')[1] || preset.bindings[slot]}</span>
+                    </React.Fragment>
+                  ))}
                 </div>
               </div>
 

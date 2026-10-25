@@ -16,13 +16,42 @@ import {
   firmwareActionToBinding
 } from './firmwareCatalog';
 
-export const ALL_KEY_IDS: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5'];
+export const ALL_KEY_IDS: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
 
-export const KEY_TO_SLOT: Record<'k1' | 'k2' | 'k3' | 'k4', 'b1' | 'b2' | 'b3' | 'b4'> = {
+export const ACTION_KEY_IDS = [
+  'k1',
+  'k2',
+  'k3',
+  'k4',
+  'k5',
+  'k6',
+  'k7',
+  'k8'
+] as const;
+
+export type ActionKeyId = (typeof ACTION_KEY_IDS)[number];
+export type ButtonSlotId = 'b1' | 'b2' | 'b3' | 'b4' | 'b5' | 'b6' | 'b7' | 'b8';
+
+export const KEY_TO_SLOT: Record<ActionKeyId, ButtonSlotId> = {
   k1: 'b1',
   k2: 'b2',
   k3: 'b3',
-  k4: 'b4'
+  k4: 'b4',
+  k5: 'b5',
+  k6: 'b6',
+  k7: 'b7',
+  k8: 'b8'
+};
+
+export const SLOT_TO_ACTION_KEY: Record<ButtonSlotId, ActionKeyId> = {
+  b1: 'k1',
+  b2: 'k2',
+  b3: 'k3',
+  b4: 'k4',
+  b5: 'k5',
+  b6: 'k6',
+  b7: 'k7',
+  b8: 'k8'
 };
 
 export function emptyAction(): ActionBinding {
@@ -44,9 +73,9 @@ export function makeHardwareKey(
   existingAppearance?: KeyAppearance,
   repeatConfig?: TextMacroRepeatConfig
 ): KeyControlConfig {
-  if (id === 'k5') {
+  if (id === 'k9') {
     return {
-      id: 'k5',
+      id: 'k9',
       isModeSwitch: true,
       triggers: { tap: emptyAction() },
       appearance: {
@@ -108,32 +137,62 @@ export function buildHardwareProfile(
   const accent = id === 'MAC' ? '#3B82F6' : '#10B981';
   const prevKeys = existingProfile?.layers[0]?.keys;
 
+  const prevAppFor = (kid: ActionKeyId): KeyAppearance | undefined => {
+    const prev = prevKeys?.[kid];
+    if (!prev || prev.isModeSwitch) return undefined;
+    return prev.appearance;
+  };
+
   const keys: Record<KeyId, KeyControlConfig> = {
     k1: makeHardwareKey(
       'k1',
       slots?.b1 || '',
-      prevKeys?.k1?.appearance,
+      prevAppFor('k1'),
       repeatConfigs?.[`${id}:b1`]
     ),
     k2: makeHardwareKey(
       'k2',
       slots?.b2 || '',
-      prevKeys?.k2?.appearance,
+      prevAppFor('k2'),
       repeatConfigs?.[`${id}:b2`]
     ),
     k3: makeHardwareKey(
       'k3',
       slots?.b3 || '',
-      prevKeys?.k3?.appearance,
+      prevAppFor('k3'),
       repeatConfigs?.[`${id}:b3`]
     ),
     k4: makeHardwareKey(
       'k4',
       slots?.b4 || '',
-      prevKeys?.k4?.appearance,
+      prevAppFor('k4'),
       repeatConfigs?.[`${id}:b4`]
     ),
-    k5: makeHardwareKey('k5', '')
+    k5: makeHardwareKey(
+      'k5',
+      slots?.b5 || '',
+      prevAppFor('k5'),
+      repeatConfigs?.[`${id}:b5`]
+    ),
+    k6: makeHardwareKey(
+      'k6',
+      slots?.b6 || '',
+      prevAppFor('k6'),
+      repeatConfigs?.[`${id}:b6`]
+    ),
+    k7: makeHardwareKey(
+      'k7',
+      slots?.b7 || '',
+      prevAppFor('k7'),
+      repeatConfigs?.[`${id}:b7`]
+    ),
+    k8: makeHardwareKey(
+      'k8',
+      slots?.b8 || '',
+      prevAppFor('k8'),
+      repeatConfigs?.[`${id}:b8`]
+    ),
+    k9: makeHardwareKey('k9', '')
   };
 
   return {

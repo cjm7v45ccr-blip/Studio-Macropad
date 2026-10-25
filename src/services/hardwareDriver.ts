@@ -47,6 +47,10 @@ export const FACTORY_STATUS: FirmwareStatus = {
           b2: 'KEY:F13',
           b3: 'KEY:F14',
           b4: 'KEY:F15',
+          b5: 'MACRO:COPY',
+          b6: 'MACRO:PASTE',
+          b7: 'MACRO:UNDO',
+          b8: 'MACRO:SAVE',
           dial: 'MEDIA:MUTE'
         }
       },
@@ -58,6 +62,10 @@ export const FACTORY_STATUS: FirmwareStatus = {
           b2: 'APP:YOUTUBE',
           b3: 'APP:DISNEY',
           b4: 'APP:TUBI',
+          b5: 'APP:NETFLIX',
+          b6: 'APP:PRIME',
+          b7: 'TV:INFO',
+          b8: 'TV:HOME',
           dial: 'TV:MUTE'
         }
       }
@@ -74,11 +82,19 @@ export const FACTORY_STATUS: FirmwareStatus = {
   mac_b2: 'KEY:F13',
   mac_b3: 'KEY:F14',
   mac_b4: 'KEY:F15',
+  mac_b5: 'MACRO:COPY',
+  mac_b6: 'MACRO:PASTE',
+  mac_b7: 'MACRO:UNDO',
+  mac_b8: 'MACRO:SAVE',
   mac_dial: 'MEDIA:MUTE',
   tv_b1: 'TV:POWER',
   tv_b2: 'APP:YOUTUBE',
   tv_b3: 'APP:DISNEY',
   tv_b4: 'APP:TUBI',
+  tv_b5: 'APP:NETFLIX',
+  tv_b6: 'APP:PRIME',
+  tv_b7: 'TV:INFO',
+  tv_b8: 'TV:HOME',
   tv_dial: 'TV:MUTE'
 };
 
