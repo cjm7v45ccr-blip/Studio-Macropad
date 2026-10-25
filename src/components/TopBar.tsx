@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import {
   DeviceConnectionInfo,
   HardwareProfileId,
-  StudioProfile
+  StudioProfile,
+  SyncStatusPill
 } from '../types/studio';
 import { PWAInstallButton } from './PWAInstallButton';
 import {
@@ -18,15 +19,17 @@ import {
   RefreshCw,
   Laptop,
   Tv,
-  Zap
+  Loader2,
+  Bluetooth,
+  Wifi
 } from 'lucide-react';
 
 interface TopBarProps {
   connection: DeviceConnectionInfo;
-  isSyncedWithHardware: boolean;
+  syncStatus: SyncStatusPill;
+  currentRev: number;
+  dirty: boolean;
   isSyncingUsb: boolean;
-  autoSyncOnEdit: boolean;
-  onToggleAutoSync: () => void;
   onOpenConnectModal: () => void;
   onPullFromUsb: () => void;
   profiles: [StudioProfile, StudioProfile];
@@ -34,7 +37,6 @@ interface TopBarProps {
   onSelectProfile: (id: HardwareProfileId) => void;
   onRenameProfile: (id: HardwareProfileId, name: string) => void;
   onCopyProfile: (source: HardwareProfileId, target: HardwareProfileId) => void;
-  hasUnsavedChanges: boolean;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -44,10 +46,10 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({
   connection,
-  isSyncedWithHardware,
+  syncStatus,
+  currentRev,
+  dirty,
   isSyncingUsb,
-  autoSyncOnEdit,
-  onToggleAutoSync,
   onOpenConnectModal,
   onPullFromUsb,
   profiles,
@@ -55,7 +57,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSelectProfile,
   onRenameProfile,
   onCopyProfile,
-  hasUnsavedChanges,
   canUndo,
   canRedo,
   onUndo,
@@ -80,9 +81,37 @@ export const TopBar: React.FC<TopBarProps> = ({
   const hwActiveProfile = connection.telemetry?.activeProfile;
   const otherProfileId: HardwareProfileId = activeProfile.id === 'MAC' ? 'TV' : 'MAC';
 
+  const pillStyles: Record<
+    SyncStatusPill,
+    { dot: string; badge: string; text: string }
+  > = {
+    Synced: {
+      dot: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.75)]',
+      badge: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300',
+      text: 'Synced'
+    },
+    Saving: {
+      dot: 'bg-sky-400',
+      badge: 'bg-sky-500/10 border-sky-500/30 text-sky-300',
+      text: 'Saving'
+    },
+    'Out of sync': {
+      dot: 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]',
+      badge: 'bg-amber-500/12 border-amber-500/35 text-amber-300',
+      text: 'Out of sync'
+    },
+    Disconnected: {
+      dot: 'bg-zinc-500',
+      badge: 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)]',
+      text: connection.connecting ? 'Connecting…' : 'Disconnected'
+    }
+  };
+
+  const currentPill = pillStyles[syncStatus];
+
   return (
     <header className="h-14 shrink-0 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] px-4 flex items-center justify-between gap-3 select-none z-30">
-      {/* Left: Brand + USB Serial Status + Pull Sync */}
+      {/* Left: Brand + 4-State Sync Status Pill + Live Badges */}
       <div className="flex items-center gap-2.5 min-w-0">
         <div className="flex items-center gap-2.5">
           <div
@@ -96,44 +125,79 @@ export const TopBar: React.FC<TopBarProps> = ({
               Studio MacroPad
             </div>
             <div className="text-[10px] font-mono text-[var(--text-muted)]">
-              ESP32 USB Sync Studio
+              ESP32 USB Link
             </div>
           </div>
         </div>
 
         <div className="h-5 w-px bg-[var(--border-subtle)] hidden md:block" />
 
-        {/* Live USB Connection Button */}
+        {/* 4-State Sync Status Pill: Synced | Saving | Out of sync | Disconnected */}
         <button
           type="button"
           onClick={onOpenConnectModal}
-          className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors cursor-pointer whitespace-nowrap"
-          title="Connect or inspect MacroPad USB Serial link"
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all cursor-pointer whitespace-nowrap hover:brightness-110 ${currentPill.badge}`}
+          title={
+            connection.connected
+              ? `${connection.deviceName} (${connection.firmwareVersion}) · rev ${currentRev}`
+              : 'Click to connect MacroPad over USB Serial'
+          }
         >
-          <span
-            className={`w-2 h-2 rounded-full shrink-0 ${
-              connection.connected
-                ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.75)]'
-                : 'bg-amber-500'
-            }`}
-          />
-          <Usb className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
-          <span className="text-xs font-medium text-[var(--text-primary)]">
-            {connection.connected ? 'USB Synced' : 'Connect USB'}
-          </span>
+          {syncStatus === 'Saving' || connection.connecting ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+          ) : (
+            <span className={`w-2 h-2 rounded-full shrink-0 ${currentPill.dot}`} />
+          )}
+          <span>{currentPill.text}</span>
           {connection.connected && (
-            <span className="text-[11px] font-mono text-[var(--text-muted)] hidden xl:inline">
-              {connection.firmwareVersion}
+            <span className="font-mono text-[10px] opacity-75 hidden xl:inline">
+              rev {currentRev}
             </span>
           )}
+          {!connection.connected && !connection.connecting && (
+            <Usb className="w-3 h-3 opacity-70 shrink-0" />
+          )}
         </button>
+
+        {/* Live BLE / Wi-Fi Event Badges when connected */}
+        {connection.connected && connection.telemetry && (
+          <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-[10px]">
+            <span
+              className={`flex items-center gap-1 ${
+                connection.telemetry.bleConnected ? 'text-sky-400' : 'text-zinc-500'
+              }`}
+              title={
+                connection.telemetry.bleConnected
+                  ? 'Bluetooth Keyboard Connected'
+                  : 'Bluetooth Disconnected'
+              }
+            >
+              <Bluetooth className="w-3 h-3" />
+              <span>BLE</span>
+            </span>
+            <span className="text-zinc-700">·</span>
+            <span
+              className={`flex items-center gap-1 ${
+                connection.telemetry.wifiConnected ? 'text-emerald-400' : 'text-zinc-500'
+              }`}
+              title={
+                connection.telemetry.wifiConnected
+                  ? `Wi-Fi Connected (${connection.telemetry.ip || connection.telemetry.ssid})`
+                  : 'Wi-Fi Disconnected'
+              }
+            >
+              <Wifi className="w-3 h-3" />
+              <span>WIFI</span>
+            </span>
+          </div>
+        )}
 
         {connection.connected && (
           <button
             type="button"
             onClick={onPullFromUsb}
             disabled={isSyncingUsb}
-            title="Pull latest macros & active profile from MacroPad over USB"
+            title="Read latest /api/status from MacroPad"
             className="p-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-colors cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncingUsb ? 'animate-spin' : ''}`} />
@@ -141,7 +205,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
-      {/* Center: Hardware MAC / TV Profile Selector + Rename + Copy */}
+      {/* Center: Hardware MAC / TV Profile Selector (calls /api/profile/activate when connected) */}
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
           {profiles.map(prof => {
@@ -183,9 +247,9 @@ export const TopBar: React.FC<TopBarProps> = ({
                 {isLiveOnPad && (
                   <span
                     className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono text-[9px] font-bold"
-                    title="Currently active profile on physical MacroPad"
+                    title="Active profile on physical MacroPad"
                   >
-                    ON PAD
+                    ACTIVE
                   </span>
                 )}
               </button>
@@ -213,7 +277,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               type="button"
               onClick={commitRename}
               className="p-1 rounded-md text-emerald-400 hover:bg-[var(--bg-input)] cursor-pointer"
-              title="Save name to MacroPad"
+              title="Save name"
             >
               <Check className="w-3.5 h-3.5" />
             </button>
@@ -230,7 +294,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => startRename(activeProfile)}
-              title={`Rename ${activeProfile.id} profile alias (max 20 chars)`}
+              title={`Rename ${activeProfile.id} profile alias`}
               className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer"
             >
               <Pencil className="w-3.5 h-3.5" />
@@ -247,23 +311,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
-      {/* Right: Auto-Sync + Undo/Redo + Sync to Device */}
+      {/* Right: PWA + Undo/Redo + Connect / Push Action */}
       <div className="flex items-center gap-2 shrink-0">
         <PWAInstallButton />
-
-        <button
-          type="button"
-          onClick={onToggleAutoSync}
-          title="When enabled, every key or dial edit immediately writes over USB Serial to your MacroPad"
-          className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
-            autoSyncOnEdit
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-              : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
-          }`}
-        >
-          <Zap className="w-3 h-3" />
-          <span>Instant Sync: {autoSyncOnEdit ? 'ON' : 'OFF'}</span>
-        </button>
 
         <div className="hidden sm:flex items-center rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] p-0.5">
           <button
@@ -288,34 +338,32 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         <button
           type="button"
-          onClick={onSaveToDevice}
+          onClick={connection.connected ? onSaveToDevice : onOpenConnectModal}
           style={{
-            backgroundColor: hasUnsavedChanges ? 'var(--accent)' : undefined,
-            color: hasUnsavedChanges ? '#FFFFFF' : undefined
+            backgroundColor: !connection.connected || dirty ? 'var(--accent)' : undefined,
+            color: !connection.connected || dirty ? '#FFFFFF' : undefined
           }}
           className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            hasUnsavedChanges
+            !connection.connected || dirty
               ? 'shadow-sm hover:opacity-90'
               : 'bg-[var(--bg-input)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
           }`}
           title={
             connection.connected
-              ? 'Push all MAC & TV slots and names to ESP32 NVS storage over USB'
-              : 'Connect MacroPad over USB to sync'
+              ? 'Write all 7 slots per profile to MacroPad via /api/profile/save'
+              : 'Connect MacroPad over USB Serial'
           }
         >
-          <Save className="w-3.5 h-3.5 shrink-0" />
-          <span>
-            {connection.connected
-              ? hasUnsavedChanges
-                ? 'Sync to Pad'
-                : isSyncedWithHardware
-                ? 'All Synced'
-                : 'Sync Pad'
-              : 'Sync USB'}
-          </span>
-          {hasUnsavedChanges && (
-            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+          {connection.connected ? (
+            <>
+              <Save className="w-3.5 h-3.5 shrink-0" />
+              <span>{dirty ? 'Push Drafts' : 'Push All'}</span>
+            </>
+          ) : (
+            <>
+              <Usb className="w-3.5 h-3.5 shrink-0" />
+              <span>Connect Pad</span>
+            </>
           )}
         </button>
       </div>

@@ -1,6 +1,7 @@
 import {
   DeviceConnectionInfo,
   HardwareBackupPayload,
+  HardwareEventPacket,
   HardwareProfileId,
   HardwareSlotId,
   HardwareTelemetry
@@ -13,24 +14,25 @@ import {
 } from '../data/firmwareCatalog';
 
 export interface FirmwareStatusPacket {
-  ok: boolean;
-  api_version: number;
+  ok?: boolean;
+  api_version?: number;
+  rev?: number;
   device: {
     id: string;
     name: string;
     firmware: string;
-    connection_type: string;
+    connection_type?: string;
   };
-  connection: {
+  connection?: {
     wifi_connected: boolean;
     ip: string;
     ble_connected: boolean;
   };
-  diagnostics: {
+  diagnostics?: {
     free_heap: number;
     http_api_enabled?: boolean;
   };
-  tv: {
+  tv?: {
     configured: boolean;
     paired: boolean;
     host: string;
@@ -44,65 +46,66 @@ export interface FirmwareStatusPacket {
       controls: Record<HardwareSlotId, string>;
     }[];
   };
-  wifi_connected: boolean;
-  ip: string;
-  heap: number;
-  ssid: string;
-  tv_ip: string;
-  tv_port: number;
-  has_auth: boolean;
-  mac_b1: string;
-  mac_b2: string;
-  mac_b3: string;
-  mac_b4: string;
-  mac_dial: string;
-  tv_b1: string;
-  tv_b2: string;
-  tv_b3: string;
-  tv_b4: string;
-  tv_dial: string;
+  wifi_connected?: boolean;
+  ip?: string;
+  heap?: number;
+  ssid?: string;
+  tv_ip?: string;
+  tv_port?: number;
+  has_auth?: boolean;
+  mac_b1?: string;
+  mac_b2?: string;
+  mac_b3?: string;
+  mac_b4?: string;
+  mac_dial?: string;
+  tv_b1?: string;
+  tv_b2?: string;
+  tv_b3?: string;
+  tv_b4?: string;
+  tv_dial?: string;
 }
 
 type ConnectionListener = (info: DeviceConnectionInfo) => void;
-type HardwareStatusListener = (status: FirmwareStatusPacket, isInitialOrManual: boolean) => void;
+type ConnectStatusListener = (status: FirmwareStatusPacket) => void;
+type HardwareEventListener = (event: HardwareEventPacket) => void;
 
-interface QueuedCommand {
-  payload: Record<string, any>;
-  timeoutMs: number;
-  isManualOrInitialStatus?: boolean;
-  resolve: (res: any) => void;
-  reject: (err: Error) => void;
-}
+/**
+ * PadLink WebSerial Transport
+ * - Sends strictly one request at a time via a Promise queue
+ * - Separates asynchronous hardware events (`msg.event`) from command replies
+ * - Ignores ESP32 boot noise lines (anything not starting with `{`)
+ * - Waits 2000ms on open for ESP32 auto-reset, enables `/api/events/set`, and reads `/api/status`
+ * - Reconnects automatically via `navigator.serial.getPorts()` without showing the port picker
+ */
+class PadLinkService {
+  private port: any = null;
+  private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  private reader: ReadableStreamDefaultReader<string> | null = null;
+  private pipeClosedPromise: Promise<void> | null = null;
 
-class UsbHardwareService {
-  private serialPort: any = null;
-  private serialReader: any = null;
-  private serialWriter: any = null;
-  private serialRxBuffer = '';
+  private queue: Promise<void> = Promise.resolve();
+  private pending: ((msg: any) => void) | null = null;
+  private pendingReject: ((err: Error) => void) | null = null;
+  private buf = '';
+
   private isOpening = false;
   private manualDisconnect = false;
-  private pollIntervalId: number | null = null;
-  private hasCompletedInitialSync = false;
-
-  private commandQueue: QueuedCommand[] = [];
-  private inFlight: {
-    cmd: QueuedCommand;
-    timerId: number;
-  } | null = null;
 
   private connectionInfo: DeviceConnectionInfo = {
     connected: false,
+    connecting: false,
     transport: 'disconnected',
     deviceName: 'Studio MacroPad',
     firmwareVersion: '—'
   };
 
   private connListeners = new Set<ConnectionListener>();
-  private statusListeners = new Set<HardwareStatusListener>();
+  private connectStatusListeners = new Set<ConnectStatusListener>();
+  private eventListeners = new Set<HardwareEventListener>();
 
   constructor() {
     if (typeof window !== 'undefined') {
-      this.setupDeviceWatchers();
+      this.setupSerialWatchers();
     }
   }
 
@@ -121,257 +124,323 @@ class UsbHardwareService {
     };
   }
 
-  public onHardwareStatus(fn: HardwareStatusListener) {
-    this.statusListeners.add(fn);
+  /**
+   * Fired when a fresh USB connection completes its handshake & initial `/api/status` read
+   */
+  public onConnectStatus(fn: ConnectStatusListener) {
+    this.connectStatusListeners.add(fn);
     return () => {
-      this.statusListeners.delete(fn);
+      this.connectStatusListeners.delete(fn);
+    };
+  }
+
+  /**
+   * Fired whenever the pad streams an asynchronous JSON event (`msg.event`)
+   */
+  public onHardwareEvent(fn: HardwareEventListener) {
+    this.eventListeners.add(fn);
+    return () => {
+      this.eventListeners.delete(fn);
     };
   }
 
   private emitConnection() {
-    const snap = { ...this.connectionInfo };
+    const snap: DeviceConnectionInfo = {
+      ...this.connectionInfo,
+      telemetry: this.connectionInfo.telemetry
+        ? { ...this.connectionInfo.telemetry }
+        : undefined
+    };
     this.connListeners.forEach(fn => fn(snap));
   }
 
-  private setupDeviceWatchers() {
+  private setupSerialWatchers() {
     const navSerial = (navigator as any).serial;
     if (!navSerial) return;
 
     navSerial.addEventListener('connect', async (e: any) => {
-      if (this.manualDisconnect || this.serialPort || this.isOpening) return;
-      const targetPort = e.target;
+      if (this.manualDisconnect || this.port || this.isOpening) return;
+      const targetPort = e?.target;
       if (targetPort) {
-        await this.openPort(targetPort);
+        await this.openAuthorizedPort(targetPort).catch(() => {});
       } else {
         await this.tryAutoConnectSerial();
       }
     });
 
     navSerial.addEventListener('disconnect', async (e: any) => {
-      if (this.serialPort && (!e.target || e.target === this.serialPort)) {
-        await this.cleanupSerial();
-        this.setDisconnected();
+      if (this.port && (!e?.target || e.target === this.port)) {
+        await this.cleanupPort();
+        this.markDisconnected();
       }
     });
 
-    // Auto-pair with previously authorized USB port on startup
+    // Reconnect automatically using previously approved ports without showing the port picker
     this.tryAutoConnectSerial();
   }
 
-  private setDisconnected() {
-    this.stopBackgroundPoll();
-    this.hasCompletedInitialSync = false;
-    this.rejectAllPending(new Error('USB cable disconnected.'));
+  private markDisconnected() {
+    if (this.pendingReject) {
+      const rej = this.pendingReject;
+      this.pending = null;
+      this.pendingReject = null;
+      rej(new Error('MacroPad USB disconnected'));
+    }
+
     this.connectionInfo = {
       connected: false,
+      connecting: false,
       transport: 'disconnected',
       deviceName: 'Studio MacroPad',
-      firmwareVersion: '—'
+      firmwareVersion: '—',
+      // Wi-Fi, TV pairing, and HTTP token live strictly on the pad — clear on disconnect
+      telemetry: undefined
     };
     this.emitConnection();
   }
 
-  private rejectAllPending(err: Error) {
-    if (this.inFlight) {
-      window.clearTimeout(this.inFlight.timerId);
-      this.inFlight.cmd.reject(err);
-      this.inFlight = null;
-    }
-    while (this.commandQueue.length > 0) {
-      const next = this.commandQueue.shift();
-      next?.reject(err);
-    }
-  }
-
   public async tryAutoConnectSerial(): Promise<boolean> {
-    if (!this.browserSupportsWebSerial || this.serialPort || this.isOpening || this.manualDisconnect) {
-      return Boolean(this.serialPort);
+    if (
+      !this.browserSupportsWebSerial ||
+      this.port ||
+      this.isOpening ||
+      this.manualDisconnect
+    ) {
+      return Boolean(this.port && this.connectionInfo.connected);
     }
+
     try {
       const ports: any[] = await (navigator as any).serial.getPorts();
       if (!ports || ports.length === 0) return false;
-      // Prefer ports with a USB vendor ID (ESP32 CP210x / CH340 / FTDI / USB-JTAG)
+
+      // Prefer USB serial ports exposing a USB Vendor ID (CP210x / CH340 / FTDI / ESP32)
       const sorted = [...ports].sort((a, b) => {
         const aUsb = a.getInfo?.()?.usbVendorId ? 1 : 0;
         const bUsb = b.getInfo?.()?.usbVendorId ? 1 : 0;
         return bUsb - aUsb;
       });
-      for (const port of sorted) {
-        const ok = await this.openPort(port);
+
+      for (const candidate of sorted) {
+        const ok = await this.openAuthorizedPort(candidate);
         if (ok) return true;
       }
     } catch (_) {}
     return false;
   }
 
-  public async connectWebSerial(): Promise<boolean> {
+  /**
+   * Prompt user with browser Web Serial port picker and run handshake
+   */
+  public async connectWebSerial(): Promise<FirmwareStatusPacket | null> {
     if (!this.browserSupportsWebSerial) {
-      throw new Error('Web Serial requires Chrome, Edge, or Brave over a USB data cable.');
+      throw new Error('Chrome or Edge on HTTPS is required for Web Serial.');
     }
 
     this.manualDisconnect = false;
+    let selectedPort: any;
     try {
-      const port = await (navigator as any).serial.requestPort();
-      if (!port) return false;
-      await this.disconnect(false);
-      this.manualDisconnect = false;
-      return await this.openPort(port);
+      selectedPort = await (navigator as any).serial.requestPort();
     } catch (err: any) {
-      if (err?.name === 'NotFoundError') return false;
+      if (err?.name === 'NotFoundError') return null;
       throw err;
     }
+
+    if (!selectedPort) return null;
+    await this.disconnect(false);
+    this.manualDisconnect = false;
+    return await this.openAuthorizedPort(selectedPort, true);
   }
 
-  private async openPort(port: any): Promise<boolean> {
-    if (this.serialPort) return true;
-    if (this.isOpening || !port) return false;
-
+  private async openAuthorizedPort(
+    port: any,
+    throwOnError = false
+  ): Promise<FirmwareStatusPacket | null> {
+    if (this.isOpening || !port) return null;
     this.isOpening = true;
+
+    const portInfo = port.getInfo?.() || {};
+    const vid = portInfo.usbVendorId
+      ? portInfo.usbVendorId.toString(16).padStart(4, '0').toUpperCase()
+      : undefined;
+    const pid = portInfo.usbProductId
+      ? portInfo.usbProductId.toString(16).padStart(4, '0').toUpperCase()
+      : undefined;
+    const vendorProduct = vid && pid ? `${vid}:${pid}` : undefined;
+
+    this.connectionInfo = {
+      connected: false,
+      connecting: true,
+      transport: 'disconnected',
+      deviceName: 'Studio MacroPad',
+      firmwareVersion: 'Rebooting…',
+      vendorProduct
+    };
+    this.emitConnection();
+
     try {
       await port.open({ baudRate: 115200 });
-      await port.setSignals?.({ dataTerminalReady: false, requestToSend: false }).catch(() => {});
+      this.port = port;
+      this.buf = '';
+      this.writer = port.writable.getWriter();
 
-      this.serialPort = port;
-      this.serialWriter = port.writable?.getWriter();
-      this.serialRxBuffer = '';
-      this.hasCompletedInitialSync = false;
+      const decoder = new TextDecoderStream();
+      this.pipeClosedPromise = port.readable.pipeTo(decoder.writable).catch(() => {});
+      this.reader = decoder.readable.getReader();
 
-      const info = port.getInfo?.() || {};
-      const vid = info.usbVendorId
-        ? info.usbVendorId.toString(16).padStart(4, '0').toUpperCase()
-        : undefined;
-      const pid = info.usbProductId
-        ? info.usbProductId.toString(16).padStart(4, '0').toUpperCase()
-        : undefined;
+      this.readLoop(port);
 
-      this.connectionInfo = {
-        connected: true,
-        transport: 'webserial',
-        deviceName: 'Studio MacroPad',
-        firmwareVersion: 'Syncing…',
-        vendorProduct: vid && pid ? `${vid}:${pid}` : undefined
-      };
-      this.emitConnection();
+      // ESP32 boards often pulse EN/RTS when the port opens; wait 2000ms for setup()
+      await new Promise(r => setTimeout(r, 2000));
+      if (this.port !== port) return null;
 
-      this.readSerialLoop(port);
-      this.runInitialSyncHandshake();
-      this.startBackgroundPoll();
-      return true;
-    } catch (_) {
-      await this.cleanupSerial();
-      return false;
+      // Enable real-time hardware events (`press`, `turn`, `profile`, `connection`, `config`)
+      try {
+        await this.call({ path: '/api/events/set', enabled: 1 });
+      } catch (_) {
+        // Retry once in case board boot took slightly over 2s
+        if (this.port === port) {
+          await this.call({ path: '/api/events/set', enabled: 1 }).catch(() => {});
+        }
+      }
+
+      const status = await this.call<FirmwareStatusPacket>({ path: '/api/status' });
+      if (!status || !status.profiles) {
+        throw new Error('Unexpected status reply from MacroPad.');
+      }
+
+      this.applyTelemetryFromStatus(status, vendorProduct);
+      this.connectStatusListeners.forEach(fn => fn(status));
+      return status;
+    } catch (err: any) {
+      await this.cleanupPort();
+      this.markDisconnected();
+      if (throwOnError) {
+        throw err instanceof Error
+          ? err
+          : new Error('Failed to communicate with MacroPad over USB.');
+      }
+      return null;
     } finally {
       this.isOpening = false;
     }
   }
 
-  /**
-   * ESP32-WROOM-32 boards often pulse EN/BOOT on serial port open and take ~600-1400ms
-   * in setup() before entering loop(). Retry /api/status cleanly until synced.
-   */
-  private async runInitialSyncHandshake() {
-    const delays = [160, 550, 750, 950];
-    for (let attempt = 0; attempt < delays.length; attempt++) {
-      if (!this.serialPort || this.hasCompletedInitialSync) return;
-      await new Promise(r => setTimeout(r, delays[attempt]));
-      if (!this.serialPort || this.hasCompletedInitialSync) return;
-      try {
-        await this.fetchStatus({ isManualOrInitial: true, timeoutMs: 950 });
-        if (this.hasCompletedInitialSync) return;
-      } catch (_) {
-        // Retry next window while ESP32 finishes setup()
-      }
-    }
-  }
-
-  private startBackgroundPoll() {
-    this.stopBackgroundPoll();
-    this.pollIntervalId = window.setInterval(() => {
-      if (!this.serialPort || !this.serialWriter) return;
-      if (this.inFlight || this.commandQueue.length > 0) return;
-      this.fetchStatus({ isManualOrInitial: !this.hasCompletedInitialSync, timeoutMs: 1800 }).catch(
-        () => {}
-      );
-    }, 2600);
-  }
-
-  private stopBackgroundPoll() {
-    if (this.pollIntervalId !== null) {
-      window.clearInterval(this.pollIntervalId);
-      this.pollIntervalId = null;
-    }
-  }
-
-  private async readSerialLoop(port: any) {
+  private async readLoop(port: any) {
     try {
-      const decoder = new TextDecoderStream();
-      port.readable.pipeTo(decoder.writable).catch(() => {});
-      const reader = decoder.readable.getReader();
-      this.serialReader = reader;
-
-      while (true) {
-        const { value, done } = await reader.read();
+      for (;;) {
+        if (!this.reader) break;
+        const { value, done } = await this.reader.read();
         if (done) break;
-        if (value) {
-          this.serialRxBuffer += value;
-          if (this.serialRxBuffer.length > 32768) {
-            this.serialRxBuffer = this.serialRxBuffer.slice(-8192);
+        if (!value) continue;
+
+        this.buf += value;
+        if (this.buf.length > 32768) {
+          this.buf = this.buf.slice(-8192);
+        }
+
+        let i: number;
+        while ((i = this.buf.indexOf('\n')) >= 0) {
+          const line = this.buf.slice(0, i).trim();
+          this.buf = this.buf.slice(i + 1);
+          if (!line.startsWith('{')) continue; // skip ESP32 boot noise
+
+          let msg: any;
+          try {
+            msg = JSON.parse(line);
+          } catch {
+            continue;
           }
-          this.parseSerialLines();
+
+          if (msg.event) {
+            this.handleHardwareEvent(msg as HardwareEventPacket);
+          } else {
+            if (msg.profiles && msg.device) {
+              this.applyTelemetryFromStatus(
+                msg as FirmwareStatusPacket,
+                this.connectionInfo.vendorProduct
+              );
+            } else if (typeof msg.rev === 'number' && this.connectionInfo.connected) {
+              this.connectionInfo = {
+                ...this.connectionInfo,
+                rev: msg.rev,
+                lastSyncedAt: new Date().toLocaleTimeString()
+              };
+              this.emitConnection();
+            }
+
+            if (this.pending) {
+              const resolveFn = this.pending;
+              this.pending = null;
+              this.pendingReject = null;
+              resolveFn(msg);
+            }
+          }
         }
       }
     } catch (_) {
     } finally {
-      if (this.serialPort === port) {
-        await this.cleanupSerial();
-        this.setDisconnected();
+      if (this.port === port) {
+        await this.cleanupPort();
+        this.markDisconnected();
       }
     }
   }
 
-  private parseSerialLines() {
-    if (!this.serialRxBuffer.includes('\n')) return;
-    const lines = this.serialRxBuffer.split('\n');
-    this.serialRxBuffer = lines.pop() || '';
-
-    for (const raw of lines) {
-      const trimmed = raw.trim();
-      if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) continue;
-
-      let msg: any;
-      try {
-        msg = JSON.parse(trimmed);
-      } catch (_) {
-        continue;
-      }
-
-      const activeCmd = this.inFlight;
-      const isInitialOrManual = Boolean(activeCmd?.cmd.isManualOrInitialStatus);
-
-      // Check if this is a full buildStatusJson() packet from /api/status
-      if (msg && msg.profiles && Array.isArray(msg.profiles.items) && msg.device) {
-        this.applyTelemetryFromStatus(msg as FirmwareStatusPacket);
-        const announce = !this.hasCompletedInitialSync || isInitialOrManual;
-        this.hasCompletedInitialSync = true;
-        this.statusListeners.forEach(fn => fn(msg as FirmwareStatusPacket, announce));
-      }
-
-      if (activeCmd) {
-        window.clearTimeout(activeCmd.timerId);
-        this.inFlight = null;
-        activeCmd.cmd.resolve(msg);
-        this.flushNextCommand();
-      }
+  private handleHardwareEvent(e: HardwareEventPacket) {
+    if (e.event === 'connection' && this.connectionInfo.telemetry) {
+      this.connectionInfo = {
+        ...this.connectionInfo,
+        telemetry: {
+          ...this.connectionInfo.telemetry,
+          bleConnected:
+            typeof e.ble === 'boolean'
+              ? e.ble
+              : this.connectionInfo.telemetry.bleConnected,
+          wifiConnected:
+            typeof e.wifi === 'boolean'
+              ? e.wifi
+              : this.connectionInfo.telemetry.wifiConnected,
+          ip:
+            typeof e.ip === 'string'
+              ? e.ip
+              : e.wifi === false
+              ? ''
+              : this.connectionInfo.telemetry.ip
+        }
+      };
+      this.emitConnection();
+    } else if (e.event === 'profile' && this.connectionInfo.telemetry) {
+      const nextActive: HardwareProfileId =
+        (e.active || e.profile) === 'TV' ? 'TV' : 'MAC';
+      this.connectionInfo = {
+        ...this.connectionInfo,
+        telemetry: {
+          ...this.connectionInfo.telemetry,
+          activeProfile: nextActive
+        }
+      };
+      this.emitConnection();
+    } else if (e.event === 'config' && typeof e.rev === 'number') {
+      this.connectionInfo = {
+        ...this.connectionInfo,
+        rev: e.rev,
+        lastSyncedAt: new Date().toLocaleTimeString()
+      };
+      this.emitConnection();
     }
+
+    this.eventListeners.forEach(fn => fn(e));
   }
 
-  private applyTelemetryFromStatus(pkt: FirmwareStatusPacket) {
-    const fw = pkt.device?.firmware
-      ? pkt.device.firmware.startsWith('v')
-        ? pkt.device.firmware
-        : `v${pkt.device.firmware}`
+  private applyTelemetryFromStatus(pkt: FirmwareStatusPacket, vendorProduct?: string) {
+    const rawFw = pkt.device?.firmware || '';
+    const fw = rawFw
+      ? rawFw.startsWith('v')
+        ? rawFw
+        : `v${rawFw}`
       : this.connectionInfo.firmwareVersion;
 
+    // Live-only pad telemetry (never stored in localStorage["pad:" + id])
     const telemetry: HardwareTelemetry = {
       activeProfile: pkt.profiles?.active === 'TV' ? 'TV' : 'MAC',
       wifiConnected: Boolean(pkt.connection?.wifi_connected ?? pkt.wifi_connected),
@@ -388,100 +457,117 @@ class UsbHardwareService {
     };
 
     this.connectionInfo = {
-      ...this.connectionInfo,
       connected: true,
+      connecting: false,
       transport: 'webserial',
+      deviceId: pkt.device?.id || 'studio-pad',
+      rev: typeof pkt.rev === 'number' ? pkt.rev : this.connectionInfo.rev ?? 0,
       deviceName: pkt.device?.name || 'Studio MacroPad',
       firmwareVersion: fw,
+      vendorProduct: vendorProduct ?? this.connectionInfo.vendorProduct,
       lastSyncedAt: new Date().toLocaleTimeString(),
       telemetry
     };
     this.emitConnection();
   }
 
-  private enqueueCommand(
-    payload: Record<string, any>,
-    timeoutMs = 2800,
-    isManualOrInitialStatus = false
-  ): Promise<any> {
-    if (!this.connectionInfo.connected || !this.serialWriter) {
-      return Promise.reject(new Error('MacroPad USB cable is not connected.'));
-    }
+  /**
+   * Serialized single-request-at-a-time JSON RPC over USB Serial
+   */
+  public call<T = any>(obj: Record<string, any>, timeoutMs = 3000): Promise<T> {
+    const run = () =>
+      new Promise<T>((resolve, reject) => {
+        if (!this.writer || !this.port) {
+          reject(new Error('MacroPad USB cable is disconnected.'));
+          return;
+        }
 
-    return new Promise((resolve, reject) => {
-      this.commandQueue.push({
-        payload,
-        timeoutMs,
-        isManualOrInitialStatus,
-        resolve,
-        reject
+        const encodedLine = JSON.stringify(obj) + '\n';
+        if (encodedLine.length > 1536) {
+          reject(new Error('Serial JSON packet exceeds 1536-byte firmware limit.'));
+          return;
+        }
+
+        const t = window.setTimeout(() => {
+          if (this.pending === onReply) {
+            this.pending = null;
+            this.pendingReject = null;
+          }
+          reject(new Error('Timed out waiting for MacroPad reply over USB.'));
+        }, timeoutMs);
+
+        const onReply = (msg: any) => {
+          window.clearTimeout(t);
+          resolve(msg as T);
+        };
+
+        this.pending = onReply;
+        this.pendingReject = (err: Error) => {
+          window.clearTimeout(t);
+          reject(err);
+        };
+
+        this.writer.write(new TextEncoder().encode(encodedLine)).catch(err => {
+          window.clearTimeout(t);
+          if (this.pending === onReply) {
+            this.pending = null;
+            this.pendingReject = null;
+          }
+          reject(
+            err instanceof Error ? err : new Error('Failed to write to USB Serial port.')
+          );
+        });
       });
-      this.flushNextCommand();
-    });
-  }
 
-  private async flushNextCommand() {
-    if (this.inFlight || this.commandQueue.length === 0 || !this.serialWriter) return;
-
-    const cmd = this.commandQueue.shift()!;
-    const serialized = JSON.stringify(cmd.payload) + '\n';
-
-    if (serialized.length > 1536) {
-      cmd.reject(new Error('Serial JSON packet exceeds 1536-byte firmware limit.'));
-      this.flushNextCommand();
-      return;
-    }
-
-    const timerId = window.setTimeout(() => {
-      if (this.inFlight?.cmd === cmd) {
-        this.inFlight = null;
-        cmd.reject(new Error('Timed out waiting for response from MacroPad over USB.'));
-        this.flushNextCommand();
-      }
-    }, cmd.timeoutMs);
-
-    this.inFlight = { cmd, timerId };
-
-    try {
-      await this.serialWriter.write(new TextEncoder().encode(serialized));
-    } catch (err: any) {
-      window.clearTimeout(timerId);
-      if (this.inFlight?.cmd === cmd) {
-        this.inFlight = null;
-      }
-      cmd.reject(err instanceof Error ? err : new Error('Failed to write to USB Serial port.'));
-      this.flushNextCommand();
-    }
-  }
-
-  // ===========================================================================
-  // Public Bi-Directional Firmware API Methods (1:1 with processSerialPacket)
-  // ===========================================================================
-
-  public async fetchStatus(opts?: {
-    isManualOrInitial?: boolean;
-    timeoutMs?: number;
-  }): Promise<FirmwareStatusPacket> {
-    const res = await this.enqueueCommand(
-      { path: '/api/status' },
-      opts?.timeoutMs ?? 2500,
-      opts?.isManualOrInitial ?? true
+    const next = this.queue.then(run, run);
+    this.queue = next.then(
+      () => undefined,
+      () => undefined
     );
+    return next;
+  }
+
+  // ===========================================================================
+  // Firmware API Wrappers
+  // ===========================================================================
+
+  public async fetchStatus(timeoutMs = 3000): Promise<FirmwareStatusPacket> {
+    const res = await this.call<FirmwareStatusPacket>({ path: '/api/status' }, timeoutMs);
     if (!res || !res.profiles) {
-      throw new Error(res?.message || 'Unexpected status response from MacroPad.');
+      throw new Error((res as any)?.message || 'Unexpected status reply from MacroPad.');
     }
-    return res as FirmwareStatusPacket;
+    return res;
+  }
+
+  public async activateProfile(
+    profile: HardwareProfileId
+  ): Promise<{ ok: boolean; rev?: number; active?: HardwareProfileId; message?: string }> {
+    const res = await this.call({
+      path: '/api/profile/activate',
+      profile
+    });
+    if (res?.ok && this.connectionInfo.telemetry) {
+      this.connectionInfo = {
+        ...this.connectionInfo,
+        telemetry: {
+          ...this.connectionInfo.telemetry,
+          activeProfile: profile
+        }
+      };
+      this.emitConnection();
+    }
+    return res;
   }
 
   public async saveSlotBinding(
     profile: HardwareProfileId,
     slot: HardwareSlotId,
     action: string
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<{ ok: boolean; rev?: number; message?: string }> {
     if (!isValidFirmwareAction(action)) {
       throw new Error(`Unsupported firmware action: ${action}`);
     }
-    const res = await this.enqueueCommand({
+    const res = await this.call({
       path: '/api/customizer/save',
       profile,
       slot,
@@ -496,15 +582,15 @@ class UsbHardwareService {
   public async saveFullProfile(
     profile: HardwareProfileId,
     slots: Record<HardwareSlotId, string>
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<{ ok: boolean; rev?: number; message?: string }> {
     for (const slotId of HARDWARE_SLOTS) {
       if (!isValidFirmwareAction(slots[slotId])) {
         throw new Error(
-          `Slot ${slotId.toUpperCase()} on ${profile} is unassigned or invalid. Assign all 7 controls before saving the full profile.`
+          `Slot ${slotId.toUpperCase()} on ${profile} is unassigned or invalid.`
         );
       }
     }
-    const res = await this.enqueueCommand({
+    const res = await this.call({
       path: '/api/profile/save',
       profile,
       b1: slots.b1,
@@ -524,15 +610,17 @@ class UsbHardwareService {
   public async renameProfile(
     profile: HardwareProfileId,
     name: string
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<{ ok: boolean; rev?: number; message?: string }> {
     const clean = sanitizeFirmwareAlias(name, profile);
-    const res = await this.enqueueCommand({
+    const res = await this.call({
       path: '/api/profile/rename',
       profile,
       name: clean
     });
     if (!res?.ok) {
-      throw new Error(res?.message || 'Invalid profile name (1-20 letters, numbers, spaces, - or _).');
+      throw new Error(
+        res?.message || 'Invalid profile name (1-20 letters, numbers, spaces, - or _).'
+      );
     }
     return res;
   }
@@ -540,8 +628,8 @@ class UsbHardwareService {
   public async copyProfile(
     source: HardwareProfileId,
     target: HardwareProfileId
-  ): Promise<{ ok: boolean; message: string }> {
-    const res = await this.enqueueCommand({
+  ): Promise<{ ok: boolean; rev?: number; message?: string }> {
+    const res = await this.call({
       path: '/api/profile/copy',
       source,
       target
@@ -549,12 +637,11 @@ class UsbHardwareService {
     if (!res?.ok) {
       throw new Error(res?.message || 'Failed to copy profile on device.');
     }
-    await this.fetchStatus({ isManualOrInitial: true }).catch(() => {});
     return res;
   }
 
   public async exportHardwareConfig(): Promise<HardwareBackupPayload> {
-    const res = await this.enqueueCommand({ path: '/api/config/export' });
+    const res = await this.call({ path: '/api/config/export' });
     if (res?.schema !== 'studio-pad-config') {
       throw new Error(res?.message || 'Failed to export configuration from MacroPad.');
     }
@@ -563,41 +650,42 @@ class UsbHardwareService {
 
   public async importHardwareConfig(
     backup: HardwareBackupPayload
-  ): Promise<{ ok: boolean; message: string }> {
-    const payload = {
-      path: '/api/config/import',
-      schema: 'studio-pad-config',
-      version: 1,
-      mac_name: sanitizeFirmwareAlias(backup.mac_name, 'MAC'),
-      tv_name: sanitizeFirmwareAlias(backup.tv_name, 'TV'),
-      mac_b1: backup.mac_b1,
-      mac_b2: backup.mac_b2,
-      mac_b3: backup.mac_b3,
-      mac_b4: backup.mac_b4,
-      mac_dial: backup.mac_dial,
-      mac_enc_cw: backup.mac_enc_cw,
-      mac_enc_ccw: backup.mac_enc_ccw,
-      tv_b1: backup.tv_b1,
-      tv_b2: backup.tv_b2,
-      tv_b3: backup.tv_b3,
-      tv_b4: backup.tv_b4,
-      tv_dial: backup.tv_dial,
-      tv_enc_cw: backup.tv_enc_cw,
-      tv_enc_ccw: backup.tv_enc_ccw
-    };
-    const res = await this.enqueueCommand(payload, 3500);
+  ): Promise<{ ok: boolean; rev?: number; message?: string }> {
+    const res = await this.call(
+      {
+        path: '/api/config/import',
+        schema: 'studio-pad-config',
+        version: 1,
+        mac_name: sanitizeFirmwareAlias(backup.mac_name, 'MAC'),
+        tv_name: sanitizeFirmwareAlias(backup.tv_name, 'TV'),
+        mac_b1: backup.mac_b1,
+        mac_b2: backup.mac_b2,
+        mac_b3: backup.mac_b3,
+        mac_b4: backup.mac_b4,
+        mac_dial: backup.mac_dial,
+        mac_enc_cw: backup.mac_enc_cw,
+        mac_enc_ccw: backup.mac_enc_ccw,
+        tv_b1: backup.tv_b1,
+        tv_b2: backup.tv_b2,
+        tv_b3: backup.tv_b3,
+        tv_b4: backup.tv_b4,
+        tv_dial: backup.tv_dial,
+        tv_enc_cw: backup.tv_enc_cw,
+        tv_enc_ccw: backup.tv_enc_ccw
+      },
+      4000
+    );
     if (!res?.ok) {
       throw new Error(res?.message || 'Device rejected configuration backup.');
     }
-    await this.fetchStatus({ isManualOrInitial: true }).catch(() => {});
     return res;
   }
 
-  public async testAction(action: string): Promise<{ ok: boolean; message: string }> {
+  public async testAction(action: string): Promise<{ ok: boolean; message?: string }> {
     if (!isValidFirmwareAction(action)) {
       throw new Error('Assign a valid firmware action first.');
     }
-    const res = await this.enqueueCommand({
+    const res = await this.call({
       path: '/api/test/action',
       action
     });
@@ -608,7 +696,7 @@ class UsbHardwareService {
   }
 
   public async saveWifi(ssid: string, pass: string): Promise<{ ok: boolean; message: string }> {
-    const res = await this.enqueueCommand({
+    const res = await this.call({
       path: '/api/wifi',
       ssid: sanitizeSerialString(ssid.trim(), 32),
       pass: sanitizeSerialString(pass, 63)
@@ -624,7 +712,7 @@ class UsbHardwareService {
     tvPort: number,
     token: string
   ): Promise<{ ok: boolean; message: string }> {
-    const res = await this.enqueueCommand({
+    const res = await this.call({
       path: '/api/token/save',
       tv_ip: sanitizeSerialString(tvIp.trim(), 63),
       tv_port: Number(tvPort) || 7345,
@@ -633,19 +721,19 @@ class UsbHardwareService {
     if (!res?.ok) {
       throw new Error(res?.message || 'Failed to save TV settings.');
     }
-    await this.fetchStatus({ isManualOrInitial: false }).catch(() => {});
+    await this.fetchStatus().catch(() => {});
     return res;
   }
 
   public async testTv(): Promise<{ ok: boolean; message: string }> {
-    return await this.enqueueCommand({ path: '/api/tv/test' }, 6500);
+    return await this.call({ path: '/api/tv/test' }, 6500);
   }
 
   public async startTvPairing(
     tvIp: string,
     tvPort: number
   ): Promise<{ ok: boolean; message: string }> {
-    const res = await this.enqueueCommand(
+    const res = await this.call(
       {
         path: '/api/pair/start',
         tv_ip: sanitizeSerialString(tvIp.trim(), 63),
@@ -660,7 +748,7 @@ class UsbHardwareService {
   }
 
   public async submitTvPin(pin: string): Promise<{ ok: boolean; message: string }> {
-    const res = await this.enqueueCommand(
+    const res = await this.call(
       {
         path: '/api/pair/submit',
         pin: pin.trim()
@@ -670,65 +758,67 @@ class UsbHardwareService {
     if (!res?.ok) {
       throw new Error(res?.message || 'Invalid PIN or TV rejected pairing.');
     }
-    await this.fetchStatus({ isManualOrInitial: false }).catch(() => {});
+    await this.fetchStatus().catch(() => {});
     return res;
   }
 
   public async forgetTv(): Promise<{ ok: boolean; message: string }> {
-    const res = await this.enqueueCommand({
+    const res = await this.call({
       path: '/api/tv/forget',
       confirm: 'FORGET'
     });
     if (!res?.ok) {
       throw new Error(res?.message || 'Failed to forget TV configuration.');
     }
-    await this.fetchStatus({ isManualOrInitial: false }).catch(() => {});
+    await this.fetchStatus().catch(() => {});
     return res;
   }
 
-  public async resetHardwareDefaults(): Promise<{ ok: boolean; message: string }> {
-    const res = await this.enqueueCommand({
+  public async resetHardwareDefaults(): Promise<{ ok: boolean; rev?: number; message: string }> {
+    const res = await this.call({
       path: '/api/device/reset-settings',
       confirm: 'RESET'
     });
     if (!res?.ok) {
       throw new Error(res?.message || 'Failed to reset hardware profiles.');
     }
-    await this.fetchStatus({ isManualOrInitial: true }).catch(() => {});
     return res;
   }
 
   public async setHttpApiToken(token: string): Promise<{ ok: boolean; message: string }> {
-    const res = await this.enqueueCommand({
+    const res = await this.call({
       path: '/api/auth/set',
       token: sanitizeSerialString(token.trim(), 64)
     });
     if (!res?.ok) {
       throw new Error(res?.message || 'Token must be 8-64 characters, or empty to disable.');
     }
-    await this.fetchStatus({ isManualOrInitial: false }).catch(() => {});
+    await this.fetchStatus().catch(() => {});
     return res;
   }
 
-  private async cleanupSerial() {
-    this.stopBackgroundPoll();
+  private async cleanupPort() {
     try {
-      if (this.serialReader) {
-        await this.serialReader.cancel().catch(() => {});
+      if (this.reader) {
+        await this.reader.cancel().catch(() => {});
         try {
-          this.serialReader.releaseLock();
+          this.reader.releaseLock();
         } catch (_) {}
-        this.serialReader = null;
+        this.reader = null;
       }
-      if (this.serialWriter) {
+      if (this.pipeClosedPromise) {
+        await this.pipeClosedPromise.catch(() => {});
+        this.pipeClosedPromise = null;
+      }
+      if (this.writer) {
         try {
-          this.serialWriter.releaseLock();
+          this.writer.releaseLock();
         } catch (_) {}
-        this.serialWriter = null;
+        this.writer = null;
       }
-      if (this.serialPort) {
-        await this.serialPort.close().catch(() => {});
-        this.serialPort = null;
+      if (this.port) {
+        await this.port.close().catch(() => {});
+        this.port = null;
       }
     } catch (_) {}
   }
@@ -737,9 +827,9 @@ class UsbHardwareService {
     if (markManual) {
       this.manualDisconnect = true;
     }
-    await this.cleanupSerial();
-    this.setDisconnected();
+    await this.cleanupPort();
+    this.markDisconnected();
   }
 }
 
-export const usbHardware = new UsbHardwareService();
+export const usbHardware = new PadLinkService();

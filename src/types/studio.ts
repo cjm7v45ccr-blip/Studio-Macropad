@@ -3,6 +3,9 @@ export type ControlId = KeyId | 'encoder';
 
 export type HardwareProfileId = 'MAC' | 'TV';
 export type HardwareSlotId = 'b1' | 'b2' | 'b3' | 'b4' | 'dial' | 'enc_cw' | 'enc_ccw';
+export type HardwareFlashSlot = HardwareSlotId | 'mode';
+
+export type SyncStatusPill = 'Synced' | 'Saving' | 'Out of sync' | 'Disconnected';
 
 export type SidebarSection = 'device' | 'macros' | 'library' | 'settings';
 export type CanvasViewMode = 'edit' | 'test';
@@ -66,10 +69,63 @@ export interface StudioProfile {
   layers: [LayerConfig];
 }
 
+export interface SerializedPadProfiles {
+  active: HardwareProfileId;
+  mac_name: string;
+  tv_name: string;
+  mac: Record<HardwareSlotId, string>;
+  tv: Record<HardwareSlotId, string>;
+}
+
+export interface StoredPadRecord {
+  rev: number;
+  profiles: SerializedPadProfiles;
+  dirty: boolean;
+}
+
+export interface SyncConflictDiffItem {
+  id: string;
+  label: string;
+  websiteValue: string;
+  padValue: string;
+}
+
+export interface SyncConflictState {
+  deviceId: string;
+  deviceName: string;
+  padRev: number;
+  localRev: number;
+  padProfiles: SerializedPadProfiles;
+  websiteProfiles: SerializedPadProfiles;
+  diffs: SyncConflictDiffItem[];
+}
+
+export interface HardwareEventPacket {
+  event: 'press' | 'turn' | 'profile' | 'connection' | 'config' | string;
+  slot?: string;
+  dir?: string;
+  action?: string;
+  active?: HardwareProfileId;
+  profile?: HardwareProfileId;
+  ble?: boolean;
+  wifi?: boolean;
+  ip?: string;
+  rev?: number;
+  profiles?: {
+    active?: HardwareProfileId;
+    items?: {
+      id: HardwareProfileId;
+      name: string;
+      controls: Record<HardwareSlotId, string>;
+    }[];
+  };
+  [key: string]: any;
+}
+
 export interface CustomMacroItem {
   id: string;
   name: string;
-  action: string; // Valid ESP32 firmware action string (SHORTCUT:..., TEXT:..., TVKEY:..., TVAPP:..., etc.)
+  action: string;
   createdAt: string;
   source?: 'device' | 'user';
 }
@@ -119,7 +175,6 @@ export interface StudioSettings {
   keyboardLayout: KeyboardLayoutId;
   encoderPlacement: EncoderPlacement;
   soundEnabled: boolean;
-  autoSyncOnEdit: boolean;
 }
 
 export interface ConflictWarning {
@@ -134,7 +189,7 @@ export interface LiveInputEvent {
   controlLabel: string;
   triggerLabel: string;
   actionSummary: string;
-  dispatchedHardware?: boolean;
+  source?: 'hardware' | 'usb-test' | 'sim';
 }
 
 export type UsbTransport = 'webserial' | 'disconnected';
@@ -156,7 +211,10 @@ export interface HardwareTelemetry {
 
 export interface DeviceConnectionInfo {
   connected: boolean;
+  connecting?: boolean;
   transport: UsbTransport;
+  deviceId?: string;
+  rev?: number;
   deviceName: string;
   firmwareVersion: string;
   vendorProduct?: string;

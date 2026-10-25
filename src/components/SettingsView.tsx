@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   DeviceConnectionInfo,
   KeyboardLayoutId,
-  StudioSettings
+  StudioSettings,
+  SyncStatusPill
 } from '../types/studio';
 import { usbHardware } from '../services/usbHardwareService';
 import {
@@ -16,14 +17,17 @@ import {
   Tv,
   Shield,
   Cpu,
-  Zap,
   AlertTriangle
 } from 'lucide-react';
 
 interface SettingsViewProps {
   settings: StudioSettings;
   connection: DeviceConnectionInfo;
+  syncStatus: SyncStatusPill;
+  currentRev: number;
+  currentDeviceId: string | null;
   onUpdateSettings: (patch: Partial<StudioSettings>) => void;
+  onPullFromUsb: () => Promise<boolean>;
   onClearLocalCache: () => void;
   onToast: (msg: string) => void;
 }
@@ -50,16 +54,20 @@ const KEYBOARD_LAYOUTS: { id: KeyboardLayoutId; label: string }[] = [
 export const SettingsView: React.FC<SettingsViewProps> = ({
   settings,
   connection,
+  syncStatus,
+  currentRev,
+  currentDeviceId,
   onUpdateSettings,
+  onPullFromUsb,
   onClearLocalCache,
   onToast
 }) => {
-  // Wi-Fi Provisioning State
+  // Wi-Fi Provisioning State (live from pad only — never stored in localStorage)
   const [wifiSsid, setWifiSsid] = useState('');
   const [wifiPass, setWifiPass] = useState('');
   const [wifiBusy, setWifiBusy] = useState(false);
 
-  // SmartCast TV State
+  // SmartCast TV State (live from pad only — never stored in localStorage)
   const [tvIp, setTvIp] = useState('');
   const [tvPort, setTvPort] = useState('7345');
   const [tvToken, setTvToken] = useState('');
@@ -68,7 +76,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [tvBusy, setTvBusy] = useState(false);
   const [confirmForgetTv, setConfirmForgetTv] = useState(false);
 
-  // HTTP API Security State
+  // HTTP API Security State (live from pad only)
   const [httpToken, setHttpToken] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
 
@@ -78,17 +86,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const telemetry = connection.telemetry;
 
+  // Populate live pad-only fields strictly from live `/api/status` telemetry
   useEffect(() => {
-    if (telemetry?.ssid && !wifiSsid) {
-      setWifiSsid(telemetry.ssid);
+    if (!connection.connected || !telemetry) {
+      setWifiSsid('');
+      setTvIp('');
+      setTvPort('7345');
+      return;
     }
-    if (telemetry?.tvHost && !tvIp) {
-      setTvIp(telemetry.tvHost);
-    }
-    if (telemetry?.tvPort) {
-      setTvPort(String(telemetry.tvPort));
-    }
-  }, [telemetry?.ssid, telemetry?.tvHost, telemetry?.tvPort]);
+    setWifiSsid(telemetry.ssid || '');
+    setTvIp(telemetry.tvHost || '');
+    setTvPort(String(telemetry.tvPort || 7345));
+  }, [connection.connected, telemetry?.ssid, telemetry?.tvHost, telemetry?.tvPort]);
 
   const handleSaveWifi = async () => {
     if (!wifiSsid.trim()) return;
@@ -128,7 +137,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const res = await usbHardware.submitTvPin(tvPin);
       setPairingActive(false);
       setTvPin('');
-      onToast(res.message || 'TV paired and token saved to MacroPad NVS!');
+      onToast(res.message || 'TV paired and token saved to MacroPad!');
     } catch (err: any) {
       onToast(err?.message || 'Invalid PIN or TV rejected pairing');
     } finally {
@@ -196,7 +205,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       const res = await usbHardware.resetHardwareDefaults();
       setConfirmResetNvs(false);
-      onToast(res.message || 'MacroPad NVS profiles reset & re-synced');
+      await onPullFromUsb();
+      onToast(res.message || 'MacroPad NVS profiles reset & synced');
     } catch (err: any) {
       onToast(err?.message || 'Failed to reset MacroPad NVS');
     }
@@ -210,34 +220,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             Hardware & Studio Settings
           </h1>
           <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            Configure USB synchronization, ESP32 Wi-Fi, SmartCast TV pairing, and studio preferences.
+            Live MacroPad telemetry, pad-only network/TV configuration, and studio preferences.
           </p>
         </div>
 
-        {/* Live ESP32 Hardware Diagnostics & Instant Sync */}
+        {/* Live ESP32 Telemetry & Revision Sync State */}
         <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
               <Cpu className="w-4 h-4 text-[var(--accent)]" />
-              <span>ESP32 Hardware Telemetry & Sync Behavior</span>
+              <span>Pad Revision & Live Status</span>
             </div>
-            <span
-              className={`font-mono text-[11px] px-2 py-0.5 rounded border ${
-                connection.connected
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                  : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
-              }`}
-            >
-              {connection.connected
-                ? `USB Connected · ${connection.firmwareVersion}`
-                : 'USB Disconnected'}
+            <span className="font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)]">
+              {syncStatus} · {currentDeviceId ? `pad:${currentDeviceId}` : 'no saved pad'} · rev{' '}
+              {currentRev}
             </span>
           </div>
 
-          {telemetry && (
+          {connection.connected && telemetry ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
               <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <div className="text-[10px] text-[var(--text-muted)]">Active Pad Mode</div>
+                <div className="text-[10px] text-[var(--text-muted)]">Active Profile</div>
                 <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5">
                   {telemetry.activeProfile}
                 </div>
@@ -261,64 +264,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
             </div>
+          ) : (
+            <p className="text-xs text-[var(--text-muted)]">
+              Connect your MacroPad over USB to inspect live BLE, Wi-Fi, TV pairing, and HTTP API settings. Wi-Fi, TV pairing, and the HTTP token live on the pad only and are read live on connect.
+            </p>
           )}
-
-          <div className="flex items-center justify-between pt-2 border-t border-[var(--border-subtle)]">
-            <div>
-              <div className="text-xs font-semibold text-[var(--text-primary)]">
-                Instant USB Auto-Sync on Edit
-              </div>
-              <div className="text-[11px] text-[var(--text-muted)]">
-                Immediately write `/api/customizer/save` over USB whenever you change any button or dial binding
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                onUpdateSettings({ autoSyncOnEdit: !settings.autoSyncOnEdit })
-              }
-              style={
-                settings.autoSyncOnEdit
-                  ? { backgroundColor: 'var(--accent)', color: '#FFFFFF' }
-                  : undefined
-              }
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
-                settings.autoSyncOnEdit
-                  ? 'border-transparent'
-                  : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
-              }`}
-            >
-              <Zap className="w-3.5 h-3.5" />
-              <span>{settings.autoSyncOnEdit ? 'Auto-Sync ON' : 'Manual Sync'}</span>
-            </button>
-          </div>
         </div>
 
-        {/* ESP32 Wi-Fi Provisioning over USB (`/api/wifi`) */}
+        {/* ESP32 Wi-Fi Provisioning over USB (`/api/wifi` — Pad Only, Not in `rev`) */}
         <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">
-          <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-            <Wifi className="w-4 h-4 text-emerald-400" />
-            <span>MacroPad Wi-Fi Setup over USB (`/api/wifi`)</span>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+              <Wifi className="w-4 h-4 text-emerald-400" />
+              <span>MacroPad Wi-Fi Setup (`/api/wifi`)</span>
+            </div>
+            <span className="font-mono text-[10px] text-[var(--text-muted)]">
+              Stored on pad only · read live
+            </span>
           </div>
-          <p className="text-xs text-[var(--text-muted)]">
-            Provision 2.4 GHz Wi-Fi credentials directly over USB so your MacroPad can control SmartCast TVs on your local network.
-          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <input
               type="text"
               maxLength={32}
+              disabled={!connection.connected}
               value={wifiSsid}
               onChange={e => setWifiSsid(e.target.value)}
               placeholder="2.4 GHz Wi-Fi SSID"
-              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
             />
             <input
               type="password"
               maxLength={63}
+              disabled={!connection.connected}
               value={wifiPass}
               onChange={e => setWifiPass(e.target.value)}
               placeholder="Wi-Fi Password"
-              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
             />
             <button
               type="button"
@@ -332,42 +313,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* Vizio SmartCast TV Pairing over USB */}
+        {/* Vizio SmartCast TV Pairing over USB (Pad Only, Not in `rev`) */}
         <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
               <Tv className="w-4 h-4 text-purple-400" />
-              <span>SmartCast TV Pairing & Control over USB</span>
+              <span>SmartCast TV Pairing & Control</span>
             </div>
-            {telemetry && (
-              <span className="font-mono text-[11px] text-[var(--text-muted)]">
-                {telemetry.tvPaired
+            <span className="font-mono text-[11px] text-[var(--text-muted)]">
+              {connection.connected && telemetry
+                ? telemetry.tvPaired
                   ? `Paired (${telemetry.tvHost}:${telemetry.tvPort})`
                   : telemetry.tvConfigured
                   ? `Host set (${telemetry.tvHost})`
-                  : 'Not paired'}
-              </span>
-            )}
+                  : 'Not paired'
+                : 'Connect USB to read'}
+            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <input
               type="text"
+              disabled={!connection.connected}
               value={tvIp}
               onChange={e => setTvIp(e.target.value)}
               placeholder="TV IP (e.g. 192.168.1.50)"
-              className="sm:col-span-2 px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              className="sm:col-span-2 px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
             />
             <input
               type="number"
+              disabled={!connection.connected}
               value={tvPort}
               onChange={e => setTvPort(e.target.value)}
               placeholder="Port (7345)"
-              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
             />
           </div>
 
-          {/* Interactive PIN Pairing */}
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -439,14 +421,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
 
-          {/* Optional Direct Token Entry */}
           <div className="pt-2 border-t border-[var(--border-subtle)] flex gap-2">
             <input
               type="password"
+              disabled={!connection.connected}
               value={tvToken}
               onChange={e => setTvToken(e.target.value)}
               placeholder="Or paste existing SmartCast Auth Token…"
-              className="flex-1 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)]"
+              className="flex-1 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
             />
             <button
               type="button"
@@ -459,7 +441,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* Local HTTP API Security (`/api/auth/set`) */}
+        {/* Local HTTP API Security (`/api/auth/set` — Pad Only, Not in `rev`) */}
         <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
@@ -467,17 +449,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <span>Local HTTP API Token (`/api/auth/set`)</span>
             </div>
             <span className="font-mono text-[10px] text-[var(--text-muted)]">
-              {telemetry?.httpApiEnabled ? 'HTTP API Enabled' : 'HTTP API Disabled'}
+              {connection.connected && telemetry
+                ? telemetry.httpApiEnabled
+                  ? 'HTTP API Enabled'
+                  : 'HTTP API Disabled'
+                : 'Stored on pad only'}
             </span>
           </div>
           <div className="flex gap-2">
             <input
               type="password"
               maxLength={64}
+              disabled={!connection.connected}
               value={httpToken}
               onChange={e => setHttpToken(e.target.value)}
               placeholder="8–64 char token (or leave blank to disable wireless HTTP API)"
-              className="flex-1 px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)]"
+              className="flex-1 px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
             />
             <button
               type="button"
@@ -654,7 +641,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Clear Browser Local Cache
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Clears local snapshots, custom icon overrides, and UI preferences in this browser.
+                Clears saved `localStorage["pad:" + id]` records, offline drafts, and local snapshots.
               </p>
             </div>
 

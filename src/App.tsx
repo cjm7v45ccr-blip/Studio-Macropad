@@ -17,6 +17,7 @@ import { MacroEditorView } from './components/MacroEditorView';
 import { LibraryView } from './components/LibraryView';
 import { SettingsView } from './components/SettingsView';
 import { UsbConnectModal } from './components/UsbConnectModal';
+import { SyncConflictModal } from './components/SyncConflictModal';
 import { CheckCircle2 } from 'lucide-react';
 
 export default function App() {
@@ -42,7 +43,7 @@ export default function App() {
 
   const [connection, setConnection] = useState<DeviceConnectionInfo>(usbHardware.info);
 
-  // Subscribe to physical USB Serial connection & telemetry updates
+  // Subscribe to physical USB Serial connection & live event badge updates
   useEffect(() => {
     const unsubConn = usbHardware.onConnectionChange(info => {
       setConnection(info);
@@ -104,12 +105,10 @@ export default function App() {
       {/* Top Bar */}
       <TopBar
         connection={connection}
-        isSyncedWithHardware={studio.isSyncedWithHardware}
+        syncStatus={studio.syncStatus}
+        currentRev={studio.currentRev}
+        dirty={studio.dirty}
         isSyncingUsb={isSyncingUsb}
-        autoSyncOnEdit={studio.settings.autoSyncOnEdit}
-        onToggleAutoSync={() =>
-          studio.updateSettings({ autoSyncOnEdit: !studio.settings.autoSyncOnEdit })
-        }
         onOpenConnectModal={() => setConnectModalOpen(true)}
         onPullFromUsb={handlePullFromUsb}
         profiles={studio.profiles}
@@ -117,7 +116,6 @@ export default function App() {
         onSelectProfile={studio.selectProfile}
         onRenameProfile={studio.renameProfile}
         onCopyProfile={studio.copyHardwareProfile}
-        hasUnsavedChanges={studio.hasUnsavedChanges}
         canUndo={studio.canUndo}
         canRedo={studio.canRedo}
         onUndo={studio.undo}
@@ -243,7 +241,11 @@ export default function App() {
           <SettingsView
             settings={studio.settings}
             connection={connection}
+            syncStatus={studio.syncStatus}
+            currentRev={studio.currentRev}
+            currentDeviceId={studio.currentDeviceId}
             onUpdateSettings={studio.updateSettings}
+            onPullFromUsb={handlePullFromUsb}
             onClearLocalCache={studio.clearLocalUnSyncedState}
             onToast={showToast}
           />
@@ -256,6 +258,13 @@ export default function App() {
         onClose={() => setConnectModalOpen(false)}
         connection={connection}
         onPullFromUsb={handlePullFromUsb}
+      />
+
+      {/* Unsynced Draft Conflict Modal ("Use website settings or pad settings?") */}
+      <SyncConflictModal
+        conflict={studio.conflictPrompt}
+        onUseWebsite={studio.resolveConflictUseWebsite}
+        onUsePad={studio.resolveConflictUsePad}
       />
 
       {/* Minimal Toast Notification */}

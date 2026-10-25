@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   CanvasViewMode,
   ConflictWarning,
@@ -6,6 +6,8 @@ import {
   CustomMacroItem,
   DeviceConnectionInfo,
   EncoderPlacement,
+  HardwareEventPacket,
+  HardwareFlashSlot,
   HardwareProfileId,
   KeyId,
   LayerConfig,
@@ -13,6 +15,7 @@ import {
 } from '../types/studio';
 import { KeycapIcon, summarizeAction } from '../data/iconRegistry';
 import { describeFirmwareAction } from '../data/firmwareCatalog';
+import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
 import {
   AlertTriangle,
@@ -49,6 +52,14 @@ interface MacropadCanvasProps {
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5'];
 
+const SLOT_TO_KEY: Record<string, KeyId> = {
+  b1: 'k1',
+  b2: 'k2',
+  b3: 'k3',
+  b4: 'k4',
+  mode: 'k5'
+};
+
 export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   activeProfileId,
   activeProfileName,
@@ -71,13 +82,20 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [knobAngle, setKnobAngle] = useState(0);
   const [knobPressed, setKnobPressed] = useState(false);
+  const [flashedSlots, setFlashedSlots] = useState<Set<HardwareFlashSlot>>(new Set());
   const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
+
+  const flashTimersRef = useRef<Record<string, number>>({});
+  const layerRef = useRef(layer);
+  layerRef.current = layer;
+  const customMacrosRef = useRef(customMacros);
+  customMacrosRef.current = customMacros;
 
   const pushLog = (
     controlLabel: string,
     triggerLabel: string,
     actionSummary: string,
-    dispatchedHardware = false
+    source: LiveInputEvent['source'] = 'sim'
   ) => {
     const now = new Date();
     const timestamp = now.toTimeString().slice(0, 8);
@@ -88,11 +106,104 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         controlLabel,
         triggerLabel,
         actionSummary,
-        dispatchedHardware
+        source
       },
-      ...prev.slice(0, 14)
+      ...prev.slice(0, 15)
     ]);
   };
+
+  /**
+   * Light up the on-screen key or knob when physical `press` / `turn` events arrive over USB
+   */
+  useEffect(() => {
+    const triggerSlotFlash = (slot: HardwareFlashSlot) => {
+      setFlashedSlots(prev => {
+        const next = new Set(prev);
+        next.add(slot);
+        return next;
+      });
+
+      if (flashTimersRef.current[slot]) {
+        window.clearTimeout(flashTimersRef.current[slot]);
+      }
+      flashTimersRef.current[slot] = window.setTimeout(() => {
+        setFlashedSlots(prev => {
+          const next = new Set(prev);
+          next.delete(slot);
+          return next;
+        });
+      }, 280);
+    };
+
+    const unsub = usbHardware.onHardwareEvent((e: HardwareEventPacket) => {
+      if (e.event !== 'press' && e.event !== 'turn') return;
+
+      const rawSlot = String(e.slot || '').toLowerCase();
+      const rawDir = String(e.dir || '').toLowerCase();
+      const currLayer = layerRef.current;
+      const macros = customMacrosRef.current;
+
+      // Rotary Turn (`enc_cw` / `enc_ccw` or `turn` + `dir`)
+      if (
+        e.event === 'turn' ||
+        rawSlot === 'enc_cw' ||
+        rawSlot === 'enc_ccw' ||
+        rawSlot === 'cw' ||
+        rawSlot === 'ccw'
+      ) {
+        const isCcw =
+          rawSlot === 'enc_ccw' || rawSlot === 'ccw' || rawDir === 'ccw';
+        const flashId: HardwareFlashSlot = isCcw ? 'enc_ccw' : 'enc_cw';
+
+        setKnobAngle(a => a + (isCcw ? -24 : 24));
+        soundEngine.playDialTick();
+        triggerSlotFlash(flashId);
+
+        const binding = isCcw ? currLayer.encoder.ccw : currLayer.encoder.cw;
+        const actionDesc = e.action
+          ? describeFirmwareAction(e.action).fullLabel
+          : summarizeAction(binding, macros);
+        pushLog(
+          'Encoder',
+          isCcw ? 'Turn CCW' : 'Turn CW',
+          actionDesc,
+          'hardware'
+        );
+        return;
+      }
+
+      // Encoder Push (`dial`)
+      if (rawSlot === 'dial') {
+        soundEngine.playKeyClick();
+        triggerSlotFlash('dial');
+        const actionDesc = e.action
+          ? describeFirmwareAction(e.action).fullLabel
+          : summarizeAction(currLayer.encoder.dial, macros);
+        pushLog('Encoder', 'Dial Push', actionDesc, 'hardware');
+        return;
+      }
+
+      // Mechanical Key Press (`b1`..`b4` or `mode`)
+      const mappedKey = SLOT_TO_KEY[rawSlot];
+      if (mappedKey) {
+        soundEngine.playKeyClick();
+        triggerSlotFlash(rawSlot as HardwareFlashSlot);
+        const keyCfg = currLayer.keys[mappedKey];
+        const actionDesc =
+          mappedKey === 'k5'
+            ? 'Toggled hardware profile'
+            : e.action
+            ? describeFirmwareAction(e.action).fullLabel
+            : summarizeAction(keyCfg.triggers.tap, macros);
+        pushLog(rawSlot.toUpperCase(), 'Press', actionDesc, 'hardware');
+      }
+    });
+
+    return () => {
+      unsub();
+      Object.values(flashTimersRef.current).forEach(id => window.clearTimeout(id));
+    };
+  }, []);
 
   const hasConflict = (id: ControlId) =>
     conflicts.some(c => c.controlA === id || c.controlB === id);
@@ -110,7 +221,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       return;
     }
 
-    // Live Hardware Test Mode
     const cfg = layer.keys[kid];
     if (!cfg) return;
 
@@ -119,7 +229,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       pushLog(
         'MODE (GPIO 23)',
         'Tap',
-        `Switched editor view to ${activeProfileId === 'MAC' ? 'TV' : 'MAC'}`
+        `Activated ${activeProfileId === 'MAC' ? 'TV' : 'MAC'} profile`,
+        connection.connected ? 'usb-test' : 'sim'
       );
       return;
     }
@@ -130,9 +241,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
     if (connection.connected && rawAction) {
       const sent = await onExecuteHardwareAction(rawAction);
-      pushLog(slotLabel, 'Tap', summary, sent);
+      pushLog(slotLabel, 'Tap', summary, sent ? 'usb-test' : 'sim');
     } else {
-      pushLog(slotLabel, 'Tap', summary, false);
+      pushLog(slotLabel, 'Tap', summary, 'sim');
     }
   };
 
@@ -151,9 +262,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
     if (connection.connected && binding.value) {
       const sent = await onExecuteHardwareAction(binding.value);
-      pushLog('Encoder', label, summary, sent);
+      pushLog('Encoder', label, summary, sent ? 'usb-test' : 'sim');
     } else {
-      pushLog('Encoder', label, summary, false);
+      pushLog('Encoder', label, summary, 'sim');
     }
   };
 
@@ -178,14 +289,19 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const summary = summarizeAction(binding, customMacros);
     if (connection.connected && binding.value) {
       const sent = await onExecuteHardwareAction(binding.value);
-      pushLog('Encoder', 'Dial Push', summary, sent);
+      pushLog('Encoder', 'Dial Push', summary, sent ? 'usb-test' : 'sim');
     } else {
-      pushLog('Encoder', 'Dial Push', summary, false);
+      pushLog('Encoder', 'Dial Push', summary, 'sim');
     }
   };
 
   const renderEncoderUnit = (size: 'compact' | 'large') => {
     const isSelected = selectedControl === 'encoder' && viewMode === 'edit';
+    const isDialFlashed = flashedSlots.has('dial');
+    const isCwFlashed = flashedSlots.has('enc_cw');
+    const isCcwFlashed = flashedSlots.has('enc_ccw');
+    const anyEncFlash = isDialFlashed || isCwFlashed || isCcwFlashed;
+
     const outerDim = size === 'large' ? 'w-28 h-28' : 'w-24 h-24';
     const innerDim = size === 'large' ? 'w-20 h-20' : 'w-16 h-16';
     const dialInfo = describeFirmwareAction(layer.encoder.dial.value);
@@ -203,7 +319,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               triggerEncoderSpin('ccw');
             }}
             title={`CCW: ${ccwInfo.fullLabel}`}
-            className="p-1.5 rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/25 transition-colors cursor-pointer"
+            className={`p-1.5 rounded-full transition-all cursor-pointer ${
+              isCcwFlashed
+                ? 'bg-sky-500/25 text-sky-300 scale-125'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/25'
+            }`}
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
@@ -217,25 +337,33 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             onMouseUp={handleEncoderPressUp}
             onMouseLeave={() => setKnobPressed(false)}
             style={{
-              borderColor: isSelected ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
-              boxShadow: isSelected
+              borderColor: anyEncFlash
+                ? '#38BDF8'
+                : isSelected
+                ? 'var(--accent)'
+                : 'rgba(255,255,255,0.12)',
+              boxShadow: anyEncFlash
+                ? '0 0 0 4px rgba(56, 189, 248, 0.45), 0 0 24px rgba(56, 189, 248, 0.35)'
+                : isSelected
                 ? '0 0 0 3px rgba(var(--accent-rgb), 0.28), 0 12px 24px rgba(0,0,0,0.45)'
                 : '0 10px 22px rgba(0,0,0,0.45), inset 0 1px 1px rgba(255,255,255,0.08)'
             }}
             className={`${outerDim} mx-1 rounded-full bg-gradient-to-b from-[#262A34] to-[#171A21] border-2 flex items-center justify-center transition-all cursor-pointer select-none ${
-              knobPressed ? 'scale-95' : 'hover:scale-[1.02]'
+              knobPressed || isDialFlashed ? 'scale-95' : 'hover:scale-[1.02]'
             }`}
           >
             <div
               style={{
-                borderColor: layer.encoder.color,
+                borderColor: anyEncFlash ? '#38BDF8' : layer.encoder.color,
                 transform: `rotate(${knobAngle}deg)`
               }}
               className={`${innerDim} rounded-full bg-[#12141A] border-2 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner`}
             >
               <span
                 className="w-1.5 h-3 rounded-full absolute top-1.5"
-                style={{ backgroundColor: layer.encoder.color }}
+                style={{
+                  backgroundColor: anyEncFlash ? '#38BDF8' : layer.encoder.color
+                }}
               />
               <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-400">
                 DIAL
@@ -251,7 +379,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               triggerEncoderSpin('cw');
             }}
             title={`CW: ${cwInfo.fullLabel}`}
-            className="p-1.5 rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/25 transition-colors cursor-pointer"
+            className={`p-1.5 rounded-full transition-all cursor-pointer ${
+              isCwFlashed
+                ? 'bg-sky-500/25 text-sky-300 scale-125'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/25'
+            }`}
           >
             <RotateCw className="w-3.5 h-3.5" />
           </button>
@@ -266,8 +398,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
   const renderKeycap = (kid: KeyId, index: number) => {
     const cfg = layer.keys[kid];
+    const slotKey: HardwareFlashSlot = cfg.isModeSwitch
+      ? 'mode'
+      : cfg.slot || (`b${index + 1}` as HardwareFlashSlot);
+    const isFlashed = flashedSlots.has(slotKey);
     const isSelected = selectedControl === kid && viewMode === 'edit';
-    const isDown = pressedKey === kid;
+    const isDown = pressedKey === kid || isFlashed;
     const conflict = hasConflict(kid);
     const isUnassigned = !cfg.isModeSwitch && !cfg.triggers.tap.value;
 
@@ -285,14 +421,18 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           if (pressedKey === kid) setPressedKey(null);
         }}
         style={{
-          borderColor: isSelected
+          borderColor: isFlashed
+            ? '#38BDF8'
+            : isSelected
             ? 'var(--accent)'
             : conflict
             ? '#F59E0B'
             : cfg.isModeSwitch
             ? 'rgba(56,189,248,0.35)'
             : 'rgba(255,255,255,0.09)',
-          boxShadow: isSelected
+          boxShadow: isFlashed
+            ? '0 0 0 4px rgba(56, 189, 248, 0.45), 0 0 24px rgba(56, 189, 248, 0.35)'
+            : isSelected
             ? '0 0 0 3px rgba(var(--accent-rgb), 0.25), 0 8px 18px rgba(0,0,0,0.4)'
             : isDown
             ? '0 2px 4px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.4)'
@@ -300,13 +440,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         }}
         className={`relative w-28 h-28 rounded-2xl bg-gradient-to-b from-[#252933] to-[#1B1E26] border-2 p-2.5 flex flex-col items-center justify-between select-none transition-all cursor-pointer ${
           isDown ? 'translate-y-1.5' : 'hover:-translate-y-0.5'
-        } ${isUnassigned ? 'opacity-80' : ''}`}
+        } ${isUnassigned && !isFlashed ? 'opacity-80' : ''}`}
       >
-        {/* Top Row: Hardware Slot Label (B1..B4 / MODE) + Warning */}
         <div className="w-full flex items-center justify-between">
           <span
             className={`font-mono text-[10px] leading-none font-semibold ${
-              cfg.isModeSwitch ? 'text-sky-400' : 'text-zinc-400'
+              isFlashed || cfg.isModeSwitch ? 'text-sky-400' : 'text-zinc-400'
             }`}
           >
             {badgeText}
@@ -316,21 +455,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           ) : cfg.triggers.tap.value ? (
             <span
               className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: cfg.appearance.labelColor }}
+              style={{
+                backgroundColor: isFlashed ? '#38BDF8' : cfg.appearance.labelColor
+              }}
             />
           ) : null}
         </div>
 
-        {/* Center Icon */}
         <div className="my-auto flex items-center justify-center">
           <KeycapIcon
             icon={cfg.appearance.icon}
-            className="w-6 h-6 transition-transform"
-            style={{ color: cfg.appearance.labelColor }}
+            className={`w-6 h-6 transition-transform ${isFlashed ? 'scale-110' : ''}`}
+            style={{ color: isFlashed ? '#38BDF8' : cfg.appearance.labelColor }}
           />
         </div>
 
-        {/* Bottom Legend */}
         <span
           className={`text-[11px] font-medium truncate max-w-full tracking-tight ${
             isUnassigned ? 'text-zinc-500 italic' : 'text-zinc-200'
@@ -348,7 +487,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     <div className="flex-1 flex flex-col items-center justify-between p-6 overflow-y-auto relative">
       {/* Top Canvas Controls */}
       <div className="w-full max-w-2xl flex items-center justify-between gap-3 flex-wrap">
-        {/* Edit vs Live USB Test Toggle */}
         <div className="flex items-center p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
           <button
             type="button"
@@ -372,11 +510,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             }`}
           >
             <Play className="w-3.5 h-3.5" />
-            <span>Live Hardware Test</span>
+            <span>Live Event Monitor</span>
           </button>
         </div>
 
-        {/* Encoder Layout Option */}
         <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
           <span className="text-[11px] text-[var(--text-muted)] px-2">Dial View:</span>
           <button
@@ -404,14 +541,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
       </div>
 
-      {/* Zero-Preset USB Sync Status Banner */}
+      {/* First-Time Unsynced Banner */}
       {!connection.connected && !isSyncedWithHardware && (
         <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2.5">
             <Usb className="w-4 h-4 text-[var(--accent)] shrink-0" />
             <div className="text-xs text-[var(--text-secondary)]">
-              <strong className="text-[var(--text-primary)]">Zero presets loaded.</strong>{' '}
-              Connect your MacroPad via USB to pull its live `MAC` & `TV` macros directly into the studio.
+              <strong className="text-[var(--text-primary)]">No saved pad yet.</strong>{' '}
+              Connect your MacroPad over USB to adopt its `MAC` & `TV` settings, or start editing offline drafts now.
             </div>
           </div>
           <button
@@ -431,7 +568,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           className="rounded-[34px] p-7 bg-gradient-to-b from-[#20232C] to-[#14161C] border border-white/10 shadow-[0_28px_60px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.08)]"
           style={{ minWidth: '340px' }}
         >
-          {/* Simulated 128x64 SSD1306 Hardware OLED Strip */}
+          {/* 128x64 SSD1306 Hardware OLED Strip */}
           <div className="mb-6 px-3.5 py-2.5 rounded-xl bg-[#090B0E] border border-white/10 shadow-inner flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span
@@ -450,7 +587,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     className={`flex items-center gap-1 ${
                       telemetry?.bleConnected ? 'text-sky-400' : 'text-zinc-600'
                     }`}
-                    title={telemetry?.bleConnected ? 'BLE Keyboard Connected' : 'BLE Idle'}
+                    title={telemetry?.bleConnected ? 'BLE Connected' : 'BLE Disconnected'}
                   >
                     <Bluetooth className="w-3 h-3" />
                     <span>BLE</span>
@@ -471,7 +608,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   <button
                     type="button"
                     onClick={onPullFromUsb}
-                    title="Re-read hardware bindings over USB"
+                    title="Refresh /api/status"
                     className="text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <RefreshCw className="w-2.5 h-2.5" />
@@ -480,7 +617,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 </>
               ) : (
                 <span className="text-zinc-500">
-                  {viewMode === 'test' ? 'SIM TEST' : 'USB OFFLINE'}
+                  {connection.connecting ? 'REBOOTING…' : 'OFFLINE DRAFT'}
                 </span>
               )}
             </div>
@@ -502,7 +639,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
       </div>
 
-      {/* Bottom: Conflict Alert or Live Hardware Test Feed */}
+      {/* Bottom: Conflict Alert or Live Hardware Event Feed */}
       <div className="w-full max-w-2xl space-y-2">
         {conflicts.length > 0 && viewMode === 'edit' && (
           <div className="px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-300">
@@ -515,10 +652,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <div className="rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-3.5">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-[var(--text-secondary)]">
-                Live Input Tester{' '}
-                {connection.connected
-                  ? '— Clicking keys or dial executes `/api/test/action` live on your MacroPad'
-                  : '— Connect USB to fire real actions on your MacroPad'}
+                Live Hardware Events & Action Tester
               </span>
               {testLog.length > 0 && (
                 <button
@@ -534,7 +668,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
             {testLog.length === 0 ? (
               <p className="text-xs text-[var(--text-muted)] py-2">
-                Click B1–B4, press the Dial, or spin CW/CCW above to test your synced macros.
+                Press keys or turn the knob on your physical MacroPad to watch live `press` & `turn` events here, or click keys above to fire `/api/test/action`.
               </p>
             ) : (
               <div className="max-h-28 overflow-y-auto space-y-1 font-mono text-[11px]">
@@ -551,9 +685,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                       <span className="px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] text-[10px] text-[var(--accent)]">
                         {item.triggerLabel}
                       </span>
-                      {item.dispatchedHardware && (
+                      {item.source === 'hardware' && (
+                        <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 text-[9px] font-bold">
+                          PAD EVENT
+                        </span>
+                      )}
+                      {item.source === 'usb-test' && (
                         <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 text-[9px] font-bold">
-                          USB SENT
+                          USB TEST
                         </span>
                       )}
                     </div>
