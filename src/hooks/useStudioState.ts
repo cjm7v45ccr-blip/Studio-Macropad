@@ -18,7 +18,6 @@ import {
   SyncConflictDiffItem,
   SyncConflictState,
   SyncStatusPill,
-  TextMacroRepeatConfig,
   UserPreset
 } from '../types/studio';
 import {
@@ -27,14 +26,17 @@ import {
   buildHardwareProfile
 } from '../data/presetTemplates';
 import {
+  FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
   SLOT_LABELS,
   bindingToFirmwareAction,
   deriveAppearanceForAction,
   describeFirmwareAction,
+  firmwareActionToBinding,
   isValidFirmwareAction,
   requiresUsbSequenceExecution,
-  sanitizeFirmwareAlias
+  sanitizeFirmwareAlias,
+  validateFirmwareAlias
 } from '../data/firmwareCatalog';
 import { FirmwareStatusPacket, usbHardware } from '../services/usbHardwareService';
 import { repeatMacroRunner } from '../services/repeatMacroRunner';
@@ -43,6 +45,9 @@ import { soundEngine } from '../services/soundEffects';
 const UI_PREFS_KEY = 'studio_macropad_ui_prefs_v5';
 const PAD_LAST_ID_KEY = 'pad:__last_id__';
 const DRAFT_PAD_ID = '__draft__';
+const MIN_SAVING_DWELL_MS = 220;
+
+export type ToastVariant = 'success' | 'error';
 
 interface WorkspaceSnapshot {
   profiles: [StudioProfile, StudioProfile];
@@ -62,7 +67,8 @@ const DEFAULT_SETTINGS: StudioSettings = {
   accentColor: '#3B82F6',
   keyboardLayout: 'us_qwerty',
   encoderPlacement: 'grid',
-  soundEnabled: true
+  soundEnabled: true,
+  liveEventsEnabled: true
 };
 
 function hexToRgbString(hex: string): string {
@@ -188,22 +194,22 @@ export function statusPacketToSerializedProfiles(
     mac_name: macItem?.name || 'Mac',
     tv_name: tvItem?.name || 'TV',
     mac: {
-      b1: macItem?.controls?.b1 ?? pkt.mac_b1 ?? '',
-      b2: macItem?.controls?.b2 ?? pkt.mac_b2 ?? '',
-      b3: macItem?.controls?.b3 ?? pkt.mac_b3 ?? '',
-      b4: macItem?.controls?.b4 ?? pkt.mac_b4 ?? '',
-      dial: macItem?.controls?.dial ?? pkt.mac_dial ?? '',
-      enc_cw: macItem?.controls?.enc_cw ?? '',
-      enc_ccw: macItem?.controls?.enc_ccw ?? ''
+      b1: macItem?.controls?.b1 ?? pkt.mac_b1 ?? FACTORY_DEFAULT_SLOTS.MAC.b1,
+      b2: macItem?.controls?.b2 ?? pkt.mac_b2 ?? FACTORY_DEFAULT_SLOTS.MAC.b2,
+      b3: macItem?.controls?.b3 ?? pkt.mac_b3 ?? FACTORY_DEFAULT_SLOTS.MAC.b3,
+      b4: macItem?.controls?.b4 ?? pkt.mac_b4 ?? FACTORY_DEFAULT_SLOTS.MAC.b4,
+      dial: macItem?.controls?.dial ?? pkt.mac_dial ?? FACTORY_DEFAULT_SLOTS.MAC.dial,
+      enc_cw: macItem?.controls?.enc_cw ?? FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
+      enc_ccw: macItem?.controls?.enc_ccw ?? FACTORY_DEFAULT_SLOTS.MAC.enc_ccw
     },
     tv: {
-      b1: tvItem?.controls?.b1 ?? pkt.tv_b1 ?? '',
-      b2: tvItem?.controls?.b2 ?? pkt.tv_b2 ?? '',
-      b3: tvItem?.controls?.b3 ?? pkt.tv_b3 ?? '',
-      b4: tvItem?.controls?.b4 ?? pkt.tv_b4 ?? '',
-      dial: tvItem?.controls?.dial ?? pkt.tv_dial ?? '',
-      enc_cw: tvItem?.controls?.enc_cw ?? '',
-      enc_ccw: tvItem?.controls?.enc_ccw ?? ''
+      b1: tvItem?.controls?.b1 ?? pkt.tv_b1 ?? FACTORY_DEFAULT_SLOTS.TV.b1,
+      b2: tvItem?.controls?.b2 ?? pkt.tv_b2 ?? FACTORY_DEFAULT_SLOTS.TV.b2,
+      b3: tvItem?.controls?.b3 ?? pkt.tv_b3 ?? FACTORY_DEFAULT_SLOTS.TV.b3,
+      b4: tvItem?.controls?.b4 ?? pkt.tv_b4 ?? FACTORY_DEFAULT_SLOTS.TV.b4,
+      dial: tvItem?.controls?.dial ?? pkt.tv_dial ?? FACTORY_DEFAULT_SLOTS.TV.dial,
+      enc_cw: tvItem?.controls?.enc_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc_cw,
+      enc_ccw: tvItem?.controls?.enc_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc_ccw
     }
   };
 }
@@ -261,7 +267,7 @@ function computeProfileDiffs(
 ): SyncConflictDiffItem[] {
   const diffs: SyncConflictDiffItem[] = [];
 
-  if (website.mac_name !== pad.mac_name) {
+  if (website.mac_name && website.mac_name !== pad.mac_name) {
     diffs.push({
       id: 'mac_name',
       label: 'MAC Profile Alias',
@@ -269,7 +275,7 @@ function computeProfileDiffs(
       padValue: pad.mac_name
     });
   }
-  if (website.tv_name !== pad.tv_name) {
+  if (website.tv_name && website.tv_name !== pad.tv_name) {
     diffs.push({
       id: 'tv_name',
       label: 'TV Profile Alias',
@@ -313,20 +319,20 @@ export function buildBackupFromProfiles(
     version: 1,
     mac_name: sanitizeFirmwareAlias(macProf.name, 'MAC'),
     tv_name: sanitizeFirmwareAlias(tvProf.name, 'TV'),
-    mac_b1: mac.b1,
-    mac_b2: mac.b2,
-    mac_b3: mac.b3,
-    mac_b4: mac.b4,
-    mac_dial: mac.dial,
-    mac_enc_cw: mac.enc_cw,
-    mac_enc_ccw: mac.enc_ccw,
-    tv_b1: tv.b1,
-    tv_b2: tv.b2,
-    tv_b3: tv.b3,
-    tv_b4: tv.b4,
-    tv_dial: tv.dial,
-    tv_enc_cw: tv.enc_cw,
-    tv_enc_ccw: tv.enc_ccw
+    mac_b1: mac.b1 || FACTORY_DEFAULT_SLOTS.MAC.b1,
+    mac_b2: mac.b2 || FACTORY_DEFAULT_SLOTS.MAC.b2,
+    mac_b3: mac.b3 || FACTORY_DEFAULT_SLOTS.MAC.b3,
+    mac_b4: mac.b4 || FACTORY_DEFAULT_SLOTS.MAC.b4,
+    mac_dial: mac.dial || FACTORY_DEFAULT_SLOTS.MAC.dial,
+    mac_enc_cw: mac.enc_cw || FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
+    mac_enc_ccw: mac.enc_ccw || FACTORY_DEFAULT_SLOTS.MAC.enc_ccw,
+    tv_b1: tv.b1 || FACTORY_DEFAULT_SLOTS.TV.b1,
+    tv_b2: tv.b2 || FACTORY_DEFAULT_SLOTS.TV.b2,
+    tv_b3: tv.b3 || FACTORY_DEFAULT_SLOTS.TV.b3,
+    tv_b4: tv.b4 || FACTORY_DEFAULT_SLOTS.TV.b4,
+    tv_dial: tv.dial || FACTORY_DEFAULT_SLOTS.TV.dial,
+    tv_enc_cw: tv.enc_cw || FACTORY_DEFAULT_SLOTS.TV.enc_cw,
+    tv_enc_ccw: tv.enc_ccw || FACTORY_DEFAULT_SLOTS.TV.enc_ccw
   };
 }
 
@@ -373,7 +379,9 @@ function mergeDiscoveredCustomMacros(
   return merged;
 }
 
-export function useStudioState(onToast: (msg: string) => void) {
+export function useStudioState(
+  onToast: (msg: string, variant?: ToastVariant) => void
+) {
   const initialUiPrefs = useMemo((): PersistedUiPrefs => {
     try {
       const raw = localStorage.getItem(UI_PREFS_KEY);
@@ -442,12 +450,24 @@ export function useStudioState(onToast: (msg: string) => void) {
       }
     } catch {}
 
+    // Offline pre-connect state uses factory default slots so every control can be inspected or tested offline
+    const factorySerialized: SerializedPadProfiles = {
+      active: 'MAC',
+      mac_name: 'Mac',
+      tv_name: 'TV',
+      mac: { ...FACTORY_DEFAULT_SLOTS.MAC },
+      tv: { ...FACTORY_DEFAULT_SLOTS.TV }
+    };
+
     return {
       deviceId: null as string | null,
       rev: 0,
       dirty: false,
       hasStoredPad: false,
-      profiles: buildBlankHardwareProfiles(),
+      profiles: serializedProfilesToStudioProfiles(
+        factorySerialized,
+        initialUiPrefs.appearanceOverrides
+      ),
       activeProfileId: 'MAC' as HardwareProfileId,
       customMacros: initialUiPrefs.customMacros
     };
@@ -489,14 +509,37 @@ export function useStudioState(onToast: (msg: string) => void) {
   savingCountRef.current = savingCount;
   const overridesRef = useRef(appearanceOverrides);
   overridesRef.current = appearanceOverrides;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const latestConfigEventRevRef = useRef<number | null>(null);
 
+  // Sync theme (System / Dark / Light), accent color, sound, and live events flag
   useEffect(() => {
     const root = document.documentElement;
-    root.setAttribute('data-theme', settings.theme);
+    const applyResolvedTheme = () => {
+      let resolved: 'dark' | 'light' = 'dark';
+      if (settings.theme === 'light') {
+        resolved = 'light';
+      } else if (settings.theme === 'system') {
+        resolved = window.matchMedia?.('(prefers-color-scheme: light)').matches
+          ? 'light'
+          : 'dark';
+      }
+      root.setAttribute('data-theme', resolved);
+    };
+
+    applyResolvedTheme();
     root.style.setProperty('--accent', settings.accentColor);
     root.style.setProperty('--accent-rgb', hexToRgbString(settings.accentColor));
     soundEngine.setEnabled(settings.soundEnabled);
+    usbHardware.setEventsEnabled(settings.liveEventsEnabled);
+
+    if (settings.theme === 'system' && window.matchMedia) {
+      const mql = window.matchMedia('(prefers-color-scheme: light)');
+      const handler = () => applyResolvedTheme();
+      mql.addEventListener?.('change', handler);
+      return () => mql.removeEventListener?.('change', handler);
+    }
   }, [settings]);
 
   useEffect(() => {
@@ -666,6 +709,13 @@ export function useStudioState(onToast: (msg: string) => void) {
 
       if (effectiveRecord.dirty) {
         const websiteProfiles = effectiveRecord.profiles;
+        const diffs = computeProfileDiffs(websiteProfiles, padProfiles);
+        if (diffs.length === 0) {
+          adoptPadState(id, padRev, padProfiles, effectiveRecord.repeatConfigs);
+          onToast('MacroPad reconnected — offline edits already match pad');
+          return;
+        }
+
         setSnapshot(prev => ({
           profiles: serializedProfilesToStudioProfiles(
             websiteProfiles,
@@ -691,7 +741,7 @@ export function useStudioState(onToast: (msg: string) => void) {
           localRev: effectiveRecord.rev,
           padProfiles,
           websiteProfiles,
-          diffs: computeProfileDiffs(websiteProfiles, padProfiles)
+          diffs
         });
         return;
       }
@@ -709,19 +759,37 @@ export function useStudioState(onToast: (msg: string) => void) {
     return unsubConnect;
   }, [adoptPadState, onToast]);
 
-  // Live Hardware Events (`profile`, `config`, AND physical `press` / `turn` repeat sequences!)
+  // Live Hardware Events (`profile`, `config`, AND physical `press` / `turn` repeat sequences)
   useEffect(() => {
     const unsubEvents = usbHardware.onHardwareEvent((e: HardwareEventPacket) => {
+      if (!settingsRef.current.liveEventsEnabled && e.event !== 'config') {
+        return;
+      }
+
       if (e.event === 'press' || e.event === 'turn') {
         const rawSlot = String(e.slot || '').toLowerCase();
         const rawDir = String(e.dir || '').toLowerCase();
         let hwSlot: HardwareSlotId | null = null;
 
-        if (rawSlot === 'b1' || rawSlot === 'b2' || rawSlot === 'b3' || rawSlot === 'b4' || rawSlot === 'dial') {
+        if (
+          rawSlot === 'b1' ||
+          rawSlot === 'b2' ||
+          rawSlot === 'b3' ||
+          rawSlot === 'b4' ||
+          rawSlot === 'dial'
+        ) {
           hwSlot = rawSlot;
-        } else if (rawSlot === 'enc_cw' || rawSlot === 'cw' || (e.event === 'turn' && rawDir !== 'ccw')) {
+        } else if (
+          rawSlot === 'enc_cw' ||
+          rawSlot === 'cw' ||
+          (e.event === 'turn' && rawDir !== 'ccw')
+        ) {
           hwSlot = 'enc_cw';
-        } else if (rawSlot === 'enc_ccw' || rawSlot === 'ccw' || (e.event === 'turn' && rawDir === 'ccw')) {
+        } else if (
+          rawSlot === 'enc_ccw' ||
+          rawSlot === 'ccw' ||
+          (e.event === 'turn' && rawDir === 'ccw')
+        ) {
           hwSlot = 'enc_ccw';
         }
 
@@ -884,7 +952,7 @@ export function useStudioState(onToast: (msg: string) => void) {
         dirty: true,
         repeatConfigs: currentRepeats
       });
-      onToast(err?.message || 'Could not push website settings — kept as draft');
+      onToast(err?.message || 'Could not push website settings — kept as draft', 'error');
     } finally {
       setSavingCount(c => Math.max(0, c - 1));
     }
@@ -920,7 +988,7 @@ export function useStudioState(onToast: (msg: string) => void) {
         warnings.push({
           controlA: existing,
           controlB: kid,
-          summary: `B${existing.slice(1)} and B${kid.slice(1)} both trigger "${describeFirmwareAction(act, tap?.repeatConfig).shortLabel}".`
+          summary: `Key ${existing.slice(1)} and Key ${kid.slice(1)} both trigger "${describeFirmwareAction(act, tap?.repeatConfig).shortLabel}".`
         });
       } else {
         seen.set(signature, kid);
@@ -929,29 +997,53 @@ export function useStudioState(onToast: (msg: string) => void) {
     return warnings;
   }, [activeLayer]);
 
+  /**
+   * Executes a connected write:
+   * - Shows `Saving…` for at least MIN_SAVING_DWELL_MS so the transition `Saving…` -> `Synced` is clearly visible.
+   * - If the pad rejects the save (or fails while still connected), rolls back `snapshot` to `prevSnap` and shows the pad's error message!
+   * - Only saves as an offline draft if unplugged (`!usbHardware.info.connected`).
+   */
   const runConnectedWrite = useCallback(
     async (
+      prevSnap: WorkspaceSnapshot,
       nextSnap: WorkspaceSnapshot,
       operation: () => Promise<{ rev?: number } | void>,
       successMsg?: string
-    ) => {
+    ): Promise<boolean> => {
       if (!usbHardware.info.connected || conflictPrompt !== null) {
         saveOfflineDraft(nextSnap);
-        return;
+        if (successMsg) onToast(`${successMsg} (saved offline)`);
+        return true;
       }
 
+      const startedAt = Date.now();
       setSavingCount(c => c + 1);
       latestConfigEventRevRef.current = null;
       try {
         const res = await operation();
+        const elapsed = Date.now() - startedAt;
+        if (elapsed < MIN_SAVING_DWELL_MS) {
+          await new Promise(r => setTimeout(r, MIN_SAVING_DWELL_MS - elapsed));
+        }
         await finalizeConnectedSave(
           res && typeof res.rev === 'number' ? res.rev : undefined,
           nextSnap
         );
         if (successMsg) onToast(successMsg);
+        return true;
       } catch (err: any) {
-        saveOfflineDraft(nextSnap);
-        onToast(err?.message || 'Save failed — changes kept as offline draft');
+        if (usbHardware.info.connected) {
+          // Connected save failed -> roll back to previous state and display the pad's message!
+          setSnapshot(prevSnap);
+          setPast(h => h.slice(0, -1));
+          onToast(err?.message || 'Pad rejected save — restored previous action', 'error');
+          return false;
+        } else {
+          // Cable unplugged mid-save -> keep as offline draft
+          saveOfflineDraft(nextSnap);
+          onToast('Cable unplugged during save — kept as offline draft', 'error');
+          return false;
+        }
       } finally {
         setSavingCount(c => Math.max(0, c - 1));
       }
@@ -960,13 +1052,18 @@ export function useStudioState(onToast: (msg: string) => void) {
   );
 
   const pushBothProfilesSnapshot = useCallback(
-    async (targetSnap: WorkspaceSnapshot, labelMsg: string) => {
+    async (
+      prevSnap: WorkspaceSnapshot,
+      targetSnap: WorkspaceSnapshot,
+      labelMsg: string
+    ) => {
       if (!usbHardware.info.connected || conflictPrompt !== null) {
         saveOfflineDraft(targetSnap);
         onToast(`${labelMsg} (saved as offline draft)`);
         return;
       }
 
+      const startedAt = Date.now();
       setSavingCount(c => c + 1);
       latestConfigEventRevRef.current = null;
       try {
@@ -984,11 +1081,20 @@ export function useStudioState(onToast: (msg: string) => void) {
           }
           await usbHardware.renameProfile(prof.id, prof.name);
         }
+        const elapsed = Date.now() - startedAt;
+        if (elapsed < MIN_SAVING_DWELL_MS) {
+          await new Promise(r => setTimeout(r, MIN_SAVING_DWELL_MS - elapsed));
+        }
         await finalizeConnectedSave(undefined, targetSnap);
         onToast(labelMsg);
       } catch (err: any) {
-        saveOfflineDraft(targetSnap);
-        onToast(err?.message || 'Out of sync — saved locally');
+        if (usbHardware.info.connected) {
+          setSnapshot(prevSnap);
+          onToast(err?.message || 'Pad rejected profile save — restored previous state', 'error');
+        } else {
+          saveOfflineDraft(targetSnap);
+          onToast(err?.message || 'Out of sync — saved locally', 'error');
+        }
       } finally {
         setSavingCount(c => Math.max(0, c - 1));
       }
@@ -998,20 +1104,22 @@ export function useStudioState(onToast: (msg: string) => void) {
 
   const undo = useCallback(() => {
     if (past.length === 0) return;
+    const current = snapshotRef.current;
     const previous = past[past.length - 1];
     setPast(p => p.slice(0, -1));
-    setFuture(f => [snapshotRef.current, ...f]);
+    setFuture(f => [current, ...f]);
     setSnapshot(previous);
-    pushBothProfilesSnapshot(previous, 'Undid last change');
+    pushBothProfilesSnapshot(current, previous, 'Undid last change');
   }, [past, pushBothProfilesSnapshot]);
 
   const redo = useCallback(() => {
     if (future.length === 0) return;
+    const current = snapshotRef.current;
     const [nextState, ...rest] = future;
     setFuture(rest);
-    setPast(p => [...p, snapshotRef.current]);
+    setPast(p => [...p, current]);
     setSnapshot(nextState);
-    pushBothProfilesSnapshot(nextState, 'Redid change');
+    pushBothProfilesSnapshot(current, nextState, 'Redid change');
   }, [future, pushBothProfilesSnapshot]);
 
   useEffect(() => {
@@ -1044,9 +1152,11 @@ export function useStudioState(onToast: (msg: string) => void) {
     });
 
     if (usbHardware.info.connected) {
-      usbHardware.activateProfile(profileId).catch(() => {});
+      usbHardware.activateProfile(profileId).catch((err: any) => {
+        onToast(err?.message || 'Could not switch profile on pad', 'error');
+      });
     }
-  }, []);
+  }, [onToast]);
 
   const toggleActiveProfile = useCallback(() => {
     const nextId: HardwareProfileId =
@@ -1060,13 +1170,18 @@ export function useStudioState(onToast: (msg: string) => void) {
   }, [selectProfile, onToast]);
 
   const renameProfile = useCallback(
-    async (profileId: HardwareProfileId, rawName: string) => {
-      const cleanName = sanitizeFirmwareAlias(rawName, profileId);
+    async (profileId: HardwareProfileId, rawName: string): Promise<boolean> => {
+      const check = validateFirmwareAlias(rawName);
+      if (!check.valid) {
+        onToast(check.error || 'Invalid profile name', 'error');
+        return false;
+      }
+
       const prevSnap = snapshotRef.current;
       const nextSnap: WorkspaceSnapshot = {
         ...prevSnap,
         profiles: prevSnap.profiles.map(p =>
-          p.id === profileId ? { ...p, name: cleanName } : p
+          p.id === profileId ? { ...p, name: rawName } : p
         ) as [StudioProfile, StudioProfile]
       };
 
@@ -1074,13 +1189,14 @@ export function useStudioState(onToast: (msg: string) => void) {
       setFuture([]);
       setSnapshot(nextSnap);
 
-      await runConnectedWrite(
+      return await runConnectedWrite(
+        prevSnap,
         nextSnap,
-        () => usbHardware.renameProfile(profileId, cleanName),
-        `Renamed ${profileId} profile to "${cleanName}"`
+        () => usbHardware.renameProfile(profileId, rawName),
+        `Renamed ${profileId} profile to "${rawName}"`
       );
     },
-    [runConnectedWrite]
+    [onToast, runConnectedWrite]
   );
 
   const copyHardwareProfile = useCallback(
@@ -1120,9 +1236,10 @@ export function useStudioState(onToast: (msg: string) => void) {
       setSnapshot(nextSnap);
 
       await runConnectedWrite(
+        prevSnap,
         nextSnap,
         () => usbHardware.copyProfile(source, target),
-        `Copied ${source} bindings to ${target}`
+        `Copied ${source} → ${target}`
       );
     },
     [runConnectedWrite]
@@ -1131,7 +1248,10 @@ export function useStudioState(onToast: (msg: string) => void) {
   const assignSlotAction = useCallback(
     (profileId: HardwareProfileId, slot: HardwareSlotId, binding: ActionBinding) => {
       const actionStr = bindingToFirmwareAction(binding);
-      if (!actionStr || !isValidFirmwareAction(actionStr)) return;
+      if (!actionStr || !isValidFirmwareAction(actionStr)) {
+        onToast('Rejected unsupported or incomplete firmware action', 'error');
+        return;
+      }
 
       const prevSnap = snapshotRef.current;
       const nextProfiles = prevSnap.profiles.map(prof => {
@@ -1226,12 +1346,126 @@ export function useStudioState(onToast: (msg: string) => void) {
       setFuture([]);
       setSnapshot(nextSnap);
 
-      runConnectedWrite(nextSnap, () =>
+      runConnectedWrite(prevSnap, nextSnap, () =>
         usbHardware.saveSlotBinding(profileId, slot, actionStr)
+      );
+    },
+    [onToast, runConnectedWrite]
+  );
+
+  /**
+   * Atomically updates multiple or all 7 slots on a single profile (used by Presets, My Presets, Knob Presets, Swap Directions)
+   */
+  const assignProfileSlots = useCallback(
+    async (
+      profileId: HardwareProfileId,
+      partialSlots: Partial<Record<HardwareSlotId, string>>,
+      successMsg?: string,
+      repeatOverrides?: SlotRepeatMap
+    ) => {
+      const prevSnap = snapshotRef.current;
+      const targetProf = prevSnap.profiles.find(p => p.id === profileId);
+      if (!targetProf) return;
+
+      const currentSlots = extractProfileSlots(targetProf);
+      const mergedSlots: Record<HardwareSlotId, string> = {
+        b1: partialSlots.b1 ?? (currentSlots.b1 || FACTORY_DEFAULT_SLOTS[profileId].b1),
+        b2: partialSlots.b2 ?? (currentSlots.b2 || FACTORY_DEFAULT_SLOTS[profileId].b2),
+        b3: partialSlots.b3 ?? (currentSlots.b3 || FACTORY_DEFAULT_SLOTS[profileId].b3),
+        b4: partialSlots.b4 ?? (currentSlots.b4 || FACTORY_DEFAULT_SLOTS[profileId].b4),
+        dial: partialSlots.dial ?? (currentSlots.dial || FACTORY_DEFAULT_SLOTS[profileId].dial),
+        enc_cw:
+          partialSlots.enc_cw ?? (currentSlots.enc_cw || FACTORY_DEFAULT_SLOTS[profileId].enc_cw),
+        enc_ccw:
+          partialSlots.enc_ccw ??
+          (currentSlots.enc_ccw || FACTORY_DEFAULT_SLOTS[profileId].enc_ccw)
+      };
+
+      const existingRepeats = extractRepeatMapFromProfiles(prevSnap.profiles);
+      for (const s of HARDWARE_SLOTS) {
+        if (partialSlots[s] !== undefined) {
+          const overrideRc = repeatOverrides?.[`${profileId}:${s}`];
+          if (overrideRc) {
+            existingRepeats[`${profileId}:${s}`] = overrideRc;
+          } else {
+            delete existingRepeats[`${profileId}:${s}`];
+          }
+        }
+      }
+
+      const rebuilt = buildHardwareProfile(
+        profileId,
+        targetProf.name,
+        mergedSlots,
+        targetProf,
+        existingRepeats
+      );
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: prevSnap.profiles.map(p =>
+          p.id === profileId ? rebuilt : p
+        ) as [StudioProfile, StudioProfile]
+      };
+
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setSnapshot(nextSnap);
+
+      await runConnectedWrite(
+        prevSnap,
+        nextSnap,
+        () => usbHardware.saveFullProfile(profileId, mergedSlots),
+        successMsg
       );
     },
     [runConnectedWrite]
   );
+
+  const resetSlotToDefault = useCallback(
+    (profileId: HardwareProfileId, slot: HardwareSlotId) => {
+      const factoryAction = FACTORY_DEFAULT_SLOTS[profileId][slot];
+      const binding = firmwareActionToBinding(factoryAction);
+      assignSlotAction(profileId, slot, binding);
+      onToast(
+        `Reset ${SLOT_LABELS[slot].short} to default (${describeFirmwareAction(factoryAction).shortLabel})`
+      );
+    },
+    [assignSlotAction, onToast]
+  );
+
+  const resetBothProfilesToDefault = useCallback(async () => {
+    const prevSnap = snapshotRef.current;
+    const nextProfiles: [StudioProfile, StudioProfile] = [
+      buildHardwareProfile('MAC', 'Mac', { ...FACTORY_DEFAULT_SLOTS.MAC }),
+      buildHardwareProfile('TV', 'TV', { ...FACTORY_DEFAULT_SLOTS.TV })
+    ];
+    const nextSnap: WorkspaceSnapshot = {
+      ...prevSnap,
+      profiles: nextProfiles,
+      activeProfileId: 'MAC'
+    };
+
+    setPast(h => [...h.slice(-34), prevSnap]);
+    setFuture([]);
+    setSnapshot(nextSnap);
+    setAppearanceOverrides({});
+
+    if (usbHardware.info.connected) {
+      await runConnectedWrite(
+        prevSnap,
+        nextSnap,
+        async () => {
+          const res = await usbHardware.resetHardwareDefaults();
+          return res;
+        },
+        'Reset both profiles to factory defaults'
+      );
+    } else {
+      saveOfflineDraft(nextSnap);
+      onToast('Reset both profiles to factory defaults (offline draft)');
+    }
+  }, [onToast, runConnectedWrite, saveOfflineDraft]);
 
   const updateKeyBinding = useCallback(
     (kid: KeyId, binding: ActionBinding) => {
@@ -1318,7 +1552,7 @@ export function useStudioState(onToast: (msg: string) => void) {
           };
         }) as [StudioProfile, StudioProfile]
       }));
-      onToast(`Reset ${slot.toUpperCase()} legend`);
+      onToast(`Reset ${slot.toUpperCase()} keycap legend`);
     },
     [activeLayer, activeProfile.id, onToast]
   );
@@ -1357,7 +1591,7 @@ export function useStudioState(onToast: (msg: string) => void) {
 
   const pullFromUsbNow = useCallback(async () => {
     if (!usbHardware.info.connected) {
-      onToast('Connect your MacroPad via USB first');
+      onToast('Connect your MacroPad via USB first', 'error');
       return false;
     }
     try {
@@ -1368,17 +1602,21 @@ export function useStudioState(onToast: (msg: string) => void) {
       onToast(`Synced from MacroPad (rev ${rev})`);
       return true;
     } catch (err: any) {
-      onToast(err?.message || 'Failed to read status from MacroPad');
+      onToast(err?.message || 'Failed to read status from MacroPad', 'error');
       return false;
     }
   }, [adoptPadState, onToast]);
 
   const pushAllToDeviceNow = useCallback(async () => {
     if (!usbHardware.info.connected) {
-      onToast('Connect USB cable to push draft changes to MacroPad');
+      onToast('Connect USB cable to push draft changes to MacroPad', 'error');
       return false;
     }
-    await pushBothProfilesSnapshot(snapshotRef.current, 'Saved all profiles to MacroPad');
+    await pushBothProfilesSnapshot(
+      snapshotRef.current,
+      snapshotRef.current,
+      'Saved all profiles to MacroPad'
+    );
     return true;
   }, [pushBothProfilesSnapshot, onToast]);
 
@@ -1399,19 +1637,30 @@ export function useStudioState(onToast: (msg: string) => void) {
     }));
   }, []);
 
+  /**
+   * Saves the active profile (and full backup) into "My presets" so it can be reapplied anytime
+   */
   const saveUserSnapshot = useCallback(
-    (name: string) => {
+    (name: string, profileId?: HardwareProfileId) => {
+      const targetProfId = profileId || snapshotRef.current.activeProfileId;
+      const prof =
+        snapshotRef.current.profiles.find(p => p.id === targetProfId) ||
+        snapshotRef.current.profiles[0];
+      const profileSlots = extractProfileSlots(prof);
       const backup = buildBackupFromProfiles(snapshotRef.current.profiles);
       const repeatConfigs = extractRepeatMapFromProfiles(snapshotRef.current.profiles);
+
       const entry: UserPreset = {
-        id: `snap-${Date.now()}`,
-        name: name.trim() || `MacroPad Snapshot ${userPresets.length + 1}`,
+        id: `preset-${Date.now()}`,
+        name: name.trim() || `${prof.name} Preset ${userPresets.length + 1}`,
         createdAt: new Date().toLocaleString(),
+        targetProfile: targetProfId,
+        profileSlots,
         backup,
         repeatConfigs
       };
       setUserPresets(prev => [entry, ...prev]);
-      onToast(`Saved snapshot "${entry.name}"`);
+      onToast(`Saved "${entry.name}" to My presets`);
     },
     [userPresets.length, onToast]
   );
@@ -1420,33 +1669,62 @@ export function useStudioState(onToast: (msg: string) => void) {
     setUserPresets(prev => prev.filter(item => item.id !== id));
   }, []);
 
+  /**
+   * Restores a `studio-pad-config` JSON backup (supports both 7-slot and legacy 5-slot files!)
+   */
   const applyHardwareBackup = useCallback(
     async (backup: HardwareBackupPayload, repeatConfigs?: SlotRepeatMap) => {
+      const prevSnap = snapshotRef.current;
+      const prevMacProf = prevSnap.profiles.find(p => p.id === 'MAC') || prevSnap.profiles[0];
+      const prevTvProf = prevSnap.profiles.find(p => p.id === 'TV') || prevSnap.profiles[1];
+      const prevMacSlots = extractProfileSlots(prevMacProf);
+      const prevTvSlots = extractProfileSlots(prevTvProf);
+
+      const isFiveSlotFile =
+        !backup.mac_enc_cw &&
+        !backup.mac_enc_ccw &&
+        !backup.tv_enc_cw &&
+        !backup.tv_enc_ccw;
+
       const macSlots: Record<HardwareSlotId, string> = {
-        b1: backup.mac_b1 || '',
-        b2: backup.mac_b2 || '',
-        b3: backup.mac_b3 || '',
-        b4: backup.mac_b4 || '',
-        dial: backup.mac_dial || '',
-        enc_cw: backup.mac_enc_cw || '',
-        enc_ccw: backup.mac_enc_ccw || ''
-      };
-      const tvSlots: Record<HardwareSlotId, string> = {
-        b1: backup.tv_b1 || '',
-        b2: backup.tv_b2 || '',
-        b3: backup.tv_b3 || '',
-        b4: backup.tv_b4 || '',
-        dial: backup.tv_dial || '',
-        enc_cw: backup.tv_enc_cw || '',
-        enc_ccw: backup.tv_enc_ccw || ''
+        b1: backup.mac_b1 || FACTORY_DEFAULT_SLOTS.MAC.b1,
+        b2: backup.mac_b2 || FACTORY_DEFAULT_SLOTS.MAC.b2,
+        b3: backup.mac_b3 || FACTORY_DEFAULT_SLOTS.MAC.b3,
+        b4: backup.mac_b4 || FACTORY_DEFAULT_SLOTS.MAC.b4,
+        dial: backup.mac_dial || FACTORY_DEFAULT_SLOTS.MAC.dial,
+        enc_cw:
+          backup.mac_enc_cw || prevMacSlots.enc_cw || FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
+        enc_ccw:
+          backup.mac_enc_ccw || prevMacSlots.enc_ccw || FACTORY_DEFAULT_SLOTS.MAC.enc_ccw
       };
 
-      const prevSnap = snapshotRef.current;
+      const tvSlots: Record<HardwareSlotId, string> = {
+        b1: backup.tv_b1 || FACTORY_DEFAULT_SLOTS.TV.b1,
+        b2: backup.tv_b2 || FACTORY_DEFAULT_SLOTS.TV.b2,
+        b3: backup.tv_b3 || FACTORY_DEFAULT_SLOTS.TV.b3,
+        b4: backup.tv_b4 || FACTORY_DEFAULT_SLOTS.TV.b4,
+        dial: backup.tv_dial || FACTORY_DEFAULT_SLOTS.TV.dial,
+        enc_cw: backup.tv_enc_cw || prevTvSlots.enc_cw || FACTORY_DEFAULT_SLOTS.TV.enc_cw,
+        enc_ccw: backup.tv_enc_ccw || prevTvSlots.enc_ccw || FACTORY_DEFAULT_SLOTS.TV.enc_ccw
+      };
+
       const nextSnap: WorkspaceSnapshot = {
         ...prevSnap,
         profiles: [
-          buildHardwareProfile('MAC', backup.mac_name || 'Mac', macSlots, undefined, repeatConfigs),
-          buildHardwareProfile('TV', backup.tv_name || 'TV', tvSlots, undefined, repeatConfigs)
+          buildHardwareProfile(
+            'MAC',
+            backup.mac_name || 'Mac',
+            macSlots,
+            prevMacProf,
+            repeatConfigs
+          ),
+          buildHardwareProfile(
+            'TV',
+            backup.tv_name || 'TV',
+            tvSlots,
+            prevTvProf,
+            repeatConfigs
+          )
         ]
       };
 
@@ -1455,9 +1733,12 @@ export function useStudioState(onToast: (msg: string) => void) {
       setSnapshot(nextSnap);
 
       await runConnectedWrite(
+        prevSnap,
         nextSnap,
         () => usbHardware.importHardwareConfig(backup),
-        'Restored configuration to MacroPad'
+        isFiveSlotFile
+          ? 'Restored legacy 5-slot backup (preserved knob turn bindings)'
+          : 'Restored 7-slot backup configuration'
       );
     },
     [runConnectedWrite]
@@ -1475,7 +1756,29 @@ export function useStudioState(onToast: (msg: string) => void) {
       payload = buildBackupFromProfiles(snapshotRef.current.profiles);
     }
 
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    // Ensure strict studio-pad-config schema with zero passwords or tokens
+    const cleanPayload: HardwareBackupPayload = {
+      schema: 'studio-pad-config',
+      version: 1,
+      mac_name: payload.mac_name,
+      tv_name: payload.tv_name,
+      mac_b1: payload.mac_b1,
+      mac_b2: payload.mac_b2,
+      mac_b3: payload.mac_b3,
+      mac_b4: payload.mac_b4,
+      mac_dial: payload.mac_dial,
+      mac_enc_cw: payload.mac_enc_cw,
+      mac_enc_ccw: payload.mac_enc_ccw,
+      tv_b1: payload.tv_b1,
+      tv_b2: payload.tv_b2,
+      tv_b3: payload.tv_b3,
+      tv_b4: payload.tv_b4,
+      tv_dial: payload.tv_dial,
+      tv_enc_cw: payload.tv_enc_cw,
+      tv_enc_ccw: payload.tv_enc_ccw
+    };
+
+    const blob = new Blob([JSON.stringify(cleanPayload, null, 2)], {
       type: 'application/json'
     });
     const url = URL.createObjectURL(blob);
@@ -1486,8 +1789,8 @@ export function useStudioState(onToast: (msg: string) => void) {
     setTimeout(() => URL.revokeObjectURL(url), 1500);
     onToast(
       usbHardware.info.connected
-        ? 'Exported live hardware config from MacroPad'
-        : 'Exported offline draft backup'
+        ? 'Downloaded studio-pad-backup.json from MacroPad'
+        : 'Downloaded studio-pad-backup.json'
     );
   }, [onToast]);
 
@@ -1497,13 +1800,17 @@ export function useStudioState(onToast: (msg: string) => void) {
       reader.onload = async () => {
         try {
           const parsed = JSON.parse(String(reader.result));
-          if (parsed?.schema === 'studio-pad-config') {
+          if (
+            parsed?.schema === 'studio-pad-config' &&
+            parsed.mac_b1 &&
+            parsed.tv_b1
+          ) {
             await applyHardwareBackup(parsed as HardwareBackupPayload);
             return;
           }
-          onToast('Incompatible JSON: expected schema "studio-pad-config"');
+          onToast('Incompatible JSON: expected schema "studio-pad-config"', 'error');
         } catch {
-          onToast('Failed to parse backup JSON file');
+          onToast('Failed to parse backup JSON file', 'error');
         }
       };
       reader.readAsText(file);
@@ -1525,8 +1832,13 @@ export function useStudioState(onToast: (msg: string) => void) {
       localStorage.removeItem(UI_PREFS_KEY);
     } catch {}
 
+    const factoryProfiles: [StudioProfile, StudioProfile] = [
+      buildHardwareProfile('MAC', 'Mac', { ...FACTORY_DEFAULT_SLOTS.MAC }),
+      buildHardwareProfile('TV', 'TV', { ...FACTORY_DEFAULT_SLOTS.TV })
+    ];
+
     setSnapshot({
-      profiles: buildBlankHardwareProfiles(),
+      profiles: factoryProfiles,
       activeProfileId: 'MAC',
       customMacros: []
     });
@@ -1575,6 +1887,9 @@ export function useStudioState(onToast: (msg: string) => void) {
     renameProfile,
     copyHardwareProfile,
     assignSlotAction,
+    assignProfileSlots,
+    resetSlotToDefault,
+    resetBothProfilesToDefault,
     updateKeyBinding,
     updateKeyAppearance,
     resetKeyAppearance,

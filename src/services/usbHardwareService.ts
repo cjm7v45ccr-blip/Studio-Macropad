@@ -1,14 +1,18 @@
 import {
+  DebugLogEntry,
   DeviceConnectionInfo,
   HardwareBackupPayload,
   HardwareEventPacket,
+  HardwareFlashSlot,
   HardwareProfileId,
   HardwareSlotId,
   HardwareTelemetry
 } from '../types/studio';
 import {
+  FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
   isValidFirmwareAction,
+  isValidFirmwareAlias,
   sanitizeFirmwareAlias,
   sanitizeSerialString
 } from '../data/firmwareCatalog';
@@ -68,20 +72,93 @@ export interface FirmwareStatusPacket {
 type ConnectionListener = (info: DeviceConnectionInfo) => void;
 type ConnectStatusListener = (status: FirmwareStatusPacket) => void;
 type HardwareEventListener = (event: HardwareEventPacket) => void;
+type DebugLogListener = (logs: DebugLogEntry[]) => void;
+
+interface VirtualDemoPadState {
+  rev: number;
+  active: HardwareProfileId;
+  macName: string;
+  tvName: string;
+  mac: Record<HardwareSlotId, string>;
+  tv: Record<HardwareSlotId, string>;
+  bleConnected: boolean;
+  wifiConnected: boolean;
+  ip: string;
+  ssid: string;
+  tvConfigured: boolean;
+  tvPaired: boolean;
+  tvHost: string;
+  tvPort: number;
+  httpApiEnabled: boolean;
+  eventsEnabled: boolean;
+  pairingPendingHost: string;
+  pairingPendingPort: number;
+}
+
+const MAX_DEBUG_LOGS = 250;
 
 /**
- * PadLink WebSerial Transport
+ * Scrub Wi-Fi passwords (`pass`) and TV/HTTP tokens (`token`) so secrets NEVER appear in logs.
+ */
+export function redactSerialLineSecrets(rawLine: string): string {
+  try {
+    const parsed = JSON.parse(rawLine);
+    if (parsed && typeof parsed === 'object') {
+      const clone: Record<string, any> = { ...parsed };
+      if (typeof clone.pass === 'string' && clone.pass.length > 0) {
+        clone.pass = '[REDACTED]';
+      }
+      if (typeof clone.token === 'string' && clone.token.length > 0) {
+        clone.token = '[REDACTED]';
+      }
+      return JSON.stringify(clone);
+    }
+  } catch {
+    return rawLine
+      .replace(/("pass"\s*:\s*)"[^"]*"/g, '$1"[REDACTED]"')
+      .replace(/("token"\s*:\s*)"[^"]*"/g, '$1"[REDACTED]"');
+  }
+  return rawLine;
+}
+
+function translateSerialOpenError(err: any): Error {
+  const msg = String(err?.message || err || '');
+  const lower = msg.toLowerCase();
+  if (
+    err?.name === 'NetworkError' ||
+    err?.name === 'InvalidStateError' ||
+    lower.includes('failed to open') ||
+    lower.includes('busy') ||
+    lower.includes('in use') ||
+    lower.includes('access is denied') ||
+    lower.includes('permission')
+  ) {
+    return new Error(
+      'Port is busy — close the Arduino Serial Monitor or any other serial tool holding this USB port, then try again.'
+    );
+  }
+  return err instanceof Error
+    ? err
+    : new Error('Failed to open the USB Serial port.');
+}
+
+/**
+ * PadLink WebSerial + Demo Mode Transport
  * - Sends strictly one request at a time via a Promise queue
  * - Separates asynchronous hardware events (`msg.event`) from command replies
  * - Ignores ESP32 boot noise lines (anything not starting with `{`)
  * - Waits 2000ms on open for ESP32 auto-reset, enables `/api/events/set`, and reads `/api/status`
  * - Reconnects automatically via `navigator.serial.getPorts()` without showing the port picker
+ * - Supports full virtual Demo Mode (`demo-pad`, firmware 2.1.0, API version 2) with zero hardware attached
  */
 class PadLinkService {
   private port: any = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private reader: ReadableStreamDefaultReader<string> | null = null;
   private pipeClosedPromise: Promise<void> | null = null;
+
+  private demoModeActive = false;
+  private demoPad: VirtualDemoPadState | null = null;
 
   private queue: Promise<void> = Promise.resolve();
   private pending: ((msg: any) => void) | null = null;
@@ -90,6 +167,9 @@ class PadLinkService {
 
   private isOpening = false;
   private manualDisconnect = false;
+  private desiredEventsEnabled = true;
+
+  private debugLogs: DebugLogEntry[] = [];
 
   private connectionInfo: DeviceConnectionInfo = {
     connected: false,
@@ -102,6 +182,7 @@ class PadLinkService {
   private connListeners = new Set<ConnectionListener>();
   private connectStatusListeners = new Set<ConnectStatusListener>();
   private eventListeners = new Set<HardwareEventListener>();
+  private debugListeners = new Set<DebugLogListener>();
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -110,11 +191,56 @@ class PadLinkService {
   }
 
   public get browserSupportsWebSerial(): boolean {
-    return typeof navigator !== 'undefined' && 'serial' in navigator;
+    return (
+      typeof window !== 'undefined' &&
+      typeof navigator !== 'undefined' &&
+      'serial' in navigator &&
+      window.isSecureContext !== false
+    );
   }
 
   public get info(): DeviceConnectionInfo {
     return this.connectionInfo;
+  }
+
+  public getDebugLogs(): DebugLogEntry[] {
+    return this.debugLogs;
+  }
+
+  public clearDebugLogs() {
+    this.debugLogs = [];
+    this.emitDebugLogs();
+  }
+
+  public onDebugLogsChange(fn: DebugLogListener) {
+    this.debugListeners.add(fn);
+    return () => {
+      this.debugListeners.delete(fn);
+    };
+  }
+
+  private emitDebugLogs() {
+    const copy = [...this.debugLogs];
+    this.debugListeners.forEach(fn => fn(copy));
+  }
+
+  private logSerial(direction: DebugLogEntry['direction'], rawLine: string) {
+    const safeLine = redactSerialLineSecrets(rawLine.trim());
+    const now = new Date();
+    const timestamp =
+      now.toTimeString().slice(0, 8) +
+      '.' +
+      String(now.getMilliseconds()).padStart(3, '0');
+    this.debugLogs = [
+      ...this.debugLogs.slice(-(MAX_DEBUG_LOGS - 1)),
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp,
+        direction,
+        line: safeLine
+      }
+    ];
+    this.emitDebugLogs();
   }
 
   public onConnectionChange(fn: ConnectionListener) {
@@ -124,9 +250,6 @@ class PadLinkService {
     };
   }
 
-  /**
-   * Fired when a fresh USB connection completes its handshake & initial `/api/status` read
-   */
   public onConnectStatus(fn: ConnectStatusListener) {
     this.connectStatusListeners.add(fn);
     return () => {
@@ -134,9 +257,6 @@ class PadLinkService {
     };
   }
 
-  /**
-   * Fired whenever the pad streams an asynchronous JSON event (`msg.event`)
-   */
   public onHardwareEvent(fn: HardwareEventListener) {
     this.eventListeners.add(fn);
     return () => {
@@ -159,7 +279,7 @@ class PadLinkService {
     if (!navSerial) return;
 
     navSerial.addEventListener('connect', async (e: any) => {
-      if (this.manualDisconnect || this.port || this.isOpening) return;
+      if (this.manualDisconnect || this.port || this.isOpening || this.demoModeActive) return;
       const targetPort = e?.target;
       if (targetPort) {
         await this.openAuthorizedPort(targetPort).catch(() => {});
@@ -170,16 +290,18 @@ class PadLinkService {
 
     navSerial.addEventListener('disconnect', async (e: any) => {
       if (this.port && (!e?.target || e.target === this.port)) {
+        this.logSerial('info', 'USB serial cable unplugged');
         await this.cleanupPort();
         this.markDisconnected();
       }
     });
 
-    // Reconnect automatically using previously approved ports without showing the port picker
+    // Reconnect automatically on refresh using previously approved ports without showing the port picker
     this.tryAutoConnectSerial();
   }
 
   private markDisconnected() {
+    this.demoModeActive = false;
     if (this.pendingReject) {
       const rej = this.pendingReject;
       this.pending = null;
@@ -193,7 +315,6 @@ class PadLinkService {
       transport: 'disconnected',
       deviceName: 'Studio MacroPad',
       firmwareVersion: '—',
-      // Wi-Fi, TV pairing, and HTTP token live strictly on the pad — clear on disconnect
       telemetry: undefined
     };
     this.emitConnection();
@@ -204,7 +325,8 @@ class PadLinkService {
       !this.browserSupportsWebSerial ||
       this.port ||
       this.isOpening ||
-      this.manualDisconnect
+      this.manualDisconnect ||
+      this.demoModeActive
     ) {
       return Boolean(this.port && this.connectionInfo.connected);
     }
@@ -213,7 +335,6 @@ class PadLinkService {
       const ports: any[] = await (navigator as any).serial.getPorts();
       if (!ports || ports.length === 0) return false;
 
-      // Prefer USB serial ports exposing a USB Vendor ID (CP210x / CH340 / FTDI / ESP32)
       const sorted = [...ports].sort((a, b) => {
         const aUsb = a.getInfo?.()?.usbVendorId ? 1 : 0;
         const bUsb = b.getInfo?.()?.usbVendorId ? 1 : 0;
@@ -221,7 +342,7 @@ class PadLinkService {
       });
 
       for (const candidate of sorted) {
-        const ok = await this.openAuthorizedPort(candidate);
+        const ok = await this.openAuthorizedPort(candidate, false);
         if (ok) return true;
       }
     } catch (_) {}
@@ -233,7 +354,9 @@ class PadLinkService {
    */
   public async connectWebSerial(): Promise<FirmwareStatusPacket | null> {
     if (!this.browserSupportsWebSerial) {
-      throw new Error('Chrome or Edge on HTTPS is required for Web Serial.');
+      throw new Error(
+        'Unsupported browser — open this site in Chrome or Edge on desktop over HTTPS, or try demo mode.'
+      );
     }
 
     this.manualDisconnect = false;
@@ -241,7 +364,7 @@ class PadLinkService {
     try {
       selectedPort = await (navigator as any).serial.requestPort();
     } catch (err: any) {
-      if (err?.name === 'NotFoundError') return null;
+      if (err?.name === 'NotFoundError' || err?.name === 'AbortError') return null;
       throw err;
     }
 
@@ -251,12 +374,489 @@ class PadLinkService {
     return await this.openAuthorizedPort(selectedPort, true);
   }
 
+  /**
+   * Start full interactive Demo Mode with no physical pad attached
+   */
+  public async connectDemoMode(): Promise<FirmwareStatusPacket> {
+    await this.disconnect(false);
+    this.manualDisconnect = false;
+    this.demoModeActive = true;
+
+    if (!this.demoPad) {
+      // Seed demo pad from factory defaults (or previously synced demo-pad NVS copy if clean)
+      let initialMac = { ...FACTORY_DEFAULT_SLOTS.MAC };
+      let initialTv = { ...FACTORY_DEFAULT_SLOTS.TV };
+      let macName = 'Mac';
+      let tvName = 'TV';
+      let active: HardwareProfileId = 'MAC';
+      let rev = 1;
+
+      try {
+        const raw = localStorage.getItem('pad:demo-pad');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && !parsed.dirty && parsed.profiles) {
+            rev = typeof parsed.rev === 'number' ? parsed.rev : 1;
+            active = parsed.profiles.active === 'TV' ? 'TV' : 'MAC';
+            macName = parsed.profiles.mac_name || 'Mac';
+            tvName = parsed.profiles.tv_name || 'TV';
+            initialMac = { ...initialMac, ...(parsed.profiles.mac || {}) };
+            initialTv = { ...initialTv, ...(parsed.profiles.tv || {}) };
+          }
+        }
+      } catch {}
+
+      this.demoPad = {
+        rev,
+        active,
+        macName,
+        tvName,
+        mac: initialMac,
+        tv: initialTv,
+        bleConnected: true,
+        wifiConnected: true,
+        ip: '192.168.1.42',
+        ssid: 'Studio-WiFi',
+        tvConfigured: true,
+        tvPaired: true,
+        tvHost: '192.168.1.50',
+        tvPort: 7345,
+        httpApiEnabled: false,
+        eventsEnabled: this.desiredEventsEnabled,
+        pairingPendingHost: '',
+        pairingPendingPort: 7345
+      };
+    }
+
+    this.logSerial('info', 'Started Demo Mode (virtual Studio Pad · firmware 2.1.0 · API v2)');
+    await this.call({ path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 });
+    const status = await this.call<FirmwareStatusPacket>({ path: '/api/status' });
+    this.applyTelemetryFromStatus(status, 'DEMO:2100');
+    this.connectStatusListeners.forEach(fn => fn(status));
+    return status;
+  }
+
+  public setDemoLinkState(patch: {
+    bleConnected?: boolean;
+    wifiConnected?: boolean;
+    tvPaired?: boolean;
+  }) {
+    if (!this.demoModeActive || !this.demoPad) return;
+    if (typeof patch.bleConnected === 'boolean') {
+      this.demoPad.bleConnected = patch.bleConnected;
+    }
+    if (typeof patch.wifiConnected === 'boolean') {
+      this.demoPad.wifiConnected = patch.wifiConnected;
+      if (!patch.wifiConnected) this.demoPad.ip = '';
+      else if (!this.demoPad.ip) this.demoPad.ip = '192.168.1.42';
+    }
+    if (typeof patch.tvPaired === 'boolean') {
+      this.demoPad.tvPaired = patch.tvPaired;
+      this.demoPad.tvConfigured = patch.tvPaired || Boolean(this.demoPad.tvHost);
+    }
+    const status = this.buildDemoStatusPacket();
+    this.applyTelemetryFromStatus(status, 'DEMO:2100');
+    if (this.demoPad.eventsEnabled) {
+      const evt: HardwareEventPacket = {
+        event: 'connection',
+        ble: this.demoPad.bleConnected,
+        wifi: this.demoPad.wifiConnected,
+        ip: this.demoPad.ip
+      };
+      this.logSerial('rx', JSON.stringify(evt));
+      this.handleHardwareEvent(evt);
+    }
+  }
+
+  public simulateDemoPadInput(slot: HardwareFlashSlot) {
+    if (!this.demoModeActive || !this.demoPad) return;
+    if (slot === 'mode') {
+      this.demoPad.active = this.demoPad.active === 'MAC' ? 'TV' : 'MAC';
+      if (this.demoPad.eventsEnabled) {
+        const pressEvt: HardwareEventPacket = { event: 'press', slot: 'mode' };
+        const profEvt: HardwareEventPacket = { event: 'profile', active: this.demoPad.active };
+        this.logSerial('rx', JSON.stringify(pressEvt));
+        this.handleHardwareEvent(pressEvt);
+        this.logSerial('rx', JSON.stringify(profEvt));
+        this.handleHardwareEvent(profEvt);
+      }
+      return;
+    }
+
+    const activeMap = this.demoPad.active === 'MAC' ? this.demoPad.mac : this.demoPad.tv;
+    const action = activeMap[slot] || '';
+    if (!this.demoPad.eventsEnabled) return;
+
+    if (slot === 'enc_cw' || slot === 'enc_ccw') {
+      const turnEvt: HardwareEventPacket = {
+        event: 'turn',
+        slot,
+        dir: slot === 'enc_cw' ? 'cw' : 'ccw',
+        action
+      };
+      this.logSerial('rx', JSON.stringify(turnEvt));
+      this.handleHardwareEvent(turnEvt);
+    } else {
+      const pressEvt: HardwareEventPacket = {
+        event: 'press',
+        slot,
+        action
+      };
+      this.logSerial('rx', JSON.stringify(pressEvt));
+      this.handleHardwareEvent(pressEvt);
+    }
+  }
+
+  private buildDemoStatusPacket(): FirmwareStatusPacket {
+    const d = this.demoPad!;
+    return {
+      ok: true,
+      api_version: 2,
+      rev: d.rev,
+      ssid: d.ssid,
+      device: {
+        id: 'demo-pad',
+        name: 'Studio Pad (Demo)',
+        firmware: '2.1.0',
+        connection_type: 'DEMO'
+      },
+      connection: {
+        wifi_connected: d.wifiConnected,
+        ip: d.wifiConnected ? d.ip : '',
+        ble_connected: d.bleConnected
+      },
+      diagnostics: {
+        free_heap: 184320,
+        http_api_enabled: d.httpApiEnabled
+      },
+      tv: {
+        configured: d.tvConfigured,
+        paired: d.tvPaired,
+        host: d.tvHost,
+        port: d.tvPort
+      },
+      profiles: {
+        active: d.active,
+        items: [
+          {
+            id: 'MAC',
+            name: d.macName,
+            controls: { ...d.mac }
+          },
+          {
+            id: 'TV',
+            name: d.tvName,
+            controls: { ...d.tv }
+          }
+        ]
+      }
+    };
+  }
+
+  private async handleDemoCall(obj: Record<string, any>): Promise<any> {
+    this.logSerial('tx', JSON.stringify(obj));
+    await new Promise(r => setTimeout(r, 45));
+
+    if (!this.demoPad) {
+      throw new Error('Demo pad is disconnected.');
+    }
+    const d = this.demoPad;
+    const path = String(obj.path || '');
+
+    const reply = (payload: Record<string, any>) => {
+      this.logSerial('rx', JSON.stringify(payload));
+      return payload;
+    };
+
+    if (path === '/api/events/set') {
+      d.eventsEnabled = Boolean(obj.enabled);
+      return reply({ ok: true, enabled: d.eventsEnabled ? 1 : 0 });
+    }
+
+    if (path === '/api/status') {
+      return reply(this.buildDemoStatusPacket());
+    }
+
+    if (path === '/api/profile/activate') {
+      const target: HardwareProfileId = obj.profile === 'TV' ? 'TV' : 'MAC';
+      d.active = target;
+      const res = reply({ ok: true, active: target, rev: d.rev });
+      if (d.eventsEnabled) {
+        const evt: HardwareEventPacket = { event: 'profile', active: target };
+        this.logSerial('rx', JSON.stringify(evt));
+        this.handleHardwareEvent(evt);
+      }
+      return res;
+    }
+
+    if (path === '/api/customizer/save') {
+      const prof: HardwareProfileId = obj.profile === 'TV' ? 'TV' : 'MAC';
+      const slot = obj.slot as HardwareSlotId;
+      const action = String(obj.action || '');
+      if (!HARDWARE_SLOTS.includes(slot) || !isValidFirmwareAction(action)) {
+        return reply({ ok: false, message: `Pad rejected unsupported action: ${action}` });
+      }
+      if (prof === 'MAC') d.mac[slot] = action;
+      else d.tv[slot] = action;
+      d.rev += 1;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({ ok: true, rev: d.rev });
+    }
+
+    if (path === '/api/profile/save') {
+      const prof: HardwareProfileId = obj.profile === 'TV' ? 'TV' : 'MAC';
+      for (const s of HARDWARE_SLOTS) {
+        if (!isValidFirmwareAction(String(obj[s] || ''))) {
+          return reply({
+            ok: false,
+            message: `Invalid action on ${prof} slot ${s.toUpperCase()}.`
+          });
+        }
+      }
+      const nextSlots: Record<HardwareSlotId, string> = {
+        b1: obj.b1,
+        b2: obj.b2,
+        b3: obj.b3,
+        b4: obj.b4,
+        dial: obj.dial,
+        enc_cw: obj.enc_cw,
+        enc_ccw: obj.enc_ccw
+      };
+      if (prof === 'MAC') d.mac = nextSlots;
+      else d.tv = nextSlots;
+      d.rev += 1;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({ ok: true, rev: d.rev });
+    }
+
+    if (path === '/api/profile/rename') {
+      const prof: HardwareProfileId = obj.profile === 'TV' ? 'TV' : 'MAC';
+      const rawName = String(obj.name || '');
+      if (!isValidFirmwareAlias(rawName)) {
+        return reply({
+          ok: false,
+          message: 'Profile name must be 1–20 letters, numbers, spaces, hyphens, or underscores.'
+        });
+      }
+      if (prof === 'MAC') d.macName = rawName;
+      else d.tvName = rawName;
+      d.rev += 1;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({ ok: true, rev: d.rev });
+    }
+
+    if (path === '/api/profile/copy') {
+      const source: HardwareProfileId = obj.source === 'TV' ? 'TV' : 'MAC';
+      const target: HardwareProfileId = obj.target === 'TV' ? 'TV' : 'MAC';
+      if (source !== target) {
+        if (target === 'TV') d.tv = { ...d.mac };
+        else d.mac = { ...d.tv };
+        d.rev += 1;
+      }
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({ ok: true, rev: d.rev });
+    }
+
+    if (path === '/api/config/export') {
+      const payload: HardwareBackupPayload = {
+        schema: 'studio-pad-config',
+        version: 1,
+        mac_name: d.macName,
+        tv_name: d.tvName,
+        mac_b1: d.mac.b1,
+        mac_b2: d.mac.b2,
+        mac_b3: d.mac.b3,
+        mac_b4: d.mac.b4,
+        mac_dial: d.mac.dial,
+        mac_enc_cw: d.mac.enc_cw,
+        mac_enc_ccw: d.mac.enc_ccw,
+        tv_b1: d.tv.b1,
+        tv_b2: d.tv.b2,
+        tv_b3: d.tv.b3,
+        tv_b4: d.tv.b4,
+        tv_dial: d.tv.dial,
+        tv_enc_cw: d.tv.enc_cw,
+        tv_enc_ccw: d.tv.enc_ccw
+      };
+      return reply(payload);
+    }
+
+    if (path === '/api/config/import') {
+      d.macName = sanitizeFirmwareAlias(String(obj.mac_name || d.macName), 'MAC');
+      d.tvName = sanitizeFirmwareAlias(String(obj.tv_name || d.tvName), 'TV');
+      d.mac = {
+        b1: obj.mac_b1 || d.mac.b1,
+        b2: obj.mac_b2 || d.mac.b2,
+        b3: obj.mac_b3 || d.mac.b3,
+        b4: obj.mac_b4 || d.mac.b4,
+        dial: obj.mac_dial || d.mac.dial,
+        enc_cw: obj.mac_enc_cw || d.mac.enc_cw,
+        enc_ccw: obj.mac_enc_ccw || d.mac.enc_ccw
+      };
+      d.tv = {
+        b1: obj.tv_b1 || d.tv.b1,
+        b2: obj.tv_b2 || d.tv.b2,
+        b3: obj.tv_b3 || d.tv.b3,
+        b4: obj.tv_b4 || d.tv.b4,
+        dial: obj.tv_dial || d.tv.dial,
+        enc_cw: obj.tv_enc_cw || d.tv.enc_cw,
+        enc_ccw: obj.tv_enc_ccw || d.tv.enc_ccw
+      };
+      d.rev += 1;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({ ok: true, rev: d.rev });
+    }
+
+    if (path === '/api/test/action') {
+      const act = String(obj.action || '');
+      if (!isValidFirmwareAction(act)) {
+        return reply({ ok: false, message: 'Unsupported action.' });
+      }
+      const isTv =
+        act.startsWith('TV:') ||
+        act.startsWith('APP:') ||
+        act.startsWith('TVKEY:') ||
+        act.startsWith('TVAPP:');
+      if (isTv) {
+        if (!d.wifiConnected) return reply({ ok: false, message: 'Pad Wi-Fi is disconnected.' });
+        if (!d.tvPaired) return reply({ ok: false, message: 'Vizio TV is not paired.' });
+      } else if (!d.bleConnected) {
+        return reply({ ok: false, message: 'Bluetooth host is not connected.' });
+      }
+      return reply({ ok: true, message: `Demo pad fired ${act.replace(/\n/g, '\\n')}` });
+    }
+
+    if (path === '/api/wifi') {
+      const ssid = String(obj.ssid || '').trim();
+      const pass = String(obj.pass || '');
+      if (!ssid) return reply({ ok: false, message: 'Enter a Wi-Fi network name (SSID).' });
+      d.ssid = ssid;
+      // Simulate failed connection if password is "wrong" or < 8 chars (when non-empty)
+      if (pass.length > 0 && pass.length < 8) {
+        d.wifiConnected = false;
+        d.ip = '';
+      } else {
+        d.wifiConnected = true;
+        d.ip = '192.168.1.42';
+      }
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({ ok: true, message: 'Wi-Fi saved. Connecting…' });
+    }
+
+    if (path === '/api/pair/start') {
+      const host = String(obj.tv_ip || '').trim();
+      const port = Number(obj.tv_port) || 7345;
+      if (!host) return reply({ ok: false, message: 'Enter TV IP address.' });
+      d.pairingPendingHost = host;
+      d.pairingPendingPort = port;
+      d.tvHost = host;
+      d.tvPort = port;
+      d.tvConfigured = true;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({
+        ok: true,
+        message: 'PIN displayed on Demo Vizio TV (enter any 4-digit PIN, e.g. 1234).'
+      });
+    }
+
+    if (path === '/api/pair/submit') {
+      const pin = String(obj.pin || '').trim();
+      if (!/^\d{4}$/.test(pin)) {
+        return reply({ ok: false, message: 'Enter the 4-digit numeric PIN shown on your TV.' });
+      }
+      d.tvPaired = true;
+      d.tvConfigured = true;
+      if (d.pairingPendingHost) {
+        d.tvHost = d.pairingPendingHost;
+        d.tvPort = d.pairingPendingPort;
+      }
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({ ok: true, message: 'SmartCast TV paired and token stored on pad.' });
+    }
+
+    if (path === '/api/token/save') {
+      const host = String(obj.tv_ip || '').trim();
+      const port = Number(obj.tv_port) || 7345;
+      const token = String(obj.token || '').trim();
+      if (!host || !token) {
+        return reply({ ok: false, message: 'Both TV IP and auth token are required.' });
+      }
+      d.tvHost = host;
+      d.tvPort = port;
+      d.tvConfigured = true;
+      d.tvPaired = true;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({ ok: true, message: 'Saved SmartCast host & auth token to pad.' });
+    }
+
+    if (path === '/api/tv/test') {
+      if (!d.wifiConnected) {
+        return reply({ ok: false, message: 'Pad is offline — connect Wi-Fi first.' });
+      }
+      if (!d.tvPaired || !d.tvHost) {
+        return reply({ ok: false, message: 'No paired Vizio TV configured on pad.' });
+      }
+      return reply({
+        ok: true,
+        message: `Connected to Vizio SmartCast TV at ${d.tvHost}:${d.tvPort}.`
+      });
+    }
+
+    if (path === '/api/tv/forget') {
+      if (obj.confirm !== 'FORGET') {
+        return reply({ ok: false, message: 'Type FORGET to confirm.' });
+      }
+      d.tvHost = '';
+      d.tvPort = 7345;
+      d.tvConfigured = false;
+      d.tvPaired = false;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({ ok: true, message: 'Removed saved TV host and auth token from pad.' });
+    }
+
+    if (path === '/api/device/reset-settings') {
+      if (obj.confirm !== 'RESET') {
+        return reply({ ok: false, message: 'Type RESET to confirm.' });
+      }
+      d.macName = 'Mac';
+      d.tvName = 'TV';
+      d.mac = { ...FACTORY_DEFAULT_SLOTS.MAC };
+      d.tv = { ...FACTORY_DEFAULT_SLOTS.TV };
+      d.rev += 1;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({
+        ok: true,
+        rev: d.rev,
+        message: 'Restored MAC and TV profiles to factory defaults (Wi-Fi & TV pairing kept).'
+      });
+    }
+
+    if (path === '/api/auth/set') {
+      const tok = String(obj.token || '').trim();
+      if (tok.length > 0 && (tok.length < 8 || tok.length > 64)) {
+        return reply({
+          ok: false,
+          message: 'Token must be 8–64 characters, or empty to disable.'
+        });
+      }
+      d.httpApiEnabled = tok.length >= 8;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      return reply({
+        ok: true,
+        message: d.httpApiEnabled ? 'HTTP API token updated.' : 'HTTP API disabled.'
+      });
+    }
+
+    return reply({ ok: false, message: `Unknown endpoint: ${path}` });
+  }
+
   private async openAuthorizedPort(
     port: any,
     throwOnError = false
   ): Promise<FirmwareStatusPacket | null> {
     if (this.isOpening || !port) return null;
     this.isOpening = true;
+    this.demoModeActive = false;
 
     const portInfo = port.getInfo?.() || {};
     const vid = portInfo.usbVendorId
@@ -278,7 +878,14 @@ class PadLinkService {
     this.emitConnection();
 
     try {
-      await port.open({ baudRate: 115200 });
+      try {
+        await port.open({ baudRate: 115200 });
+      } catch (openErr: any) {
+        const translated = translateSerialOpenError(openErr);
+        this.logSerial('error', translated.message);
+        throw translated;
+      }
+
       this.port = port;
       this.buf = '';
       this.writer = port.writable.getWriter();
@@ -287,19 +894,23 @@ class PadLinkService {
       this.pipeClosedPromise = port.readable.pipeTo(decoder.writable).catch(() => {});
       this.reader = decoder.readable.getReader();
 
+      this.logSerial(
+        'info',
+        `Opened USB serial port (${vendorProduct || '115200 baud'}) — waiting 2s for board boot`
+      );
       this.readLoop(port);
 
       // ESP32 boards often pulse EN/RTS when the port opens; wait 2000ms for setup()
       await new Promise(r => setTimeout(r, 2000));
       if (this.port !== port) return null;
 
-      // Enable real-time hardware events (`press`, `turn`, `profile`, `connection`, `config`)
+      // Enable or sync real-time hardware events (`press`, `turn`, `profile`, `connection`, `config`)
+      const evVal = this.desiredEventsEnabled ? 1 : 0;
       try {
-        await this.call({ path: '/api/events/set', enabled: 1 });
+        await this.call({ path: '/api/events/set', enabled: evVal });
       } catch (_) {
-        // Retry once in case board boot took slightly over 2s
         if (this.port === port) {
-          await this.call({ path: '/api/events/set', enabled: 1 }).catch(() => {});
+          await this.call({ path: '/api/events/set', enabled: evVal }).catch(() => {});
         }
       }
 
@@ -343,6 +954,8 @@ class PadLinkService {
           const line = this.buf.slice(0, i).trim();
           this.buf = this.buf.slice(i + 1);
           if (!line.startsWith('{')) continue; // skip ESP32 boot noise
+
+          this.logSerial('rx', line);
 
           let msg: any;
           try {
@@ -440,8 +1053,8 @@ class PadLinkService {
         : `v${rawFw}`
       : this.connectionInfo.firmwareVersion;
 
-    // Live-only pad telemetry (never stored in localStorage["pad:" + id])
     const telemetry: HardwareTelemetry = {
+      apiVersion: Number(pkt.api_version ?? 2),
       activeProfile: pkt.profiles?.active === 'TV' ? 'TV' : 'MAC',
       wifiConnected: Boolean(pkt.connection?.wifi_connected ?? pkt.wifi_connected),
       ip: pkt.connection?.ip || pkt.ip || '',
@@ -453,13 +1066,13 @@ class PadLinkService {
       tvPaired: Boolean(pkt.tv?.paired ?? pkt.has_auth),
       tvHost: pkt.tv?.host ?? pkt.tv_ip ?? '',
       tvPort: Number(pkt.tv?.port ?? pkt.tv_port ?? 7345),
-      connectionType: pkt.device?.connection_type || 'USB'
+      connectionType: pkt.device?.connection_type || (this.demoModeActive ? 'DEMO' : 'USB')
     };
 
     this.connectionInfo = {
       connected: true,
       connecting: false,
-      transport: 'webserial',
+      transport: this.demoModeActive ? 'demo' : 'webserial',
       deviceId: pkt.device?.id || 'studio-pad',
       rev: typeof pkt.rev === 'number' ? pkt.rev : this.connectionInfo.rev ?? 0,
       deviceName: pkt.device?.name || 'Studio MacroPad',
@@ -472,11 +1085,15 @@ class PadLinkService {
   }
 
   /**
-   * Serialized single-request-at-a-time JSON RPC over USB Serial
+   * Serialized single-request-at-a-time JSON RPC over USB Serial (or virtual Demo Mode)
    */
   public call<T = any>(obj: Record<string, any>, timeoutMs = 3000): Promise<T> {
-    const run = () =>
-      new Promise<T>((resolve, reject) => {
+    const run = () => {
+      if (this.demoModeActive) {
+        return this.handleDemoCall(obj) as Promise<T>;
+      }
+
+      return new Promise<T>((resolve, reject) => {
         if (!this.writer || !this.port) {
           reject(new Error('MacroPad USB cable is disconnected.'));
           return;
@@ -488,12 +1105,16 @@ class PadLinkService {
           return;
         }
 
+        this.logSerial('tx', encodedLine);
+
         const t = window.setTimeout(() => {
           if (this.pending === onReply) {
             this.pending = null;
             this.pendingReject = null;
           }
-          reject(new Error('Timed out waiting for MacroPad reply over USB.'));
+          const err = new Error('Timed out waiting for MacroPad reply over USB.');
+          this.logSerial('error', err.message);
+          reject(err);
         }, timeoutMs);
 
         const onReply = (msg: any) => {
@@ -518,6 +1139,7 @@ class PadLinkService {
           );
         });
       });
+    };
 
     const next = this.queue.then(run, run);
     this.queue = next.then(
@@ -530,6 +1152,12 @@ class PadLinkService {
   // ===========================================================================
   // Firmware API Wrappers
   // ===========================================================================
+
+  public async setEventsEnabled(enabled: boolean): Promise<void> {
+    this.desiredEventsEnabled = enabled;
+    if (!this.connectionInfo.connected) return;
+    await this.call({ path: '/api/events/set', enabled: enabled ? 1 : 0 }).catch(() => {});
+  }
 
   public async fetchStatus(timeoutMs = 3000): Promise<FirmwareStatusPacket> {
     const res = await this.call<FirmwareStatusPacket>({ path: '/api/status' }, timeoutMs);
@@ -611,15 +1239,19 @@ class PadLinkService {
     profile: HardwareProfileId,
     name: string
   ): Promise<{ ok: boolean; rev?: number; message?: string }> {
-    const clean = sanitizeFirmwareAlias(name, profile);
+    if (!isValidFirmwareAlias(name)) {
+      throw new Error(
+        'Invalid profile name (1–20 letters, numbers, spaces, hyphens, or underscores).'
+      );
+    }
     const res = await this.call({
       path: '/api/profile/rename',
       profile,
-      name: clean
+      name
     });
     if (!res?.ok) {
       throw new Error(
-        res?.message || 'Invalid profile name (1-20 letters, numbers, spaces, - or _).'
+        res?.message || 'Invalid profile name (1–20 letters, numbers, spaces, - or _).'
       );
     }
     return res;
@@ -651,30 +1283,30 @@ class PadLinkService {
   public async importHardwareConfig(
     backup: HardwareBackupPayload
   ): Promise<{ ok: boolean; rev?: number; message?: string }> {
-    const res = await this.call(
-      {
-        path: '/api/config/import',
-        schema: 'studio-pad-config',
-        version: 1,
-        mac_name: sanitizeFirmwareAlias(backup.mac_name, 'MAC'),
-        tv_name: sanitizeFirmwareAlias(backup.tv_name, 'TV'),
-        mac_b1: backup.mac_b1,
-        mac_b2: backup.mac_b2,
-        mac_b3: backup.mac_b3,
-        mac_b4: backup.mac_b4,
-        mac_dial: backup.mac_dial,
-        mac_enc_cw: backup.mac_enc_cw,
-        mac_enc_ccw: backup.mac_enc_ccw,
-        tv_b1: backup.tv_b1,
-        tv_b2: backup.tv_b2,
-        tv_b3: backup.tv_b3,
-        tv_b4: backup.tv_b4,
-        tv_dial: backup.tv_dial,
-        tv_enc_cw: backup.tv_enc_cw,
-        tv_enc_ccw: backup.tv_enc_ccw
-      },
-      4000
-    );
+    const payload: Record<string, any> = {
+      path: '/api/config/import',
+      schema: 'studio-pad-config',
+      version: 1,
+      mac_name: sanitizeFirmwareAlias(backup.mac_name, 'MAC'),
+      tv_name: sanitizeFirmwareAlias(backup.tv_name, 'TV'),
+      mac_b1: backup.mac_b1,
+      mac_b2: backup.mac_b2,
+      mac_b3: backup.mac_b3,
+      mac_b4: backup.mac_b4,
+      mac_dial: backup.mac_dial,
+      tv_b1: backup.tv_b1,
+      tv_b2: backup.tv_b2,
+      tv_b3: backup.tv_b3,
+      tv_b4: backup.tv_b4,
+      tv_dial: backup.tv_dial
+    };
+
+    if (backup.mac_enc_cw) payload.mac_enc_cw = backup.mac_enc_cw;
+    if (backup.mac_enc_ccw) payload.mac_enc_ccw = backup.mac_enc_ccw;
+    if (backup.tv_enc_cw) payload.tv_enc_cw = backup.tv_enc_cw;
+    if (backup.tv_enc_ccw) payload.tv_enc_ccw = backup.tv_enc_ccw;
+
+    const res = await this.call(payload, 4000);
     if (!res?.ok) {
       throw new Error(res?.message || 'Device rejected configuration backup.');
     }
@@ -695,16 +1327,64 @@ class PadLinkService {
     return res;
   }
 
-  public async saveWifi(ssid: string, pass: string): Promise<{ ok: boolean; message: string }> {
+  /**
+   * Saves Wi-Fi credentials and polls status up to 20s to confirm connection & IP
+   */
+  public async saveWifiAndWait(
+    ssid: string,
+    pass: string,
+    maxWaitMs = 20000
+  ): Promise<{ connected: boolean; ip: string; message: string }> {
+    const cleanSsid = sanitizeSerialString(ssid.trim(), 32);
+    const cleanPass = pass.slice(0, 63);
     const res = await this.call({
       path: '/api/wifi',
-      ssid: sanitizeSerialString(ssid.trim(), 32),
-      pass: sanitizeSerialString(pass, 63)
+      ssid: cleanSsid,
+      pass: cleanPass
     });
     if (!res?.ok) {
       throw new Error(res?.message || 'Invalid Wi-Fi credentials.');
     }
-    return res;
+
+    if (this.demoModeActive) {
+      const tel = this.connectionInfo.telemetry;
+      if (tel?.wifiConnected && tel.ip) {
+        return {
+          connected: true,
+          ip: tel.ip,
+          message: `Connected to "${cleanSsid}" (${tel.ip})`
+        };
+      }
+      return {
+        connected: false,
+        ip: '',
+        message: "Couldn't connect to Wi-Fi — check the network name and password."
+      };
+    }
+
+    const deadline = Date.now() + maxWaitMs;
+    while (Date.now() < deadline && this.connectionInfo.connected) {
+      await new Promise(r => setTimeout(r, 2000));
+      if (!this.connectionInfo.connected) break;
+      try {
+        const st = await this.fetchStatus(2500);
+        const wifiOk = Boolean(st.connection?.wifi_connected ?? st.wifi_connected);
+        const ip = st.connection?.ip || st.ip || '';
+        if (wifiOk && ip) {
+          return {
+            connected: true,
+            ip,
+            message: `Connected to "${cleanSsid}" (${ip})`
+          };
+        }
+      } catch {}
+    }
+
+    return {
+      connected: false,
+      ip: '',
+      message: "Couldn't connect to Wi-Fi — check the network name and password."
+    };
   }
 
   public async saveTvConfig(

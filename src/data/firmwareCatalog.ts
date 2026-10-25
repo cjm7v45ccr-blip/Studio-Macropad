@@ -1,6 +1,7 @@
 import {
   ActionBinding,
   ActionType,
+  DeviceConnectionInfo,
   HardwareProfileId,
   HardwareSlotId,
   KeyAppearance,
@@ -19,13 +20,37 @@ export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
 ] as const;
 
 export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; pin: string }> = {
-  b1: { short: 'B1', full: 'Button 1 (B1)', pin: 'GPIO 26' },
-  b2: { short: 'B2', full: 'Button 2 (B2)', pin: 'GPIO 27' },
-  b3: { short: 'B3', full: 'Button 3 (B3)', pin: 'GPIO 14' },
-  b4: { short: 'B4', full: 'Button 4 (B4)', pin: 'GPIO 16' },
-  dial: { short: 'Dial Press', full: 'Encoder Push (Dial)', pin: 'GPIO 25' },
-  enc_cw: { short: 'Turn CW', full: 'Rotate Clockwise (CW)', pin: 'GPIO 33/32' },
-  enc_ccw: { short: 'Turn CCW', full: 'Rotate Counter-Clockwise (CCW)', pin: 'GPIO 33/32' }
+  b1: { short: 'Key 1', full: 'Key 1 (B1)', pin: 'GPIO 26' },
+  b2: { short: 'Key 2', full: 'Key 2 (B2)', pin: 'GPIO 27' },
+  b3: { short: 'Key 3', full: 'Key 3 (B3)', pin: 'GPIO 14' },
+  b4: { short: 'Key 4', full: 'Key 4 (B4)', pin: 'GPIO 16' },
+  dial: { short: 'Knob Press', full: 'Knob Press (Dial)', pin: 'GPIO 25' },
+  enc_cw: { short: 'Turn Right', full: 'Turn Right (CW)', pin: 'GPIO 33/32' },
+  enc_ccw: { short: 'Turn Left', full: 'Turn Left (CCW)', pin: 'GPIO 33/32' }
+};
+
+export const FACTORY_DEFAULT_SLOTS: Record<
+  HardwareProfileId,
+  Record<HardwareSlotId, string>
+> = {
+  MAC: {
+    b1: 'MEDIA:PLAY_PAUSE',
+    b2: 'KEY:F13',
+    b3: 'KEY:F14',
+    b4: 'KEY:F15',
+    dial: 'MEDIA:MUTE',
+    enc_cw: 'MEDIA:VOL_UP',
+    enc_ccw: 'MEDIA:VOL_DOWN'
+  },
+  TV: {
+    b1: 'TV:POWER',
+    b2: 'APP:YOUTUBE',
+    b3: 'APP:DISNEY',
+    b4: 'APP:TUBI',
+    dial: 'TV:MUTE',
+    enc_cw: 'TV:VOL_UP',
+    enc_ccw: 'TV:VOL_DOWN'
+  }
 };
 
 export interface FirmwareActionSpec {
@@ -135,6 +160,13 @@ export const FIRMWARE_SUPPORTED_KEYS = [
   '-', '=', '[', ']', '\\', ';', '\'', ',', '.', '/', '`'
 ];
 
+const SUPPORTED_KEYS_SET = new Set<string>(FIRMWARE_SUPPORTED_KEYS);
+const SUPPORTED_MODS_SET = new Set<string>(['cmd', 'gui', 'win', 'ctrl', 'alt', 'opt', 'shift']);
+
+export function isSupportedFirmwareKey(key: string): boolean {
+  return SUPPORTED_KEYS_SET.has((key || '').trim().toLowerCase());
+}
+
 export const DEFAULT_TEXT_REPEAT_CONFIG: TextMacroRepeatConfig = {
   text: '',
   followUpKey: '',
@@ -144,6 +176,49 @@ export const DEFAULT_TEXT_REPEAT_CONFIG: TextMacroRepeatConfig = {
   repeatDelayMs: 500
 };
 
+/**
+ * Validates raw text snippet input for firmware 2.1.0:
+ * - Maximum 123 characters (or 122 if native trailing Enter is appended)
+ * - Rejects quotes (`"`), backslashes (`\`), and non-ASCII (`< 0x20` or `> 0x7E`)
+ */
+export function validateTextMacroInput(
+  raw: string,
+  maxChars = 123
+): { valid: boolean; error: string | null } {
+  if (raw.length > maxChars) {
+    return {
+      valid: false,
+      error: `Text snippet stops at ${maxChars} characters.`
+    };
+  }
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    const code = raw.charCodeAt(i);
+    if (ch === '"' || ch === '“' || ch === '”') {
+      return {
+        valid: false,
+        error: 'Quotes (") are not allowed in firmware text snippets.'
+      };
+    }
+    if (ch === '\\') {
+      return {
+        valid: false,
+        error: 'Backslashes (\\) are not allowed in firmware text snippets.'
+      };
+    }
+    if (code < 0x20 || code > 0x7e) {
+      return {
+        valid: false,
+        error:
+          code === 10 || code === 13
+            ? 'Line breaks are not allowed in text — choose ENTER in the Button / Key menu instead.'
+            : 'Non-ASCII characters are not supported by BLE HID text snippets.'
+      };
+    }
+  }
+  return { valid: true, error: null };
+}
+
 export function isValidFirmwareAction(action: string): boolean {
   if (!action || action.length < 3 || action.length > 128) return false;
   if (STATIC_MAP.has(action)) return true;
@@ -151,12 +226,22 @@ export function isValidFirmwareAction(action: string): boolean {
   if (action.startsWith('SHORTCUT:')) {
     const firstColon = action.indexOf(':');
     const secondColon = action.indexOf(':', firstColon + 1);
-    return secondColon > firstColon && action.length > secondColon + 1;
+    if (secondColon <= firstColon || action.length <= secondColon + 1) return false;
+    const rawMods = action.slice(firstColon + 1, secondColon).trim();
+    const key = action.slice(secondColon + 1).trim().toLowerCase();
+    if (!isSupportedFirmwareKey(key)) return false;
+    if (rawMods) {
+      const mods = rawMods.split(',').map(m => m.trim().toLowerCase());
+      if (mods.some(m => !SUPPORTED_MODS_SET.has(m))) return false;
+    }
+    return true;
   }
   if (action.startsWith('TVKEY:')) {
-    const firstColon = action.indexOf(':');
-    const secondColon = action.indexOf(':', firstColon + 1);
-    return secondColon > firstColon && action.length > secondColon + 1;
+    const parts = action.split(':');
+    if (parts.length !== 3) return false;
+    const cs = Number(parts[1]);
+    const cd = Number(parts[2]);
+    return Number.isInteger(cs) && cs >= 0 && Number.isInteger(cd) && cd >= 0;
   }
   if (action.startsWith('TVAPP:')) {
     const firstColon = action.indexOf(':');
@@ -164,15 +249,36 @@ export function isValidFirmwareAction(action: string): boolean {
     return secondColon > firstColon && action.length > secondColon + 1;
   }
   if (action.startsWith('TEXT:') && action.length > 5) {
-    return true;
+    const body = action.slice(5);
+    const strippedTrailingNewline = body.endsWith('\n') ? body.slice(0, -1) : body;
+    if (body.length > 123) return false;
+    const check = validateTextMacroInput(strippedTrailingNewline, 123);
+    return check.valid;
   }
   return false;
 }
 
+export function validateFirmwareAlias(name: string): { valid: boolean; error: string | null } {
+  if (!name || name.trim().length < 1) {
+    return { valid: false, error: 'Profile name cannot be empty.' };
+  }
+  if (name.length > 20) {
+    return { valid: false, error: 'Profile name must be 20 characters or fewer.' };
+  }
+  if (name.startsWith(' ') || name.endsWith(' ')) {
+    return { valid: false, error: 'Profile name cannot start or end with a space.' };
+  }
+  if (!/^[A-Za-z0-9 _-]+$/.test(name)) {
+    return {
+      valid: false,
+      error: 'Only letters, numbers, spaces, hyphens (-), and underscores (_) are allowed.'
+    };
+  }
+  return { valid: true, error: null };
+}
+
 export function isValidFirmwareAlias(name: string): boolean {
-  if (!name || name.length < 1 || name.length > 20) return false;
-  if (name.startsWith(' ') || name.endsWith(' ')) return false;
-  return /^[A-Za-z0-9 _-]+$/.test(name);
+  return validateFirmwareAlias(name).valid;
 }
 
 export function sanitizeFirmwareAlias(raw: string, fallback: HardwareProfileId = 'MAC'): string {
@@ -183,13 +289,90 @@ export function sanitizeFirmwareAlias(raw: string, fallback: HardwareProfileId =
 export function sanitizeSerialString(str: string, maxLen = 123): string {
   let out = '';
   for (let i = 0; i < str.length && out.length < maxLen; i++) {
+    const ch = str[i];
     const code = str.charCodeAt(i);
-    if (code === 10 || code === 13 || (code >= 0x20 && code <= 0x7e)) {
-      out += str[i];
+    if (ch === '"' || ch === '\\') continue;
+    if (code >= 0x20 && code <= 0x7e) {
+      out += ch;
     }
   }
   return out;
 }
+
+export function isTvFirmwareAction(action: string): boolean {
+  return (
+    action.startsWith('TV:') ||
+    action.startsWith('APP:') ||
+    action.startsWith('TVKEY:') ||
+    action.startsWith('TVAPP:')
+  );
+}
+
+/**
+ * Checks whether an action can currently be tested live on the pad,
+ * and returns a clear human-readable explanation if Bluetooth or TV link is down.
+ */
+export function getActionTestAvailability(
+  actionStr: string,
+  connection: DeviceConnectionInfo
+): { canTest: boolean; reason: string | null } {
+  if (!actionStr || !isValidFirmwareAction(actionStr)) {
+    return { canTest: false, reason: 'Choose a valid action first.' };
+  }
+  if (!connection.connected) {
+    return { canTest: false, reason: 'Connect the USB pad (or start demo mode) to test.' };
+  }
+  const tel = connection.telemetry;
+  if (!tel) {
+    return { canTest: true, reason: null };
+  }
+
+  if (isTvFirmwareAction(actionStr)) {
+    if (!tel.wifiConnected) {
+      return {
+        canTest: false,
+        reason: 'TV link down: Pad is not connected to Wi-Fi.'
+      };
+    }
+    if (!tel.tvConfigured && !tel.tvPaired) {
+      return {
+        canTest: false,
+        reason: 'TV link down: No Vizio TV paired in Settings.'
+      };
+    }
+    if (!tel.tvPaired) {
+      return {
+        canTest: false,
+        reason: 'TV link down: Vizio TV pairing is incomplete in Settings.'
+      };
+    }
+    return { canTest: true, reason: null };
+  }
+
+  // Otherwise BLE HID action (MEDIA:, KEY:, MACRO:, WIN:, SHORTCUT:, TEXT:)
+  if (!tel.bleConnected) {
+    return {
+      canTest: false,
+      reason: 'Bluetooth is disconnected — pair your computer with "Studio Pad".'
+    };
+  }
+  return { canTest: true, reason: null };
+}
+
+const CODE_PUNCTUATION_MAP: Record<string, string> = {
+  Minus: '-',
+  Equal: '=',
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  IntlBackslash: '\\',
+  Semicolon: ';',
+  Quote: '\'',
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  Backquote: '`'
+};
 
 export function normalizeBrowserKeyToFirmware(
   code: string,
@@ -207,26 +390,40 @@ export function normalizeBrowserKeyToFirmware(
     if (code === 'KeyZ') return 'w';
   }
 
-  const lower = key.toLowerCase();
-  if (key === ' ' || lower === 'spacebar' || lower === 'space') return 'space';
-  if (lower === 'arrowup') return 'up';
-  if (lower === 'arrowdown') return 'down';
-  if (lower === 'arrowleft') return 'left';
-  if (lower === 'arrowright') return 'right';
-  if (lower === 'escape' || lower === 'esc') return 'esc';
-  if (lower === 'enter' || lower === 'return') return 'enter';
-  if (lower === 'backspace') return 'backspace';
-  if (lower === 'delete' || lower === 'del') return 'delete';
-  if (lower === 'tab') return 'tab';
-  if (lower === 'insert') return 'insert';
-  if (lower === 'home') return 'home';
-  if (lower === 'end') return 'end';
-  if (lower === 'pageup') return 'pageup';
-  if (lower === 'pagedown') return 'pagedown';
-  if (lower === 'capslock') return 'capslock';
+  // Map physical letter & number codes first so Shift+4 ('$') records as '4', Option+key records cleanly, etc.
+  if (/^Key([A-Z])$/.test(code)) {
+    return code.slice(3).toLowerCase();
+  }
+  if (/^Digit([0-9])$/.test(code)) {
+    return code.slice(5);
+  }
+  if (CODE_PUNCTUATION_MAP[code]) {
+    return CODE_PUNCTUATION_MAP[code];
+  }
+  if (/^F([1-9]|1[0-9]|2[0-4])$/i.test(code)) {
+    return code.toLowerCase();
+  }
+
+  const lower = (key || '').toLowerCase();
+  if (code === 'Space' || key === ' ' || lower === 'spacebar' || lower === 'space') return 'space';
+  if (code === 'ArrowUp' || lower === 'arrowup') return 'up';
+  if (code === 'ArrowDown' || lower === 'arrowdown') return 'down';
+  if (code === 'ArrowLeft' || lower === 'arrowleft') return 'left';
+  if (code === 'ArrowRight' || lower === 'arrowright') return 'right';
+  if (code === 'Escape' || lower === 'escape' || lower === 'esc') return 'esc';
+  if (code === 'Enter' || lower === 'enter' || lower === 'return') return 'enter';
+  if (code === 'Backspace' || lower === 'backspace') return 'backspace';
+  if (code === 'Delete' || lower === 'delete' || lower === 'del') return 'delete';
+  if (code === 'Tab' || lower === 'tab') return 'tab';
+  if (code === 'Insert' || lower === 'insert') return 'insert';
+  if (code === 'Home' || lower === 'home') return 'home';
+  if (code === 'End' || lower === 'end') return 'end';
+  if (code === 'PageUp' || lower === 'pageup') return 'pageup';
+  if (code === 'PageDown' || lower === 'pagedown') return 'pagedown';
+  if (code === 'CapsLock' || lower === 'capslock') return 'capslock';
   if (/^f([1-9]|1[0-9]|2[0-4])$/.test(lower)) return lower;
-  if (key.length === 1) return key.toLowerCase();
-  return lower;
+  if (key && key.length === 1 && SUPPORTED_KEYS_SET.has(lower)) return lower;
+  return lower || code.toLowerCase();
 }
 
 export function buildFirmwareShortcut(mods: string[], key: string): string {
@@ -313,13 +510,14 @@ export function buildFirmwareActionFromTextConfig(cfg: TextMacroRepeatConfig): s
   const hasNativeTrailingNewline =
     cfg.text.length > 0 && cfg.followUpKey === 'enter' && cfg.keyDelayMs <= 0;
   const maxTextChars = hasNativeTrailingNewline ? 122 : 123;
-  const cleanText = sanitizeSerialString(cfg.text, maxTextChars);
+  const check = validateTextMacroInput(cfg.text, maxTextChars);
+  if (!check.valid) return '';
 
-  if (cleanText.length > 0) {
-    return hasNativeTrailingNewline ? `TEXT:${cleanText}\n` : `TEXT:${cleanText}`;
+  if (cfg.text.length > 0) {
+    return hasNativeTrailingNewline ? `TEXT:${cfg.text}\n` : `TEXT:${cfg.text}`;
   }
 
-  if (cfg.followUpKey) {
+  if (cfg.followUpKey && isSupportedFirmwareKey(cfg.followUpKey)) {
     return buildFirmwareShortcut([], cfg.followUpKey);
   }
 
@@ -370,7 +568,6 @@ export function requiresUsbSequenceExecution(cfg?: TextMacroRepeatConfig): boole
   if (!cfg) return false;
   if (cfg.loopUntilStopped || cfg.repeatCount > 1) return true;
   if (cfg.text.length > 0 && cfg.followUpKey) {
-    // Only `enter` with 0ms keyDelayMs is baked directly into `TEXT:...\n`
     if (cfg.followUpKey !== 'enter' || cfg.keyDelayMs > 0) {
       return true;
     }
@@ -427,7 +624,6 @@ export function firmwareActionToBinding(
   repeatConfig?: TextMacroRepeatConfig
 ): ActionBinding {
   const raw = actionStr || '';
-  // Trim leading/trailing spaces EXCEPT preserve an intentional trailing '\n' on TEXT: actions
   const trimmed = raw.startsWith('TEXT:') ? raw.replace(/^\s+/, '') : raw.trim();
   if (!trimmed || trimmed === 'TEXT:') {
     return { type: 'none', value: '' };

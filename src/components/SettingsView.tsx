@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import {
+  DebugLogEntry,
   DeviceConnectionInfo,
   KeyboardLayoutId,
   StudioSettings,
-  SyncStatusPill
+  SyncStatusPill,
+  ThemeMode
 } from '../types/studio';
+import { ToastVariant } from '../hooks/useStudioState';
 import { usbHardware } from '../services/usbHardwareService';
+import { DiffConfirmModal } from './DiffConfirmModal';
 import {
   Sun,
   Moon,
+  Monitor,
   Volume2,
   VolumeX,
   RotateCcw,
@@ -17,7 +22,15 @@ import {
   Tv,
   Shield,
   Cpu,
-  AlertTriangle
+  Bluetooth,
+  Activity,
+  Terminal,
+  Copy,
+  Trash2,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  KeyRound
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -28,8 +41,9 @@ interface SettingsViewProps {
   currentDeviceId: string | null;
   onUpdateSettings: (patch: Partial<StudioSettings>) => void;
   onPullFromUsb: () => Promise<boolean>;
+  onResetBothProfiles: () => Promise<void> | void;
   onClearLocalCache: () => void;
-  onToast: (msg: string) => void;
+  onToast: (msg: string, variant?: ToastVariant) => void;
 }
 
 const ACCENT_PRESETS = [
@@ -59,6 +73,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   currentDeviceId,
   onUpdateSettings,
   onPullFromUsb,
+  onResetBothProfiles,
   onClearLocalCache,
   onToast
 }) => {
@@ -66,25 +81,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [wifiSsid, setWifiSsid] = useState('');
   const [wifiPass, setWifiPass] = useState('');
   const [wifiBusy, setWifiBusy] = useState(false);
+  const [wifiStatusBanner, setWifiStatusBanner] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
 
   // SmartCast TV State (live from pad only — never stored in localStorage)
   const [tvIp, setTvIp] = useState('');
   const [tvPort, setTvPort] = useState('7345');
-  const [tvToken, setTvToken] = useState('');
   const [tvPin, setTvPin] = useState('');
   const [pairingActive, setPairingActive] = useState(false);
+  const [showManualTokenMode, setShowManualTokenMode] = useState(false);
+  const [tvToken, setTvToken] = useState('');
   const [tvBusy, setTvBusy] = useState(false);
-  const [confirmForgetTv, setConfirmForgetTv] = useState(false);
+  const [tvTestResult, setTvTestResult] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
+  const [forgetTvModalOpen, setForgetTvModalOpen] = useState(false);
 
-  // HTTP API Security State (live from pad only)
+  // HTTP API Security State (live from pad only — never stored in localStorage)
   const [httpToken, setHttpToken] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
 
   // Reset Confirmations
-  const [confirmResetNvs, setConfirmResetNvs] = useState(false);
+  const [resetProfilesModalOpen, setResetProfilesModalOpen] = useState(false);
   const [confirmClearLocal, setConfirmClearLocal] = useState(false);
 
+  // Debug Console Logs (secrets already redacted in usbHardwareService)
+  const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>(() =>
+    usbHardware.getDebugLogs()
+  );
+
+  useEffect(() => {
+    const unsub = usbHardware.onDebugLogsChange(entries => {
+      setDebugLogs(entries);
+    });
+    return unsub;
+  }, []);
+
   const telemetry = connection.telemetry;
+  const isDemo = connection.transport === 'demo';
 
   // Populate live pad-only fields strictly from live `/api/status` telemetry
   useEffect(() => {
@@ -102,12 +139,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleSaveWifi = async () => {
     if (!wifiSsid.trim()) return;
     setWifiBusy(true);
+    setWifiStatusBanner(null);
+    const submittedPass = wifiPass;
+    // Clear password field immediately so it never lingers in state or DOM
+    setWifiPass('');
+
     try {
-      const res = await usbHardware.saveWifi(wifiSsid, wifiPass);
-      onToast(res.message || 'Wi-Fi saved! MacroPad is connecting…');
-      setWifiPass('');
+      const outcome = await usbHardware.saveWifiAndWait(wifiSsid, submittedPass, 20000);
+      setWifiStatusBanner({
+        ok: outcome.connected,
+        text: outcome.message
+      });
+      onToast(outcome.message, outcome.connected ? 'success' : 'error');
     } catch (err: any) {
-      onToast(err?.message || 'Could not save Wi-Fi credentials');
+      const msg = err?.message || 'Could not save Wi-Fi credentials';
+      setWifiStatusBanner({ ok: false, text: msg });
+      onToast(msg, 'error');
     } finally {
       setWifiBusy(false);
     }
@@ -115,31 +162,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleStartTvPairing = async () => {
     if (!tvIp.trim()) {
-      onToast('Enter your SmartCast TV IP address first');
+      onToast('Enter your SmartCast TV IP address first', 'error');
       return;
     }
     setTvBusy(true);
+    setTvTestResult(null);
     try {
       const res = await usbHardware.startTvPairing(tvIp, Number(tvPort) || 7345);
       setPairingActive(true);
-      onToast(res.message || 'Check your TV screen for the 4-digit PIN!');
+      onToast(res.message || 'Check your TV screen for the 4-digit PIN');
     } catch (err: any) {
-      onToast(err?.message || 'Failed to start TV pairing');
+      onToast(err?.message || 'Failed to start TV pairing', 'error');
     } finally {
       setTvBusy(false);
     }
   };
 
-  const handleSubmitTvPin = async () => {
+  const handleSubmitTvPinAndAutoTest = async () => {
     if (!tvPin.trim()) return;
     setTvBusy(true);
+    setTvTestResult(null);
     try {
-      const res = await usbHardware.submitTvPin(tvPin);
+      await usbHardware.submitTvPin(tvPin);
       setPairingActive(false);
       setTvPin('');
-      onToast(res.message || 'TV paired and token saved to MacroPad!');
+
+      // Automatically run `/api/tv/test` after PIN submission and report pass/fail!
+      const testRes = await usbHardware.testTv();
+      const passed = Boolean(testRes?.ok);
+      const summary = passed
+        ? `Pairing & automatic TV test passed: ${testRes.message || 'TV reachable'}`
+        : `PIN saved, but automatic TV test failed: ${testRes?.message || 'TV unreachable'}`;
+      setTvTestResult({ ok: passed, text: summary });
+      onToast(summary, passed ? 'success' : 'error');
     } catch (err: any) {
-      onToast(err?.message || 'Invalid PIN or TV rejected pairing');
+      const msg = err?.message || 'Invalid PIN or TV rejected pairing';
+      setTvTestResult({ ok: false, text: msg });
+      onToast(msg, 'error');
     } finally {
       setTvBusy(false);
     }
@@ -147,16 +206,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleSaveTvManualToken = async () => {
     if (!tvIp.trim()) {
-      onToast('Enter TV IP address');
+      onToast('Enter TV IP address first', 'error');
+      return;
+    }
+    if (!tvToken.trim()) {
+      onToast('Enter your SmartCast auth token', 'error');
       return;
     }
     setTvBusy(true);
+    setTvTestResult(null);
+    const tokenToSave = tvToken;
+    // Never store token in browser — clear input right away
+    setTvToken('');
+
     try {
-      const res = await usbHardware.saveTvConfig(tvIp, Number(tvPort) || 7345, tvToken);
-      onToast(res.message || 'Saved TV host & token to MacroPad');
-      setTvToken('');
+      const res = await usbHardware.saveTvConfig(
+        tvIp,
+        Number(tvPort) || 7345,
+        tokenToSave
+      );
+      setShowManualTokenMode(false);
+      const testRes = await usbHardware.testTv().catch(() => null);
+      if (testRes) {
+        const passed = Boolean(testRes.ok);
+        setTvTestResult({
+          ok: passed,
+          text: passed
+            ? `Token saved & TV test passed (${tvIp}:${Number(tvPort) || 7345})`
+            : `Token saved, but TV test failed: ${testRes.message || 'Unreachable'}`
+        });
+      }
+      onToast(res.message || 'Saved TV IP, port, and auth token to MacroPad');
     } catch (err: any) {
-      onToast(err?.message || 'Failed to save TV configuration');
+      onToast(err?.message || 'Failed to save TV configuration', 'error');
     } finally {
       setTvBusy(false);
     }
@@ -164,25 +246,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleTestTv = async () => {
     setTvBusy(true);
+    setTvTestResult(null);
     try {
       const res = await usbHardware.testTv();
-      onToast(res.message || (res.ok ? 'TV reachable!' : 'TV unreachable'));
+      const passed = Boolean(res?.ok);
+      const text = passed
+        ? `Pass: ${res.message || 'SmartCast TV is reachable'}`
+        : `Fail: ${res?.message || 'SmartCast TV did not respond'}`;
+      setTvTestResult({ ok: passed, text });
+      onToast(text, passed ? 'success' : 'error');
     } catch (err: any) {
-      onToast(err?.message || 'TV test failed');
+      const msg = `Fail: ${err?.message || 'TV test failed'}`;
+      setTvTestResult({ ok: false, text: msg });
+      onToast(msg, 'error');
     } finally {
       setTvBusy(false);
     }
   };
 
-  const handleForgetTv = async () => {
+  const handleConfirmForgetTv = async () => {
+    setForgetTvModalOpen(false);
     setTvBusy(true);
+    setTvTestResult(null);
     try {
       const res = await usbHardware.forgetTv();
-      setConfirmForgetTv(false);
       setTvIp('');
-      onToast(res.message || 'Cleared TV pairing on MacroPad');
+      setTvToken('');
+      setPairingActive(false);
+      onToast(res.message || 'Cleared TV settings on MacroPad');
     } catch (err: any) {
-      onToast(err?.message || 'Failed to forget TV');
+      onToast(err?.message || 'Failed to forget TV', 'error');
     } finally {
       setTvBusy(false);
     }
@@ -190,115 +283,231 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleSaveHttpAuth = async () => {
     setAuthBusy(true);
+    const tokenVal = httpToken;
+    setHttpToken('');
     try {
-      const res = await usbHardware.setHttpApiToken(httpToken);
+      const res = await usbHardware.setHttpApiToken(tokenVal);
       onToast(res.message || 'Updated HTTP API token on MacroPad');
-      setHttpToken('');
     } catch (err: any) {
-      onToast(err?.message || 'Token must be 8-64 chars, or empty to disable');
+      onToast(
+        err?.message || 'Token must be 8–64 chars, or empty to disable',
+        'error'
+      );
     } finally {
       setAuthBusy(false);
     }
   };
 
-  const handleResetHardwareNvs = async () => {
+  const handleCopyDebugConsole = async () => {
+    const formatted = debugLogs
+      .map(e => `[${e.timestamp}] ${e.direction.toUpperCase()}: ${e.line}`)
+      .join('\n');
     try {
-      const res = await usbHardware.resetHardwareDefaults();
-      setConfirmResetNvs(false);
-      await onPullFromUsb();
-      onToast(res.message || 'MacroPad NVS profiles reset & synced');
-    } catch (err: any) {
-      onToast(err?.message || 'Failed to reset MacroPad NVS');
+      await navigator.clipboard.writeText(formatted || 'No serial logs recorded.');
+      onToast('Copied debug console log to clipboard');
+    } catch {
+      onToast('Could not access clipboard', 'error');
     }
   };
 
+  const themeOptions: {
+    id: ThemeMode;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }[] = [
+    { id: 'system', label: 'System', icon: Monitor },
+    { id: 'dark', label: 'Dark', icon: Moon },
+    { id: 'light', label: 'Light', icon: Sun }
+  ];
+
   return (
-    <div className="flex-1 overflow-y-auto p-6 lg:p-8">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
       <div className="max-w-3xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-lg font-bold text-[var(--text-primary)]">
-            Hardware & Studio Settings
-          </h1>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            Live MacroPad telemetry, pad-only network/TV configuration, and studio preferences.
-          </p>
-        </div>
-
-        {/* Live ESP32 Telemetry & Revision Sync State */}
-        <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-              <Cpu className="w-4 h-4 text-[var(--accent)]" />
-              <span>Pad Revision & Live Status</span>
-            </div>
-            <span className="font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)]">
-              {syncStatus} · {currentDeviceId ? `pad:${currentDeviceId}` : 'no saved pad'} · rev{' '}
-              {currentRev}
-            </span>
-          </div>
-
-          {connection.connected && telemetry ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <div className="text-[10px] text-[var(--text-muted)]">Active Profile</div>
-                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5">
-                  {telemetry.activeProfile}
-                </div>
-              </div>
-              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <div className="text-[10px] text-[var(--text-muted)]">BLE Keyboard</div>
-                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5">
-                  {telemetry.bleConnected ? 'Connected' : 'Advertising'}
-                </div>
-              </div>
-              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <div className="text-[10px] text-[var(--text-muted)]">Wi-Fi LAN</div>
-                <div className="font-mono font-bold text-[var(--text-primary)] truncate mt-0.5">
-                  {telemetry.wifiConnected ? telemetry.ip : 'Offline'}
-                </div>
-              </div>
-              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <div className="text-[10px] text-[var(--text-muted)]">Free Heap</div>
-                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5">
-                  {Math.round(telemetry.freeHeap / 1024)} KB
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-[var(--text-muted)]">
-              Connect your MacroPad over USB to inspect live BLE, Wi-Fi, TV pairing, and HTTP API settings. Wi-Fi, TV pairing, and the HTTP token live on the pad only and are read live on connect.
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-lg font-bold text-[var(--text-primary)]">
+              Settings & Diagnostics
+            </h1>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Device diagnostics, Bluetooth, Wi-Fi, SmartCast TV pairing, preferences, and serial debug console.
             </p>
+          </div>
+          {connection.connected && (
+            <button
+              type="button"
+              onClick={onPullFromUsb}
+              className="px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+            >
+              Refresh Status
+            </button>
           )}
         </div>
 
-        {/* ESP32 Wi-Fi Provisioning over USB (`/api/wifi` — Pad Only, Not in `rev`) */}
-        <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">
+        {/* 1. Device Diagnostics Card (Device ID, Firmware Version, API Version, Config Revision, Free Memory) */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+              <Cpu className="w-4 h-4 text-[var(--accent)]" />
+              <span>Device Diagnostics</span>
+            </div>
+            <span className="font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] tabular-nums">
+              {syncStatus} · {connection.connected ? connection.deviceName : 'Disconnected'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
+            <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+              <div className="text-[10px] text-[var(--text-muted)]">Device ID</div>
+              <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 truncate">
+                {connection.deviceId || currentDeviceId || '—'}
+              </div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+              <div className="text-[10px] text-[var(--text-muted)]">Firmware version</div>
+              <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
+                {connection.connected ? connection.firmwareVersion : '—'}
+              </div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+              <div className="text-[10px] text-[var(--text-muted)]">API version</div>
+              <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
+                {connection.connected && telemetry ? telemetry.apiVersion : '—'}
+              </div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+              <div className="text-[10px] text-[var(--text-muted)]">Config revision</div>
+              <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
+                rev {currentRev}
+              </div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] col-span-2 sm:col-span-1">
+              <div className="text-[10px] text-[var(--text-muted)]">Free memory</div>
+              <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
+                {connection.connected && telemetry
+                  ? `${Math.round(telemetry.freeHeap / 1024)} KB`
+                  : '—'}
+              </div>
+            </div>
+          </div>
+
+          {isDemo && telemetry && (
+            <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-[11px] text-[var(--text-muted)]">
+                Demo Mode Link Controls:
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() =>
+                    usbHardware.setDemoLinkState({
+                      bleConnected: !telemetry.bleConnected
+                    })
+                  }
+                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer"
+                >
+                  Toggle BLE ({telemetry.bleConnected ? 'Connected' : 'Disconnected'})
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    usbHardware.setDemoLinkState({
+                      wifiConnected: !telemetry.wifiConnected
+                    })
+                  }
+                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer"
+                >
+                  Toggle Wi-Fi ({telemetry.wifiConnected ? 'Connected' : 'Down'})
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 2. Live Bluetooth Status Card */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                connection.connected && telemetry?.bleConnected
+                  ? 'bg-sky-500/15 border-sky-500/35 text-sky-400'
+                  : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
+              }`}
+            >
+              <Bluetooth className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-[var(--text-primary)]">
+                Bluetooth Keyboard ("Studio Pad")
+              </div>
+              <p className="text-xs text-[var(--text-muted)]">
+                Updates live as your computer connects or disconnects over Bluetooth HID.
+              </p>
+            </div>
+          </div>
+
+          <span
+            className={`px-3 py-1 rounded-full border text-xs font-semibold font-mono ${
+              !connection.connected
+                ? 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
+                : telemetry?.bleConnected
+                ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-300'
+                : 'bg-amber-500/12 border-amber-500/35 text-amber-300'
+            }`}
+          >
+            {!connection.connected
+              ? 'Pad Disconnected'
+              : telemetry?.bleConnected
+              ? 'Connected'
+              : 'Disconnected'}
+          </span>
+        </div>
+
+        {/* 3. Wi-Fi Provisioning Card (saved SSID, never stores password, Connecting… -> IP or error within 20s) */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
               <Wifi className="w-4 h-4 text-emerald-400" />
-              <span>MacroPad Wi-Fi Setup (`/api/wifi`)</span>
+              <span>Wi-Fi Network</span>
             </div>
-            <span className="font-mono text-[10px] text-[var(--text-muted)]">
-              Stored on pad only · read live
-            </span>
+            <div className="font-mono text-[11px] text-[var(--text-secondary)]">
+              {connection.connected && telemetry ? (
+                telemetry.wifiConnected ? (
+                  <span className="text-emerald-400">
+                    Saved: {telemetry.ssid || 'Wi-Fi'} · IP {telemetry.ip}
+                  </span>
+                ) : telemetry.ssid ? (
+                  <span className="text-amber-300">
+                    Saved network: {telemetry.ssid} (Disconnected)
+                  </span>
+                ) : (
+                  <span className="text-[var(--text-muted)]">No network saved</span>
+                )
+              ) : (
+                <span className="text-[var(--text-muted)]">Stored on pad only</span>
+              )}
+            </div>
           </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <input
               type="text"
               maxLength={32}
-              disabled={!connection.connected}
+              disabled={!connection.connected || wifiBusy}
               value={wifiSsid}
               onChange={e => setWifiSsid(e.target.value)}
-              placeholder="2.4 GHz Wi-Fi SSID"
+              placeholder="2.4 GHz Network Name (SSID)"
+              aria-label="Wi-Fi Network Name (SSID)"
               className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
             />
             <input
               type="password"
               maxLength={63}
-              disabled={!connection.connected}
+              autoComplete="new-password"
+              disabled={!connection.connected || wifiBusy}
               value={wifiPass}
               onChange={e => setWifiPass(e.target.value)}
-              placeholder="Wi-Fi Password"
+              placeholder="Password (never stored in browser)"
+              aria-label="Wi-Fi Password"
               className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
             />
             <button
@@ -306,47 +515,67 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               disabled={!connection.connected || wifiBusy || !wifiSsid.trim()}
               onClick={handleSaveWifi}
               style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-              className="py-2 px-4 rounded-xl text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer"
+              className="py-2 px-4 rounded-xl text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap"
             >
-              {wifiBusy ? 'Sending…' : 'Save Wi-Fi to Pad'}
+              {wifiBusy && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
+              <span>{wifiBusy ? 'Connecting…' : 'Save & Connect'}</span>
             </button>
           </div>
+
+          {wifiStatusBanner && (
+            <div
+              className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                wifiStatusBanner.ok
+                  ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-300'
+                  : 'bg-rose-500/12 border-rose-500/35 text-rose-300'
+              }`}
+            >
+              {wifiStatusBanner.ok ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              )}
+              <span>{wifiStatusBanner.text}</span>
+            </div>
+          )}
         </div>
 
-        {/* Vizio SmartCast TV Pairing over USB (Pad Only, Not in `rev`) */}
-        <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+        {/* 4. SmartCast TV Pairing Card */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
               <Tv className="w-4 h-4 text-purple-400" />
-              <span>SmartCast TV Pairing & Control</span>
+              <span>Vizio SmartCast TV Pairing</span>
             </div>
-            <span className="font-mono text-[11px] text-[var(--text-muted)]">
+            <span className="font-mono text-[11px] text-[var(--text-secondary)]">
               {connection.connected && telemetry
                 ? telemetry.tvPaired
                   ? `Paired (${telemetry.tvHost}:${telemetry.tvPort})`
                   : telemetry.tvConfigured
                   ? `Host set (${telemetry.tvHost})`
                   : 'Not paired'
-                : 'Connect USB to read'}
+                : 'Stored on pad only'}
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <input
               type="text"
-              disabled={!connection.connected}
+              disabled={!connection.connected || tvBusy}
               value={tvIp}
               onChange={e => setTvIp(e.target.value)}
               placeholder="TV IP (e.g. 192.168.1.50)"
+              aria-label="Vizio TV IP address"
               className="sm:col-span-2 px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
             />
             <input
               type="number"
-              disabled={!connection.connected}
+              disabled={!connection.connected || tvBusy}
               value={tvPort}
               onChange={e => setTvPort(e.target.value)}
               placeholder="Port (7345)"
-              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
+              aria-label="Vizio TV Port"
+              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent)] tabular-nums"
             />
           </div>
 
@@ -356,97 +585,127 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               disabled={!connection.connected || tvBusy || !tvIp.trim()}
               onClick={handleStartTvPairing}
               style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer whitespace-nowrap"
             >
-              Start TV PIN Pairing
+              Start pairing
             </button>
 
             <button
               type="button"
               disabled={!connection.connected || tvBusy}
               onClick={handleTestTv}
-              className="px-3.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
             >
-              Test TV Connection
+              Test TV
             </button>
 
-            {!confirmForgetTv ? (
-              <button
-                type="button"
-                disabled={!connection.connected || tvBusy}
-                onClick={() => setConfirmForgetTv(true)}
-                className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-medium text-rose-400 disabled:opacity-40 cursor-pointer"
-              >
-                Forget TV
-              </button>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={handleForgetTv}
-                  className="px-3 py-2 rounded-xl bg-rose-500 text-white text-xs font-semibold cursor-pointer"
-                >
-                  Confirm Forget
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmForgetTv(false)}
-                  className="px-2.5 py-2 rounded-xl bg-[var(--bg-input)] text-xs text-[var(--text-muted)] cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              disabled={!connection.connected || tvBusy}
+              onClick={() => setShowManualTokenMode(v => !v)}
+              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>I already have an auth token</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={!connection.connected || tvBusy}
+              onClick={() => setForgetTvModalOpen(true)}
+              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-medium text-rose-400 disabled:opacity-40 cursor-pointer whitespace-nowrap ml-auto"
+            >
+              Forget TV
+            </button>
           </div>
 
           {pairingActive && (
-            <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--accent)] flex items-center gap-2">
-              <input
-                type="text"
-                maxLength={8}
-                value={tvPin}
-                onChange={e => setTvPin(e.target.value)}
-                placeholder="Enter 4-digit PIN shown on TV…"
-                className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)]"
-              />
-              <button
-                type="button"
-                disabled={tvBusy || !tvPin.trim()}
-                onClick={handleSubmitTvPin}
-                style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer"
-              >
-                Submit PIN
-              </button>
+            <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--accent)] space-y-2">
+              <div className="text-xs font-medium text-[var(--text-primary)]">
+                Enter the 4-digit PIN displayed on your TV screen (submitting automatically tests the TV link):
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  maxLength={8}
+                  value={tvPin}
+                  onChange={e => setTvPin(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && tvPin.trim()) {
+                      handleSubmitTvPinAndAutoTest();
+                    }
+                  }}
+                  placeholder="PIN on TV (e.g. 1234)"
+                  aria-label="PIN shown on TV"
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)]"
+                />
+                <button
+                  type="button"
+                  disabled={tvBusy || !tvPin.trim()}
+                  onClick={handleSubmitTvPinAndAutoTest}
+                  style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+                  className="px-4 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  {tvBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Submit PIN & Test</span>
+                </button>
+              </div>
             </div>
           )}
 
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex gap-2">
-            <input
-              type="password"
-              disabled={!connection.connected}
-              value={tvToken}
-              onChange={e => setTvToken(e.target.value)}
-              placeholder="Or paste existing SmartCast Auth Token…"
-              className="flex-1 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
-            />
-            <button
-              type="button"
-              disabled={!connection.connected || tvBusy || !tvIp.trim()}
-              onClick={handleSaveTvManualToken}
-              className="px-3.5 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer"
+          {showManualTokenMode && (
+            <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2">
+              <div className="text-[11px] text-[var(--text-secondary)]">
+                Save your existing SmartCast auth token directly to the pad (never stored in browser Local Storage):
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  disabled={!connection.connected || tvBusy}
+                  value={tvToken}
+                  onChange={e => setTvToken(e.target.value)}
+                  placeholder="SmartCast Auth Token"
+                  aria-label="SmartCast Auth Token"
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  disabled={!connection.connected || tvBusy || !tvIp.trim() || !tvToken.trim()}
+                  onClick={handleSaveTvManualToken}
+                  style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer whitespace-nowrap"
+                >
+                  Save IP, Port & Token
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tvTestResult && (
+            <div
+              className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                tvTestResult.ok
+                  ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-300'
+                  : 'bg-rose-500/12 border-rose-500/35 text-rose-300'
+              }`}
             >
-              Save Token
-            </button>
-          </div>
+              {tvTestResult.ok ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              )}
+              <span>{tvTestResult.text}</span>
+            </div>
+          )}
         </div>
 
-        {/* Local HTTP API Security (`/api/auth/set` — Pad Only, Not in `rev`) */}
-        <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
-          <div className="flex items-center justify-between">
+        {/* 5. Local HTTP API Token (`/api/auth/set` — Pad Only) */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
               <Shield className="w-4 h-4 text-sky-400" />
-              <span>Local HTTP API Token (`/api/auth/set`)</span>
+              <span>Pad Local HTTP API Token (`/api/auth/set`)</span>
             </div>
             <span className="font-mono text-[10px] text-[var(--text-muted)]">
               {connection.connected && telemetry
@@ -460,59 +719,60 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <input
               type="password"
               maxLength={64}
-              disabled={!connection.connected}
+              autoComplete="new-password"
+              disabled={!connection.connected || authBusy}
               value={httpToken}
               onChange={e => setHttpToken(e.target.value)}
-              placeholder="8–64 char token (or leave blank to disable wireless HTTP API)"
+              placeholder="8–64 char token (leave empty to disable)"
+              aria-label="HTTP API Token"
               className="flex-1 px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
             />
             <button
               type="button"
               disabled={!connection.connected || authBusy}
               onClick={handleSaveHttpAuth}
-              className="px-4 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
             >
-              Apply
+              Save Token
             </button>
           </div>
         </div>
 
-        {/* Studio Appearance, Audio & Keyboard Layout */}
-        <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-5">
-          <div className="flex items-center justify-between gap-4">
+        {/* 6. Theme (System, Dark, Light), Live Events Toggle, Audio & Keyboard Layout */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-5">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                Theme & Accent
+                Theme
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Customize your Studio workspace look and feel
+                Follow your OS theme or lock Dark / Light appearance
               </p>
             </div>
-            <div className="flex items-center p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-              <button
-                type="button"
-                onClick={() => onUpdateSettings({ theme: 'dark' })}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
-                  settings.theme === 'dark'
-                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
-                    : 'text-[var(--text-muted)]'
-                }`}
-              >
-                <Moon className="w-3.5 h-3.5" />
-                <span>Dark</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onUpdateSettings({ theme: 'light' })}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
-                  settings.theme === 'light'
-                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
-                    : 'text-[var(--text-muted)]'
-                }`}
-              >
-                <Sun className="w-3.5 h-3.5" />
-                <span>Light</span>
-              </button>
+            <div
+              role="group"
+              aria-label="Theme mode"
+              className="flex items-center p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]"
+            >
+              {themeOptions.map(opt => {
+                const Icon = opt.icon;
+                const active = settings.theme === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => onUpdateSettings({ theme: opt.id })}
+                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap transition-colors ${
+                      active
+                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -531,41 +791,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
                   }`}
                 >
-                  <span className="flex items-center gap-2">
+                  <span className="flex items-center gap-2 truncate">
                     <span
-                      className="w-3.5 h-3.5 rounded-full"
+                      className="w-3.5 h-3.5 rounded-full shrink-0"
                       style={{ backgroundColor: item.hex }}
                     />
-                    <span>{item.label}</span>
+                    <span className="truncate">{item.label}</span>
                   </span>
-                  {active && <Check className="w-3.5 h-3.5 text-[var(--accent)]" />}
+                  {active && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
                 </button>
               );
             })}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[var(--border-subtle)]">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[var(--border-subtle)]">
+            {/* Live Events Toggle */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-[var(--text-secondary)]">
-                Shortcut Recorder Keyboard Layout
+                Live events (`/api/events/set`)
               </label>
-              <select
-                value={settings.keyboardLayout}
-                onChange={e =>
-                  onUpdateSettings({
-                    keyboardLayout: e.target.value as KeyboardLayoutId
-                  })
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSettings({ liveEventsEnabled: !settings.liveEventsEnabled })
                 }
-                className="w-full px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)]"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] cursor-pointer"
               >
-                {KEYBOARD_LAYOUTS.map(layout => (
-                  <option key={layout.id} value={layout.id}>
-                    {layout.label}
-                  </option>
-                ))}
-              </select>
+                <span className="flex items-center gap-2">
+                  <Activity
+                    className={`w-4 h-4 ${
+                      settings.liveEventsEnabled
+                        ? 'text-emerald-400'
+                        : 'text-[var(--text-muted)]'
+                    }`}
+                  />
+                  <span>Live Pad Stream</span>
+                </span>
+                <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                  {settings.liveEventsEnabled ? 'ON' : 'OFF'}
+                </span>
+              </button>
             </div>
 
+            {/* Tactile Switch Audio */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-[var(--text-secondary)]">
                 Tactile Switch Audio
@@ -575,7 +843,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onClick={() =>
                   onUpdateSettings({ soundEnabled: !settings.soundEnabled })
                 }
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] cursor-pointer"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] cursor-pointer"
               >
                 <span className="flex items-center gap-2">
                   {settings.soundEnabled ? (
@@ -583,56 +851,123 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   ) : (
                     <VolumeX className="w-4 h-4 text-[var(--text-muted)]" />
                   )}
-                  <span>Mechanical Key & Dial Sound</span>
+                  <span>Switch Sound</span>
                 </span>
                 <span className="font-mono text-[11px] text-[var(--text-muted)]">
                   {settings.soundEnabled ? 'ON' : 'OFF'}
                 </span>
               </button>
             </div>
+
+            {/* Shortcut Recorder Layout */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[var(--text-secondary)]">
+                Keyboard Layout
+              </label>
+              <select
+                value={settings.keyboardLayout}
+                onChange={e =>
+                  onUpdateSettings({
+                    keyboardLayout: e.target.value as KeyboardLayoutId
+                  })
+                }
+                aria-label="Keyboard Layout"
+                className="w-full px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)]"
+              >
+                {KEYBOARD_LAYOUTS.map(layout => (
+                  <option key={layout.id} value={layout.id}>
+                    {layout.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
-        {/* Hardware & Local Reset Controls */}
-        <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+        {/* 7. Debug Console (Redacted Serial Traffic + Copy & Clear) */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+              <Terminal className="w-4 h-4 text-[var(--accent)]" />
+              <span>Debug console</span>
+              <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                ({debugLogs.length} lines · secrets redacted)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopyDebugConsole}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy</span>
+              </button>
+              <button
+                type="button"
+                disabled={debugLogs.length === 0}
+                onClick={() => {
+                  usbHardware.clearDebugLogs();
+                  onToast('Cleared debug console');
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="h-44 overflow-y-auto rounded-xl bg-[#090B0F] border border-[var(--border-subtle)] p-3 font-mono text-[11px] space-y-1 tabular-nums">
+            {debugLogs.length === 0 ? (
+              <div className="text-zinc-500 py-4 text-center">
+                No serial traffic logged yet. Connect the USB pad or start demo mode to inspect JSON lines.
+              </div>
+            ) : (
+              debugLogs.map(entry => (
+                <div key={entry.id} className="flex items-start gap-2 leading-relaxed break-all">
+                  <span className="text-zinc-500 shrink-0">{entry.timestamp}</span>
+                  <span
+                    className={`uppercase font-bold shrink-0 ${
+                      entry.direction === 'tx'
+                        ? 'text-sky-400'
+                        : entry.direction === 'rx'
+                        ? 'text-emerald-400'
+                        : entry.direction === 'error'
+                        ? 'text-rose-400'
+                        : 'text-amber-300'
+                    }`}
+                  >
+                    {entry.direction}
+                  </span>
+                  <span className="text-zinc-300">{entry.line}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* 8. Reset Both Profiles & Clear Browser Cache */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                Reset Hardware NVS Profiles (`/api/device/reset-settings`)
+                Reset both profiles (`/api/device/reset-settings`)
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Restores factory bindings on the physical ESP32 MacroPad while keeping Wi-Fi & TV pairing intact.
+                Asks you to type <span className="font-mono font-semibold">RESET</span> and restores factory defaults on MAC and TV while keeping Wi-Fi & TV pairing intact.
               </p>
             </div>
 
-            {!confirmResetNvs ? (
-              <button
-                type="button"
-                disabled={!connection.connected}
-                onClick={() => setConfirmResetNvs(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-xs font-semibold text-rose-400 disabled:opacity-40 cursor-pointer"
-              >
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>Reset Pad Profiles</span>
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleResetHardwareNvs}
-                  className="px-3.5 py-2 rounded-xl bg-rose-500 text-white text-xs font-semibold cursor-pointer"
-                >
-                  Confirm Hardware Reset
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmResetNvs(false)}
-                  className="px-3 py-2 rounded-xl bg-[var(--bg-input)] text-xs text-[var(--text-muted)] cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => setResetProfilesModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/12 hover:bg-rose-500/20 border border-rose-500/35 text-xs font-semibold text-rose-300 cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset both profiles</span>
+            </button>
           </div>
 
           <div className="flex items-center justify-between gap-4 flex-wrap pt-3 border-t border-[var(--border-subtle)]">
@@ -641,7 +976,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Clear Browser Local Cache
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Clears saved `localStorage["pad:" + id]` records, offline drafts, and local snapshots.
+                Clears saved `localStorage["pad:" + id]` records, offline drafts, and My presets.
               </p>
             </div>
 
@@ -649,7 +984,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setConfirmClearLocal(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-semibold text-[var(--text-secondary)] hover:text-rose-400 cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-semibold text-[var(--text-secondary)] hover:text-rose-400 cursor-pointer whitespace-nowrap"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Clear Local Cache</span>
@@ -662,14 +997,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onClearLocalCache();
                     setConfirmClearLocal(false);
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-rose-500 text-white text-xs font-semibold cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-rose-500 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
                 >
                   Confirm Clear
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmClearLocal(false)}
-                  className="px-3 py-2 rounded-xl bg-[var(--bg-input)] text-xs text-[var(--text-muted)] cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-[var(--bg-input)] text-xs text-[var(--text-muted)] cursor-pointer whitespace-nowrap"
                 >
                   Cancel
                 </button>
@@ -678,6 +1013,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Forget TV Modal (requires typing FORGET) */}
+      <DiffConfirmModal
+        isOpen={forgetTvModalOpen}
+        title="Forget SmartCast TV?"
+        description="This clears the saved TV IP, port, and pairing token on your Studio MacroPad."
+        confirmLabel="Forget TV"
+        tone="danger"
+        requireWord="FORGET"
+        onConfirm={handleConfirmForgetTv}
+        onCancel={() => setForgetTvModalOpen(false)}
+      />
+
+      {/* Reset Both Profiles Modal (requires typing RESET) */}
+      <DiffConfirmModal
+        isOpen={resetProfilesModalOpen}
+        title="Reset both profiles to factory defaults?"
+        description="All 14 controls across MAC and TV will be restored to factory actions. Wi-Fi and TV pairing remain untouched."
+        confirmLabel="Reset Both Profiles"
+        tone="danger"
+        requireWord="RESET"
+        onConfirm={async () => {
+          setResetProfilesModalOpen(false);
+          await onResetBothProfiles();
+        }}
+        onCancel={() => setResetProfilesModalOpen(false)}
+      />
     </div>
   );
 };

@@ -1,5 +1,6 @@
 export type KeyId = 'k1' | 'k2' | 'k3' | 'k4' | 'k5';
-export type ControlId = KeyId | 'encoder';
+export type EncoderSubControlId = 'dial' | 'enc_cw' | 'enc_ccw';
+export type ControlId = KeyId | 'encoder' | EncoderSubControlId;
 
 export type HardwareProfileId = 'MAC' | 'TV';
 export type HardwareSlotId = 'b1' | 'b2' | 'b3' | 'b4' | 'dial' | 'enc_cw' | 'enc_ccw';
@@ -170,21 +171,23 @@ export interface HardwareBackupPayload {
   mac_b3: string;
   mac_b4: string;
   mac_dial: string;
-  mac_enc_cw: string;
-  mac_enc_ccw: string;
+  mac_enc_cw?: string;
+  mac_enc_ccw?: string;
   tv_b1: string;
   tv_b2: string;
   tv_b3: string;
   tv_b4: string;
   tv_dial: string;
-  tv_enc_cw: string;
-  tv_enc_ccw: string;
+  tv_enc_cw?: string;
+  tv_enc_ccw?: string;
 }
 
 export interface UserPreset {
   id: string;
   name: string;
   createdAt: string;
+  targetProfile?: HardwareProfileId;
+  profileSlots?: Record<HardwareSlotId, string>;
   backup: HardwareBackupPayload;
   repeatConfigs?: SlotRepeatMap;
 }
@@ -198,7 +201,7 @@ export type KeyboardLayoutId =
   | 'nordic_iso'
   | 'jp_jis';
 
-export type ThemeMode = 'dark' | 'light';
+export type ThemeMode = 'system' | 'dark' | 'light';
 
 export interface StudioSettings {
   theme: ThemeMode;
@@ -206,6 +209,7 @@ export interface StudioSettings {
   keyboardLayout: KeyboardLayoutId;
   encoderPlacement: EncoderPlacement;
   soundEnabled: boolean;
+  liveEventsEnabled: boolean;
 }
 
 export interface ConflictWarning {
@@ -223,9 +227,10 @@ export interface LiveInputEvent {
   source?: 'hardware' | 'usb-test' | 'sim';
 }
 
-export type UsbTransport = 'webserial' | 'disconnected';
+export type UsbTransport = 'webserial' | 'demo' | 'disconnected';
 
 export interface HardwareTelemetry {
+  apiVersion: number;
   activeProfile: HardwareProfileId;
   wifiConnected: boolean;
   ip: string;
@@ -251,4 +256,11 @@ export interface DeviceConnectionInfo {
   vendorProduct?: string;
   lastSyncedAt?: string;
   telemetry?: HardwareTelemetry;
+}
+
+export interface DebugLogEntry {
+  id: string;
+  timestamp: string;
+  direction: 'tx' | 'rx' | 'info' | 'error';
+  line: string;
 }

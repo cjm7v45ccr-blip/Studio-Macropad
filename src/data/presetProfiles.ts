@@ -1,91 +1,110 @@
-/**
- * Flagship Curated Profile Packs for Commercial MacroPad Buyers
- */
+import { HardwareProfileId, HardwareSlotId } from '../types/studio';
 
 export interface ProfilePreset {
   id: string;
   title: string;
   subtitle: string;
-  mode: 'MAC' | 'TV';
+  mode: HardwareProfileId;
   description: string;
-  bindings: {
-    b1: string;
-    b2: string;
-    b3: string;
-    b4: string;
-    dial: string;
-  };
+  bindings: Record<HardwareSlotId, string>;
 }
 
 export const CURATED_PRESETS: ProfilePreset[] = [
   {
-    id: 'mac-pro-editor',
-    title: 'Video Editor & Premiere',
-    subtitle: 'macOS Cut & Scrubbing',
+    id: 'mac-everyday-media',
+    title: 'Everyday Mac & Audio',
+    subtitle: 'Clipboard, Spotlight & Volume',
     mode: 'MAC',
-    description: 'Razor cut tool, ripple delete, play/pause, and fast timeline scrubbing on the rotary dial.',
+    description: 'Play/pause, copy, paste, Spotlight search, and smooth speaker volume on the knob.',
     bindings: {
-      b1: 'MACRO:CUT',
-      b2: 'KEY:F13',
-      b3: 'MACRO:SAVE',
-      b4: 'MEDIA:PLAY_PAUSE',
-      dial: 'MEDIA:MUTE'
+      b1: 'MEDIA:PLAY_PAUSE',
+      b2: 'MACRO:COPY',
+      b3: 'MACRO:PASTE',
+      b4: 'MACRO:SPOTLIGHT',
+      dial: 'MEDIA:MUTE',
+      enc_cw: 'MEDIA:VOL_UP',
+      enc_ccw: 'MEDIA:VOL_DOWN'
     }
   },
   {
-    id: 'mac-dev-terminal',
-    title: 'Developer & Terminal',
-    subtitle: 'Code Navigation & Git',
+    id: 'mac-pro-editor',
+    title: 'Video & Timeline Editor',
+    subtitle: 'Cut, Undo & Frame Scrubbing',
     mode: 'MAC',
-    description: 'Instant clipboard pipeline, tab switching, and code save with quick access to spotlight.',
+    description: 'Razor cut, undo/redo, quick save, and left/right arrow frame stepping on the rotary knob.',
+    bindings: {
+      b1: 'MACRO:CUT',
+      b2: 'MACRO:UNDO',
+      b3: 'MACRO:REDO',
+      b4: 'MACRO:SAVE',
+      dial: 'MEDIA:PLAY_PAUSE',
+      enc_cw: 'SHORTCUT::right',
+      enc_ccw: 'SHORTCUT::left'
+    }
+  },
+  {
+    id: 'mac-dev-browser',
+    title: 'Developer & Browser Tabs',
+    subtitle: 'Code & Tab Cycling',
+    mode: 'MAC',
+    description: 'Copy/paste, open/close browser tabs, save on knob press, and cycle tabs with knob turns.',
     bindings: {
       b1: 'MACRO:COPY',
       b2: 'MACRO:PASTE',
-      b3: 'MACRO:SAVE',
-      b4: 'MACRO:SPOTLIGHT',
-      dial: 'MEDIA:MUTE'
+      b3: 'MACRO:NEW_TAB',
+      b4: 'MACRO:CLOSE_TAB',
+      dial: 'MACRO:SAVE',
+      enc_cw: 'SHORTCUT:cmd,shift:]',
+      enc_ccw: 'SHORTCUT:cmd,shift:['
     }
   },
   {
-    id: 'win-stream-gaming',
-    title: 'Windows Stream & Discord',
-    subtitle: 'Content Creator Setup',
+    id: 'win-creator-desk',
+    title: 'Windows Creator Desk',
+    subtitle: 'Snip, Explorer & Track Skip',
     mode: 'MAC',
-    description: 'Snipping tool, screen lock, task manager, and master audio control at your fingertips.',
+    description: 'Screen snip, File Explorer, Task Manager, desktop toggle, and media track skipping.',
     bindings: {
       b1: 'WIN:SNIP',
-      b2: 'WIN:TASK_MGR',
-      b3: 'WIN:DESKTOP',
-      b4: 'MEDIA:PLAY_PAUSE',
-      dial: 'MEDIA:MUTE'
+      b2: 'WIN:EXPLORER',
+      b3: 'WIN:TASK_MGR',
+      b4: 'WIN:DESKTOP',
+      dial: 'MEDIA:PLAY_PAUSE',
+      enc_cw: 'MEDIA:NEXT',
+      enc_ccw: 'MEDIA:PREV'
     }
   },
   {
     id: 'tv-cinema-lounge',
-    title: 'Living Room SmartCast',
-    subtitle: 'Streaming & Home Theater',
+    title: 'SmartCast Streaming Lounge',
+    subtitle: 'Apps & TV Volume',
     mode: 'TV',
-    description: 'Instant power on, YouTube, Netflix, Disney+ app switching with TV mute dial.',
+    description: 'TV power toggle, YouTube, Netflix, and Disney+ launchers with TV mute and volume knob.',
     bindings: {
       b1: 'TV:POWER',
       b2: 'APP:YOUTUBE',
       b3: 'APP:NETFLIX',
       b4: 'APP:DISNEY',
-      dial: 'TV:MUTE'
+      dial: 'TV:MUTE',
+      enc_cw: 'TV:VOL_UP',
+      enc_ccw: 'TV:VOL_DOWN'
     }
   },
   {
     id: 'tv-sports-cable',
-    title: 'Cable & Sports Fan',
-    subtitle: 'Guide & Channel Surfer',
+    title: 'Live TV & Channel Surfer',
+    subtitle: 'Guide, Captions & Channels',
     mode: 'TV',
-    description: 'Channel surfing, sports info banner, program guide, and closed caption toggle.',
+    description: 'Program guide, HDMI input cycle, closed captions, last channel, and rotary channel surfing.',
     bindings: {
       b1: 'TV:GUIDE',
-      b2: 'TV:CH_UP',
-      b3: 'TV:CH_DOWN',
+      b2: 'TV:INPUT',
+      b3: 'TV:CC',
       b4: 'TV:PREV_CH',
-      dial: 'TV:MUTE'
+      dial: 'TV:MUTE',
+      enc_cw: 'TV:CH_UP',
+      enc_ccw: 'TV:CH_DOWN'
     }
   }
 ];
+

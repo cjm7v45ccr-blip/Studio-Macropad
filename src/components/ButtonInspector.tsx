@@ -1,18 +1,25 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ActionBinding,
   ActiveRepeatJob,
   CustomMacroItem,
+  DeviceConnectionInfo,
   HardwareProfileId,
+  HardwareSlotId,
   KeyAppearance,
   KeyControlConfig,
   KeyboardLayoutId
 } from '../types/studio';
 import { ICON_LIBRARY, KeycapIcon } from '../data/iconRegistry';
-import { SLOT_LABELS } from '../data/firmwareCatalog';
+import {
+  FACTORY_DEFAULT_SLOTS,
+  SLOT_LABELS,
+  describeFirmwareAction
+} from '../data/firmwareCatalog';
 import { ActionPickerControl } from './ActionPickerControl';
 import {
   RotateCcw,
+  Undo2,
   Upload,
   Search,
   Layers,
@@ -26,9 +33,10 @@ interface ButtonInspectorProps {
   activeProfileName: string;
   customMacros: CustomMacroItem[];
   keyboardLayout: KeyboardLayoutId;
-  isConnected: boolean;
+  connection: DeviceConnectionInfo;
   activeRepeatJob?: ActiveRepeatJob | null;
   onUpdateBinding: (binding: ActionBinding) => void;
+  onResetSlotToDefault: (slot: HardwareSlotId) => void;
   onUpdateAppearance: (patch: Partial<KeyAppearance>) => void;
   onResetAppearance: () => void;
   onToggleProfileMode: () => void;
@@ -55,9 +63,10 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   activeProfileName,
   customMacros,
   keyboardLayout,
-  isConnected,
+  connection,
   activeRepeatJob,
   onUpdateBinding,
+  onResetSlotToDefault,
   onUpdateAppearance,
   onResetAppearance,
   onToggleProfileMode,
@@ -70,10 +79,24 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   const [iconCategory, setIconCategory] = useState<string>('All');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Track the exact binding this control had when selected so Undo restores it cleanly
+  const selectionKey = `${activeProfileId}:${keyConfig.id}`;
+  const [trackedSelectionKey, setTrackedSelectionKey] = useState(selectionKey);
+  const [initialBindingOnSelect, setInitialBindingOnSelect] = useState<ActionBinding>(
+    keyConfig.triggers.tap
+  );
+
+  useEffect(() => {
+    if (trackedSelectionKey !== selectionKey) {
+      setTrackedSelectionKey(selectionKey);
+      setInitialBindingOnSelect(keyConfig.triggers.tap);
+    }
+  }, [selectionKey, trackedSelectionKey, keyConfig.triggers.tap]);
+
   // Dedicated Hardware MODE Switch (GPIO 23) Inspector
   if (keyConfig.isModeSwitch || keyConfig.id === 'k5') {
     return (
-      <aside className="w-full lg:w-[390px] shrink-0 bg-[var(--bg-panel)] border-l border-[var(--border-subtle)] flex flex-col h-full overflow-hidden">
+      <aside className="w-full lg:w-[400px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col lg:h-full overflow-hidden">
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-[var(--bg-input)] border border-[var(--border-strong)] flex items-center justify-center shadow-inner">
@@ -82,7 +105,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                  MODE Switch
+                  Mode Switch
                 </h2>
                 <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)]">
                   GPIO 23
@@ -102,20 +125,22 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               <span>Dedicated Firmware Switch (`PIN_BTN_MODE`)</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              On the ESP32 Studio MacroPad firmware, Button 5 is hardwired to control device operating modes:
+              Button 5 is wired to switch hardware profiles and enter setup mode on the OLED:
             </p>
             <ul className="space-y-2 text-xs text-[var(--text-secondary)] pt-1">
               <li className="flex items-start gap-2">
                 <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] shrink-0">
                   Short Press
                 </span>
-                <span>Toggles active hardware profile between <strong>MAC</strong> and <strong>TV</strong>.</span>
+                <span>
+                  Switches active profile between <strong>MAC</strong> and <strong>TV</strong>.
+                </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] shrink-0">
                   Hold 3 Sec
                 </span>
-                <span>Enters/exits USB & Wi-Fi Setup Mode on the 128×64 OLED display.</span>
+                <span>Enters or exits Setup Mode on the 128×64 OLED display.</span>
               </li>
             </ul>
           </div>
@@ -128,7 +153,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           >
             <ArrowLeftRight className="w-4 h-4" />
             <span>
-              Switch Editor to {activeProfileId === 'MAC' ? 'TV' : 'MAC'} Profile
+              Switch to {activeProfileId === 'MAC' ? 'TV' : 'MAC'} Profile
             </span>
           </button>
         </div>
@@ -138,8 +163,27 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
 
   const slotId = keyConfig.slot || 'b1';
   const slotMeta = SLOT_LABELS[slotId];
+  const currentTap = keyConfig.triggers.tap;
+  const factoryDefaultAction = FACTORY_DEFAULT_SLOTS[activeProfileId][slotId];
+  const factoryDesc = describeFirmwareAction(factoryDefaultAction);
 
-  const categories = ['All', 'Media', 'Stream & Calls', 'Creative', 'Code', 'System', 'Navigation'];
+  const canUndoSelection =
+    currentTap.value !== initialBindingOnSelect.value ||
+    JSON.stringify(currentTap.repeatConfig || null) !==
+      JSON.stringify(initialBindingOnSelect.repeatConfig || null);
+
+  const isAlreadyFactoryDefault =
+    currentTap.value === factoryDefaultAction && !currentTap.repeatConfig;
+
+  const categories = [
+    'All',
+    'Media',
+    'Stream & Calls',
+    'Creative',
+    'Code',
+    'System',
+    'Navigation'
+  ];
 
   const filteredIcons = ICON_LIBRARY.filter(entry => {
     const matchesCat = iconCategory === 'All' || entry.category === iconCategory;
@@ -166,44 +210,62 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   };
 
   return (
-    <aside className="w-full lg:w-[390px] shrink-0 bg-[var(--bg-panel)] border-l border-[var(--border-subtle)] flex flex-col h-full overflow-hidden">
+    <aside className="w-full lg:w-[400px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col lg:h-full overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-[var(--bg-input)] border border-[var(--border-strong)] flex items-center justify-center shadow-inner shrink-0">
-            <KeycapIcon
-              icon={keyConfig.appearance.icon}
-              className="w-5 h-5"
-              style={{ color: keyConfig.appearance.labelColor }}
-            />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                {slotMeta.full}
-              </h2>
-              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)] shrink-0">
-                {slotMeta.pin}
-              </span>
+      <div className="px-4 sm:px-5 py-3.5 border-b border-[var(--border-subtle)] space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-[var(--bg-input)] border border-[var(--border-strong)] flex items-center justify-center shadow-inner shrink-0">
+              <KeycapIcon
+                icon={keyConfig.appearance.icon}
+                className="w-4 h-4"
+                style={{ color: keyConfig.appearance.labelColor }}
+              />
             </div>
-            <p className="text-xs text-[var(--text-muted)] truncate">
-              {activeProfileName} ({activeProfileId}) · `{slotId}`
-            </p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                  {slotMeta.full}
+                </h2>
+                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)] shrink-0">
+                  {slotMeta.pin}
+                </span>
+              </div>
+              <p className="text-xs text-[var(--text-muted)] truncate">
+                {activeProfileName} ({activeProfileId}) · slot `{slotId}`
+              </p>
+            </div>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onResetAppearance}
-          title="Reset keycap visual legend to match firmware action"
-          className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
+        {/* Control-Scoped Undo & Reset to Default Bar */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={!canUndoSelection}
+            onClick={() => onUpdateBinding(initialBindingOnSelect)}
+            title="Restore the value this control had when you selected it"
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <Undo2 className="w-3.5 h-3.5" />
+            <span>Undo</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isAlreadyFactoryDefault}
+            onClick={() => onResetSlotToDefault(slotId)}
+            title={`Reset to factory default: ${factoryDesc.fullLabel} (${factoryDefaultAction})`}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset to default</span>
+          </button>
+        </div>
       </div>
 
       {/* Section Switcher: Hardware Action vs Keycap Legend */}
-      <div className="px-5 pt-3.5">
+      <div className="px-4 sm:px-5 pt-3">
         <div className="grid grid-cols-2 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
           <button
             type="button"
@@ -231,14 +293,14 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
       </div>
 
       {/* Scrollable Body */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
         {inspectorSection === 'action' ? (
           <ActionPickerControl
             binding={keyConfig.triggers.tap}
             onChange={onUpdateBinding}
             customMacros={customMacros}
             keyboardLayout={keyboardLayout}
-            isConnected={isConnected}
+            connection={connection}
             activeRepeatJob={activeRepeatJob}
             onTestBinding={onTestBinding}
             onStopRepeat={onStopRepeat}
@@ -246,13 +308,26 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           />
         ) : (
           <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-[var(--text-secondary)]">
+                Custom Keycap Appearance
+              </span>
+              <button
+                type="button"
+                onClick={onResetAppearance}
+                className="text-[11px] font-semibold text-[var(--accent)] hover:underline cursor-pointer"
+              >
+                Auto-match action
+              </button>
+            </div>
+
             {/* Keycap Label */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-medium text-[var(--text-secondary)]">
                   UI Keycap Label
                 </label>
-                <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
                   {keyConfig.appearance.label.length}/12
                 </span>
               </div>
@@ -269,7 +344,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             {/* Keycap Tint */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-[var(--text-secondary)]">
-                Legend & Glow Color
+                Legend Color
               </label>
               <div className="flex items-center gap-2 flex-wrap">
                 {COLOR_SWATCHES.map(hex => {
@@ -279,6 +354,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                     <button
                       key={hex}
                       type="button"
+                      aria-label={`Select color ${hex}`}
                       onClick={() => onUpdateAppearance({ labelColor: hex })}
                       className={`w-6 h-6 rounded-full border transition-transform cursor-pointer ${
                         active
