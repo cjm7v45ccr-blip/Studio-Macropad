@@ -329,6 +329,28 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     setMods(prev => (prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]));
   };
 
+  const handleMoveStepUp = (index: number) => {
+    if (index <= 0) return;
+    setMacroSteps(prev => {
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[index - 1];
+      copy[index - 1] = temp;
+      return copy;
+    });
+  };
+
+  const handleMoveStepDown = (index: number) => {
+    if (index >= macroSteps.length - 1) return;
+    setMacroSteps(prev => {
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[index + 1];
+      copy[index + 1] = temp;
+      return copy;
+    });
+  };
+
   return (
     <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
       {/* Left Column: Live Synced Hardware Matrix + Saved Custom Macros */}
@@ -871,12 +893,12 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   )}
                 </div>
 
-                {/* Multi-Step Sequence & Per-Step Repeat Intervals */}
-                <div id="section-multistep" className="space-y-3 pt-3 border-t border-[var(--border-subtle)]">
+                {/* Multi-Step Vertical Stepper & Per-Step Repeat Intervals */}
+                <div id="section-multistep" className="space-y-4 pt-4 border-t border-[var(--border-subtle)]">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-                      <Layers className="w-3.5 h-3.5 text-[var(--accent)]" />
-                      <span>Multi-Step Sequence & Per-Step Intervals ({macroSteps.length})</span>
+                      <Layers className="w-4 h-4 text-[var(--accent)]" />
+                      <span>Vertical Automation Stepper ({macroSteps.length} steps)</span>
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <button
@@ -894,9 +916,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             }
                           ])
                         }
-                        className="px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer whitespace-nowrap"
+                        className="px-2.5 py-1.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer whitespace-nowrap shadow-sm"
                       >
-                        + Text Step
+                        + Add Text Step
                       </button>
                       <button
                         type="button"
@@ -913,9 +935,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             }
                           ])
                         }
-                        className="px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer whitespace-nowrap"
+                        className="px-2.5 py-1.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer whitespace-nowrap shadow-sm"
                       >
-                        + Key Step
+                        + Add Key Step
                       </button>
                       <button
                         type="button"
@@ -932,123 +954,165 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             }
                           ])
                         }
-                        className="px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer whitespace-nowrap"
+                        className="px-2.5 py-1.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer whitespace-nowrap shadow-sm"
                       >
-                        + Delay Step
+                        + Add Pause Step
                       </button>
                     </div>
                   </div>
 
-                  {macroSteps.length > 0 && (
-                    <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                  {macroSteps.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-center text-xs text-[var(--text-muted)] italic">
+                      No multi-step actions configured. Add steps above to build a timed execution sequence.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
                       {macroSteps.map((step, idx) => (
-                        <div
-                          key={step.id}
-                          className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2.5"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-mono text-[11px] font-bold text-[var(--accent)]">
-                              Step {idx + 1} ({step.actionType.toUpperCase()})
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setMacroSteps(prev => prev.filter(s => s.id !== step.id))
-                              }
-                              className="p-1 rounded text-[var(--text-muted)] hover:text-rose-400 cursor-pointer"
-                              title="Remove step"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                            {step.actionType !== 'delay' ? (
-                              <div className="space-y-1">
-                                <label className="text-[10px] font-medium text-[var(--text-secondary)]">
-                                  {step.actionType === 'text' ? 'Text Value' : 'Key Token'}
-                                </label>
-                                {step.actionType === 'text' ? (
-                                  <input
-                                    type="text"
-                                    value={step.value}
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      setMacroSteps(prev =>
-                                        prev.map(s => (s.id === step.id ? { ...s, value: val } : s))
-                                      );
-                                    }}
-                                    className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-                                  />
-                                ) : (
-                                  <select
-                                    value={step.value}
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      setMacroSteps(prev =>
-                                        prev.map(s => (s.id === step.id ? { ...s, value: val } : s))
-                                      );
-                                    }}
-                                    className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-                                  >
-                                    {FIRMWARE_SUPPORTED_KEYS.map(k => (
-                                      <option key={k} value={k}>
-                                        {k.toUpperCase()}
-                                      </option>
-                                    ))}
-                                  </select>
-                                )}
+                        <div key={step.id} className="relative">
+                          {/* Step Card */}
+                          <div className="p-3.5 rounded-2xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-all space-y-3 shadow-sm">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center font-mono text-xs font-bold text-[var(--accent)] shadow-inner">
+                                  {idx + 1}
+                                </span>
+                                <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-primary)]">
+                                  {step.actionType === 'text' ? 'Type Text Action' : step.actionType === 'key' ? 'Key Press Action' : 'Timed Pause Action'}
+                                </span>
                               </div>
-                            ) : (
-                              <div className="space-y-1">
-                                <label className="text-[10px] font-medium text-[var(--text-secondary)]">
-                                  Pause Step
-                                </label>
-                                <div className="text-xs font-mono text-[var(--text-muted)] px-2.5 py-1.5">
-                                  Pure delay
+
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => handleMoveStepUp(idx)}
+                                  className="p-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 cursor-pointer"
+                                  title="Move Step Up"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === macroSteps.length - 1}
+                                  onClick={() => handleMoveStepDown(idx)}
+                                  className="p-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 cursor-pointer"
+                                  title="Move Step Down"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setMacroSteps(prev => prev.filter(s => s.id !== step.id))
+                                  }
+                                  className="p-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-rose-400 cursor-pointer ml-1"
+                                  title="Delete Step"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              {step.actionType !== 'delay' ? (
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-secondary)]">
+                                    {step.actionType === 'text' ? 'Text Value' : 'Key Token'}
+                                  </label>
+                                  {step.actionType === 'text' ? (
+                                    <input
+                                      type="text"
+                                      value={step.value}
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        setMacroSteps(prev =>
+                                          prev.map(s => (s.id === step.id ? { ...s, value: val } : s))
+                                        );
+                                      }}
+                                      className="w-full px-3 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                                    />
+                                  ) : (
+                                    <select
+                                      value={step.value}
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        setMacroSteps(prev =>
+                                          prev.map(s => (s.id === step.id ? { ...s, value: val } : s))
+                                        );
+                                      }}
+                                      className="w-full px-3 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                                    >
+                                      {FIRMWARE_SUPPORTED_KEYS.map(k => (
+                                        <option key={k} value={k}>
+                                          {k.toUpperCase()}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
                                 </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-secondary)]">
+                                    Duration Pause
+                                  </label>
+                                  <div className="px-3 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-muted)]">
+                                    Delay Wait
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-secondary)]">
+                                  Repeat Count
+                                </label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={99}
+                                  value={step.repeatCount}
+                                  onChange={e => {
+                                    const rc = Math.max(1, parseInt(e.target.value, 10) || 1);
+                                    setMacroSteps(prev =>
+                                      prev.map(s => (s.id === step.id ? { ...s, repeatCount: rc } : s))
+                                    );
+                                  }}
+                                  className="w-full px-3 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
+                                />
                               </div>
-                            )}
 
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-medium text-[var(--text-secondary)]">
-                                Repeat Count
-                              </label>
-                              <input
-                                type="number"
-                                min={1}
-                                max={99}
-                                value={step.repeatCount}
-                                onChange={e => {
-                                  const rc = Math.max(1, parseInt(e.target.value, 10) || 1);
-                                  setMacroSteps(prev =>
-                                    prev.map(s => (s.id === step.id ? { ...s, repeatCount: rc } : s))
-                                  );
-                                }}
-                                className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
-                              />
-                            </div>
-
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-medium text-[var(--text-secondary)]">
-                                Repeat Interval (ms)
-                              </label>
-                              <input
-                                type="number"
-                                min={0}
-                                max={60000}
-                                step={50}
-                                value={step.delayMs}
-                                onChange={e => {
-                                  const dm = Math.max(0, parseInt(e.target.value, 10) || 0);
-                                  setMacroSteps(prev =>
-                                    prev.map(s => (s.id === step.id ? { ...s, delayMs: dm } : s))
-                                  );
-                                }}
-                                className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
-                              />
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-secondary)]">
+                                  Step Interval (ms)
+                                </label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={60000}
+                                  step={50}
+                                  value={step.delayMs}
+                                  onChange={e => {
+                                    const dm = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                    setMacroSteps(prev =>
+                                      prev.map(s => (s.id === step.id ? { ...s, delayMs: dm } : s))
+                                    );
+                                  }}
+                                  className="w-full px-3 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
+                                />
+                              </div>
                             </div>
                           </div>
+
+                          {/* Visual Delay Timing Connector between steps */}
+                          {idx < macroSteps.length - 1 && (
+                            <div className="flex items-center justify-center my-1.5 relative">
+                              <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-dashed border-[var(--border-strong)]"></div>
+                              </div>
+                              <span className="relative px-2.5 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[10px] text-[var(--accent)] shadow-sm">
+                                ⏱️ {step.delayMs}ms delay to Step {idx + 2}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
