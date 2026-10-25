@@ -24,6 +24,15 @@ export type ActionType =
   | 'tv_app'
   | 'none';
 
+export interface MacroStepConfig {
+  id: string;
+  label: string;
+  actionType: 'text' | 'key' | 'delay';
+  value: string;
+  delayMs: number;
+  repeatCount: number;
+}
+
 export interface TextMacroRepeatConfig {
   /** Text string typed on each cycle (can be empty if repeating only a button/key) */
   text: string;
@@ -37,6 +46,8 @@ export interface TextMacroRepeatConfig {
   loopUntilStopped: boolean;
   /** Custom delay in ms between each repeat iteration */
   repeatDelayMs: number;
+  /** Optional individual steps with per-step repeat intervals and delays */
+  steps?: MacroStepConfig[];
 }
 
 export interface ActiveRepeatJob {

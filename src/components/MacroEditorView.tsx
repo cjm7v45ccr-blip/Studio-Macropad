@@ -7,6 +7,7 @@ import {
   HardwareProfileId,
   HardwareSlotId,
   KeyboardLayoutId,
+  MacroStepConfig,
   StudioProfile,
   TextMacroRepeatConfig
 } from '../types/studio';
@@ -49,7 +50,13 @@ import {
   Save,
   RefreshCw,
   Repeat,
-  AlertCircle
+  AlertCircle,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  Sliders,
+  Sparkles,
+  Check
 } from 'lucide-react';
 
 interface MacroEditorViewProps {
@@ -112,6 +119,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   const [repeatCountInput, setRepeatCountInput] = useState<string>('1');
   const [loopUntilStopped, setLoopUntilStopped] = useState<boolean>(false);
   const [repeatDelayInput, setRepeatDelayInput] = useState<string>('500');
+  const [macroSteps, setMacroSteps] = useState<MacroStepConfig[]>([]);
 
   // SmartCast fields
   const [tvCodeset, setTvCodeset] = useState<string>('5');
@@ -123,6 +131,23 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   // Target slot assignment
   const [targetProfile, setTargetProfile] = useState<HardwareProfileId>(activeProfileId);
   const [targetSlot, setTargetSlot] = useState<HardwareSlotId>('b1');
+
+  // Collapsible section state for enhanced navigation
+  const [isSectionOpen, setIsSectionOpen] = useState<{
+    setup: boolean;
+    config: boolean;
+    multistep: boolean;
+    assign: boolean;
+  }>({
+    setup: true,
+    config: true,
+    multistep: true,
+    assign: true
+  });
+
+  const toggleSection = (key: keyof typeof isSectionOpen) => {
+    setIsSectionOpen(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   useEffect(() => {
     setTargetProfile(activeProfileId);
@@ -136,6 +161,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     setShortcutError(null);
     if (!action && !repeatConfig) return;
     if (label) setMacroName(label);
+    setMacroSteps(repeatConfig?.steps || []);
 
     if (repeatConfig || action.startsWith('TEXT:')) {
       const cfg = parseTextConfigFromFirmwareAction(action, repeatConfig);
@@ -231,7 +257,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
       keyDelayMs: textSnippet.length > 0 && followUpKey ? parsedKeyDelay : 0,
       repeatCount: parsedRepeatCount,
       loopUntilStopped,
-      repeatDelayMs: parsedRepeatDelay
+      repeatDelayMs: parsedRepeatDelay,
+      steps: macroSteps.length > 0 ? macroSteps : undefined
     };
   })();
 
@@ -240,7 +267,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     (Boolean(builtTextRepeatConfig.followUpKey) ||
       builtTextRepeatConfig.repeatCount > 1 ||
       builtTextRepeatConfig.loopUntilStopped ||
-      builtTextRepeatConfig.keyDelayMs > 0)
+      builtTextRepeatConfig.keyDelayMs > 0 ||
+      (builtTextRepeatConfig.steps && builtTextRepeatConfig.steps.length > 0))
       ? builtTextRepeatConfig
       : undefined;
 
@@ -489,8 +517,34 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
             </p>
           </div>
 
+          {/* Quick Navigation Jump Bar */}
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-x-auto">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-2">Jump:</span>
+            {[
+              { id: 'setup', label: '1. Setup' },
+              { id: 'config', label: '2. Config' },
+              { id: 'multistep', label: '3. Steps' },
+              { id: 'assign', label: '4. Assign' }
+            ].map(item => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById(`section-${item.id}`);
+                  if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    setIsSectionOpen(prev => ({ ...prev, [item.id]: true }));
+                  }
+                }}
+                className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap transition-colors"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
           {/* Macro Label & Type Selector */}
-          <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+          <div id="section-setup" className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
             <div className="space-y-1">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Macro Display Name
@@ -544,7 +598,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
           </div>
 
           {/* Dynamic Builder Body */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+          <div id="section-config" className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
             {builderKind === 'shortcut' && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -816,6 +870,190 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     </p>
                   )}
                 </div>
+
+                {/* Multi-Step Sequence & Per-Step Repeat Intervals */}
+                <div id="section-multistep" className="space-y-3 pt-3 border-t border-[var(--border-subtle)]">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
+                      <Layers className="w-3.5 h-3.5 text-[var(--accent)]" />
+                      <span>Multi-Step Sequence & Per-Step Intervals ({macroSteps.length})</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMacroSteps(prev => [
+                            ...prev,
+                            {
+                              id: `step-${Date.now()}`,
+                              label: 'Type Text',
+                              actionType: 'text',
+                              value: 'Hello',
+                              delayMs: 250,
+                              repeatCount: 1
+                            }
+                          ])
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer whitespace-nowrap"
+                      >
+                        + Text Step
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMacroSteps(prev => [
+                            ...prev,
+                            {
+                              id: `step-${Date.now()}`,
+                              label: 'Press Key',
+                              actionType: 'key',
+                              value: 'enter',
+                              delayMs: 150,
+                              repeatCount: 1
+                            }
+                          ])
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer whitespace-nowrap"
+                      >
+                        + Key Step
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMacroSteps(prev => [
+                            ...prev,
+                            {
+                              id: `step-${Date.now()}`,
+                              label: 'Delay Pause',
+                              actionType: 'delay',
+                              value: '',
+                              delayMs: 500,
+                              repeatCount: 1
+                            }
+                          ])
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer whitespace-nowrap"
+                      >
+                        + Delay Step
+                      </button>
+                    </div>
+                  </div>
+
+                  {macroSteps.length > 0 && (
+                    <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                      {macroSteps.map((step, idx) => (
+                        <div
+                          key={step.id}
+                          className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2.5"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-[11px] font-bold text-[var(--accent)]">
+                              Step {idx + 1} ({step.actionType.toUpperCase()})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setMacroSteps(prev => prev.filter(s => s.id !== step.id))
+                              }
+                              className="p-1 rounded text-[var(--text-muted)] hover:text-rose-400 cursor-pointer"
+                              title="Remove step"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            {step.actionType !== 'delay' ? (
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-medium text-[var(--text-secondary)]">
+                                  {step.actionType === 'text' ? 'Text Value' : 'Key Token'}
+                                </label>
+                                {step.actionType === 'text' ? (
+                                  <input
+                                    type="text"
+                                    value={step.value}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setMacroSteps(prev =>
+                                        prev.map(s => (s.id === step.id ? { ...s, value: val } : s))
+                                      );
+                                    }}
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                                  />
+                                ) : (
+                                  <select
+                                    value={step.value}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setMacroSteps(prev =>
+                                        prev.map(s => (s.id === step.id ? { ...s, value: val } : s))
+                                      );
+                                    }}
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                                  >
+                                    {FIRMWARE_SUPPORTED_KEYS.map(k => (
+                                      <option key={k} value={k}>
+                                        {k.toUpperCase()}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-medium text-[var(--text-secondary)]">
+                                  Pause Step
+                                </label>
+                                <div className="text-xs font-mono text-[var(--text-muted)] px-2.5 py-1.5">
+                                  Pure delay
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-medium text-[var(--text-secondary)]">
+                                Repeat Count
+                              </label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={99}
+                                value={step.repeatCount}
+                                onChange={e => {
+                                  const rc = Math.max(1, parseInt(e.target.value, 10) || 1);
+                                  setMacroSteps(prev =>
+                                    prev.map(s => (s.id === step.id ? { ...s, repeatCount: rc } : s))
+                                  );
+                                }}
+                                className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-medium text-[var(--text-secondary)]">
+                                Repeat Interval (ms)
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={60000}
+                                step={50}
+                                value={step.delayMs}
+                                onChange={e => {
+                                  const dm = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                  setMacroSteps(prev =>
+                                    prev.map(s => (s.id === step.id ? { ...s, delayMs: dm } : s))
+                                  );
+                                }}
+                                className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -954,7 +1192,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
           </div>
 
           {/* Direct Hardware Slot Assignment Card */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+          <div id="section-assign" className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
             <div className="text-xs font-semibold text-[var(--text-primary)]">
               Assign & Sync Directly to Control
             </div>

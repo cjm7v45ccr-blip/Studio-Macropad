@@ -78,6 +78,34 @@ class RepeatMacroRunner {
   ): Promise<void> {
     if (signal.aborted) throw new Error('aborted');
 
+    if (cfg.steps && cfg.steps.length > 0) {
+      for (const step of cfg.steps) {
+        if (signal.aborted) throw new Error('aborted');
+        const stepRepeats = Math.max(1, Math.min(999, step.repeatCount || 1));
+        const stepDelay = Math.max(0, step.delayMs || 0);
+
+        for (let sr = 0; sr < stepRepeats; sr++) {
+          if (signal.aborted) throw new Error('aborted');
+          if (step.actionType === 'text') {
+            const cleanText = sanitizeSerialString(step.value, 123);
+            if (cleanText) {
+              await usbHardware.testAction(`TEXT:${cleanText}`);
+            }
+          } else if (step.actionType === 'key') {
+            if (step.value) {
+              await usbHardware.testAction(buildFirmwareShortcut([], step.value));
+            }
+          } else if (step.actionType === 'delay') {
+            await this.sleep(stepDelay, signal);
+          }
+          if (stepDelay > 0 && step.actionType !== 'delay') {
+            await this.sleep(stepDelay, signal);
+          }
+        }
+      }
+      return;
+    }
+
     const hasNativeEnter =
       cfg.text.length > 0 && cfg.followUpKey === 'enter' && cfg.keyDelayMs <= 0;
     const cleanText = sanitizeSerialString(cfg.text, hasNativeEnter ? 122 : 123);

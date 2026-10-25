@@ -579,6 +579,13 @@ export function formatTextRepeatSummary(cfg: TextMacroRepeatConfig): {
   shortLabel: string;
   fullLabel: string;
 } {
+  if (cfg.steps && cfg.steps.length > 0) {
+    const stepCount = cfg.steps.length;
+    const shortLabel = `Macro (${stepCount} steps)`.slice(0, 12);
+    const fullLabel = `Multi-Step Sequence (${stepCount} steps with per-step repeat intervals)`;
+    return { shortLabel, fullLabel };
+  }
+
   const cleanPreview = cfg.text.replace(/\s+/g, ' ').trim();
   const keyBadge = cfg.followUpKey ? cfg.followUpKey.toUpperCase() : '';
   const repeatPart = cfg.loopUntilStopped
