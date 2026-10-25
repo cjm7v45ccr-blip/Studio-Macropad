@@ -93,7 +93,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     }
   }, [selectionKey, trackedSelectionKey, keyConfig.triggers.tap]);
 
-  // Dedicated Hardware MODE Switch (GPIO 23) Inspector
+  // Dedicated Mode Switch Inspector
   if (keyConfig.isModeSwitch || keyConfig.id === 'k5') {
     return (
       <aside className="w-full lg:w-[400px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col lg:h-full overflow-hidden">
@@ -107,12 +107,10 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 <h2 className="text-sm font-semibold text-[var(--text-primary)]">
                   Mode Switch
                 </h2>
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)]">
-                  GPIO 23
-                </span>
+
               </div>
               <p className="text-xs text-[var(--text-muted)]">
-                Hardware Profile & Setup Button
+                Profile & Setup Button
               </p>
             </div>
           </div>
@@ -121,11 +119,11 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2.5">
             <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-              <Cpu className="w-4 h-4 text-[var(--accent)]" />
-              <span>Dedicated Firmware Switch (`PIN_BTN_MODE`)</span>
+              <Layers className="w-4 h-4 text-[var(--accent)]" />
+              <span>Dedicated Mode Control</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              Button 5 is wired to switch hardware profiles and enter setup mode on the OLED:
+              This physical button switches active profiles and enters setup mode on the display:
             </p>
             <ul className="space-y-2 text-xs text-[var(--text-secondary)] pt-1">
               <li className="flex items-start gap-2">
@@ -227,12 +225,10 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
                   {slotMeta.full}
                 </h2>
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)] shrink-0">
-                  {slotMeta.pin}
-                </span>
+
               </div>
               <p className="text-xs text-[var(--text-muted)] truncate">
-                {activeProfileName} ({activeProfileId}) · slot `{slotId}`
+                {activeProfileName} ({activeProfileId}) · {slotMeta.short}
               </p>
             </div>
           </div>

@@ -72,11 +72,11 @@ export const PhysicalPad: React.FC<PhysicalPadProps> = ({
     setTimeout(() => setPressedKey(null), 180);
   };
 
-  const keys: { slot: SlotId; label: string; pin: string }[] = [
-    { slot: 'b1', label: 'B1', pin: 'GPIO 26' },
-    { slot: 'b2', label: 'B2', pin: 'GPIO 27' },
-    { slot: 'b3', label: 'B3', pin: 'GPIO 14' },
-    { slot: 'b4', label: 'B4', pin: 'GPIO 16' }
+  const keys: { slot: SlotId; label: string }[] = [
+    { slot: 'b1', label: 'B1' },
+    { slot: 'b2', label: 'B2' },
+    { slot: 'b3', label: 'B3' },
+    { slot: 'b4', label: 'B4' }
   ];
 
   return (
@@ -164,7 +164,6 @@ export const PhysicalPad: React.FC<PhysicalPadProps> = ({
                 >
                   <div className="w-full flex items-center justify-between text-[10px] font-mono text-slate-400 font-bold">
                     <span>{k.label}</span>
-                    <span className="text-[8px] text-slate-600">{k.pin}</span>
                   </div>
 
                   <div className="my-auto text-center px-0.5">

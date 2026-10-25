@@ -78,10 +78,10 @@ export const KeyRemapper: React.FC<KeyRemapperProps> = ({
   const currentDetails = getActionDetails(currentActionId);
 
   const slotLabels: Record<SlotId, string> = {
-    b1: 'Key 1 (GPIO 26)',
-    b2: 'Key 2 (GPIO 27)',
-    b3: 'Key 3 (GPIO 14)',
-    b4: 'Key 4 (GPIO 16)',
+    b1: 'Key 1',
+    b2: 'Key 2',
+    b3: 'Key 3',
+    b4: 'Key 4',
     dial: 'Rotary Push Dial'
   };
 

@@ -189,28 +189,24 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   const slotCards: {
     id: EncoderSubControlId;
     title: string;
-    pin: string;
     icon: React.ComponentType<{ className?: string }>;
     binding: ActionBinding;
   }[] = [
     {
       id: 'dial',
       title: 'Knob Press',
-      pin: 'dial',
       icon: Disc,
       binding: encoder.dial
     },
     {
       id: 'enc_cw',
       title: 'Turn Right',
-      pin: 'enc_cw',
       icon: RotateCw,
       binding: encoder.cw
     },
     {
       id: 'enc_ccw',
       title: 'Turn Left',
-      pin: 'enc_ccw',
       icon: RotateCcw,
       binding: encoder.ccw
     }
@@ -232,12 +228,10 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
               <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
                 {slotMeta.full}
               </h2>
-              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)] shrink-0">
-                {slotMeta.pin}
-              </span>
+
             </div>
             <p className="text-xs text-[var(--text-muted)] truncate">
-              {activeProfileName} ({activeProfileId}) · slot `{selectedSubControl}`
+              {activeProfileName} ({activeProfileId}) · {slotMeta.short}
             </p>
           </div>
         </div>
@@ -304,9 +298,6 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                 >
                   <div className="flex items-center justify-between w-full gap-1">
                     <Icon className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                    <span className="font-mono text-[9px] opacity-75 truncate">
-                      {card.pin}
-                    </span>
                   </div>
                   <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate w-full">
                     {card.title}

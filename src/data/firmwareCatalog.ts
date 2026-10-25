@@ -20,13 +20,13 @@ export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
 ] as const;
 
 export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; pin: string }> = {
-  b1: { short: 'Key 1', full: 'Key 1 (B1)', pin: 'GPIO 26' },
-  b2: { short: 'Key 2', full: 'Key 2 (B2)', pin: 'GPIO 27' },
-  b3: { short: 'Key 3', full: 'Key 3 (B3)', pin: 'GPIO 14' },
-  b4: { short: 'Key 4', full: 'Key 4 (B4)', pin: 'GPIO 16' },
-  dial: { short: 'Knob Press', full: 'Knob Press (Dial)', pin: 'GPIO 25' },
-  enc_cw: { short: 'Turn Right', full: 'Turn Right (CW)', pin: 'GPIO 33/32' },
-  enc_ccw: { short: 'Turn Left', full: 'Turn Left (CCW)', pin: 'GPIO 33/32' }
+  b1: { short: 'Key 1', full: 'Key 1 (B1)', pin: '' },
+  b2: { short: 'Key 2', full: 'Key 2 (B2)', pin: '' },
+  b3: { short: 'Key 3', full: 'Key 3 (B3)', pin: '' },
+  b4: { short: 'Key 4', full: 'Key 4 (B4)', pin: '' },
+  dial: { short: 'Knob Press', full: 'Knob Press (Dial)', pin: '' },
+  enc_cw: { short: 'Turn Right', full: 'Turn Right (CW)', pin: '' },
+  enc_ccw: { short: 'Turn Left', full: 'Turn Left (CCW)', pin: '' }
 };
 
 export const FACTORY_DEFAULT_SLOTS: Record<

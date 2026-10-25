@@ -114,11 +114,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 />
                 <span className="hidden md:inline">{item.label}</span>
               </span>
-              {item.id === 'macros' && (
-                <span className="hidden md:inline font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
-                  {macroCount}
-                </span>
-              )}
+
             </button>
           );
         })}
