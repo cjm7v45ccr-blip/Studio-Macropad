@@ -6,9 +6,12 @@ import {
   KeyAppearance,
   KeyControlConfig,
   KeyId,
-  StudioProfile
+  SlotRepeatMap,
+  StudioProfile,
+  TextMacroRepeatConfig
 } from '../types/studio';
 import {
+  buildFirmwareActionFromTextConfig,
   deriveAppearanceForAction,
   firmwareActionToBinding
 } from './firmwareCatalog';
@@ -26,10 +29,20 @@ export function emptyAction(): ActionBinding {
   return { type: 'none', value: '' };
 }
 
+function resolveMatchingRepeatConfig(
+  actionStr: string,
+  candidate?: TextMacroRepeatConfig
+): TextMacroRepeatConfig | undefined {
+  if (!candidate || !actionStr) return undefined;
+  const expectedBase = buildFirmwareActionFromTextConfig(candidate);
+  return expectedBase === actionStr ? candidate : undefined;
+}
+
 export function makeHardwareKey(
   id: KeyId,
   actionStr: string,
-  existingAppearance?: KeyAppearance
+  existingAppearance?: KeyAppearance,
+  repeatConfig?: TextMacroRepeatConfig
 ): KeyControlConfig {
   if (id === 'k5') {
     return {
@@ -45,8 +58,9 @@ export function makeHardwareKey(
   }
 
   const slot = KEY_TO_SLOT[id];
-  const binding = firmwareActionToBinding(actionStr);
-  const appearance = deriveAppearanceForAction(actionStr, existingAppearance);
+  const matchedRepeat = resolveMatchingRepeatConfig(actionStr, repeatConfig);
+  const binding = firmwareActionToBinding(actionStr, matchedRepeat);
+  const appearance = deriveAppearanceForAction(actionStr, existingAppearance, matchedRepeat);
 
   return {
     id,
@@ -62,12 +76,24 @@ export function buildHardwareEncoder(
   dialAction = '',
   cwAction = '',
   ccwAction = '',
-  color = '#3B82F6'
+  color = '#3B82F6',
+  dialRepeat?: TextMacroRepeatConfig,
+  cwRepeat?: TextMacroRepeatConfig,
+  ccwRepeat?: TextMacroRepeatConfig
 ): EncoderControlConfig {
   return {
-    dial: firmwareActionToBinding(dialAction),
-    cw: firmwareActionToBinding(cwAction),
-    ccw: firmwareActionToBinding(ccwAction),
+    dial: firmwareActionToBinding(
+      dialAction,
+      resolveMatchingRepeatConfig(dialAction, dialRepeat)
+    ),
+    cw: firmwareActionToBinding(
+      cwAction,
+      resolveMatchingRepeatConfig(cwAction, cwRepeat)
+    ),
+    ccw: firmwareActionToBinding(
+      ccwAction,
+      resolveMatchingRepeatConfig(ccwAction, ccwRepeat)
+    ),
     color
   };
 }
@@ -76,16 +102,37 @@ export function buildHardwareProfile(
   id: HardwareProfileId,
   name: string,
   slots?: Partial<Record<HardwareSlotId, string>>,
-  existingProfile?: StudioProfile
+  existingProfile?: StudioProfile,
+  repeatConfigs?: SlotRepeatMap
 ): StudioProfile {
   const accent = id === 'MAC' ? '#3B82F6' : '#10B981';
   const prevKeys = existingProfile?.layers[0]?.keys;
 
   const keys: Record<KeyId, KeyControlConfig> = {
-    k1: makeHardwareKey('k1', slots?.b1 || '', prevKeys?.k1?.appearance),
-    k2: makeHardwareKey('k2', slots?.b2 || '', prevKeys?.k2?.appearance),
-    k3: makeHardwareKey('k3', slots?.b3 || '', prevKeys?.k3?.appearance),
-    k4: makeHardwareKey('k4', slots?.b4 || '', prevKeys?.k4?.appearance),
+    k1: makeHardwareKey(
+      'k1',
+      slots?.b1 || '',
+      prevKeys?.k1?.appearance,
+      repeatConfigs?.[`${id}:b1`]
+    ),
+    k2: makeHardwareKey(
+      'k2',
+      slots?.b2 || '',
+      prevKeys?.k2?.appearance,
+      repeatConfigs?.[`${id}:b2`]
+    ),
+    k3: makeHardwareKey(
+      'k3',
+      slots?.b3 || '',
+      prevKeys?.k3?.appearance,
+      repeatConfigs?.[`${id}:b3`]
+    ),
+    k4: makeHardwareKey(
+      'k4',
+      slots?.b4 || '',
+      prevKeys?.k4?.appearance,
+      repeatConfigs?.[`${id}:b4`]
+    ),
     k5: makeHardwareKey('k5', '')
   };
 
@@ -103,17 +150,16 @@ export function buildHardwareProfile(
           slots?.dial || '',
           slots?.enc_cw || '',
           slots?.enc_ccw || '',
-          accent
+          existingProfile?.layers[0]?.encoder.color || accent,
+          repeatConfigs?.[`${id}:dial`],
+          repeatConfigs?.[`${id}:enc_cw`],
+          repeatConfigs?.[`${id}:enc_ccw`]
         )
       }
     ]
   };
 }
 
-/**
- * Clean un-preset initial state before USB hardware syncs.
- * Nothing is pre-populated with fake presets — slots populate directly from ESP32 over USB.
- */
 export function buildBlankHardwareProfiles(): [StudioProfile, StudioProfile] {
   return [
     buildHardwareProfile('MAC', 'Mac'),

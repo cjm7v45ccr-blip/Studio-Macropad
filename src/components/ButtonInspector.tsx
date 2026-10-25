@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
   ActionBinding,
+  ActiveRepeatJob,
   CustomMacroItem,
   HardwareProfileId,
   KeyAppearance,
@@ -26,11 +27,13 @@ interface ButtonInspectorProps {
   customMacros: CustomMacroItem[];
   keyboardLayout: KeyboardLayoutId;
   isConnected: boolean;
+  activeRepeatJob?: ActiveRepeatJob | null;
   onUpdateBinding: (binding: ActionBinding) => void;
   onUpdateAppearance: (patch: Partial<KeyAppearance>) => void;
   onResetAppearance: () => void;
   onToggleProfileMode: () => void;
-  onTestAction: (actionStr: string) => void;
+  onTestBinding: (binding: ActionBinding) => void;
+  onStopRepeat: () => void;
   onOpenMacroBuilder: () => void;
 }
 
@@ -53,11 +56,13 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   customMacros,
   keyboardLayout,
   isConnected,
+  activeRepeatJob,
   onUpdateBinding,
   onUpdateAppearance,
   onResetAppearance,
   onToggleProfileMode,
-  onTestAction,
+  onTestBinding,
+  onStopRepeat,
   onOpenMacroBuilder
 }) => {
   const [inspectorSection, setInspectorSection] = useState<'action' | 'appearance'>('action');
@@ -234,7 +239,9 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             customMacros={customMacros}
             keyboardLayout={keyboardLayout}
             isConnected={isConnected}
-            onTestAction={onTestAction}
+            activeRepeatJob={activeRepeatJob}
+            onTestBinding={onTestBinding}
+            onStopRepeat={onStopRepeat}
             onOpenMacroBuilder={onOpenMacroBuilder}
           />
         ) : (

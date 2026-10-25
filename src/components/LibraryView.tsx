@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import {
   HardwareBackupPayload,
   HardwareProfileId,
+  SlotRepeatMap,
   StudioProfile,
   UserPreset
 } from '../types/studio';
@@ -27,7 +28,10 @@ interface LibraryViewProps {
   onCopyHardwareProfile: (source: HardwareProfileId, target: HardwareProfileId) => void;
   onSaveUserSnapshot: (name: string) => void;
   onDeleteUserSnapshot: (id: string) => void;
-  onApplyHardwareBackup: (backup: HardwareBackupPayload) => void;
+  onApplyHardwareBackup: (
+    backup: HardwareBackupPayload,
+    repeatConfigs?: SlotRepeatMap
+  ) => void;
   onExportBackupFile: () => void;
   onImportBackupFile: (file: File) => void;
 }
@@ -265,15 +269,39 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <div className="p-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] truncate">
                         <span className="text-sky-400 font-bold">{snap.backup.mac_name}: </span>
                         <span className="text-[var(--text-secondary)]">
-                          {describeFirmwareAction(snap.backup.mac_b1).shortLabel},{' '}
-                          {describeFirmwareAction(snap.backup.mac_b2).shortLabel}…
+                          {
+                            describeFirmwareAction(
+                              snap.backup.mac_b1,
+                              snap.repeatConfigs?.['MAC:b1']
+                            ).shortLabel
+                          }
+                          ,{' '}
+                          {
+                            describeFirmwareAction(
+                              snap.backup.mac_b2,
+                              snap.repeatConfigs?.['MAC:b2']
+                            ).shortLabel
+                          }
+                          …
                         </span>
                       </div>
                       <div className="p-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] truncate">
                         <span className="text-emerald-400 font-bold">{snap.backup.tv_name}: </span>
                         <span className="text-[var(--text-secondary)]">
-                          {describeFirmwareAction(snap.backup.tv_b1).shortLabel},{' '}
-                          {describeFirmwareAction(snap.backup.tv_b2).shortLabel}…
+                          {
+                            describeFirmwareAction(
+                              snap.backup.tv_b1,
+                              snap.repeatConfigs?.['TV:b1']
+                            ).shortLabel
+                          }
+                          ,{' '}
+                          {
+                            describeFirmwareAction(
+                              snap.backup.tv_b2,
+                              snap.repeatConfigs?.['TV:b2']
+                            ).shortLabel
+                          }
+                          …
                         </span>
                       </div>
                     </div>
@@ -281,7 +309,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => onApplyHardwareBackup(snap.backup)}
+                    onClick={() => onApplyHardwareBackup(snap.backup, snap.repeatConfigs)}
                     style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
                     className="w-full py-2 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
                   >

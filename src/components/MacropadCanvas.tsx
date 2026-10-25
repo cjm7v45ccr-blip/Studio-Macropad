@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  ActionBinding,
   CanvasViewMode,
   ConflictWarning,
   ControlId,
@@ -47,7 +48,7 @@ interface MacropadCanvasProps {
   onToggleHardwareMode: () => void;
   onOpenConnectModal: () => void;
   onPullFromUsb: () => void;
-  onExecuteHardwareAction: (actionStr: string) => Promise<boolean>;
+  onExecuteHardwareBinding: (binding: ActionBinding) => Promise<boolean>;
 }
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5'];
@@ -77,7 +78,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   onToggleHardwareMode,
   onOpenConnectModal,
   onPullFromUsb,
-  onExecuteHardwareAction
+  onExecuteHardwareBinding
 }) => {
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [knobAngle, setKnobAngle] = useState(0);
@@ -160,7 +161,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         triggerSlotFlash(flashId);
 
         const binding = isCcw ? currLayer.encoder.ccw : currLayer.encoder.cw;
-        const actionDesc = e.action
+        const actionDesc = binding.repeatConfig
+          ? summarizeAction(binding, macros)
+          : e.action
           ? describeFirmwareAction(e.action).fullLabel
           : summarizeAction(binding, macros);
         pushLog(
@@ -176,9 +179,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       if (rawSlot === 'dial') {
         soundEngine.playKeyClick();
         triggerSlotFlash('dial');
-        const actionDesc = e.action
+        const dialBinding = currLayer.encoder.dial;
+        const actionDesc = dialBinding.repeatConfig
+          ? summarizeAction(dialBinding, macros)
+          : e.action
           ? describeFirmwareAction(e.action).fullLabel
-          : summarizeAction(currLayer.encoder.dial, macros);
+          : summarizeAction(dialBinding, macros);
         pushLog('Encoder', 'Dial Push', actionDesc, 'hardware');
         return;
       }
@@ -192,6 +198,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         const actionDesc =
           mappedKey === 'k5'
             ? 'Toggled hardware profile'
+            : keyCfg.triggers.tap.repeatConfig
+            ? summarizeAction(keyCfg.triggers.tap, macros)
             : e.action
             ? describeFirmwareAction(e.action).fullLabel
             : summarizeAction(keyCfg.triggers.tap, macros);
@@ -236,11 +244,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
 
     const slotLabel = (cfg.slot || kid).toUpperCase();
-    const rawAction = cfg.triggers.tap.value;
-    const summary = summarizeAction(cfg.triggers.tap, customMacros);
+    const tapBinding = cfg.triggers.tap;
+    const summary = summarizeAction(tapBinding, customMacros);
 
-    if (connection.connected && rawAction) {
-      const sent = await onExecuteHardwareAction(rawAction);
+    if (connection.connected && tapBinding.value) {
+      const sent = await onExecuteHardwareBinding(tapBinding);
       pushLog(slotLabel, 'Tap', summary, sent ? 'usb-test' : 'sim');
     } else {
       pushLog(slotLabel, 'Tap', summary, 'sim');
@@ -261,7 +269,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const label = dir === 'cw' ? 'Turn CW' : 'Turn CCW';
 
     if (connection.connected && binding.value) {
-      const sent = await onExecuteHardwareAction(binding.value);
+      const sent = await onExecuteHardwareBinding(binding);
       pushLog('Encoder', label, summary, sent ? 'usb-test' : 'sim');
     } else {
       pushLog('Encoder', label, summary, 'sim');
@@ -288,7 +296,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const binding = layer.encoder.dial;
     const summary = summarizeAction(binding, customMacros);
     if (connection.connected && binding.value) {
-      const sent = await onExecuteHardwareAction(binding.value);
+      const sent = await onExecuteHardwareBinding(binding);
       pushLog('Encoder', 'Dial Push', summary, sent ? 'usb-test' : 'sim');
     } else {
       pushLog('Encoder', 'Dial Push', summary, 'sim');
@@ -304,9 +312,18 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
     const outerDim = size === 'large' ? 'w-28 h-28' : 'w-24 h-24';
     const innerDim = size === 'large' ? 'w-20 h-20' : 'w-16 h-16';
-    const dialInfo = describeFirmwareAction(layer.encoder.dial.value);
-    const cwInfo = describeFirmwareAction(layer.encoder.cw.value);
-    const ccwInfo = describeFirmwareAction(layer.encoder.ccw.value);
+    const dialInfo = describeFirmwareAction(
+      layer.encoder.dial.value,
+      layer.encoder.dial.repeatConfig
+    );
+    const cwInfo = describeFirmwareAction(
+      layer.encoder.cw.value,
+      layer.encoder.cw.repeatConfig
+    );
+    const ccwInfo = describeFirmwareAction(
+      layer.encoder.ccw.value,
+      layer.encoder.ccw.repeatConfig
+    );
 
     return (
       <div className="flex flex-col items-center justify-center gap-1.5">

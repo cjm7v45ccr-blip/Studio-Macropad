@@ -191,9 +191,12 @@ export const KeycapIcon: React.FC<{
 export function summarizeAction(binding: ActionBinding, customMacros: CustomMacroItem[] = []): string {
   const raw = bindingToFirmwareAction(binding);
   if (!raw) return 'Unassigned (Sync USB or choose action)';
+  if (binding.repeatConfig) {
+    return describeFirmwareAction(raw, binding.repeatConfig).fullLabel;
+  }
   const matchedMacro = customMacros.find(m => m.action === raw);
   if (matchedMacro) {
-    return `${matchedMacro.name} (${raw})`;
+    return `${matchedMacro.name} (${raw.replace(/\n/g, '\\n')})`;
   }
   const info = describeFirmwareAction(raw);
   return `${info.fullLabel}`;

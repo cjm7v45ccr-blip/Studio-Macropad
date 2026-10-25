@@ -23,10 +23,36 @@ export type ActionType =
   | 'tv_app'
   | 'none';
 
+export interface TextMacroRepeatConfig {
+  /** Text string typed on each cycle (can be empty if repeating only a button/key) */
+  text: string;
+  /** Optional button/key pressed after text ('' for none, or firmware key token) */
+  followUpKey: string;
+  /** Custom delay in ms between typing text and pressing followUpKey */
+  keyDelayMs: number;
+  /** Number of times to execute (1 = once, 2..999 = repeat N times) */
+  repeatCount: number;
+  /** Keep repeating with repeatDelayMs until stopped or triggered again */
+  loopUntilStopped: boolean;
+  /** Custom delay in ms between each repeat iteration */
+  repeatDelayMs: number;
+}
+
+export interface ActiveRepeatJob {
+  id: string;
+  slotKey?: string;
+  label: string;
+  currentIteration: number;
+  totalIterations: number | null; // null when looping until stopped
+  delayMs: number;
+}
+
 export interface ActionBinding {
   type: ActionType;
-  /** Exact ESP32 firmware action string, e.g. "MEDIA:PLAY_PAUSE", "SHORTCUT:cmd,shift:4", "TV:POWER", or "" when unassigned */
+  /** Exact ESP32 firmware action string, e.g. "MEDIA:PLAY_PAUSE", "SHORTCUT:cmd,shift:4", "TEXT:...", or "" */
   value: string;
+  /** Optional repeat, follow-up button, and custom delay configuration for text/button sequences */
+  repeatConfig?: TextMacroRepeatConfig;
 }
 
 export interface KeyAppearance {
@@ -69,6 +95,8 @@ export interface StudioProfile {
   layers: [LayerConfig];
 }
 
+export type SlotRepeatMap = Partial<Record<string, TextMacroRepeatConfig>>;
+
 export interface SerializedPadProfiles {
   active: HardwareProfileId;
   mac_name: string;
@@ -81,6 +109,7 @@ export interface StoredPadRecord {
   rev: number;
   profiles: SerializedPadProfiles;
   dirty: boolean;
+  repeatConfigs?: SlotRepeatMap;
 }
 
 export interface SyncConflictDiffItem {
@@ -126,6 +155,7 @@ export interface CustomMacroItem {
   id: string;
   name: string;
   action: string;
+  repeatConfig?: TextMacroRepeatConfig;
   createdAt: string;
   source?: 'device' | 'user';
 }
@@ -156,6 +186,7 @@ export interface UserPreset {
   name: string;
   createdAt: string;
   backup: HardwareBackupPayload;
+  repeatConfigs?: SlotRepeatMap;
 }
 
 export type KeyboardLayoutId =

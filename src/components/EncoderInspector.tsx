@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActionBinding,
+  ActiveRepeatJob,
   CustomMacroItem,
   EncoderControlConfig,
   HardwareProfileId,
@@ -17,9 +18,11 @@ interface EncoderInspectorProps {
   customMacros: CustomMacroItem[];
   keyboardLayout: KeyboardLayoutId;
   isConnected: boolean;
+  activeRepeatJob?: ActiveRepeatJob | null;
   onUpdateSlot: (slot: 'dial' | 'enc_cw' | 'enc_ccw', binding: ActionBinding) => void;
   onUpdateColor: (color: string) => void;
-  onTestAction: (actionStr: string) => void;
+  onTestBinding: (binding: ActionBinding) => void;
+  onStopRepeat: () => void;
   onOpenMacroBuilder: () => void;
 }
 
@@ -34,9 +37,11 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   customMacros,
   keyboardLayout,
   isConnected,
+  activeRepeatJob,
   onUpdateSlot,
   onUpdateColor,
-  onTestAction,
+  onTestBinding,
+  onStopRepeat,
   onOpenMacroBuilder
 }) => {
   const [selectedSlot, setSelectedSlot] = useState<EncoderTabId>('enc_cw');
@@ -116,7 +121,10 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
             {slotCards.map(card => {
               const Icon = card.icon;
               const active = selectedSlot === card.id;
-              const summary = describeFirmwareAction(card.binding.value);
+              const summary = describeFirmwareAction(
+                card.binding.value,
+                card.binding.repeatConfig
+              );
               return (
                 <button
                   key={card.id}
@@ -159,7 +167,9 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
           customMacros={customMacros}
           keyboardLayout={keyboardLayout}
           isConnected={isConnected}
-          onTestAction={onTestAction}
+          activeRepeatJob={activeRepeatJob}
+          onTestBinding={onTestBinding}
+          onStopRepeat={onStopRepeat}
           onOpenMacroBuilder={onOpenMacroBuilder}
         />
 

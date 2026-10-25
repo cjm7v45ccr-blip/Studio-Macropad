@@ -4,7 +4,8 @@ import {
   HardwareProfileId,
   HardwareSlotId,
   KeyAppearance,
-  KeyboardLayoutId
+  KeyboardLayoutId,
+  TextMacroRepeatConfig
 } from '../types/studio';
 
 export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
@@ -37,9 +38,6 @@ export interface FirmwareActionSpec {
   color: string;
 }
 
-/**
- * Exact 1:1 match of SUPPORTED_ACTIONS[] in the ESP32 firmware (v3.2-PRO)
- */
 export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   // MEDIA:* (6)
   { action: 'MEDIA:PLAY_PAUSE', label: 'Play / Pause', shortLabel: 'Play/Pause', description: 'BLE Media Play / Pause toggle', category: 'media', icon: 'play', color: '#38BDF8' },
@@ -79,7 +77,7 @@ export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   { action: 'WIN:NEW_TAB', label: 'New Tab (Ctrl+T)', shortLabel: 'New Tab', description: 'Windows Ctrl + T', category: 'win_macro', icon: 'globe', color: '#34D399' },
   { action: 'WIN:CLOSE_TAB', label: 'Close Tab (Ctrl+W)', shortLabel: 'Close Tab', description: 'Windows Ctrl + W', category: 'win_macro', icon: 'phone-off', color: '#F87171' },
   { action: 'WIN:LOCK', label: 'Lock PC (Win+L)', shortLabel: 'Lock PC', description: 'Windows + L lock screen', category: 'win_macro', icon: 'lock', color: '#F87171' },
-  { action: 'WIN:SEARCH', label: 'Win Search (Win+S)', shortLabel: 'Search', description: 'Windows + S search bar', category: 'win_macro', icon: 'search', color: '#38BDF8' },
+  { action: 'WIN:SEARCH', label: 'Win Search (Win+S)', shortLabel: 'Win Search', description: 'Windows + S search bar', category: 'win_macro', icon: 'search', color: '#38BDF8' },
   { action: 'WIN:EXPLORER', label: 'File Explorer (Win+E)', shortLabel: 'Explorer', description: 'Windows + E File Explorer', category: 'win_macro', icon: 'folder', color: '#FBBF24' },
   { action: 'WIN:TASK_MGR', label: 'Task Manager', shortLabel: 'Task Mgr', description: 'Ctrl + Shift + Esc', category: 'win_macro', icon: 'terminal', color: '#A78BFA' },
   { action: 'WIN:SNIP', label: 'Snipping Tool', shortLabel: 'Snip', description: 'Win + Shift + S screen snip', category: 'win_macro', icon: 'camera', color: '#34D399' },
@@ -127,19 +125,25 @@ const STATIC_MAP = new Map<string, FirmwareActionSpec>(
 );
 
 export const FIRMWARE_SUPPORTED_KEYS = [
+  'enter', 'tab', 'space', 'esc', 'backspace', 'delete',
+  'up', 'down', 'left', 'right', 'home', 'end', 'pageup', 'pagedown', 'insert', 'capslock',
   'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
   'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  'space', 'enter', 'esc', 'tab', 'backspace', 'delete', 'insert',
-  'home', 'end', 'pageup', 'pagedown', 'up', 'down', 'left', 'right', 'capslock',
   'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12',
   'f13', 'f14', 'f15', 'f16', 'f17', 'f18', 'f19', 'f20', 'f21', 'f22', 'f23', 'f24',
   '-', '=', '[', ']', '\\', ';', '\'', ',', '.', '/', '`'
 ];
 
-/**
- * Exact TypeScript equivalent of C++ isSupportedAction(const String& action)
- */
+export const DEFAULT_TEXT_REPEAT_CONFIG: TextMacroRepeatConfig = {
+  text: '',
+  followUpKey: '',
+  keyDelayMs: 0,
+  repeatCount: 1,
+  loopUntilStopped: false,
+  repeatDelayMs: 500
+};
+
 export function isValidFirmwareAction(action: string): boolean {
   if (!action || action.length < 3 || action.length > 128) return false;
   if (STATIC_MAP.has(action)) return true;
@@ -165,9 +169,6 @@ export function isValidFirmwareAction(action: string): boolean {
   return false;
 }
 
-/**
- * Exact TypeScript equivalent of C++ validAlias(const String& value)
- */
 export function isValidFirmwareAlias(name: string): boolean {
   if (!name || name.length < 1 || name.length > 20) return false;
   if (name.startsWith(' ') || name.endsWith(' ')) return false;
@@ -179,14 +180,11 @@ export function sanitizeFirmwareAlias(raw: string, fallback: HardwareProfileId =
   return cleaned || (fallback === 'MAC' ? 'Mac' : 'TV');
 }
 
-/**
- * Strip control characters (< 0x20 except \n, \r, \t) so ESP32 jsonString() never rejects escape sequences
- */
 export function sanitizeSerialString(str: string, maxLen = 123): string {
   let out = '';
   for (let i = 0; i < str.length && out.length < maxLen; i++) {
     const code = str.charCodeAt(i);
-    if (code === 10 || code === 13 || code === 9 || (code >= 0x20 && code <= 0x7e)) {
+    if (code === 10 || code === 13 || (code >= 0x20 && code <= 0x7e)) {
       out += str[i];
     }
   }
@@ -242,8 +240,6 @@ export function buildFirmwareShortcut(mods: string[], key: string): string {
     if (['F13', 'F14', 'F15', 'F16'].includes(upperKey)) {
       return `KEY:${upperKey}`;
     }
-    // Firmware requires secondColon > firstColon -> "SHORTCUT:none:key" or "SHORTCUT::key"
-    // Note: in C++: firstColon = 8, secondColon = 9 (9 > 8 is true), mods = "" (no modifier pressed), key = cleanKey!
     return `SHORTCUT::${cleanKey}`;
   }
 
@@ -307,10 +303,142 @@ export function formatShortcutPretty(action: string): string {
   return `${modPart}${keyPart}`;
 }
 
-export function firmwareActionToBinding(actionStr: string | undefined | null): ActionBinding {
-  const trimmed = (actionStr || '').trim();
-  if (!trimmed) {
+/**
+ * Build the base single-step ESP32 firmware action for a Text/Button Repeat configuration.
+ * - If text + Enter with 0ms key delay -> `TEXT:<text>\n` (executes natively on ESP32!)
+ * - If text + other key or custom key delay -> `TEXT:<text>` (follow-up key & repeats run over USB)
+ * - If button-only (empty text + followUpKey) -> `SHORTCUT::<key>` or `KEY:F13..16`
+ */
+export function buildFirmwareActionFromTextConfig(cfg: TextMacroRepeatConfig): string {
+  const hasNativeTrailingNewline =
+    cfg.text.length > 0 && cfg.followUpKey === 'enter' && cfg.keyDelayMs <= 0;
+  const maxTextChars = hasNativeTrailingNewline ? 122 : 123;
+  const cleanText = sanitizeSerialString(cfg.text, maxTextChars);
+
+  if (cleanText.length > 0) {
+    return hasNativeTrailingNewline ? `TEXT:${cleanText}\n` : `TEXT:${cleanText}`;
+  }
+
+  if (cfg.followUpKey) {
+    return buildFirmwareShortcut([], cfg.followUpKey);
+  }
+
+  return '';
+}
+
+/**
+ * Reconstruct a TextMacroRepeatConfig from an existing `TEXT:...` action and optional saved metadata
+ */
+export function parseTextConfigFromFirmwareAction(
+  action: string,
+  savedConfig?: TextMacroRepeatConfig
+): TextMacroRepeatConfig {
+  if (savedConfig) {
+    return { ...savedConfig };
+  }
+  if (action.startsWith('TEXT:')) {
+    const rawBody = action.slice(5);
+    if (rawBody.endsWith('\n') && rawBody.length > 1) {
+      return {
+        ...DEFAULT_TEXT_REPEAT_CONFIG,
+        text: rawBody.slice(0, -1),
+        followUpKey: 'enter'
+      };
+    }
+    return {
+      ...DEFAULT_TEXT_REPEAT_CONFIG,
+      text: rawBody
+    };
+  }
+  if (action.startsWith('SHORTCUT::') || action.startsWith('KEY:F')) {
+    const parsed = parseFirmwareShortcut(action);
+    if (parsed.mods.length === 0) {
+      return {
+        ...DEFAULT_TEXT_REPEAT_CONFIG,
+        text: '',
+        followUpKey: parsed.key
+      };
+    }
+  }
+  return { ...DEFAULT_TEXT_REPEAT_CONFIG };
+}
+
+/**
+ * Returns true if the config requires USB follow-up actions beyond the ESP32's single base action
+ */
+export function requiresUsbSequenceExecution(cfg?: TextMacroRepeatConfig): boolean {
+  if (!cfg) return false;
+  if (cfg.loopUntilStopped || cfg.repeatCount > 1) return true;
+  if (cfg.text.length > 0 && cfg.followUpKey) {
+    // Only `enter` with 0ms keyDelayMs is baked directly into `TEXT:...\n`
+    if (cfg.followUpKey !== 'enter' || cfg.keyDelayMs > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function formatTextRepeatSummary(cfg: TextMacroRepeatConfig): {
+  shortLabel: string;
+  fullLabel: string;
+} {
+  const cleanPreview = cfg.text.replace(/\s+/g, ' ').trim();
+  const keyBadge = cfg.followUpKey ? cfg.followUpKey.toUpperCase() : '';
+  const repeatPart = cfg.loopUntilStopped
+    ? `Loop @ ${cfg.repeatDelayMs}ms`
+    : cfg.repeatCount > 1
+    ? `${cfg.repeatCount}× @ ${cfg.repeatDelayMs}ms`
+    : cfg.keyDelayMs > 0 && keyBadge
+    ? `+${cfg.keyDelayMs}ms`
+    : '';
+
+  const baseShort = cleanPreview
+    ? keyBadge
+      ? `"${cleanPreview.slice(0, 6)}"+${keyBadge}`
+      : `"${cleanPreview.slice(0, 9)}"`
+    : keyBadge || 'Text';
+
+  const shortLabel =
+    cfg.loopUntilStopped
+      ? `∞ ${baseShort}`.slice(0, 12)
+      : cfg.repeatCount > 1
+      ? `${cfg.repeatCount}× ${baseShort}`.slice(0, 12)
+      : baseShort.slice(0, 12);
+
+  const pieces: string[] = [];
+  if (cleanPreview) {
+    pieces.push(`"${cleanPreview.slice(0, 22)}${cleanPreview.length > 22 ? '…' : ''}"`);
+  }
+  if (keyBadge) {
+    pieces.push(cfg.keyDelayMs > 0 ? `(${cfg.keyDelayMs}ms → ${keyBadge})` : `+ ${keyBadge}`);
+  }
+  if (repeatPart && (cfg.loopUntilStopped || cfg.repeatCount > 1)) {
+    pieces.push(`[${repeatPart}]`);
+  }
+
+  return {
+    shortLabel,
+    fullLabel: pieces.join(' ') || 'Text Macro'
+  };
+}
+
+export function firmwareActionToBinding(
+  actionStr: string | undefined | null,
+  repeatConfig?: TextMacroRepeatConfig
+): ActionBinding {
+  const raw = actionStr || '';
+  // Trim leading/trailing spaces EXCEPT preserve an intentional trailing '\n' on TEXT: actions
+  const trimmed = raw.startsWith('TEXT:') ? raw.replace(/^\s+/, '') : raw.trim();
+  if (!trimmed || trimmed === 'TEXT:') {
     return { type: 'none', value: '' };
+  }
+
+  if (repeatConfig) {
+    return {
+      type: 'text',
+      value: trimmed,
+      repeatConfig
+    };
   }
 
   const staticSpec = STATIC_MAP.get(trimmed);
@@ -321,11 +449,16 @@ export function firmwareActionToBinding(actionStr: string | undefined | null): A
     };
   }
 
+  if (trimmed.startsWith('TEXT:')) {
+    const parsedCfg = parseTextConfigFromFirmwareAction(trimmed);
+    return {
+      type: 'text',
+      value: trimmed,
+      repeatConfig: parsedCfg.followUpKey ? parsedCfg : undefined
+    };
+  }
   if (trimmed.startsWith('SHORTCUT:')) {
     return { type: 'shortcut', value: trimmed };
-  }
-  if (trimmed.startsWith('TEXT:')) {
-    return { type: 'text', value: trimmed };
   }
   if (trimmed.startsWith('TVKEY:') || trimmed.startsWith('TV:')) {
     return { type: 'tv', value: trimmed };
@@ -350,17 +483,24 @@ export function bindingToFirmwareAction(binding: ActionBinding | undefined | nul
   if (!binding || binding.type === 'none' || !binding.value) {
     return '';
   }
+  if (binding.value.startsWith('TEXT:')) {
+    return binding.value;
+  }
   return binding.value.trim();
 }
 
-export function describeFirmwareAction(actionStr: string | undefined | null): {
+export function describeFirmwareAction(
+  actionStr: string | undefined | null,
+  repeatConfig?: TextMacroRepeatConfig
+): {
   shortLabel: string;
   fullLabel: string;
   description: string;
   icon: string;
   color: string;
 } {
-  const trimmed = (actionStr || '').trim();
+  const raw = actionStr || '';
+  const trimmed = raw.startsWith('TEXT:') ? raw : raw.trim();
   if (!trimmed) {
     return {
       shortLabel: 'Unassigned',
@@ -368,6 +508,17 @@ export function describeFirmwareAction(actionStr: string | undefined | null): {
       description: 'Connect USB to load from device or choose an action',
       icon: 'none',
       color: '#6B7280'
+    };
+  }
+
+  if (repeatConfig && (repeatConfig.text || repeatConfig.followUpKey)) {
+    const summary = formatTextRepeatSummary(repeatConfig);
+    return {
+      shortLabel: summary.shortLabel,
+      fullLabel: summary.fullLabel,
+      description: trimmed.replace(/\n/g, '\\n'),
+      icon: repeatConfig.loopUntilStopped || repeatConfig.repeatCount > 1 ? 'repeat' : 'file-text',
+      color: '#34D399'
     };
   }
 
@@ -394,12 +545,12 @@ export function describeFirmwareAction(actionStr: string | undefined | null): {
   }
 
   if (trimmed.startsWith('TEXT:')) {
-    const snippet = trimmed.slice(5);
-    const cleanPreview = snippet.replace(/\s+/g, ' ').trim();
+    const parsed = parseTextConfigFromFirmwareAction(trimmed);
+    const summary = formatTextRepeatSummary(parsed);
     return {
-      shortLabel: cleanPreview ? `"${cleanPreview.slice(0, 9)}"` : 'Text',
-      fullLabel: `Text: "${cleanPreview.slice(0, 26)}${cleanPreview.length > 26 ? '…' : ''}"`,
-      description: `BLE Typed Text (${snippet.length} chars)`,
+      shortLabel: summary.shortLabel,
+      fullLabel: summary.fullLabel,
+      description: `BLE Typed Text (${trimmed.slice(5).length} chars)`,
       icon: 'file-text',
       color: '#34D399'
     };
@@ -438,9 +589,10 @@ export function describeFirmwareAction(actionStr: string | undefined | null): {
 
 export function deriveAppearanceForAction(
   actionStr: string,
-  existing?: KeyAppearance
+  existing?: KeyAppearance,
+  repeatConfig?: TextMacroRepeatConfig
 ): KeyAppearance {
-  const info = describeFirmwareAction(actionStr);
+  const info = describeFirmwareAction(actionStr, repeatConfig);
   return {
     label: existing?.customLabel ? existing.label : info.shortLabel,
     icon: existing?.customIcon ? existing.icon : info.icon,
