@@ -56,7 +56,8 @@ import {
   ChevronUp,
   Sliders,
   Sparkles,
-  Check
+  Check,
+  GripVertical
 } from 'lucide-react';
 
 interface MacroEditorViewProps {
@@ -120,6 +121,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   const [loopUntilStopped, setLoopUntilStopped] = useState<boolean>(false);
   const [repeatDelayInput, setRepeatDelayInput] = useState<string>('500');
   const [macroSteps, setMacroSteps] = useState<MacroStepConfig[]>([]);
+  const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
 
   // SmartCast fields
   const [tvCodeset, setTvCodeset] = useState<string>('5');
@@ -347,6 +349,15 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
       const temp = copy[index];
       copy[index] = copy[index + 1];
       copy[index + 1] = temp;
+      return copy;
+    });
+  };
+
+  const handleReorderSteps = (fromIndex: number, toIndex: number) => {
+    setMacroSteps(prev => {
+      const copy = [...prev];
+      const [movedItem] = copy.splice(fromIndex, 1);
+      copy.splice(toIndex, 0, movedItem);
       return copy;
     });
   };
@@ -968,11 +979,34 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   ) : (
                     <div className="space-y-3">
                       {macroSteps.map((step, idx) => (
-                        <div key={step.id} className="relative">
+                        <div
+                          key={step.id}
+                          className="relative"
+                          draggable
+                          onDragStart={e => {
+                            setDraggedStepIndex(idx);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragOver={e => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                          }}
+                          onDrop={e => {
+                            e.preventDefault();
+                            if (draggedStepIndex !== null && draggedStepIndex !== idx) {
+                              handleReorderSteps(draggedStepIndex, idx);
+                            }
+                            setDraggedStepIndex(null);
+                          }}
+                          onDragEnd={() => setDraggedStepIndex(null)}
+                        >
                           {/* Step Card */}
-                          <div className="p-3.5 rounded-2xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-all space-y-3 shadow-sm">
+                          <div className={`p-3.5 rounded-2xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-all space-y-3 shadow-sm ${draggedStepIndex === idx ? 'opacity-50 border-dashed border-[var(--accent)]' : ''}`}>
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
+                                <div className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-[var(--bg-elevated)] text-[var(--text-muted)]" title="Drag to reorder step">
+                                  <GripVertical className="w-4 h-4" />
+                                </div>
                                 <span className="w-6 h-6 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center font-mono text-xs font-bold text-[var(--accent)] shadow-inner">
                                   {idx + 1}
                                 </span>
@@ -1109,7 +1143,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                 <div className="w-full border-t border-dashed border-[var(--border-strong)]"></div>
                               </div>
                               <span className="relative px-2.5 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[10px] text-[var(--accent)] shadow-sm">
-                                ⏱️ {step.delayMs}ms delay to Step {idx + 2}
+                                ⏱️ {step.delayMs}ms sequential delay to Step {idx + 2}
                               </span>
                             </div>
                           )}
