@@ -46,6 +46,7 @@ interface TopBarProps {
   onUndo: () => void;
   onRedo: () => void;
   onSaveToDevice: () => void;
+  searchSlot?: React.ReactNode;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -67,7 +68,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   canRedo,
   onUndo,
   onRedo,
-  onSaveToDevice
+  onSaveToDevice,
+  searchSlot
 }) => {
   const [renamingId, setRenamingId] = useState<HardwareProfileId | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
@@ -132,9 +134,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   const currentPill = pillStyles[syncStatus];
 
   return (
-    <header className="shrink-0 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] px-2.5 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 select-none z-30">
+    <header className="shrink-0 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] px-2.5 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 select-none z-40">
       {/* Left: Brand + 4-State Sync Status Pill + Live Badges */}
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-2 min-w-0 order-1">
         <div className="flex items-center gap-2 shrink-0">
           <div
             className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-white shadow-sm shrink-0"
@@ -228,7 +230,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       </div>
 
       {/* Center: Hardware MAC / TV Profile Selector + "Active on pad" badge */}
-      <div className="flex items-center gap-1.5 min-w-0 order-3 sm:order-2 w-full sm:w-auto justify-between sm:justify-center">
+      <div className="flex items-center gap-1.5 min-w-0 order-3 lg:order-2 w-full sm:w-auto justify-between sm:justify-center">
         <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] min-w-0 flex-1 sm:flex-initial">
           {profiles.map(prof => {
             const selected = prof.id === activeProfile.id;
@@ -349,8 +351,15 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
+      {/* Site-Wide Macro Search Bar */}
+      {searchSlot && (
+        <div className="flex items-center min-w-0 order-4 lg:order-3 w-full sm:flex-1 lg:flex-initial lg:w-auto">
+          {searchSlot}
+        </div>
+      )}
+
       {/* Right: PWA + Undo/Redo + Connect USB pad / Try demo / Push Action */}
-      <div className="flex items-center gap-1.5 shrink-0 order-2 sm:order-3">
+      <div className="flex items-center gap-1.5 shrink-0 order-2 lg:order-4">
         <div className="hidden xl:block">
           <PWAInstallButton />
         </div>

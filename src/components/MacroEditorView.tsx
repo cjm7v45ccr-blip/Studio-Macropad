@@ -65,6 +65,15 @@ import {
   Eye
 } from 'lucide-react';
 
+export interface MacroEditorExternalTarget {
+  requestId: number;
+  macroId?: string | null;
+  name: string;
+  action: string;
+  repeatConfig?: TextMacroRepeatConfig;
+  stepsOverride?: Omit<MacroStepConfig, 'id'>[];
+}
+
 interface MacroEditorViewProps {
   profiles: [StudioProfile, StudioProfile];
   activeProfileId: HardwareProfileId;
@@ -72,6 +81,7 @@ interface MacroEditorViewProps {
   keyboardLayout: KeyboardLayoutId;
   connection: DeviceConnectionInfo;
   activeRepeatJob?: ActiveRepeatJob | null;
+  externalTarget?: MacroEditorExternalTarget | null;
   onSaveMacro: (macro: CustomMacroItem) => void;
   onDeleteMacro: (id: string) => void;
   onAssignSlot: (
@@ -112,14 +122,14 @@ const STEP_TYPE_META: Record<
   delay: { label: 'Timed Wait', addLabel: 'Wait Delay', icon: Clock }
 };
 
-interface StarterTemplate {
+export interface StarterTemplate {
   id: string;
   name: string;
   summary: string;
   steps: Omit<MacroStepConfig, 'id'>[];
 }
 
-const STARTER_TEMPLATES: StarterTemplate[] = [
+export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     id: 'tpl-spotlight-app',
     name: 'Open App via Search',
@@ -316,6 +326,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   keyboardLayout,
   connection,
   activeRepeatJob,
+  externalTarget,
   onSaveMacro,
   onDeleteMacro,
   onAssignSlot,
@@ -362,6 +373,38 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   useEffect(() => {
     setTargetProfile(activeProfileId);
   }, [activeProfileId]);
+
+  useEffect(() => {
+    if (!externalTarget) return;
+    setSidebarTab('sequences');
+    setSelectedMacroId(externalTarget.macroId ?? null);
+    setRecordingStepId(null);
+    setStepRecorderError(null);
+    setMacroName(externalTarget.name);
+
+    if (externalTarget.stepsOverride && externalTarget.stepsOverride.length > 0) {
+      setMacroSteps(
+        externalTarget.stepsOverride.map((s, idx) => ({
+          ...s,
+          id: `ext-${externalTarget.requestId}-${idx}`
+        }))
+      );
+      setRepeatCountInput('1');
+      setLoopUntilStopped(false);
+      setRepeatDelayInput('500');
+    } else {
+      const convertedSteps = actionToMacroSteps(
+        externalTarget.action,
+        externalTarget.repeatConfig
+      );
+      setMacroSteps(
+        convertedSteps.length > 0 ? convertedSteps : [createDefaultStep('shortcut', 1)]
+      );
+      setRepeatCountInput(String(externalTarget.repeatConfig?.repeatCount || 1));
+      setLoopUntilStopped(Boolean(externalTarget.repeatConfig?.loopUntilStopped));
+      setRepeatDelayInput(String(externalTarget.repeatConfig?.repeatDelayMs || 500));
+    }
+  }, [externalTarget]);
 
   // Reset drag arming on global mouseup so inputs never stay locked in draggable state
   useEffect(() => {

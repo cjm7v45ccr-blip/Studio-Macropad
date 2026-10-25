@@ -29,7 +29,8 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { MacropadCanvas } from './components/MacropadCanvas';
 import { ButtonInspector } from './components/ButtonInspector';
 import { EncoderInspector } from './components/EncoderInspector';
-import { MacroEditorView } from './components/MacroEditorView';
+import { MacroEditorExternalTarget, MacroEditorView } from './components/MacroEditorView';
+import { GlobalMacroSearch } from './components/GlobalMacroSearch';
 import { LibraryView } from './components/LibraryView';
 import { SettingsView } from './components/SettingsView';
 import { UsbConnectModal } from './components/UsbConnectModal';
@@ -59,6 +60,8 @@ export default function App() {
   const [activeSection, setActiveSection] = useState<SidebarSection>('device');
   const [selectedControl, setSelectedControl] = useState<ControlId>('k1');
   const [viewMode, setViewMode] = useState<CanvasViewMode>('edit');
+  const [externalMacroTarget, setExternalMacroTarget] =
+    useState<MacroEditorExternalTarget | null>(null);
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [connectModalError, setConnectModalError] = useState<string | null>(null);
   const [pendingCopyPair, setPendingCopyPair] = useState<{
@@ -250,6 +253,41 @@ export default function App() {
         onUndo={studio.undo}
         onRedo={studio.redo}
         onSaveToDevice={handleSaveToDevice}
+        searchSlot={
+          <GlobalMacroSearch
+            profiles={studio.profiles}
+            activeProfileId={studio.activeProfile.id}
+            selectedControl={selectedControl}
+            customMacros={studio.customMacros}
+            connection={connection}
+            onSaveMacro={studio.saveCustomMacro}
+            onAssignSlot={studio.assignSlotAction}
+            onJumpToControl={(profileId, controlId) => {
+              studio.selectProfile(profileId);
+              setSelectedControl(controlId);
+              setActiveSection('device');
+            }}
+            onOpenInMacroEditor={payload => {
+              setExternalMacroTarget({
+                ...payload,
+                requestId: Date.now()
+              });
+              setActiveSection('macros');
+            }}
+            onApplyProfilePreset={(profileId, slots, presetTitle) => {
+              studio.selectProfile(profileId);
+              studio.assignProfileSlots(
+                profileId,
+                slots,
+                `Applied "${presetTitle}" to ${profileId}`
+              );
+              setActiveSection('device');
+            }}
+            onTestBinding={binding => {
+              handleExecuteHardwareBinding(binding);
+            }}
+          />
+        }
       />
 
       {/* Main Workspace Area: Desktop Left Rail + Active Section */}
@@ -366,6 +404,7 @@ export default function App() {
             keyboardLayout={studio.settings.keyboardLayout}
             connection={connection}
             activeRepeatJob={activeRepeatJob}
+            externalTarget={externalMacroTarget}
             onSaveMacro={studio.saveCustomMacro}
             onDeleteMacro={studio.deleteCustomMacro}
             onAssignSlot={studio.assignSlotAction}
