@@ -304,6 +304,29 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           />
         ) : (
           <div className="space-y-5">
+            {/* Virtual OLED Preview Box */}
+            <div className="p-3.5 rounded-2xl bg-[#02060a] border border-cyan-500/40 shadow-[0_0_16px_rgba(6,182,212,0.2)] flex flex-col items-center justify-center space-y-2 font-mono text-cyan-300">
+              <div className="w-full flex items-center justify-between text-[10px] border-b border-cyan-500/20 pb-1 text-cyan-400">
+                <span className="font-bold flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                  OLED LIVE PREVIEW
+                </span>
+                <span className="text-[9px] text-cyan-400/80">128×64 · {slotMeta.short}</span>
+              </div>
+              <div className="py-2.5 flex flex-col items-center justify-center space-y-1.5">
+                <div className="w-12 h-12 rounded-xl bg-cyan-950/70 border border-cyan-500/45 flex items-center justify-center shadow-inner">
+                  <KeycapIcon
+                    icon={keyConfig.appearance.icon}
+                    className="w-6 h-6"
+                    style={{ color: keyConfig.appearance.labelColor || '#38BDF8' }}
+                  />
+                </div>
+                <span className="text-xs font-extrabold tracking-widest text-cyan-100 uppercase truncate max-w-[200px]">
+                  {keyConfig.appearance.label || slotMeta.short}
+                </span>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-[var(--text-secondary)]">
                 Custom Keycap Appearance
