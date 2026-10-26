@@ -354,6 +354,44 @@ export interface StudioSettings {
   encoderPlacement: EncoderPlacement;
   soundEnabled: boolean;
   liveEventsEnabled: boolean;
+  autoCheckFirmwareUpdates: boolean;
+  firmwareRepo: string;
+}
+
+export interface FirmwareReleaseAsset {
+  name: string;
+  sizeBytes: number;
+  downloadUrl: string;
+}
+
+export interface FirmwareReleaseInfo {
+  version: string;
+  rawTag: string;
+  title: string;
+  notes: string;
+  publishedAt: string | null;
+  htmlUrl: string;
+  source: 'release' | 'tag' | 'branch_source';
+  repoSlug: string;
+  assets: FirmwareReleaseAsset[];
+}
+
+export type FirmwareUpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'update_available'
+  | 'up_to_date'
+  | 'ahead'
+  | 'no_version_found'
+  | 'error';
+
+export interface FirmwareUpdateState {
+  status: FirmwareUpdateStatus;
+  installedVersion: string | null;
+  latestRelease: FirmwareReleaseInfo | null;
+  checkedAt: string | null;
+  repoSlug: string;
+  error: string | null;
 }
 
 export interface ConflictWarning {

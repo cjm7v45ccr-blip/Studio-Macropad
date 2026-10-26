@@ -19,6 +19,7 @@ import {
   extractProfileSlots,
   useStudioState
 } from './hooks/useStudioState';
+import { useFirmwareUpdateCheck } from './hooks/useFirmwareUpdateCheck';
 import { usbHardware } from './services/usbHardwareService';
 import { repeatMacroRunner } from './services/repeatMacroRunner';
 import {
@@ -96,6 +97,18 @@ export default function App() {
       unsubJob();
     };
   }, []);
+
+  const firmwareUpdater = useFirmwareUpdateCheck({
+    connected: connection.connected,
+    installedVersion: connection.firmwareVersion,
+    autoCheckEnabled: studio.settings.autoCheckFirmwareUpdates,
+    firmwareRepo: studio.settings.firmwareRepo,
+    onUpdateAvailableToast: (release, installed) => {
+      showToast(
+        `Firmware ${release.version} is available on GitHub (installed: ${installed}) — view in Settings`
+      );
+    }
+  });
 
   const handleStopRepeat = useCallback(() => {
     if (repeatMacroRunner.stop()) {
@@ -543,6 +556,10 @@ export default function App() {
             syncStatus={studio.syncStatus}
             currentRev={studio.currentRev}
             currentDeviceId={studio.currentDeviceId}
+            firmwareUpdate={firmwareUpdater.updateState}
+            isFirmwareBannerDismissed={firmwareUpdater.isBannerDismissed}
+            onDismissFirmwareBanner={firmwareUpdater.dismissUpdateBanner}
+            onCheckFirmwareUpdate={firmwareUpdater.checkForUpdates}
             onUpdateSettings={studio.updateSettings}
             onPullFromUsb={handlePullFromUsb}
             onSwitchBleHost={handleSwitchBleHost}

@@ -3,6 +3,7 @@ import {
   BleHostSlot,
   DebugLogEntry,
   DeviceConnectionInfo,
+  FirmwareUpdateState,
   KeyboardLayoutId,
   StudioProfile,
   StudioSettings,
@@ -12,6 +13,11 @@ import {
 } from '../types/studio';
 import { ToastVariant } from '../hooks/useStudioState';
 import { usbHardware } from '../services/usbHardwareService';
+import {
+  DEFAULT_FIRMWARE_GITHUB_REPO,
+  formatBytesCompact,
+  parseGitHubRepoSlug
+} from '../services/firmwareUpdateService';
 import { DiffConfirmModal } from './DiffConfirmModal';
 import {
   Sun,
@@ -33,7 +39,12 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  KeyRound
+  KeyRound,
+  ArrowUpCircle,
+  RefreshCw,
+  ExternalLink,
+  Download,
+  X
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -43,6 +54,14 @@ interface SettingsViewProps {
   syncStatus: SyncStatusPill;
   currentRev: number;
   currentDeviceId: string | null;
+  firmwareUpdate: FirmwareUpdateState;
+  isFirmwareBannerDismissed: boolean;
+  onDismissFirmwareBanner: () => void;
+  onCheckFirmwareUpdate: (opts?: {
+    force?: boolean;
+    repoOverride?: string;
+    silent?: boolean;
+  }) => Promise<FirmwareUpdateState>;
   onUpdateSettings: (patch: Partial<StudioSettings>) => void;
   onPullFromUsb: () => Promise<boolean>;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
@@ -77,6 +96,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   syncStatus,
   currentRev,
   currentDeviceId,
+  firmwareUpdate,
+  isFirmwareBannerDismissed,
+  onDismissFirmwareBanner,
+  onCheckFirmwareUpdate,
   onUpdateSettings,
   onPullFromUsb,
   onSwitchBleHost,
@@ -115,6 +138,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Reset Confirmations
   const [resetProfilesModalOpen, setResetProfilesModalOpen] = useState(false);
   const [confirmClearLocal, setConfirmClearLocal] = useState(false);
+
+  // Firmware Auto-Update Repository Draft & Release Notes Disclosure
+  const [repoDraft, setRepoDraft] = useState<string>(
+    settings.firmwareRepo || DEFAULT_FIRMWARE_GITHUB_REPO
+  );
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+
+  useEffect(() => {
+    setRepoDraft(settings.firmwareRepo || DEFAULT_FIRMWARE_GITHUB_REPO);
+  }, [settings.firmwareRepo]);
 
   // Debug Console Logs (secrets already redacted in usbHardwareService)
   const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>(() =>
@@ -338,6 +371,91 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { id: 'light', label: 'Light', icon: Sun }
   ];
 
+  const handleSaveAndCheckRepo = async () => {
+    const parsed = parseGitHubRepoSlug(repoDraft);
+    if (!parsed) {
+      onToast('Enter a valid GitHub repository such as owner/repo', 'error');
+      return;
+    }
+    setRepoDraft(parsed.slug);
+    onUpdateSettings({ firmwareRepo: parsed.slug });
+    const result = await onCheckFirmwareUpdate({
+      force: true,
+      repoOverride: parsed.slug,
+      silent: false
+    });
+    if (result.status === 'error') {
+      onToast(result.error || 'Could not reach GitHub repository', 'error');
+    } else if (result.status === 'update_available' && result.latestRelease) {
+      onToast(
+        `Firmware ${result.latestRelease.version} is available on ${parsed.slug}`
+      );
+    } else if (result.status === 'up_to_date' && result.latestRelease) {
+      onToast(`ESP32 firmware (${result.installedVersion}) is up to date`);
+    } else if (result.latestRelease) {
+      onToast(`Latest firmware on ${parsed.slug}: ${result.latestRelease.version}`);
+    } else {
+      onToast(`Checked ${parsed.slug} — no tagged firmware version found yet`);
+    }
+  };
+
+  const handleManualFirmwareCheck = async () => {
+    const parsed = parseGitHubRepoSlug(repoDraft);
+    if (!parsed) {
+      onToast('Enter a valid GitHub repository such as owner/repo', 'error');
+      return;
+    }
+    if (parsed.slug !== settings.firmwareRepo) {
+      onUpdateSettings({ firmwareRepo: parsed.slug });
+    }
+    const result = await onCheckFirmwareUpdate({
+      force: true,
+      repoOverride: parsed.slug,
+      silent: false
+    });
+    if (result.status === 'error') {
+      onToast(result.error || 'Firmware update check failed', 'error');
+    } else if (result.status === 'update_available' && result.latestRelease) {
+      onToast(
+        `Update available: ${result.installedVersion} → ${result.latestRelease.version}`
+      );
+    } else if (result.status === 'up_to_date') {
+      onToast(`Firmware ${result.installedVersion} is up to date`);
+    } else if (result.status === 'ahead' && result.latestRelease) {
+      onToast(
+        `Installed ${result.installedVersion} is ahead of GitHub (${result.latestRelease.version})`
+      );
+    } else if (result.latestRelease) {
+      onToast(
+        `Latest GitHub version: ${result.latestRelease.version} (connect pad to compare)`
+      );
+    } else {
+      onToast('No firmware release or version macro found on GitHub yet');
+    }
+  };
+
+  const latestRelease = firmwareUpdate.latestRelease;
+  const primaryFirmwareAsset = latestRelease?.assets[0] || null;
+  const formattedReleaseDate = latestRelease?.publishedAt
+    ? new Date(latestRelease.publishedAt).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      })
+    : null;
+  const releaseSourceLabel =
+    latestRelease?.source === 'release'
+      ? 'GitHub Release'
+      : latestRelease?.source === 'tag'
+      ? 'GitHub Tag'
+      : 'Default Branch';
+
+  const showUpdateNotification =
+    connection.connected &&
+    firmwareUpdate.status === 'update_available' &&
+    Boolean(latestRelease) &&
+    !isFirmwareBannerDismissed;
+
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
       <div className="max-w-3xl mx-auto space-y-6">
@@ -347,19 +465,116 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               Settings & Diagnostics
             </h1>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Device diagnostics, Bluetooth, Wi-Fi, SmartCast TV pairing, preferences, and serial debug console.
+              Device diagnostics, firmware updates, Bluetooth, Wi-Fi, SmartCast TV pairing, preferences, and serial debug console.
             </p>
           </div>
           {connection.connected && (
             <button
               type="button"
               onClick={onPullFromUsb}
-              className="px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
             >
               Refresh Status
             </button>
           )}
         </div>
+
+        {/* Firmware Update Notification Banner (shown when connected ESP32 has a newer version on GitHub) */}
+        {showUpdateNotification && latestRelease && (
+          <div
+            role="region"
+            aria-label="ESP32 firmware update available"
+            className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/35 space-y-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <ArrowUpCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1 min-w-0">
+                  <div className="text-sm font-semibold text-[var(--text-primary)]">
+                    Newer ESP32 firmware available ({latestRelease.version})
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap font-mono text-[11px] text-amber-200/85 tabular-nums">
+                    <span>Installed {firmwareUpdate.installedVersion}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>Latest {latestRelease.version}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{releaseSourceLabel}</span>
+                    {formattedReleaseDate && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>{formattedReleaseDate}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onDismissFirmwareBanner}
+                aria-label="Dismiss firmware update notification"
+                title="Dismiss for this session"
+                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              A newer firmware build is published on{' '}
+              <span className="font-mono text-[var(--text-primary)]">
+                {firmwareUpdate.repoSlug}
+              </span>
+              . Download a JSON backup in Presets if desired, then flash the updated sketch or binary over USB (NVS button profiles and Wi-Fi credentials remain intact unless flash is erased).
+            </p>
+
+            {latestRelease.notes && (
+              <div className="space-y-2 border-t border-amber-500/20 pt-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowReleaseNotes(v => !v)}
+                  className="text-xs font-medium text-amber-300 hover:underline cursor-pointer whitespace-nowrap"
+                >
+                  {showReleaseNotes ? 'Hide release notes' : 'View release notes'}
+                </button>
+                {showReleaseNotes && (
+                  <pre className="text-[11px] font-mono text-[var(--text-secondary)] whitespace-pre-wrap break-words max-h-40 overflow-y-auto leading-relaxed">
+                    {latestRelease.notes}
+                  </pre>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 flex-wrap pt-0.5">
+              {primaryFirmwareAsset && (
+                <a
+                  href={primaryFirmwareAsset.downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>
+                    Download {primaryFirmwareAsset.name}
+                    {primaryFirmwareAsset.sizeBytes > 0
+                      ? ` (${formatBytesCompact(primaryFirmwareAsset.sizeBytes)})`
+                      : ''}
+                  </span>
+                </a>
+              )}
+
+              <a
+                href={latestRelease.htmlUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-strong)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] transition-colors whitespace-nowrap shrink-0"
+              >
+                <span>View on GitHub</span>
+                <ExternalLink className="w-3.5 h-3.5 text-[var(--accent)]" />
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* 1. Device Diagnostics Card (Device ID, Firmware Version, API Version, Config Revision, Free Memory) */}
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
@@ -368,7 +583,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <Cpu className="w-4 h-4 text-[var(--accent)]" />
               <span>Device Diagnostics</span>
             </div>
-            <span className="font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] tabular-nums">
+            <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
               {syncStatus} · {connection.connected ? connection.deviceName : 'Disconnected'}
             </span>
           </div>
@@ -421,7 +636,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       bleConnected: !telemetry.bleConnected
                     })
                   }
-                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Toggle BLE ({telemetry.bleConnected ? 'Connected' : 'Disconnected'})
                 </button>
@@ -432,13 +647,193 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       wifiConnected: !telemetry.wifiConnected
                     })
                   }
-                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Toggle Wi-Fi ({telemetry.wifiConnected ? 'Connected' : 'Down'})
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    usbHardware.setDemoLinkState({
+                      firmwareVersion:
+                        connection.firmwareVersion === '1.0.0' ? '3.2-PRO' : '1.0.0'
+                    })
+                  }
+                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                  title="Simulate older connected firmware in Demo Mode to test the GitHub update notification"
+                >
+                  Simulate FW ({connection.firmwareVersion === '1.0.0' ? 'Restore 3.2-PRO' : 'Set 1.0.0'})
                 </button>
               </div>
             </div>
           )}
+        </div>
+
+        {/* 1B. ESP32 Firmware Auto-Update Card (GitHub Repository Check) */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+                <RefreshCw
+                  className={`w-4 h-4 text-[var(--accent)] ${
+                    firmwareUpdate.status === 'checking' ? 'animate-spin' : ''
+                  }`}
+                />
+                <span>ESP32 Firmware Auto-Update</span>
+              </div>
+              <p className="text-xs text-[var(--text-muted)]">
+                Automatically checks GitHub Releases and branch firmware headers when your MacroPad connects.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSettings({
+                    autoCheckFirmwareUpdates: !settings.autoCheckFirmwareUpdates
+                  })
+                }
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <span>Auto-Check</span>
+                <span
+                  className={`font-mono text-[11px] font-semibold ${
+                    settings.autoCheckFirmwareUpdates
+                      ? 'text-emerald-400'
+                      : 'text-[var(--text-muted)]'
+                  }`}
+                >
+                  {settings.autoCheckFirmwareUpdates ? 'ON' : 'OFF'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                disabled={firmwareUpdate.status === 'checking'}
+                onClick={handleManualFirmwareCheck}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                {firmwareUpdate.status === 'checking' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {firmwareUpdate.status === 'checking'
+                    ? 'Checking…'
+                    : 'Check for updates'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Live Comparison Status Line */}
+          <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-[var(--border-subtle)] text-xs">
+            <div className="flex items-center gap-2 min-w-0 flex-wrap font-mono text-[11px] tabular-nums">
+              {firmwareUpdate.status === 'checking' ? (
+                <span className="text-[var(--text-secondary)]">
+                  Querying {firmwareUpdate.repoSlug} on GitHub…
+                </span>
+              ) : firmwareUpdate.status === 'error' ? (
+                <span className="inline-flex items-center gap-1.5 text-rose-300 font-sans text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span>{firmwareUpdate.error}</span>
+                </span>
+              ) : firmwareUpdate.status === 'update_available' && latestRelease ? (
+                <span className="inline-flex items-center gap-1.5 text-amber-300">
+                  <ArrowUpCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>
+                    Update available · {firmwareUpdate.installedVersion} → {latestRelease.version}
+                  </span>
+                </span>
+              ) : firmwareUpdate.status === 'up_to_date' && latestRelease ? (
+                <span className="inline-flex items-center gap-1.5 text-emerald-300">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>
+                    Up to date · Installed {firmwareUpdate.installedVersion} matches GitHub ({latestRelease.version})
+                  </span>
+                </span>
+              ) : firmwareUpdate.status === 'ahead' && latestRelease ? (
+                <span className="inline-flex items-center gap-1.5 text-sky-300">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span>
+                    Ahead of GitHub · Installed {firmwareUpdate.installedVersion} · Published {latestRelease.version}
+                  </span>
+                </span>
+              ) : firmwareUpdate.status === 'no_version_found' ? (
+                <span className="text-[var(--text-muted)] font-sans text-xs">
+                  Checked {firmwareUpdate.repoSlug} · No published firmware tag or version header found yet.
+                </span>
+              ) : latestRelease && !connection.connected ? (
+                <span className="text-[var(--text-secondary)]">
+                  Latest on GitHub: {latestRelease.version} · Connect MacroPad via USB to compare
+                </span>
+              ) : (
+                <span className="text-[var(--text-muted)] font-sans text-xs">
+                  {connection.connected
+                    ? `Connected firmware: ${connection.firmwareVersion} · Click Check for updates to query GitHub`
+                    : 'Connect your Studio MacroPad over USB (or start Demo Mode) to auto-check firmware.'}
+                </span>
+              )}
+            </div>
+
+            {firmwareUpdate.checkedAt && (
+              <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">
+                Checked {firmwareUpdate.checkedAt}
+              </span>
+            )}
+          </div>
+
+          {/* Configurable GitHub Repository Source */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <label
+              htmlFor="firmware-github-repo-input"
+              className="text-[11px] text-[var(--text-muted)] whitespace-nowrap shrink-0"
+            >
+              GitHub repo:
+            </label>
+            <input
+              id="firmware-github-repo-input"
+              type="text"
+              value={repoDraft}
+              onChange={e => setRepoDraft(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  handleSaveAndCheckRepo();
+                }
+              }}
+              placeholder={DEFAULT_FIRMWARE_GITHUB_REPO}
+              aria-label="GitHub firmware repository (owner/repo)"
+              className="flex-1 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+            />
+            {repoDraft.trim() !== settings.firmwareRepo && (
+              <button
+                type="button"
+                onClick={handleSaveAndCheckRepo}
+                className="px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-strong)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Save & Check
+              </button>
+            )}
+            {settings.firmwareRepo !== DEFAULT_FIRMWARE_GITHUB_REPO && (
+              <button
+                type="button"
+                onClick={() => {
+                  setRepoDraft(DEFAULT_FIRMWARE_GITHUB_REPO);
+                  onUpdateSettings({ firmwareRepo: DEFAULT_FIRMWARE_GITHUB_REPO });
+                  onCheckFirmwareUpdate({
+                    force: true,
+                    repoOverride: DEFAULT_FIRMWARE_GITHUB_REPO,
+                    silent: false
+                  });
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Reset repo
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 2. Multi-Host Bluetooth Engine (`/api/ble/switch`) */}

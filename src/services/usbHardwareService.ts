@@ -96,6 +96,7 @@ type DebugLogListener = (logs: DebugLogEntry[]) => void;
 
 interface VirtualDemoPadState {
   rev: number;
+  firmware: string;
   mode: 'MAC' | 'TV';
   h1Name: string;
   h2Name: string;
@@ -497,6 +498,7 @@ class PadLinkService {
 
       this.demoPad = {
         rev,
+        firmware: '3.2-PRO',
         mode,
         h1Name,
         h2Name,
@@ -537,6 +539,7 @@ class PadLinkService {
     bleConnected?: boolean;
     wifiConnected?: boolean;
     tvPaired?: boolean;
+    firmwareVersion?: string;
   }) {
     if (!this.demoModeActive || !this.demoPad) return;
     if (typeof patch.bleConnected === 'boolean') {
@@ -545,11 +548,15 @@ class PadLinkService {
     if (typeof patch.wifiConnected === 'boolean') {
       this.demoPad.wifiConnected = patch.wifiConnected;
       if (!patch.wifiConnected) this.demoPad.ip = '';
-      else if (!this.demoPad.ip) this.demoPad.ip = '192.168.1.42';
+      else if (!patch.wifiConnected && !this.demoPad.ip) this.demoPad.ip = '192.168.1.42';
+      else if (patch.wifiConnected && !this.demoPad.ip) this.demoPad.ip = '192.168.1.42';
     }
     if (typeof patch.tvPaired === 'boolean') {
       this.demoPad.tvPaired = patch.tvPaired;
       this.demoPad.tvConfigured = patch.tvPaired || Boolean(this.demoPad.tvHost);
+    }
+    if (typeof patch.firmwareVersion === 'string' && patch.firmwareVersion.trim()) {
+      this.demoPad.firmware = patch.firmwareVersion.trim();
     }
     const status = this.buildDemoStatusPacket();
     this.applyTelemetryFromStatus(status, 'DEMO:3200');
@@ -676,7 +683,7 @@ class PadLinkService {
       device: {
         id: 'demo-pad',
         name: 'Studio MacroPad',
-        firmware: '3.2-PRO',
+        firmware: d.firmware || '3.2-PRO',
         connection_type: 'DEMO'
       },
       connection: {

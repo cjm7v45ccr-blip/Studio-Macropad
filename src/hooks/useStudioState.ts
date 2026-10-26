@@ -47,6 +47,7 @@ import {
   validateFirmwareAlias
 } from '../data/firmwareCatalog';
 import { FirmwareStatusPacket, usbHardware } from '../services/usbHardwareService';
+import { DEFAULT_FIRMWARE_GITHUB_REPO } from '../services/firmwareUpdateService';
 import { repeatMacroRunner } from '../services/repeatMacroRunner';
 import { soundEngine } from '../services/soundEffects';
 
@@ -76,7 +77,9 @@ const DEFAULT_SETTINGS: StudioSettings = {
   keyboardLayout: 'us_qwerty',
   encoderPlacement: 'grid',
   soundEnabled: true,
-  liveEventsEnabled: true
+  liveEventsEnabled: true,
+  autoCheckFirmwareUpdates: false,
+  firmwareRepo: DEFAULT_FIRMWARE_GITHUB_REPO
 };
 
 function hexToRgbString(hex: string): string {
