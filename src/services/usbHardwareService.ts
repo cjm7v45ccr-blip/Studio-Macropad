@@ -306,7 +306,8 @@ class PadLinkService {
     if (!navSerial) return;
 
     navSerial.addEventListener('connect', async (e: any) => {
-      if (this.manualDisconnect || this.port || this.isOpening || this.demoModeActive) return;
+      this.manualDisconnect = false;
+      if (this.port || this.isOpening || this.demoModeActive) return;
       const targetPort = e?.target;
       if (targetPort) {
         await this.openAuthorizedPort(targetPort).catch(() => {});
@@ -322,6 +323,30 @@ class PadLinkService {
         this.markDisconnected();
       }
     });
+
+    // Auto-connect on window focus or visibility change
+    window.addEventListener('focus', () => {
+      if (!this.port && !this.isOpening && !this.demoModeActive) {
+        this.manualDisconnect = false;
+        this.tryAutoConnectSerial();
+      }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !this.port && !this.isOpening && !this.demoModeActive) {
+        this.manualDisconnect = false;
+        this.tryAutoConnectSerial();
+      }
+    });
+
+    // Global user interaction listener to trigger auto-connect if port is authorized
+    const handleUserGesture = () => {
+      if (!this.port && !this.isOpening && !this.demoModeActive) {
+        this.manualDisconnect = false;
+        this.tryAutoConnectSerial();
+      }
+    };
+    window.addEventListener('pointerdown', handleUserGesture, { once: true });
 
     // Reconnect automatically on refresh using previously approved ports without showing the port picker
     this.tryAutoConnectSerial();
