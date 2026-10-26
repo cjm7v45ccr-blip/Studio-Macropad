@@ -13,7 +13,12 @@ import {
   HardwareProfileId,
   KeyId,
   LayerConfig,
-  LiveInputEvent
+  LiveInputEvent,
+  bleSlotToProfileId,
+  defaultProfileAlias,
+  isBleHostProfile,
+  normalizeHardwareProfileId,
+  profileIdToBleSlot
 } from '../types/studio';
 import { KeycapIcon, summarizeAction } from '../data/iconRegistry';
 import { describeFirmwareAction } from '../data/firmwareCatalog';
@@ -48,6 +53,7 @@ interface MacropadCanvasProps {
   connection: DeviceConnectionInfo;
   isSyncedWithHardware: boolean;
   onSelectControl: (id: ControlId) => void;
+  onSelectProfile: (id: HardwareProfileId) => void;
   onChangeViewMode: (mode: CanvasViewMode) => void;
   onChangeEncoderPlacement: (placement: EncoderPlacement) => void;
   onToggleHardwareMode: () => void;
@@ -99,6 +105,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   connection,
   isSyncedWithHardware,
   onSelectControl,
+  onSelectProfile,
   onChangeViewMode,
   onChangeEncoderPlacement,
   onToggleHardwareMode,
@@ -114,6 +121,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [flashedSlots, setFlashedSlots] = useState<Set<HardwareFlashSlot>>(new Set());
   const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
   const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
+
+  useEffect(() => {
+    const slotFromProf = profileIdToBleSlot(activeProfileId);
+    if (slotFromProf) {
+      setOfflineBleHost(slotFromProf);
+    }
+  }, [activeProfileId]);
 
   const flashTimersRef = useRef<Record<string, number>>({});
   const pendingAngleDeltaRef = useRef<number>(0);
@@ -189,12 +203,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const unsub = usbHardware.onHardwareEvent((e: HardwareEventPacket) => {
       if (!liveEventsEnabledRef.current) return;
 
-      // Pressing Mode on firmware 2.1.0 emits `profile` (and/or `press` with `slot: "mode"`):
-      // flash the Mode control and log profile switch cleanly!
       if (e.event === 'profile') {
         triggerSlotFlash('mode');
         soundEngine.playKeyClick();
-        const nextProf = (e.active || e.profile) === 'TV' ? 'TV' : 'MAC';
+        const currHost = usbHardware.info.telemetry?.bleActiveHost ?? 1;
+        const nextProf = defaultProfileAlias(
+          normalizeHardwareProfileId(e.active || e.profile, currHost)
+        );
         pushLog('Mode', 'Press', `Switched profile to ${nextProf}`, 'hardware');
         return;
       }
@@ -323,11 +338,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     if (!cfg) return;
 
     if (cfg.isModeSwitch || kid === 'k9') {
+      const targetLabel =
+        activeProfileId === 'TV' ? `Host ${activeBleHost}` : 'TV';
       onToggleHardwareMode();
       pushLog(
         'Mode',
         'Press',
-        `Activated ${activeProfileId === 'MAC' ? 'TV' : 'MAC'} profile`,
+        `Activated ${targetLabel} profile`,
         connection.connected ? 'usb-test' : 'sim'
       );
       return;
@@ -341,13 +358,28 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       const sent = await onExecuteHardwareBinding(tapBinding);
       pushLog(keyLabel, 'Press', summary, sent ? 'usb-test' : 'sim');
     } else {
+      if (
+        tapBinding.value === 'BLE:HOST1' ||
+        tapBinding.value === 'BLE:HOST2' ||
+        tapBinding.value === 'BLE:HOST3'
+      ) {
+        const targetSlot = Number(tapBinding.value.slice(-1)) as BleHostSlot;
+        setOfflineBleHost(targetSlot);
+        onSelectProfile(bleSlotToProfileId(targetSlot));
+      } else if (tapBinding.value === 'BLE:NEXT_HOST') {
+        const nextSlot = (((activeBleHost % 3) + 1) as BleHostSlot);
+        setOfflineBleHost(nextSlot);
+        onSelectProfile(bleSlotToProfileId(nextSlot));
+      }
       pushLog(keyLabel, 'Press', summary, 'sim');
     }
   };
 
+  const viewedBleHost = profileIdToBleSlot(activeProfileId);
   const activeBleHost: BleHostSlot = connection.connected
     ? connection.telemetry?.bleActiveHost ?? 1
-    : offlineBleHost;
+    : viewedBleHost ?? offlineBleHost;
+  const oledBadgeHost: BleHostSlot = viewedBleHost ?? activeBleHost;
 
   const triggerModePlusDialHostSwitch = async (dir: 'cw' | 'ccw') => {
     queueKnobAngleDelta(dir === 'cw' ? 24 : -24);
@@ -359,7 +391,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       return;
     }
 
-    const nextIdx = (activeBleHost - 1 + (delta > 0 ? 1 : 2)) % 3;
+    const baseHost = viewedBleHost ?? activeBleHost;
+    const nextIdx = (baseHost - 1 + (delta > 0 ? 1 : 2)) % 3;
     const nextSlot = (nextIdx + 1) as BleHostSlot;
 
     if (connection.connected) {
@@ -372,10 +405,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       );
     } else {
       setOfflineBleHost(nextSlot);
+      onSelectProfile(bleSlotToProfileId(nextSlot));
       pushLog(
         'Mode + Dial',
         `[H${nextSlot}]`,
-        `Simulated switch to Studio Pad ${nextSlot} (Host ${nextSlot})`,
+        `Switched workspace to Host ${nextSlot} (Studio Pad ${nextSlot})`,
         'sim'
       );
     }
@@ -813,8 +847,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: layer.color }}
               />
-              <span className="font-mono text-[10px] sm:text-[11px] font-bold text-sky-300 uppercase tracking-wider truncate">
-                {activeProfileName} ({activeProfileId})
+              <span className="font-mono text-[10px] sm:text-[11px] font-bold text-sky-300 uppercase tracking-wider truncate tabular-nums">
+                {activeProfileName}
               </span>
             </div>
 
@@ -850,7 +884,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   <button
                     type="button"
                     onClick={onPullFromUsb}
-                    title="Refresh /api/status"
+                    title="Refresh status & all 4 profiles"
                     className="text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <RefreshCw className="w-2.5 h-2.5" />
@@ -863,26 +897,31 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 </span>
               )}
 
-              {/* Hardware SSD1306 Upper-Right Host Badge in MAC Mode ([H1], [H2], [H3]) */}
-              {activeProfileId === 'MAC' && (
+              {/* Hardware SSD1306 Upper-Right Host Badge in BLE Host Mode ([H1], [H2], [H3]) */}
+              {isBleHostProfile(activeProfileId) && (
                 <button
                   type="button"
                   onClick={() => {
-                    const nextSlot = (((activeBleHost % 3) + 1) as BleHostSlot);
+                    const nextSlot = (((oledBadgeHost % 3) + 1) as BleHostSlot);
                     if (connection.connected) {
                       onSwitchBleHost(nextSlot);
                     } else {
                       setOfflineBleHost(nextSlot);
+                      onSelectProfile(bleSlotToProfileId(nextSlot));
                     }
                   }}
                   title={
                     connection.connected
-                      ? `Active Host: ${telemetry?.bleDeviceName || `Studio Pad ${activeBleHost}`} — click to cycle host (/api/ble/switch) or hold Mode + turn Dial`
-                      : `Previewing Host ${activeBleHost} (Studio Pad ${activeBleHost}) — click to preview [H1]–[H3]`
+                      ? `Host ${oledBadgeHost} (Studio Pad ${oledBadgeHost}) — click to cycle BLE host (/api/ble/switch) or hold Mode + turn Dial`
+                      : `Viewing Host ${oledBadgeHost} (Studio Pad ${oledBadgeHost}) — click to cycle [H1]–[H3]`
                   }
-                  className="px-1.5 py-0.5 rounded bg-black border border-white/75 text-white font-mono text-[10px] font-bold leading-none tracking-tight hover:border-sky-400 hover:text-sky-200 transition-colors cursor-pointer tabular-nums shrink-0"
+                  className={`px-1.5 py-0.5 rounded bg-black border font-mono text-[10px] font-bold leading-none tracking-tight transition-colors cursor-pointer tabular-nums shrink-0 ${
+                    connection.connected && oledBadgeHost !== activeBleHost
+                      ? 'border-amber-400/75 text-amber-300 hover:border-amber-300'
+                      : 'border-white/75 text-white hover:border-sky-400 hover:text-sky-200'
+                  }`}
                 >
-                  [H{activeBleHost}]
+                  [H{oledBadgeHost}]
                 </button>
               )}
             </div>

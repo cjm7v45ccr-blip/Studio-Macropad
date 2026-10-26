@@ -11,10 +11,31 @@ export interface ProfilePreset {
 
 export const CURATED_PRESETS: ProfilePreset[] = [
   {
+    id: 'universal-multi-host',
+    title: 'Universal Multi-Device',
+    subtitle: 'OS-Neutral Media & Host Cycle',
+    mode: 'HOST1',
+    description:
+      'OS-neutral consumer media transport, F13–F15 macro triggers, 1-tap Next BLE Host switching on Button 8, and rotary volume.',
+    bindings: {
+      b1: 'MEDIA:PLAY_PAUSE',
+      b2: 'MEDIA:NEXT',
+      b3: 'MEDIA:PREV',
+      b4: 'MEDIA:MUTE',
+      b5: 'KEY:F13',
+      b6: 'KEY:F14',
+      b7: 'KEY:F15',
+      b8: 'BLE:NEXT_HOST',
+      dial: 'MEDIA:MUTE',
+      enc_cw: 'MEDIA:VOL_UP',
+      enc_ccw: 'MEDIA:VOL_DOWN'
+    }
+  },
+  {
     id: 'mac-everyday-media',
     title: 'Everyday Mac & Audio',
     subtitle: 'Media, Clipboard & Spotlight',
-    mode: 'MAC',
+    mode: 'HOST1',
     description:
       'Play/pause, track transport, Spotlight search, copy/paste/undo, Mac lock, and smooth speaker volume on the knob.',
     bindings: {
@@ -32,10 +53,31 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     }
   },
   {
+    id: 'win-creator-desk',
+    title: 'Windows Creator Desk',
+    subtitle: 'Snip, Explorer & Track Skip',
+    mode: 'HOST2',
+    description:
+      'Screen snip, File Explorer, Task Manager, desktop toggle, Windows copy/paste/undo, PC lock, and media track skipping.',
+    bindings: {
+      b1: 'WIN:SNIP',
+      b2: 'WIN:EXPLORER',
+      b3: 'WIN:TASK_MGR',
+      b4: 'WIN:DESKTOP',
+      b5: 'WIN:COPY',
+      b6: 'WIN:PASTE',
+      b7: 'WIN:UNDO',
+      b8: 'WIN:LOCK',
+      dial: 'MEDIA:PLAY_PAUSE',
+      enc_cw: 'MEDIA:NEXT',
+      enc_ccw: 'MEDIA:PREV'
+    }
+  },
+  {
     id: 'mac-pro-editor',
     title: 'Video & Timeline Editor',
     subtitle: 'Cut, Edit & Frame Scrubbing',
-    mode: 'MAC',
+    mode: 'HOST1',
     description:
       'Cut, copy, paste, select all, undo/redo, marker F13, quick save, and left/right arrow frame stepping on the rotary knob.',
     bindings: {
@@ -56,7 +98,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     id: 'mac-dev-browser',
     title: 'Developer & Browser Tabs',
     subtitle: 'Code, Snip & Tab Cycling',
-    mode: 'MAC',
+    mode: 'HOST3',
     description:
       'Copy/paste, open/close tabs, undo/redo, Spotlight, screenshot snip, save on knob press, and tab cycling on knob turns.',
     bindings: {
@@ -71,27 +113,6 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       dial: 'MACRO:SAVE',
       enc_cw: 'SHORTCUT:cmd,shift:]',
       enc_ccw: 'SHORTCUT:cmd,shift:['
-    }
-  },
-  {
-    id: 'win-creator-desk',
-    title: 'Windows Creator Desk',
-    subtitle: 'Snip, Explorer & Track Skip',
-    mode: 'MAC',
-    description:
-      'Screen snip, File Explorer, Task Manager, desktop toggle, Windows copy/paste/undo, PC lock, and media track skipping.',
-    bindings: {
-      b1: 'WIN:SNIP',
-      b2: 'WIN:EXPLORER',
-      b3: 'WIN:TASK_MGR',
-      b4: 'WIN:DESKTOP',
-      b5: 'WIN:COPY',
-      b6: 'WIN:PASTE',
-      b7: 'WIN:UNDO',
-      b8: 'WIN:LOCK',
-      dial: 'MEDIA:PLAY_PAUSE',
-      enc_cw: 'MEDIA:NEXT',
-      enc_ccw: 'MEDIA:PREV'
     }
   },
   {

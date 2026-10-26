@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ActionBinding,
+  BleHostSlot,
   ConflictWarning,
   CustomMacroItem,
   EncoderControlConfig,
+  HARDWARE_PROFILE_IDS,
   HardwareBackupPayload,
   HardwareEventPacket,
   HardwareProfileId,
@@ -18,7 +20,11 @@ import {
   SyncConflictDiffItem,
   SyncConflictState,
   SyncStatusPill,
-  UserPreset
+  UserPreset,
+  bleSlotToProfileId,
+  defaultProfileAlias,
+  normalizeHardwareProfileId,
+  profileIdToBleSlot
 } from '../types/studio';
 import {
   ACTION_KEY_IDS,
@@ -52,7 +58,7 @@ const MIN_SAVING_DWELL_MS = 220;
 export type ToastVariant = 'success' | 'error';
 
 interface WorkspaceSnapshot {
-  profiles: [StudioProfile, StudioProfile];
+  profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
   customMacros: CustomMacroItem[];
 }
@@ -83,6 +89,23 @@ function hexToRgbString(hex: string): string {
   return `${r}, ${g}, ${b}`;
 }
 
+function migrateRepeatConfigs(rawRepeats?: SlotRepeatMap): SlotRepeatMap {
+  if (!rawRepeats) return {};
+  const next: SlotRepeatMap = {};
+  for (const [k, val] of Object.entries(rawRepeats)) {
+    if (!val) continue;
+    if (k.startsWith('MAC:')) {
+      const slot = k.slice(4);
+      if (!rawRepeats[`HOST1:${slot}`]) {
+        next[`HOST1:${slot}`] = val;
+      }
+    } else {
+      next[k] = val;
+    }
+  }
+  return next;
+}
+
 function readStoredPadRecord(deviceId: string): StoredPadRecord | null {
   try {
     const raw = localStorage.getItem(`pad:${deviceId}`);
@@ -91,17 +114,34 @@ function readStoredPadRecord(deviceId: string): StoredPadRecord | null {
     if (!parsed || typeof parsed !== 'object' || !parsed.profiles) return null;
     const rawProfiles = parsed.profiles as SerializedPadProfiles;
     const normalizedProfiles: SerializedPadProfiles = {
-      active: rawProfiles.active === 'TV' ? 'TV' : 'MAC',
-      mac_name: rawProfiles.mac_name || 'Mac',
+      active: normalizeHardwareProfileId(rawProfiles.active, 1),
+      h1_name: rawProfiles.h1_name || rawProfiles.mac_name || 'Host 1',
+      h2_name: rawProfiles.h2_name || 'Host 2',
+      h3_name: rawProfiles.h3_name || 'Host 3',
       tv_name: rawProfiles.tv_name || 'TV',
-      mac: { ...FACTORY_DEFAULT_SLOTS.MAC, ...(rawProfiles.mac || {}) },
-      tv: { ...FACTORY_DEFAULT_SLOTS.TV, ...(rawProfiles.tv || {}) }
+      h1: {
+        ...FACTORY_DEFAULT_SLOTS.HOST1,
+        ...(rawProfiles.mac || {}),
+        ...(rawProfiles.h1 || {})
+      },
+      h2: {
+        ...FACTORY_DEFAULT_SLOTS.HOST2,
+        ...(rawProfiles.h2 || {})
+      },
+      h3: {
+        ...FACTORY_DEFAULT_SLOTS.HOST3,
+        ...(rawProfiles.h3 || {})
+      },
+      tv: {
+        ...FACTORY_DEFAULT_SLOTS.TV,
+        ...(rawProfiles.tv || {})
+      }
     };
     return {
       rev: typeof parsed.rev === 'number' ? parsed.rev : 0,
       profiles: normalizedProfiles,
       dirty: Boolean(parsed.dirty),
-      repeatConfigs: parsed.repeatConfigs || {}
+      repeatConfigs: migrateRepeatConfigs(parsed.repeatConfigs)
     };
   } catch {
     return null;
@@ -141,7 +181,7 @@ export function extractProfileSlots(profile: StudioProfile): Record<HardwareSlot
 }
 
 export function extractRepeatMapFromProfiles(
-  profiles: [StudioProfile, StudioProfile]
+  profiles: StudioProfile[]
 ): SlotRepeatMap {
   const map: SlotRepeatMap = {};
   for (const prof of profiles) {
@@ -165,7 +205,7 @@ export function extractRepeatMapFromProfiles(
 }
 
 export function getBindingForProfileSlot(
-  profiles: [StudioProfile, StudioProfile],
+  profiles: StudioProfile[],
   profileId: HardwareProfileId,
   slot: HardwareSlotId
 ): ActionBinding | undefined {
@@ -183,16 +223,31 @@ export function getBindingForProfileSlot(
 }
 
 export function snapshotToSerializedProfiles(
-  profiles: [StudioProfile, StudioProfile],
+  profiles: StudioProfile[],
   activeProfileId: HardwareProfileId
 ): SerializedPadProfiles {
-  const macProf = profiles.find(p => p.id === 'MAC') || profiles[0];
-  const tvProf = profiles.find(p => p.id === 'TV') || profiles[1];
+  const h1Prof =
+    profiles.find(p => p.id === 'HOST1') ||
+    buildHardwareProfile('HOST1', 'Host 1', FACTORY_DEFAULT_SLOTS.HOST1);
+  const h2Prof =
+    profiles.find(p => p.id === 'HOST2') ||
+    buildHardwareProfile('HOST2', 'Host 2', FACTORY_DEFAULT_SLOTS.HOST2);
+  const h3Prof =
+    profiles.find(p => p.id === 'HOST3') ||
+    buildHardwareProfile('HOST3', 'Host 3', FACTORY_DEFAULT_SLOTS.HOST3);
+  const tvProf =
+    profiles.find(p => p.id === 'TV') ||
+    buildHardwareProfile('TV', 'TV', FACTORY_DEFAULT_SLOTS.TV);
+
   return {
     active: activeProfileId,
-    mac_name: sanitizeFirmwareAlias(macProf.name, 'MAC'),
+    h1_name: sanitizeFirmwareAlias(h1Prof.name, 'HOST1'),
+    h2_name: sanitizeFirmwareAlias(h2Prof.name, 'HOST2'),
+    h3_name: sanitizeFirmwareAlias(h3Prof.name, 'HOST3'),
     tv_name: sanitizeFirmwareAlias(tvProf.name, 'TV'),
-    mac: extractProfileSlots(macProf),
+    h1: extractProfileSlots(h1Prof),
+    h2: extractProfileSlots(h2Prof),
+    h3: extractProfileSlots(h3Prof),
     tv: extractProfileSlots(tvProf)
   };
 }
@@ -200,26 +255,50 @@ export function snapshotToSerializedProfiles(
 export function statusPacketToSerializedProfiles(
   pkt: FirmwareStatusPacket
 ): SerializedPadProfiles {
+  const rawSlot = Number(pkt.ble?.active_host ?? pkt.ble_slot ?? 1);
+  const activeHost: BleHostSlot = rawSlot === 2 ? 2 : rawSlot === 3 ? 3 : 1;
+
+  const h1Item = pkt.profiles?.items?.find(i => i.id === 'HOST1' || i.id === 'H1');
+  const h2Item = pkt.profiles?.items?.find(i => i.id === 'HOST2' || i.id === 'H2');
+  const h3Item = pkt.profiles?.items?.find(i => i.id === 'HOST3' || i.id === 'H3');
   const macItem = pkt.profiles?.items?.find(i => i.id === 'MAC');
   const tvItem = pkt.profiles?.items?.find(i => i.id === 'TV');
 
+  const buildHostSlots = (
+    hostNum: BleHostSlot,
+    directItem: typeof h1Item,
+    defaults: Record<HardwareSlotId, string>
+  ): Record<HardwareSlotId, string> => {
+    const useMacFallback = !directItem && activeHost === hostNum;
+    const item = directItem || (useMacFallback ? macItem : undefined);
+    return {
+      b1: item?.controls?.b1 ?? (useMacFallback ? pkt.mac_b1 : undefined) ?? defaults.b1,
+      b2: item?.controls?.b2 ?? (useMacFallback ? pkt.mac_b2 : undefined) ?? defaults.b2,
+      b3: item?.controls?.b3 ?? (useMacFallback ? pkt.mac_b3 : undefined) ?? defaults.b3,
+      b4: item?.controls?.b4 ?? (useMacFallback ? pkt.mac_b4 : undefined) ?? defaults.b4,
+      b5: item?.controls?.b5 ?? (useMacFallback ? pkt.mac_b5 : undefined) ?? defaults.b5,
+      b6: item?.controls?.b6 ?? (useMacFallback ? pkt.mac_b6 : undefined) ?? defaults.b6,
+      b7: item?.controls?.b7 ?? (useMacFallback ? pkt.mac_b7 : undefined) ?? defaults.b7,
+      b8: item?.controls?.b8 ?? (useMacFallback ? pkt.mac_b8 : undefined) ?? defaults.b8,
+      dial:
+        item?.controls?.dial ?? (useMacFallback ? pkt.mac_dial : undefined) ?? defaults.dial,
+      enc_cw: item?.controls?.enc_cw ?? defaults.enc_cw,
+      enc_ccw: item?.controls?.enc_ccw ?? defaults.enc_ccw
+    };
+  };
+
   return {
-    active: pkt.profiles?.active === 'TV' ? 'TV' : 'MAC',
-    mac_name: macItem?.name || 'Mac',
+    active: normalizeHardwareProfileId(pkt.profiles?.active, activeHost),
+    h1_name:
+      h1Item?.name || (activeHost === 1 && macItem?.name ? macItem.name : 'Host 1'),
+    h2_name:
+      h2Item?.name || (activeHost === 2 && macItem?.name ? macItem.name : 'Host 2'),
+    h3_name:
+      h3Item?.name || (activeHost === 3 && macItem?.name ? macItem.name : 'Host 3'),
     tv_name: tvItem?.name || 'TV',
-    mac: {
-      b1: macItem?.controls?.b1 ?? pkt.mac_b1 ?? FACTORY_DEFAULT_SLOTS.MAC.b1,
-      b2: macItem?.controls?.b2 ?? pkt.mac_b2 ?? FACTORY_DEFAULT_SLOTS.MAC.b2,
-      b3: macItem?.controls?.b3 ?? pkt.mac_b3 ?? FACTORY_DEFAULT_SLOTS.MAC.b3,
-      b4: macItem?.controls?.b4 ?? pkt.mac_b4 ?? FACTORY_DEFAULT_SLOTS.MAC.b4,
-      b5: macItem?.controls?.b5 ?? pkt.mac_b5 ?? FACTORY_DEFAULT_SLOTS.MAC.b5,
-      b6: macItem?.controls?.b6 ?? pkt.mac_b6 ?? FACTORY_DEFAULT_SLOTS.MAC.b6,
-      b7: macItem?.controls?.b7 ?? pkt.mac_b7 ?? FACTORY_DEFAULT_SLOTS.MAC.b7,
-      b8: macItem?.controls?.b8 ?? pkt.mac_b8 ?? FACTORY_DEFAULT_SLOTS.MAC.b8,
-      dial: macItem?.controls?.dial ?? pkt.mac_dial ?? FACTORY_DEFAULT_SLOTS.MAC.dial,
-      enc_cw: macItem?.controls?.enc_cw ?? FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
-      enc_ccw: macItem?.controls?.enc_ccw ?? FACTORY_DEFAULT_SLOTS.MAC.enc_ccw
-    },
+    h1: buildHostSlots(1, h1Item, FACTORY_DEFAULT_SLOTS.HOST1),
+    h2: buildHostSlots(2, h2Item, FACTORY_DEFAULT_SLOTS.HOST2),
+    h3: buildHostSlots(3, h3Item, FACTORY_DEFAULT_SLOTS.HOST3),
     tv: {
       b1: tvItem?.controls?.b1 ?? pkt.tv_b1 ?? FACTORY_DEFAULT_SLOTS.TV.b1,
       b2: tvItem?.controls?.b2 ?? pkt.tv_b2 ?? FACTORY_DEFAULT_SLOTS.TV.b2,
@@ -236,51 +315,54 @@ export function statusPacketToSerializedProfiles(
   };
 }
 
+function getSerializedProfileSlots(
+  serialized: SerializedPadProfiles,
+  id: HardwareProfileId
+): Record<HardwareSlotId, string> {
+  if (id === 'TV') return serialized.tv;
+  if (id === 'HOST2') return serialized.h2;
+  if (id === 'HOST3') return serialized.h3;
+  return serialized.h1;
+}
+
+function getSerializedProfileName(
+  serialized: SerializedPadProfiles,
+  id: HardwareProfileId
+): string {
+  if (id === 'TV') return serialized.tv_name || 'TV';
+  if (id === 'HOST2') return serialized.h2_name || 'Host 2';
+  if (id === 'HOST3') return serialized.h3_name || 'Host 3';
+  return serialized.h1_name || 'Host 1';
+}
+
 function serializedProfilesToStudioProfiles(
   serialized: SerializedPadProfiles,
   overrides: Record<string, KeyAppearance>,
   repeatConfigs?: SlotRepeatMap,
-  prevProfiles?: [StudioProfile, StudioProfile]
-): [StudioProfile, StudioProfile] {
-  const prevMac = prevProfiles?.find(p => p.id === 'MAC');
-  const prevTv = prevProfiles?.find(p => p.id === 'TV');
+  prevProfiles?: StudioProfile[]
+): StudioProfile[] {
+  return HARDWARE_PROFILE_IDS.map(profId => {
+    const prevProf = prevProfiles?.find(p => p.id === profId);
+    const slots = getSerializedProfileSlots(serialized, profId);
+    const name = getSerializedProfileName(serialized, profId);
+    const built = buildHardwareProfile(profId, name, slots, prevProf, repeatConfigs);
 
-  const nextMac = buildHardwareProfile(
-    'MAC',
-    serialized.mac_name || 'Mac',
-    serialized.mac,
-    prevMac,
-    repeatConfigs
-  );
-  const nextTv = buildHardwareProfile(
-    'TV',
-    serialized.tv_name || 'TV',
-    serialized.tv,
-    prevTv,
-    repeatConfigs
-  );
+    ACTION_KEY_IDS.forEach(kid => {
+      const slot = KEY_TO_SLOT[kid];
+      const ov =
+        overrides[`${profId}:${kid}`] ||
+        (profId === 'HOST1' ? overrides[`MAC:${kid}`] : undefined);
+      if (ov) {
+        built.layers[0].keys[kid].appearance = deriveAppearanceForAction(
+          slots[slot],
+          ov,
+          built.layers[0].keys[kid].triggers.tap.repeatConfig
+        );
+      }
+    });
 
-  ACTION_KEY_IDS.forEach(kid => {
-    const slot = KEY_TO_SLOT[kid];
-    const mOv = overrides[`MAC:${kid}`];
-    if (mOv) {
-      nextMac.layers[0].keys[kid].appearance = deriveAppearanceForAction(
-        serialized.mac[slot],
-        mOv,
-        nextMac.layers[0].keys[kid].triggers.tap.repeatConfig
-      );
-    }
-    const tOv = overrides[`TV:${kid}`];
-    if (tOv) {
-      nextTv.layers[0].keys[kid].appearance = deriveAppearanceForAction(
-        serialized.tv[slot],
-        tOv,
-        nextTv.layers[0].keys[kid].triggers.tap.repeatConfig
-      );
-    }
+    return built;
   });
-
-  return [nextMac, nextTv];
 }
 
 function computeProfileDiffs(
@@ -289,33 +371,40 @@ function computeProfileDiffs(
 ): SyncConflictDiffItem[] {
   const diffs: SyncConflictDiffItem[] = [];
 
-  if (website.mac_name && website.mac_name !== pad.mac_name) {
-    diffs.push({
-      id: 'mac_name',
-      label: 'MAC Profile Alias',
-      websiteValue: website.mac_name,
-      padValue: pad.mac_name
-    });
-  }
-  if (website.tv_name && website.tv_name !== pad.tv_name) {
-    diffs.push({
-      id: 'tv_name',
-      label: 'TV Profile Alias',
-      websiteValue: website.tv_name,
-      padValue: pad.tv_name
-    });
+  const nameChecks: {
+    id: string;
+    label: string;
+    web: string;
+    pad: string;
+  }[] = [
+    { id: 'h1_name', label: 'Host 1 Alias', web: website.h1_name, pad: pad.h1_name },
+    { id: 'h2_name', label: 'Host 2 Alias', web: website.h2_name, pad: pad.h2_name },
+    { id: 'h3_name', label: 'Host 3 Alias', web: website.h3_name, pad: pad.h3_name },
+    { id: 'tv_name', label: 'TV Profile Alias', web: website.tv_name, pad: pad.tv_name }
+  ];
+
+  for (const nc of nameChecks) {
+    if (nc.web && nc.web !== nc.pad) {
+      diffs.push({
+        id: nc.id,
+        label: nc.label,
+        websiteValue: nc.web,
+        padValue: nc.pad
+      });
+    }
   }
 
-  for (const profId of ['MAC', 'TV'] as const) {
-    const webSlots = profId === 'MAC' ? website.mac : website.tv;
-    const padSlots = profId === 'MAC' ? pad.mac : pad.tv;
+  for (const profId of HARDWARE_PROFILE_IDS) {
+    const webSlots = getSerializedProfileSlots(website, profId);
+    const padSlots = getSerializedProfileSlots(pad, profId);
+    const profLabel = defaultProfileAlias(profId);
     for (const slot of HARDWARE_SLOTS) {
       const wVal = webSlots[slot] || '';
       const pVal = padSlots[slot] || '';
       if (wVal && wVal !== pVal) {
         diffs.push({
           id: `${profId}-${slot}`,
-          label: `${profId} · ${SLOT_LABELS[slot].short}`,
+          label: `${profLabel} · ${SLOT_LABELS[slot].short}`,
           websiteValue: `${describeFirmwareAction(wVal).shortLabel} (${wVal.replace(/\n/g, '\\n')})`,
           padValue: pVal
             ? `${describeFirmwareAction(pVal).shortLabel} (${pVal.replace(/\n/g, '\\n')})`
@@ -329,29 +418,47 @@ function computeProfileDiffs(
 }
 
 export function buildBackupFromProfiles(
-  profiles: [StudioProfile, StudioProfile]
+  profiles: StudioProfile[]
 ): HardwareBackupPayload {
-  const macProf = profiles.find(p => p.id === 'MAC') || profiles[0];
-  const tvProf = profiles.find(p => p.id === 'TV') || profiles[1];
-  const mac = extractProfileSlots(macProf);
+  const h1Prof =
+    profiles.find(p => p.id === 'HOST1') ||
+    buildHardwareProfile('HOST1', 'Host 1', FACTORY_DEFAULT_SLOTS.HOST1);
+  const h2Prof =
+    profiles.find(p => p.id === 'HOST2') ||
+    buildHardwareProfile('HOST2', 'Host 2', FACTORY_DEFAULT_SLOTS.HOST2);
+  const h3Prof =
+    profiles.find(p => p.id === 'HOST3') ||
+    buildHardwareProfile('HOST3', 'Host 3', FACTORY_DEFAULT_SLOTS.HOST3);
+  const tvProf =
+    profiles.find(p => p.id === 'TV') ||
+    buildHardwareProfile('TV', 'TV', FACTORY_DEFAULT_SLOTS.TV);
+
+  const h1 = extractProfileSlots(h1Prof);
+  const h2 = extractProfileSlots(h2Prof);
+  const h3 = extractProfileSlots(h3Prof);
   const tv = extractProfileSlots(tvProf);
+
+  const h1Name = sanitizeFirmwareAlias(h1Prof.name, 'HOST1');
+  const h2Name = sanitizeFirmwareAlias(h2Prof.name, 'HOST2');
+  const h3Name = sanitizeFirmwareAlias(h3Prof.name, 'HOST3');
+  const tvName = sanitizeFirmwareAlias(tvProf.name, 'TV');
 
   return {
     schema: 'studio-pad-config',
-    version: 1,
-    mac_name: sanitizeFirmwareAlias(macProf.name, 'MAC'),
-    tv_name: sanitizeFirmwareAlias(tvProf.name, 'TV'),
-    mac_b1: mac.b1 || FACTORY_DEFAULT_SLOTS.MAC.b1,
-    mac_b2: mac.b2 || FACTORY_DEFAULT_SLOTS.MAC.b2,
-    mac_b3: mac.b3 || FACTORY_DEFAULT_SLOTS.MAC.b3,
-    mac_b4: mac.b4 || FACTORY_DEFAULT_SLOTS.MAC.b4,
-    mac_b5: mac.b5 || FACTORY_DEFAULT_SLOTS.MAC.b5,
-    mac_b6: mac.b6 || FACTORY_DEFAULT_SLOTS.MAC.b6,
-    mac_b7: mac.b7 || FACTORY_DEFAULT_SLOTS.MAC.b7,
-    mac_b8: mac.b8 || FACTORY_DEFAULT_SLOTS.MAC.b8,
-    mac_dial: mac.dial || FACTORY_DEFAULT_SLOTS.MAC.dial,
-    mac_enc_cw: mac.enc_cw || FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
-    mac_enc_ccw: mac.enc_ccw || FACTORY_DEFAULT_SLOTS.MAC.enc_ccw,
+    version: 2,
+    tv_name: tvName,
+    h1_name: h1Name,
+    h2_name: h2Name,
+    h3_name: h3Name,
+    ...Object.fromEntries(
+      HARDWARE_SLOTS.map(s => [`h1_${s}`, h1[s] || FACTORY_DEFAULT_SLOTS.HOST1[s]])
+    ),
+    ...Object.fromEntries(
+      HARDWARE_SLOTS.map(s => [`h2_${s}`, h2[s] || FACTORY_DEFAULT_SLOTS.HOST2[s]])
+    ),
+    ...Object.fromEntries(
+      HARDWARE_SLOTS.map(s => [`h3_${s}`, h3[s] || FACTORY_DEFAULT_SLOTS.HOST3[s]])
+    ),
     tv_b1: tv.b1 || FACTORY_DEFAULT_SLOTS.TV.b1,
     tv_b2: tv.b2 || FACTORY_DEFAULT_SLOTS.TV.b2,
     tv_b3: tv.b3 || FACTORY_DEFAULT_SLOTS.TV.b3,
@@ -362,7 +469,11 @@ export function buildBackupFromProfiles(
     tv_b8: tv.b8 || FACTORY_DEFAULT_SLOTS.TV.b8,
     tv_dial: tv.dial || FACTORY_DEFAULT_SLOTS.TV.dial,
     tv_enc_cw: tv.enc_cw || FACTORY_DEFAULT_SLOTS.TV.enc_cw,
-    tv_enc_ccw: tv.enc_ccw || FACTORY_DEFAULT_SLOTS.TV.enc_ccw
+    tv_enc_ccw: tv.enc_ccw || FACTORY_DEFAULT_SLOTS.TV.enc_ccw,
+    mac_name: h1Name,
+    ...Object.fromEntries(
+      HARDWARE_SLOTS.map(s => [`mac_${s}`, h1[s] || FACTORY_DEFAULT_SLOTS.HOST1[s]])
+    )
   };
 }
 
@@ -382,7 +493,9 @@ function mergeDiscoveredCustomMacros(
 ): CustomMacroItem[] {
   const merged = [...existing];
   const allEntries = [
-    ...Object.entries(serialized.mac).map(([slot, act]) => ({ profile: 'MAC', slot, act })),
+    ...Object.entries(serialized.h1).map(([slot, act]) => ({ profile: 'HOST1', slot, act })),
+    ...Object.entries(serialized.h2).map(([slot, act]) => ({ profile: 'HOST2', slot, act })),
+    ...Object.entries(serialized.h3).map(([slot, act]) => ({ profile: 'HOST3', slot, act })),
     ...Object.entries(serialized.tv).map(([slot, act]) => ({ profile: 'TV', slot, act }))
   ];
   for (const entry of allEntries) {
@@ -397,7 +510,7 @@ function mergeDiscoveredCustomMacros(
         const desc = describeFirmwareAction(entry.act, slotRc);
         merged.push({
           id: `dev-macro-${entry.profile}-${entry.slot}-${merged.length}`,
-          name: `${desc.fullLabel} (${entry.profile} ${entry.slot.toUpperCase()})`,
+          name: `${desc.fullLabel} (${defaultProfileAlias(entry.profile as HardwareProfileId)} ${entry.slot.toUpperCase()})`,
           action: entry.act,
           repeatConfig: slotRc,
           createdAt: 'Synced from Pad',
@@ -449,7 +562,7 @@ export function useStudioState(
               initialUiPrefs.appearanceOverrides,
               rec.repeatConfigs
             ),
-            activeProfileId: rec.profiles.active || 'MAC',
+            activeProfileId: rec.profiles.active || 'HOST1',
             customMacros: mergeDiscoveredCustomMacros(
               initialUiPrefs.customMacros,
               rec.profiles,
@@ -470,7 +583,7 @@ export function useStudioState(
             initialUiPrefs.appearanceOverrides,
             draft.repeatConfigs
           ),
-          activeProfileId: draft.profiles.active || 'MAC',
+          activeProfileId: draft.profiles.active || 'HOST1',
           customMacros: mergeDiscoveredCustomMacros(
             initialUiPrefs.customMacros,
             draft.profiles,
@@ -480,12 +593,16 @@ export function useStudioState(
       }
     } catch {}
 
-    // Offline pre-connect state uses factory default slots so every control can be inspected or tested offline
+    // Offline pre-connect state uses universal factory defaults across Host 1–3 + TV
     const factorySerialized: SerializedPadProfiles = {
-      active: 'MAC',
-      mac_name: 'Mac',
+      active: 'HOST1',
+      h1_name: 'Host 1',
+      h2_name: 'Host 2',
+      h3_name: 'Host 3',
       tv_name: 'TV',
-      mac: { ...FACTORY_DEFAULT_SLOTS.MAC },
+      h1: { ...FACTORY_DEFAULT_SLOTS.HOST1 },
+      h2: { ...FACTORY_DEFAULT_SLOTS.HOST2 },
+      h3: { ...FACTORY_DEFAULT_SLOTS.HOST3 },
       tv: { ...FACTORY_DEFAULT_SLOTS.TV }
     };
 
@@ -498,7 +615,7 @@ export function useStudioState(
         factorySerialized,
         initialUiPrefs.appearanceOverrides
       ),
-      activeProfileId: 'MAC' as HardwareProfileId,
+      activeProfileId: 'HOST1' as HardwareProfileId,
       customMacros: initialUiPrefs.customMacros
     };
   }, [initialUiPrefs]);
@@ -843,9 +960,31 @@ export function useStudioState(
       }
 
       if (e.event === 'profile') {
-        const nextActive: HardwareProfileId =
-          (e.active || e.profile) === 'TV' ? 'TV' : 'MAC';
+        const currentSlot = usbHardware.info.telemetry?.bleActiveHost ?? 1;
+        const nextActive = normalizeHardwareProfileId(
+          e.active || e.profile,
+          currentSlot
+        );
         setSnapshot(prev => {
+          const updated = { ...prev, activeProfileId: nextActive };
+          const devId = usbHardware.info.deviceId || deviceIdRef.current;
+          if (devId && !dirtyRef.current) {
+            writeStoredPadRecord(devId, {
+              rev: revRef.current,
+              profiles: snapshotToSerializedProfiles(updated.profiles, nextActive),
+              dirty: false,
+              repeatConfigs: extractRepeatMapFromProfiles(updated.profiles)
+            });
+          }
+          return updated;
+        });
+      } else if (e.event === 'ble_host') {
+        const slotNum = Number(e.ble_slot);
+        const nextSlot: BleHostSlot = slotNum === 2 ? 2 : slotNum === 3 ? 3 : 1;
+        const nextHostProf = bleSlotToProfileId(nextSlot);
+        setSnapshot(prev => {
+          const nextActive: HardwareProfileId =
+            prev.activeProfileId === 'TV' && e.active === 'TV' ? 'TV' : nextHostProf;
           const updated = { ...prev, activeProfileId: nextActive };
           const devId = usbHardware.info.deviceId || deviceIdRef.current;
           if (devId && !dirtyRef.current) {
@@ -869,30 +1008,14 @@ export function useStudioState(
 
         if (!dirtyRef.current) {
           const devId = usbHardware.info.deviceId || deviceIdRef.current || 'studio-pad';
-          if (e.profiles && Array.isArray(e.profiles.items)) {
-            const padProfiles = statusPacketToSerializedProfiles({
-              device: {
-                id: devId,
-                name: usbHardware.info.deviceName,
-                firmware: usbHardware.info.firmwareVersion
-              },
-              rev: e.rev ?? revRef.current,
-              profiles: {
-                active: e.profiles.active || snapshotRef.current.activeProfileId,
-                items: e.profiles.items
-              }
-            });
-            adoptPadState(devId, e.rev ?? revRef.current, padProfiles);
-          } else {
-            usbHardware
-              .fetchStatus()
-              .then(st => {
-                const stId = st.device?.id || devId;
-                const stRev = typeof st.rev === 'number' ? st.rev : revRef.current;
-                adoptPadState(stId, stRev, statusPacketToSerializedProfiles(st));
-              })
-              .catch(() => {});
-          }
+          usbHardware
+            .fetchStatus()
+            .then(st => {
+              const stId = st.device?.id || devId;
+              const stRev = typeof st.rev === 'number' ? st.rev : revRef.current;
+              adoptPadState(stId, stRev, statusPacketToSerializedProfiles(st));
+            })
+            .catch(() => {});
         }
       }
     });
@@ -915,22 +1038,33 @@ export function useStudioState(
     if (!conflictPrompt) return;
     const { deviceId, websiteProfiles, padProfiles } = conflictPrompt;
 
-    const mergedMac: Record<HardwareSlotId, string> = { ...padProfiles.mac };
-    const mergedTv: Record<HardwareSlotId, string> = { ...padProfiles.tv };
-    for (const s of HARDWARE_SLOTS) {
-      if (isValidFirmwareAction(websiteProfiles.mac[s])) {
-        mergedMac[s] = websiteProfiles.mac[s];
+    const mergeMap = (
+      padMap: Record<HardwareSlotId, string>,
+      webMap: Record<HardwareSlotId, string>
+    ): Record<HardwareSlotId, string> => {
+      const out = { ...padMap };
+      for (const s of HARDWARE_SLOTS) {
+        if (isValidFirmwareAction(webMap[s])) {
+          out[s] = webMap[s];
+        }
       }
-      if (isValidFirmwareAction(websiteProfiles.tv[s])) {
-        mergedTv[s] = websiteProfiles.tv[s];
-      }
-    }
+      return out;
+    };
+
+    const mergedH1 = mergeMap(padProfiles.h1, websiteProfiles.h1);
+    const mergedH2 = mergeMap(padProfiles.h2, websiteProfiles.h2);
+    const mergedH3 = mergeMap(padProfiles.h3, websiteProfiles.h3);
+    const mergedTv = mergeMap(padProfiles.tv, websiteProfiles.tv);
 
     const mergedSerialized: SerializedPadProfiles = {
       active: websiteProfiles.active || padProfiles.active,
-      mac_name: sanitizeFirmwareAlias(websiteProfiles.mac_name || padProfiles.mac_name, 'MAC'),
+      h1_name: sanitizeFirmwareAlias(websiteProfiles.h1_name || padProfiles.h1_name, 'HOST1'),
+      h2_name: sanitizeFirmwareAlias(websiteProfiles.h2_name || padProfiles.h2_name, 'HOST2'),
+      h3_name: sanitizeFirmwareAlias(websiteProfiles.h3_name || padProfiles.h3_name, 'HOST3'),
       tv_name: sanitizeFirmwareAlias(websiteProfiles.tv_name || padProfiles.tv_name, 'TV'),
-      mac: mergedMac,
+      h1: mergedH1,
+      h2: mergedH2,
+      h3: mergedH3,
       tv: mergedTv
     };
 
@@ -941,16 +1075,24 @@ export function useStudioState(
 
     try {
       latestConfigEventRevRef.current = null;
-      await usbHardware.saveFullProfile('MAC', mergedMac);
+      await usbHardware.saveFullProfile('HOST1', mergedH1);
+      await usbHardware.saveFullProfile('HOST2', mergedH2);
+      await usbHardware.saveFullProfile('HOST3', mergedH3);
       await usbHardware.saveFullProfile('TV', mergedTv);
 
-      if (mergedSerialized.mac_name !== padProfiles.mac_name) {
-        await usbHardware.renameProfile('MAC', mergedSerialized.mac_name);
+      if (mergedSerialized.h1_name !== padProfiles.h1_name) {
+        await usbHardware.renameProfile('HOST1', mergedSerialized.h1_name);
+      }
+      if (mergedSerialized.h2_name !== padProfiles.h2_name) {
+        await usbHardware.renameProfile('HOST2', mergedSerialized.h2_name);
+      }
+      if (mergedSerialized.h3_name !== padProfiles.h3_name) {
+        await usbHardware.renameProfile('HOST3', mergedSerialized.h3_name);
       }
       if (mergedSerialized.tv_name !== padProfiles.tv_name) {
         await usbHardware.renameProfile('TV', mergedSerialized.tv_name);
       }
-      if (mergedSerialized.active !== padProfiles.active) {
+      if ((mergedSerialized.active === 'TV') !== (padProfiles.active === 'TV')) {
         await usbHardware.activateProfile(mergedSerialized.active).catch(() => {});
       }
 
@@ -1176,20 +1318,34 @@ export function useStudioState(
     });
 
     if (usbHardware.info.connected) {
-      usbHardware.activateProfile(profileId).catch((err: any) => {
-        onToast(err?.message || 'Could not switch profile on pad', 'error');
-      });
+      const liveBleSlot = usbHardware.info.telemetry?.bleActiveHost ?? 1;
+      const liveHostProf = bleSlotToProfileId(liveBleSlot);
+      // Switch live hardware mode without rebooting when toggling between TV and the active BLE host
+      if (profileId === 'TV' || profileId === liveHostProf) {
+        if (usbHardware.info.telemetry?.activeProfile !== profileId) {
+          usbHardware.activateProfile(profileId).catch((err: any) => {
+            onToast(err?.message || 'Could not switch profile on pad', 'error');
+          });
+        }
+      }
     }
   }, [onToast]);
 
   const toggleActiveProfile = useCallback(() => {
+    const liveSlot =
+      usbHardware.info.telemetry?.bleActiveHost ??
+      profileIdToBleSlot(snapshotRef.current.activeProfileId) ??
+      1;
+    const hostProf = bleSlotToProfileId(liveSlot);
     const nextId: HardwareProfileId =
-      snapshotRef.current.activeProfileId === 'MAC' ? 'TV' : 'MAC';
+      snapshotRef.current.activeProfileId === 'TV' ? hostProf : 'TV';
+    const nextProfObj = snapshotRef.current.profiles.find(p => p.id === nextId);
+    const label = nextProfObj?.name || defaultProfileAlias(nextId);
     selectProfile(nextId);
     onToast(
       usbHardware.info.connected
-        ? `Activated ${nextId} profile on MacroPad`
-        : `Switched draft view to ${nextId}`
+        ? `Activated ${label} on MacroPad`
+        : `Switched draft view to ${label}`
     );
   }, [selectProfile, onToast]);
 
@@ -1206,7 +1362,7 @@ export function useStudioState(
         ...prevSnap,
         profiles: prevSnap.profiles.map(p =>
           p.id === profileId ? { ...p, name: rawName } : p
-        ) as [StudioProfile, StudioProfile]
+        )
       };
 
       setPast(h => [...h.slice(-34), prevSnap]);
@@ -1217,7 +1373,7 @@ export function useStudioState(
         prevSnap,
         nextSnap,
         () => usbHardware.renameProfile(profileId, rawName),
-        `Renamed ${profileId} profile to "${rawName}"`
+        `Renamed ${defaultProfileAlias(profileId)} to "${rawName}"`
       );
     },
     [onToast, runConnectedWrite]
@@ -1250,9 +1406,7 @@ export function useStudioState(
       );
       const nextSnap: WorkspaceSnapshot = {
         ...prevSnap,
-        profiles: prevSnap.profiles.map(p =>
-          p.id === target ? updatedTarget : p
-        ) as [StudioProfile, StudioProfile]
+        profiles: prevSnap.profiles.map(p => (p.id === target ? updatedTarget : p))
       };
 
       setPast(h => [...h.slice(-34), prevSnap]);
@@ -1263,7 +1417,7 @@ export function useStudioState(
         prevSnap,
         nextSnap,
         () => usbHardware.copyProfile(source, target),
-        `Copied ${source} → ${target}`
+        `Copied ${srcProf.name} → ${tgtProf.name}`
       );
     },
     [runConnectedWrite]
@@ -1328,7 +1482,7 @@ export function useStudioState(
             }
           ] as [typeof layer]
         };
-      }) as [StudioProfile, StudioProfile];
+      });
 
       let nextMacros = prevSnap.customMacros;
       if (isCustomDynamicAction(actionStr)) {
@@ -1425,9 +1579,7 @@ export function useStudioState(
 
       const nextSnap: WorkspaceSnapshot = {
         ...prevSnap,
-        profiles: prevSnap.profiles.map(p =>
-          p.id === profileId ? rebuilt : p
-        ) as [StudioProfile, StudioProfile]
+        profiles: prevSnap.profiles.map(p => (p.id === profileId ? rebuilt : p))
       };
 
       setPast(h => [...h.slice(-34), prevSnap]);
@@ -1458,14 +1610,17 @@ export function useStudioState(
 
   const resetBothProfilesToDefault = useCallback(async () => {
     const prevSnap = snapshotRef.current;
-    const nextProfiles: [StudioProfile, StudioProfile] = [
-      buildHardwareProfile('MAC', 'Mac', { ...FACTORY_DEFAULT_SLOTS.MAC }),
+    const nextProfiles: StudioProfile[] = [
+      buildHardwareProfile('HOST1', 'Host 1', { ...FACTORY_DEFAULT_SLOTS.HOST1 }),
+      buildHardwareProfile('HOST2', 'Host 2', { ...FACTORY_DEFAULT_SLOTS.HOST2 }),
+      buildHardwareProfile('HOST3', 'Host 3', { ...FACTORY_DEFAULT_SLOTS.HOST3 }),
       buildHardwareProfile('TV', 'TV', { ...FACTORY_DEFAULT_SLOTS.TV })
     ];
+    const activeHostSlot = usbHardware.info.telemetry?.bleActiveHost ?? 1;
     const nextSnap: WorkspaceSnapshot = {
       ...prevSnap,
       profiles: nextProfiles,
-      activeProfileId: 'MAC'
+      activeProfileId: bleSlotToProfileId(activeHostSlot)
     };
 
     setPast(h => [...h.slice(-34), prevSnap]);
@@ -1481,11 +1636,11 @@ export function useStudioState(
           const res = await usbHardware.resetHardwareDefaults();
           return res;
         },
-        'Reset both profiles to factory defaults'
+        'Restored all 3 BLE host profiles and TV to defaults'
       );
     } else {
       saveOfflineDraft(nextSnap);
-      onToast('Reset both profiles to factory defaults (offline draft)');
+      onToast('Restored all 4 profiles to defaults (offline draft)');
     }
   }, [onToast, runConnectedWrite, saveOfflineDraft]);
 
@@ -1531,7 +1686,7 @@ export function useStudioState(
               }
             ] as [typeof layer]
           };
-        }) as [StudioProfile, StudioProfile];
+        });
         return { ...prev, profiles: nextProfiles };
       });
     },
@@ -1549,6 +1704,7 @@ export function useStudioState(
       setAppearanceOverrides(ov => {
         const copy = { ...ov };
         delete copy[`${activeProfile.id}:${kid}`];
+        if (activeProfile.id === 'HOST1') delete copy[`MAC:${kid}`];
         return copy;
       });
 
@@ -1572,7 +1728,7 @@ export function useStudioState(
               }
             ] as [typeof layer]
           };
-        }) as [StudioProfile, StudioProfile]
+        })
       }));
       onToast(`Reset ${slot.toUpperCase()} keycap legend`);
     },
@@ -1605,7 +1761,7 @@ export function useStudioState(
               }
             ] as [typeof layer]
           };
-        }) as [StudioProfile, StudioProfile]
+        })
       }));
     },
     [activeProfile.id]
@@ -1692,68 +1848,75 @@ export function useStudioState(
   }, []);
 
   /**
-   * Restores a `studio-pad-config` JSON backup (supports 11-slot and legacy 5/7-slot files)
+   * Restores a `studio-pad-config` JSON backup (supports v2 4-profile backups and v1 legacy files)
    */
   const applyHardwareBackup = useCallback(
     async (backup: HardwareBackupPayload, repeatConfigs?: SlotRepeatMap) => {
       const prevSnap = snapshotRef.current;
-      const prevMacProf = prevSnap.profiles.find(p => p.id === 'MAC') || prevSnap.profiles[0];
-      const prevTvProf = prevSnap.profiles.find(p => p.id === 'TV') || prevSnap.profiles[1];
-      const prevMacSlots = extractProfileSlots(prevMacProf);
-      const prevTvSlots = extractProfileSlots(prevTvProf);
+      const prevH1 = prevSnap.profiles.find(p => p.id === 'HOST1');
+      const prevH2 = prevSnap.profiles.find(p => p.id === 'HOST2');
+      const prevH3 = prevSnap.profiles.find(p => p.id === 'HOST3');
+      const prevTv = prevSnap.profiles.find(p => p.id === 'TV');
 
-      const isLegacyFile =
-        !backup.mac_b5 &&
-        !backup.mac_b8 &&
-        !backup.tv_b5 &&
-        !backup.tv_b8;
-
-      const macSlots: Record<HardwareSlotId, string> = {
-        b1: backup.mac_b1 || FACTORY_DEFAULT_SLOTS.MAC.b1,
-        b2: backup.mac_b2 || FACTORY_DEFAULT_SLOTS.MAC.b2,
-        b3: backup.mac_b3 || FACTORY_DEFAULT_SLOTS.MAC.b3,
-        b4: backup.mac_b4 || FACTORY_DEFAULT_SLOTS.MAC.b4,
-        b5: backup.mac_b5 || prevMacSlots.b5 || FACTORY_DEFAULT_SLOTS.MAC.b5,
-        b6: backup.mac_b6 || prevMacSlots.b6 || FACTORY_DEFAULT_SLOTS.MAC.b6,
-        b7: backup.mac_b7 || prevMacSlots.b7 || FACTORY_DEFAULT_SLOTS.MAC.b7,
-        b8: backup.mac_b8 || prevMacSlots.b8 || FACTORY_DEFAULT_SLOTS.MAC.b8,
-        dial: backup.mac_dial || FACTORY_DEFAULT_SLOTS.MAC.dial,
-        enc_cw:
-          backup.mac_enc_cw || prevMacSlots.enc_cw || FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
-        enc_ccw:
-          backup.mac_enc_ccw || prevMacSlots.enc_ccw || FACTORY_DEFAULT_SLOTS.MAC.enc_ccw
+      const buildSlotsFromBackup = (
+        prefix: 'h1' | 'h2' | 'h3' | 'tv',
+        prevProf: StudioProfile | undefined,
+        defaults: Record<HardwareSlotId, string>,
+        allowLegacyMacFallback = false
+      ): Record<HardwareSlotId, string> => {
+        const prevSlots = prevProf ? extractProfileSlots(prevProf) : defaults;
+        const out = { ...defaults };
+        for (const s of HARDWARE_SLOTS) {
+          const direct = backup[`${prefix}_${s}`];
+          const legacy = allowLegacyMacFallback ? backup[`mac_${s}`] : undefined;
+          if (typeof direct === 'string' && direct.length > 0) {
+            out[s] = direct;
+          } else if (typeof legacy === 'string' && legacy.length > 0) {
+            out[s] = legacy;
+          } else {
+            out[s] = prevSlots[s] || defaults[s];
+          }
+        }
+        return out;
       };
 
-      const tvSlots: Record<HardwareSlotId, string> = {
-        b1: backup.tv_b1 || FACTORY_DEFAULT_SLOTS.TV.b1,
-        b2: backup.tv_b2 || FACTORY_DEFAULT_SLOTS.TV.b2,
-        b3: backup.tv_b3 || FACTORY_DEFAULT_SLOTS.TV.b3,
-        b4: backup.tv_b4 || FACTORY_DEFAULT_SLOTS.TV.b4,
-        b5: backup.tv_b5 || prevTvSlots.b5 || FACTORY_DEFAULT_SLOTS.TV.b5,
-        b6: backup.tv_b6 || prevTvSlots.b6 || FACTORY_DEFAULT_SLOTS.TV.b6,
-        b7: backup.tv_b7 || prevTvSlots.b7 || FACTORY_DEFAULT_SLOTS.TV.b7,
-        b8: backup.tv_b8 || prevTvSlots.b8 || FACTORY_DEFAULT_SLOTS.TV.b8,
-        dial: backup.tv_dial || FACTORY_DEFAULT_SLOTS.TV.dial,
-        enc_cw: backup.tv_enc_cw || prevTvSlots.enc_cw || FACTORY_DEFAULT_SLOTS.TV.enc_cw,
-        enc_ccw: backup.tv_enc_ccw || prevTvSlots.enc_ccw || FACTORY_DEFAULT_SLOTS.TV.enc_ccw
-      };
+      const h1Slots = buildSlotsFromBackup('h1', prevH1, FACTORY_DEFAULT_SLOTS.HOST1, true);
+      const h2Slots = buildSlotsFromBackup('h2', prevH2, FACTORY_DEFAULT_SLOTS.HOST2, false);
+      const h3Slots = buildSlotsFromBackup('h3', prevH3, FACTORY_DEFAULT_SLOTS.HOST3, false);
+      const tvSlots = buildSlotsFromBackup('tv', prevTv, FACTORY_DEFAULT_SLOTS.TV, false);
+
+      const normalizedRepeats = migrateRepeatConfigs(repeatConfigs);
 
       const nextSnap: WorkspaceSnapshot = {
         ...prevSnap,
         profiles: [
           buildHardwareProfile(
-            'MAC',
-            backup.mac_name || 'Mac',
-            macSlots,
-            prevMacProf,
-            repeatConfigs
+            'HOST1',
+            backup.h1_name || backup.mac_name || prevH1?.name || 'Host 1',
+            h1Slots,
+            prevH1,
+            normalizedRepeats
+          ),
+          buildHardwareProfile(
+            'HOST2',
+            backup.h2_name || prevH2?.name || 'Host 2',
+            h2Slots,
+            prevH2,
+            normalizedRepeats
+          ),
+          buildHardwareProfile(
+            'HOST3',
+            backup.h3_name || prevH3?.name || 'Host 3',
+            h3Slots,
+            prevH3,
+            normalizedRepeats
           ),
           buildHardwareProfile(
             'TV',
-            backup.tv_name || 'TV',
+            backup.tv_name || prevTv?.name || 'TV',
             tvSlots,
-            prevTvProf,
-            repeatConfigs
+            prevTv,
+            normalizedRepeats
           )
         ]
       };
@@ -1762,13 +1925,14 @@ export function useStudioState(
       setFuture([]);
       setSnapshot(nextSnap);
 
+      const isV2 = backup.version === 2 || Boolean(backup.h1_b1);
       await runConnectedWrite(
         prevSnap,
         nextSnap,
         () => usbHardware.importHardwareConfig(backup),
-        isLegacyFile
-          ? 'Restored legacy backup configuration (Keys 5–8 preserved)'
-          : 'Restored 11-control backup configuration'
+        isV2
+          ? 'Restored all 3 BLE host profiles and TV configuration'
+          : 'Restored v1 backup configuration into Host 1 & TV'
       );
     },
     [runConnectedWrite]
@@ -1786,34 +1950,37 @@ export function useStudioState(
       payload = buildBackupFromProfiles(snapshotRef.current.profiles);
     }
 
-    // Ensure strict studio-pad-config schema with zero passwords or tokens
+    const fallback = buildBackupFromProfiles(snapshotRef.current.profiles);
     const cleanPayload: HardwareBackupPayload = {
       schema: 'studio-pad-config',
-      version: 1,
-      mac_name: payload.mac_name,
-      tv_name: payload.tv_name,
-      mac_b1: payload.mac_b1,
-      mac_b2: payload.mac_b2,
-      mac_b3: payload.mac_b3,
-      mac_b4: payload.mac_b4,
-      mac_b5: payload.mac_b5 || FACTORY_DEFAULT_SLOTS.MAC.b5,
-      mac_b6: payload.mac_b6 || FACTORY_DEFAULT_SLOTS.MAC.b6,
-      mac_b7: payload.mac_b7 || FACTORY_DEFAULT_SLOTS.MAC.b7,
-      mac_b8: payload.mac_b8 || FACTORY_DEFAULT_SLOTS.MAC.b8,
-      mac_dial: payload.mac_dial,
-      mac_enc_cw: payload.mac_enc_cw,
-      mac_enc_ccw: payload.mac_enc_ccw,
-      tv_b1: payload.tv_b1,
-      tv_b2: payload.tv_b2,
-      tv_b3: payload.tv_b3,
-      tv_b4: payload.tv_b4,
-      tv_b5: payload.tv_b5 || FACTORY_DEFAULT_SLOTS.TV.b5,
-      tv_b6: payload.tv_b6 || FACTORY_DEFAULT_SLOTS.TV.b6,
-      tv_b7: payload.tv_b7 || FACTORY_DEFAULT_SLOTS.TV.b7,
-      tv_b8: payload.tv_b8 || FACTORY_DEFAULT_SLOTS.TV.b8,
-      tv_dial: payload.tv_dial,
-      tv_enc_cw: payload.tv_enc_cw,
-      tv_enc_ccw: payload.tv_enc_ccw
+      version: 2,
+      tv_name: payload.tv_name || fallback.tv_name,
+      h1_name: payload.h1_name || payload.mac_name || fallback.h1_name,
+      h2_name: payload.h2_name || fallback.h2_name,
+      h3_name: payload.h3_name || fallback.h3_name,
+      ...Object.fromEntries(
+        HARDWARE_SLOTS.map(s => [
+          `h1_${s}`,
+          payload[`h1_${s}`] || payload[`mac_${s}`] || fallback[`h1_${s}`]
+        ])
+      ),
+      ...Object.fromEntries(
+        HARDWARE_SLOTS.map(s => [`h2_${s}`, payload[`h2_${s}`] || fallback[`h2_${s}`]])
+      ),
+      ...Object.fromEntries(
+        HARDWARE_SLOTS.map(s => [`h3_${s}`, payload[`h3_${s}`] || fallback[`h3_${s}`]])
+      ),
+      tv_b1: payload.tv_b1 || fallback.tv_b1,
+      tv_b2: payload.tv_b2 || fallback.tv_b2,
+      tv_b3: payload.tv_b3 || fallback.tv_b3,
+      tv_b4: payload.tv_b4 || fallback.tv_b4,
+      tv_b5: payload.tv_b5 || fallback.tv_b5,
+      tv_b6: payload.tv_b6 || fallback.tv_b6,
+      tv_b7: payload.tv_b7 || fallback.tv_b7,
+      tv_b8: payload.tv_b8 || fallback.tv_b8,
+      tv_dial: payload.tv_dial || fallback.tv_dial,
+      tv_enc_cw: payload.tv_enc_cw || fallback.tv_enc_cw,
+      tv_enc_ccw: payload.tv_enc_ccw || fallback.tv_enc_ccw
     };
 
     const blob = new Blob([JSON.stringify(cleanPayload, null, 2)], {
@@ -1827,8 +1994,8 @@ export function useStudioState(
     setTimeout(() => URL.revokeObjectURL(url), 1500);
     onToast(
       usbHardware.info.connected
-        ? 'Downloaded studio-pad-backup.json from MacroPad'
-        : 'Downloaded studio-pad-backup.json'
+        ? 'Downloaded studio-pad-backup.json (v2 · 4 profiles) from MacroPad'
+        : 'Downloaded studio-pad-backup.json (v2 · 4 profiles)'
     );
   }, [onToast]);
 
@@ -1840,7 +2007,7 @@ export function useStudioState(
           const parsed = JSON.parse(String(reader.result));
           if (
             parsed?.schema === 'studio-pad-config' &&
-            parsed.mac_b1 &&
+            (parsed.h1_b1 || parsed.mac_b1) &&
             parsed.tv_b1
           ) {
             await applyHardwareBackup(parsed as HardwareBackupPayload);
@@ -1870,14 +2037,16 @@ export function useStudioState(
       localStorage.removeItem(UI_PREFS_KEY);
     } catch {}
 
-    const factoryProfiles: [StudioProfile, StudioProfile] = [
-      buildHardwareProfile('MAC', 'Mac', { ...FACTORY_DEFAULT_SLOTS.MAC }),
+    const factoryProfiles: StudioProfile[] = [
+      buildHardwareProfile('HOST1', 'Host 1', { ...FACTORY_DEFAULT_SLOTS.HOST1 }),
+      buildHardwareProfile('HOST2', 'Host 2', { ...FACTORY_DEFAULT_SLOTS.HOST2 }),
+      buildHardwareProfile('HOST3', 'Host 3', { ...FACTORY_DEFAULT_SLOTS.HOST3 }),
       buildHardwareProfile('TV', 'TV', { ...FACTORY_DEFAULT_SLOTS.TV })
     ];
 
     setSnapshot({
       profiles: factoryProfiles,
-      activeProfileId: 'MAC',
+      activeProfileId: 'HOST1',
       customMacros: []
     });
     setUserPresets([]);

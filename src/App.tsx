@@ -10,7 +10,9 @@ import {
   HardwareProfileId,
   HardwareSlotId,
   KeyId,
-  SidebarSection
+  SidebarSection,
+  bleSlotToProfileId,
+  profileShortTag
 } from './types/studio';
 import {
   ToastVariant,
@@ -196,18 +198,24 @@ export default function App() {
 
   const handleSwitchBleHost = useCallback(
     async (slot: BleHostSlot) => {
+      const targetProfId = bleSlotToProfileId(slot);
+      const targetProf = studio.profiles.find(p => p.id === targetProfId);
+      const friendlyName = targetProf?.name || `Host ${slot}`;
+
       if (!connection.connected) {
-        showToast('Connect MacroPad via USB (or start Demo Mode) to switch BLE host', 'error');
+        studio.selectProfile(targetProfId);
+        showToast(`Editing ${friendlyName} ([H${slot}]) — connect USB to switch hardware BLE slot`);
         return;
       }
       try {
         const res = await usbHardware.switchBleHost(slot);
-        showToast(res.message || `Switched to Host ${slot} (Studio Pad ${slot})`);
+        studio.selectProfile(targetProfId);
+        showToast(res.message || `Switched to ${friendlyName} (Studio Pad ${slot})`);
       } catch (err: any) {
         showToast(err?.message || 'Could not switch Bluetooth host', 'error');
       }
     },
-    [connection.connected, showToast]
+    [connection.connected, showToast, studio]
   );
 
   const isEncoderControlSelected =
@@ -265,17 +273,27 @@ export default function App() {
     [studio]
   );
 
-  const topBarCopyDiffRows: DiffPreviewRow[] = useMemo(() => {
-    if (!pendingCopyPair) return [];
+  const pendingCopyLabels = useMemo(() => {
+    if (!pendingCopyPair) return null;
     const srcProf =
       studio.profiles.find(p => p.id === pendingCopyPair.source) || studio.profiles[0];
     const tgtProf =
-      studio.profiles.find(p => p.id === pendingCopyPair.target) || studio.profiles[1];
-    const srcSlots = extractProfileSlots(srcProf);
-    const tgtSlots = extractProfileSlots(tgtProf);
+      studio.profiles.find(p => p.id === pendingCopyPair.target) || studio.profiles[0];
+    return {
+      srcProf,
+      tgtProf,
+      srcLabel: `${srcProf.name} (${profileShortTag(pendingCopyPair.source)})`,
+      tgtLabel: `${tgtProf.name} (${profileShortTag(pendingCopyPair.target)})`
+    };
+  }, [pendingCopyPair, studio.profiles]);
+
+  const topBarCopyDiffRows: DiffPreviewRow[] = useMemo(() => {
+    if (!pendingCopyPair || !pendingCopyLabels) return [];
+    const srcSlots = extractProfileSlots(pendingCopyLabels.srcProf);
+    const tgtSlots = extractProfileSlots(pendingCopyLabels.tgtProf);
     return HARDWARE_SLOTS.map(slot => ({
       id: `${pendingCopyPair.target}-${slot}`,
-      slotLabel: `${pendingCopyPair.target} · ${SLOT_LABELS[slot].short}`,
+      slotLabel: `${profileShortTag(pendingCopyPair.target)} · ${SLOT_LABELS[slot].short}`,
       beforeLabel: tgtSlots[slot]
         ? describeFirmwareAction(tgtSlots[slot]).shortLabel
         : 'Unassigned',
@@ -284,7 +302,7 @@ export default function App() {
         : 'Unassigned',
       changed: tgtSlots[slot] !== srcSlots[slot]
     }));
-  }, [pendingCopyPair, studio.profiles]);
+  }, [pendingCopyPair, pendingCopyLabels]);
 
   return (
     <div className="h-[100dvh] w-full max-w-[100vw] overflow-x-hidden overflow-y-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)] flex flex-col">
@@ -385,6 +403,7 @@ export default function App() {
                 studio.updateSettings({ encoderPlacement: placement })
               }
               onToggleHardwareMode={studio.toggleActiveProfile}
+              onSelectProfile={studio.selectProfile}
               onConnectUsbPad={handleConnectUsbPad}
               onStartDemoMode={handleStartDemoMode}
               onPullFromUsb={handlePullFromUsb}
@@ -434,6 +453,7 @@ export default function App() {
               selectedKeyConfig && (
                 <ButtonInspector
                   keyConfig={selectedKeyConfig}
+                  profiles={studio.profiles}
                   activeProfileId={studio.activeProfile.id}
                   activeProfileName={studio.activeProfile.name}
                   customMacros={studio.customMacros}
@@ -456,6 +476,7 @@ export default function App() {
                     studio.resetKeyAppearance(selectedKeyConfig.id)
                   }
                   onToggleProfileMode={studio.toggleActiveProfile}
+                  onSelectProfile={studio.selectProfile}
                   onSwitchBleHost={handleSwitchBleHost}
                   onTestBinding={binding => {
                     handleExecuteHardwareBinding(binding);
@@ -516,6 +537,7 @@ export default function App() {
 
         {activeSection === 'settings' && (
           <SettingsView
+            profiles={studio.profiles}
             settings={studio.settings}
             connection={connection}
             syncStatus={studio.syncStatus}
@@ -523,6 +545,7 @@ export default function App() {
             currentDeviceId={studio.currentDeviceId}
             onUpdateSettings={studio.updateSettings}
             onPullFromUsb={handlePullFromUsb}
+            onSwitchBleHost={handleSwitchBleHost}
             onResetBothProfiles={studio.resetBothProfilesToDefault}
             onClearLocalCache={studio.clearLocalUnSyncedState}
             onToast={showToast}
@@ -558,18 +581,20 @@ export default function App() {
       <DiffConfirmModal
         isOpen={pendingCopyPair !== null}
         title={
-          pendingCopyPair
-            ? `Copy ${pendingCopyPair.source} → ${pendingCopyPair.target}?`
+          pendingCopyLabels
+            ? `Copy ${pendingCopyLabels.srcLabel} → ${pendingCopyLabels.tgtLabel}?`
             : ''
         }
         description={
-          pendingCopyPair
-            ? `All 11 controls on ${pendingCopyPair.target} will be overwritten with ${pendingCopyPair.source}'s bindings.`
+          pendingCopyLabels
+            ? `All 11 controls on ${pendingCopyLabels.tgtLabel} will be overwritten with ${pendingCopyLabels.srcLabel}'s bindings.`
             : ''
         }
         confirmLabel={
           pendingCopyPair
-            ? `Copy ${pendingCopyPair.source} → ${pendingCopyPair.target}`
+            ? `Copy ${profileShortTag(pendingCopyPair.source)} → ${profileShortTag(
+                pendingCopyPair.target
+              )}`
             : 'Copy'
         }
         rows={topBarCopyDiffRows}

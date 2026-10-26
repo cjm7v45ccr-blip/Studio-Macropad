@@ -2,12 +2,16 @@ import {
   BleHostSlot,
   DebugLogEntry,
   DeviceConnectionInfo,
+  FirmwareWireProfileId,
   HardwareBackupPayload,
   HardwareEventPacket,
   HardwareFlashSlot,
   HardwareProfileId,
   HardwareSlotId,
-  HardwareTelemetry
+  HardwareTelemetry,
+  bleSlotToProfileId,
+  defaultProfileAlias,
+  normalizeHardwareProfileId
 } from '../types/studio';
 import {
   FACTORY_DEFAULT_SLOTS,
@@ -41,6 +45,7 @@ export interface FirmwareStatusPacket {
   diagnostics?: {
     free_heap: number;
     http_api_enabled?: boolean;
+    events_enabled?: boolean;
   };
   tv?: {
     configured: boolean;
@@ -49,9 +54,9 @@ export interface FirmwareStatusPacket {
     port: number;
   };
   profiles: {
-    active: HardwareProfileId;
+    active: FirmwareWireProfileId;
     items: {
-      id: HardwareProfileId;
+      id: FirmwareWireProfileId;
       name: string;
       controls: Record<HardwareSlotId, string>;
     }[];
@@ -91,10 +96,14 @@ type DebugLogListener = (logs: DebugLogEntry[]) => void;
 
 interface VirtualDemoPadState {
   rev: number;
-  active: HardwareProfileId;
-  macName: string;
+  mode: 'MAC' | 'TV';
+  h1Name: string;
+  h2Name: string;
+  h3Name: string;
   tvName: string;
-  mac: Record<HardwareSlotId, string>;
+  h1: Record<HardwareSlotId, string>;
+  h2: Record<HardwareSlotId, string>;
+  h3: Record<HardwareSlotId, string>;
   tv: Record<HardwareSlotId, string>;
   bleConnected: boolean;
   bleSlot: BleHostSlot;
@@ -395,6 +404,45 @@ class PadLinkService {
     return await this.openAuthorizedPort(selectedPort, true);
   }
 
+  private getDemoProfileSlots(
+    d: VirtualDemoPadState,
+    prof: HardwareProfileId
+  ): Record<HardwareSlotId, string> {
+    if (prof === 'TV') return d.tv;
+    if (prof === 'HOST2') return d.h2;
+    if (prof === 'HOST3') return d.h3;
+    return d.h1;
+  }
+
+  private setDemoProfileSlots(
+    d: VirtualDemoPadState,
+    prof: HardwareProfileId,
+    slots: Record<HardwareSlotId, string>
+  ) {
+    if (prof === 'TV') d.tv = slots;
+    else if (prof === 'HOST2') d.h2 = slots;
+    else if (prof === 'HOST3') d.h3 = slots;
+    else d.h1 = slots;
+  }
+
+  private getDemoProfileName(d: VirtualDemoPadState, prof: HardwareProfileId): string {
+    if (prof === 'TV') return d.tvName;
+    if (prof === 'HOST2') return d.h2Name;
+    if (prof === 'HOST3') return d.h3Name;
+    return d.h1Name;
+  }
+
+  private setDemoProfileName(
+    d: VirtualDemoPadState,
+    prof: HardwareProfileId,
+    name: string
+  ) {
+    if (prof === 'TV') d.tvName = name;
+    else if (prof === 'HOST2') d.h2Name = name;
+    else if (prof === 'HOST3') d.h3Name = name;
+    else d.h1Name = name;
+  }
+
   /**
    * Start full interactive Demo Mode with no physical pad attached
    */
@@ -404,12 +452,16 @@ class PadLinkService {
     this.demoModeActive = true;
 
     if (!this.demoPad) {
-      // Seed demo pad from factory defaults (or previously synced demo-pad NVS copy if clean)
-      let initialMac = { ...FACTORY_DEFAULT_SLOTS.MAC };
+      let initialH1 = { ...FACTORY_DEFAULT_SLOTS.HOST1 };
+      let initialH2 = { ...FACTORY_DEFAULT_SLOTS.HOST2 };
+      let initialH3 = { ...FACTORY_DEFAULT_SLOTS.HOST3 };
       let initialTv = { ...FACTORY_DEFAULT_SLOTS.TV };
-      let macName = 'Mac';
+      let h1Name = 'Host 1';
+      let h2Name = 'Host 2';
+      let h3Name = 'Host 3';
       let tvName = 'TV';
-      let active: HardwareProfileId = 'MAC';
+      let mode: 'MAC' | 'TV' = 'MAC';
+      let bleSlot: BleHostSlot = 1;
       let rev = 1;
 
       try {
@@ -418,24 +470,44 @@ class PadLinkService {
           const parsed = JSON.parse(raw);
           if (parsed && !parsed.dirty && parsed.profiles) {
             rev = typeof parsed.rev === 'number' ? parsed.rev : 1;
-            active = parsed.profiles.active === 'TV' ? 'TV' : 'MAC';
-            macName = parsed.profiles.mac_name || 'Mac';
-            tvName = parsed.profiles.tv_name || 'TV';
-            initialMac = { ...initialMac, ...(parsed.profiles.mac || {}) };
-            initialTv = { ...initialTv, ...(parsed.profiles.tv || {}) };
+            const p = parsed.profiles;
+            if (p.active === 'TV') {
+              mode = 'TV';
+            } else if (p.active === 'HOST2') {
+              mode = 'MAC';
+              bleSlot = 2;
+            } else if (p.active === 'HOST3') {
+              mode = 'MAC';
+              bleSlot = 3;
+            } else {
+              mode = 'MAC';
+              bleSlot = 1;
+            }
+            h1Name = p.h1_name || p.mac_name || 'Host 1';
+            h2Name = p.h2_name || 'Host 2';
+            h3Name = p.h3_name || 'Host 3';
+            tvName = p.tv_name || 'TV';
+            initialH1 = { ...initialH1, ...(p.h1 || p.mac || {}) };
+            initialH2 = { ...initialH2, ...(p.h2 || {}) };
+            initialH3 = { ...initialH3, ...(p.h3 || {}) };
+            initialTv = { ...initialTv, ...(p.tv || {}) };
           }
         }
       } catch {}
 
       this.demoPad = {
         rev,
-        active,
-        macName,
+        mode,
+        h1Name,
+        h2Name,
+        h3Name,
         tvName,
-        mac: initialMac,
+        h1: initialH1,
+        h2: initialH2,
+        h3: initialH3,
         tv: initialTv,
         bleConnected: true,
-        bleSlot: 1,
+        bleSlot,
         wifiConnected: true,
         ip: '192.168.1.42',
         ssid: 'Studio-WiFi',
@@ -450,7 +522,10 @@ class PadLinkService {
       };
     }
 
-    this.logSerial('info', 'Started Demo Mode (virtual Studio Pad · firmware 3.2-PRO · Multi-Host BLE)');
+    this.logSerial(
+      'info',
+      'Started Demo Mode (virtual Studio Pad · firmware 3.2-PRO · 3 BLE Hosts + TV)'
+    );
     await this.call({ path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 });
     const status = await this.call<FirmwareStatusPacket>({ path: '/api/status' });
     this.applyTelemetryFromStatus(status, 'DEMO:3200');
@@ -477,7 +552,7 @@ class PadLinkService {
       this.demoPad.tvConfigured = patch.tvPaired || Boolean(this.demoPad.tvHost);
     }
     const status = this.buildDemoStatusPacket();
-    this.applyTelemetryFromStatus(status, 'DEMO:2100');
+    this.applyTelemetryFromStatus(status, 'DEMO:3200');
     if (this.demoPad.eventsEnabled) {
       const evt: HardwareEventPacket = {
         event: 'connection',
@@ -499,7 +574,8 @@ class PadLinkService {
     if (this.demoPad.eventsEnabled) {
       const evt: HardwareEventPacket = {
         event: 'ble_host',
-        ble_slot: nextSlot
+        ble_slot: nextSlot,
+        active: this.demoPad.mode === 'TV' ? 'TV' : bleSlotToProfileId(nextSlot)
       };
       this.logSerial('rx', JSON.stringify(evt));
       this.handleHardwareEvent(evt);
@@ -521,16 +597,34 @@ class PadLinkService {
       return false;
     }
     this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+    if (this.demoPad.eventsEnabled) {
+      const evt: HardwareEventPacket = {
+        event: 'ble_host',
+        ble_slot: this.demoPad.bleSlot,
+        active:
+          this.demoPad.mode === 'TV'
+            ? 'TV'
+            : bleSlotToProfileId(this.demoPad.bleSlot)
+      };
+      this.logSerial('rx', JSON.stringify(evt));
+      this.handleHardwareEvent(evt);
+    }
     return true;
   }
 
   public simulateDemoPadInput(slot: HardwareFlashSlot) {
     if (!this.demoModeActive || !this.demoPad) return;
     if (slot === 'mode') {
-      this.demoPad.active = this.demoPad.active === 'MAC' ? 'TV' : 'MAC';
+      this.demoPad.mode = this.demoPad.mode === 'MAC' ? 'TV' : 'MAC';
+      const activeProf: HardwareProfileId =
+        this.demoPad.mode === 'TV' ? 'TV' : bleSlotToProfileId(this.demoPad.bleSlot);
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       if (this.demoPad.eventsEnabled) {
         const pressEvt: HardwareEventPacket = { event: 'press', slot: 'mode' };
-        const profEvt: HardwareEventPacket = { event: 'profile', active: this.demoPad.active };
+        const profEvt: HardwareEventPacket = {
+          event: 'profile',
+          active: activeProf
+        };
         this.logSerial('rx', JSON.stringify(pressEvt));
         this.handleHardwareEvent(pressEvt);
         this.logSerial('rx', JSON.stringify(profEvt));
@@ -539,7 +633,9 @@ class PadLinkService {
       return;
     }
 
-    const activeMap = this.demoPad.active === 'MAC' ? this.demoPad.mac : this.demoPad.tv;
+    const activeProf: HardwareProfileId =
+      this.demoPad.mode === 'TV' ? 'TV' : bleSlotToProfileId(this.demoPad.bleSlot);
+    const activeMap = this.getDemoProfileSlots(this.demoPad, activeProf);
     const action = activeMap[slot] || '';
     if (action.startsWith('BLE:')) {
       this.applyDemoBleActionSideEffect(action);
@@ -568,6 +664,9 @@ class PadLinkService {
 
   private buildDemoStatusPacket(): FirmwareStatusPacket {
     const d = this.demoPad!;
+    const activeHostProf = bleSlotToProfileId(d.bleSlot);
+    const activeHostSlots = this.getDemoProfileSlots(d, activeHostProf);
+    const activeProf: HardwareProfileId = d.mode === 'TV' ? 'TV' : activeHostProf;
     return {
       ok: true,
       api_version: 1,
@@ -592,7 +691,8 @@ class PadLinkService {
       },
       diagnostics: {
         free_heap: 184320,
-        http_api_enabled: d.httpApiEnabled
+        http_api_enabled: d.httpApiEnabled,
+        events_enabled: d.eventsEnabled
       },
       tv: {
         configured: d.tvConfigured,
@@ -601,12 +701,22 @@ class PadLinkService {
         port: d.tvPort
       },
       profiles: {
-        active: d.active,
+        active: activeProf,
         items: [
           {
-            id: 'MAC',
-            name: d.macName,
-            controls: { ...d.mac }
+            id: 'HOST1',
+            name: d.h1Name,
+            controls: { ...d.h1 }
+          },
+          {
+            id: 'HOST2',
+            name: d.h2Name,
+            controls: { ...d.h2 }
+          },
+          {
+            id: 'HOST3',
+            name: d.h3Name,
+            controls: { ...d.h3 }
           },
           {
             id: 'TV',
@@ -615,15 +725,15 @@ class PadLinkService {
           }
         ]
       },
-      mac_b1: d.mac.b1,
-      mac_b2: d.mac.b2,
-      mac_b3: d.mac.b3,
-      mac_b4: d.mac.b4,
-      mac_b5: d.mac.b5,
-      mac_b6: d.mac.b6,
-      mac_b7: d.mac.b7,
-      mac_b8: d.mac.b8,
-      mac_dial: d.mac.dial,
+      mac_b1: activeHostSlots.b1,
+      mac_b2: activeHostSlots.b2,
+      mac_b3: activeHostSlots.b3,
+      mac_b4: activeHostSlots.b4,
+      mac_b5: activeHostSlots.b5,
+      mac_b6: activeHostSlots.b6,
+      mac_b7: activeHostSlots.b7,
+      mac_b8: activeHostSlots.b8,
+      mac_dial: activeHostSlots.dial,
       tv_b1: d.tv.b1,
       tv_b2: d.tv.b2,
       tv_b3: d.tv.b3,
@@ -668,7 +778,11 @@ class PadLinkService {
       d.bleSlot = slot as BleHostSlot;
       this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       if (d.eventsEnabled) {
-        const evt: HardwareEventPacket = { event: 'ble_host', ble_slot: slot };
+        const evt: HardwareEventPacket = {
+          event: 'ble_host',
+          ble_slot: slot,
+          active: d.mode === 'TV' ? 'TV' : bleSlotToProfileId(slot as BleHostSlot)
+        };
         this.logSerial('rx', JSON.stringify(evt));
         this.handleHardwareEvent(evt);
       }
@@ -676,11 +790,14 @@ class PadLinkService {
     }
 
     if (path === '/api/profile/activate') {
-      const target: HardwareProfileId = obj.profile === 'TV' ? 'TV' : 'MAC';
-      d.active = target;
-      const res = reply({ ok: true, active: target, rev: d.rev });
+      const rawProf = String(obj.profile || '');
+      d.mode = rawProf.toUpperCase() === 'TV' ? 'TV' : 'MAC';
+      const activeTarget: HardwareProfileId =
+        d.mode === 'TV' ? 'TV' : bleSlotToProfileId(d.bleSlot);
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      const res = reply({ ok: true, active: activeTarget, rev: d.rev });
       if (d.eventsEnabled) {
-        const evt: HardwareEventPacket = { event: 'profile', active: target };
+        const evt: HardwareEventPacket = { event: 'profile', active: activeTarget };
         this.logSerial('rx', JSON.stringify(evt));
         this.handleHardwareEvent(evt);
       }
@@ -688,21 +805,21 @@ class PadLinkService {
     }
 
     if (path === '/api/customizer/save') {
-      const prof: HardwareProfileId = obj.profile === 'TV' ? 'TV' : 'MAC';
+      const prof = normalizeHardwareProfileId(String(obj.profile || ''), d.bleSlot);
       const slot = obj.slot as HardwareSlotId;
       const action = String(obj.action || '');
       if (!HARDWARE_SLOTS.includes(slot) || !isValidFirmwareAction(action)) {
         return reply({ ok: false, message: `Pad rejected unsupported action: ${action}` });
       }
-      if (prof === 'MAC') d.mac[slot] = action;
-      else d.tv[slot] = action;
+      const targetMap = this.getDemoProfileSlots(d, prof);
+      targetMap[slot] = action;
       d.rev += 1;
-      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       return reply({ ok: true, rev: d.rev });
     }
 
     if (path === '/api/profile/save') {
-      const prof: HardwareProfileId = obj.profile === 'TV' ? 'TV' : 'MAC';
+      const prof = normalizeHardwareProfileId(String(obj.profile || ''), d.bleSlot);
       for (const s of HARDWARE_SLOTS) {
         if (!isValidFirmwareAction(String(obj[s] || ''))) {
           return reply({
@@ -724,15 +841,14 @@ class PadLinkService {
         enc_cw: obj.enc_cw,
         enc_ccw: obj.enc_ccw
       };
-      if (prof === 'MAC') d.mac = nextSlots;
-      else d.tv = nextSlots;
+      this.setDemoProfileSlots(d, prof, nextSlots);
       d.rev += 1;
-      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       return reply({ ok: true, rev: d.rev });
     }
 
     if (path === '/api/profile/rename') {
-      const prof: HardwareProfileId = obj.profile === 'TV' ? 'TV' : 'MAC';
+      const prof = normalizeHardwareProfileId(String(obj.profile || ''), d.bleSlot);
       const rawName = String(obj.name || '');
       if (!isValidFirmwareAlias(rawName)) {
         return reply({
@@ -740,42 +856,68 @@ class PadLinkService {
           message: 'Profile name must be 1–20 letters, numbers, spaces, hyphens, or underscores.'
         });
       }
-      if (prof === 'MAC') d.macName = rawName;
-      else d.tvName = rawName;
+      this.setDemoProfileName(d, prof, rawName);
       d.rev += 1;
-      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       return reply({ ok: true, rev: d.rev });
     }
 
     if (path === '/api/profile/copy') {
-      const source: HardwareProfileId = obj.source === 'TV' ? 'TV' : 'MAC';
-      const target: HardwareProfileId = obj.target === 'TV' ? 'TV' : 'MAC';
+      const source = normalizeHardwareProfileId(String(obj.source || ''), d.bleSlot);
+      const target = normalizeHardwareProfileId(String(obj.target || ''), d.bleSlot);
       if (source !== target) {
-        if (target === 'TV') d.tv = { ...d.mac };
-        else d.mac = { ...d.tv };
+        const srcSlots = this.getDemoProfileSlots(d, source);
+        this.setDemoProfileSlots(d, target, { ...srcSlots });
         d.rev += 1;
       }
-      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       return reply({ ok: true, rev: d.rev });
     }
 
     if (path === '/api/config/export') {
+      const activeHostProf = bleSlotToProfileId(d.bleSlot);
+      const activeHostSlots = this.getDemoProfileSlots(d, activeHostProf);
+      const activeHostName = this.getDemoProfileName(d, activeHostProf);
       const payload: HardwareBackupPayload = {
         schema: 'studio-pad-config',
-        version: 1,
-        mac_name: d.macName,
+        version: 2,
         tv_name: d.tvName,
-        mac_b1: d.mac.b1,
-        mac_b2: d.mac.b2,
-        mac_b3: d.mac.b3,
-        mac_b4: d.mac.b4,
-        mac_b5: d.mac.b5,
-        mac_b6: d.mac.b6,
-        mac_b7: d.mac.b7,
-        mac_b8: d.mac.b8,
-        mac_dial: d.mac.dial,
-        mac_enc_cw: d.mac.enc_cw,
-        mac_enc_ccw: d.mac.enc_ccw,
+        h1_name: d.h1Name,
+        h2_name: d.h2Name,
+        h3_name: d.h3Name,
+        h1_b1: d.h1.b1,
+        h1_b2: d.h1.b2,
+        h1_b3: d.h1.b3,
+        h1_b4: d.h1.b4,
+        h1_b5: d.h1.b5,
+        h1_b6: d.h1.b6,
+        h1_b7: d.h1.b7,
+        h1_b8: d.h1.b8,
+        h1_dial: d.h1.dial,
+        h1_enc_cw: d.h1.enc_cw,
+        h1_enc_ccw: d.h1.enc_ccw,
+        h2_b1: d.h2.b1,
+        h2_b2: d.h2.b2,
+        h2_b3: d.h2.b3,
+        h2_b4: d.h2.b4,
+        h2_b5: d.h2.b5,
+        h2_b6: d.h2.b6,
+        h2_b7: d.h2.b7,
+        h2_b8: d.h2.b8,
+        h2_dial: d.h2.dial,
+        h2_enc_cw: d.h2.enc_cw,
+        h2_enc_ccw: d.h2.enc_ccw,
+        h3_b1: d.h3.b1,
+        h3_b2: d.h3.b2,
+        h3_b3: d.h3.b3,
+        h3_b4: d.h3.b4,
+        h3_b5: d.h3.b5,
+        h3_b6: d.h3.b6,
+        h3_b7: d.h3.b7,
+        h3_b8: d.h3.b8,
+        h3_dial: d.h3.dial,
+        h3_enc_cw: d.h3.enc_cw,
+        h3_enc_ccw: d.h3.enc_ccw,
         tv_b1: d.tv.b1,
         tv_b2: d.tv.b2,
         tv_b3: d.tv.b3,
@@ -786,42 +928,42 @@ class PadLinkService {
         tv_b8: d.tv.b8,
         tv_dial: d.tv.dial,
         tv_enc_cw: d.tv.enc_cw,
-        tv_enc_ccw: d.tv.enc_ccw
+        tv_enc_ccw: d.tv.enc_ccw,
+        mac_name: activeHostName,
+        mac_b1: activeHostSlots.b1,
+        mac_b2: activeHostSlots.b2,
+        mac_b3: activeHostSlots.b3,
+        mac_b4: activeHostSlots.b4,
+        mac_b5: activeHostSlots.b5,
+        mac_b6: activeHostSlots.b6,
+        mac_b7: activeHostSlots.b7,
+        mac_b8: activeHostSlots.b8,
+        mac_dial: activeHostSlots.dial,
+        mac_enc_cw: activeHostSlots.enc_cw,
+        mac_enc_ccw: activeHostSlots.enc_ccw
       };
       return reply(payload);
     }
 
     if (path === '/api/config/import') {
-      d.macName = sanitizeFirmwareAlias(String(obj.mac_name || d.macName), 'MAC');
       d.tvName = sanitizeFirmwareAlias(String(obj.tv_name || d.tvName), 'TV');
-      d.mac = {
-        b1: obj.mac_b1 || d.mac.b1,
-        b2: obj.mac_b2 || d.mac.b2,
-        b3: obj.mac_b3 || d.mac.b3,
-        b4: obj.mac_b4 || d.mac.b4,
-        b5: obj.mac_b5 || d.mac.b5,
-        b6: obj.mac_b6 || d.mac.b6,
-        b7: obj.mac_b7 || d.mac.b7,
-        b8: obj.mac_b8 || d.mac.b8,
-        dial: obj.mac_dial || d.mac.dial,
-        enc_cw: obj.mac_enc_cw || d.mac.enc_cw,
-        enc_ccw: obj.mac_enc_ccw || d.mac.enc_ccw
-      };
-      d.tv = {
-        b1: obj.tv_b1 || d.tv.b1,
-        b2: obj.tv_b2 || d.tv.b2,
-        b3: obj.tv_b3 || d.tv.b3,
-        b4: obj.tv_b4 || d.tv.b4,
-        b5: obj.tv_b5 || d.tv.b5,
-        b6: obj.tv_b6 || d.tv.b6,
-        b7: obj.tv_b7 || d.tv.b7,
-        b8: obj.tv_b8 || d.tv.b8,
-        dial: obj.tv_dial || d.tv.dial,
-        enc_cw: obj.tv_enc_cw || d.tv.enc_cw,
-        enc_ccw: obj.tv_enc_ccw || d.tv.enc_ccw
-      };
+      d.h1Name = sanitizeFirmwareAlias(
+        String(obj.h1_name || obj.mac_name || d.h1Name),
+        'HOST1'
+      );
+      d.h2Name = sanitizeFirmwareAlias(String(obj.h2_name || d.h2Name), 'HOST2');
+      d.h3Name = sanitizeFirmwareAlias(String(obj.h3_name || d.h3Name), 'HOST3');
+
+      for (const s of HARDWARE_SLOTS) {
+        if (obj[`h1_${s}`]) d.h1[s] = obj[`h1_${s}`];
+        else if (obj[`mac_${s}`]) d.h1[s] = obj[`mac_${s}`];
+
+        if (obj[`h2_${s}`]) d.h2[s] = obj[`h2_${s}`];
+        if (obj[`h3_${s}`]) d.h3[s] = obj[`h3_${s}`];
+        if (obj[`tv_${s}`]) d.tv[s] = obj[`tv_${s}`];
+      }
       d.rev += 1;
-      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       return reply({ ok: true, rev: d.rev });
     }
 
@@ -943,16 +1085,20 @@ class PadLinkService {
       if (obj.confirm !== 'RESET') {
         return reply({ ok: false, message: 'Type RESET to confirm.' });
       }
-      d.macName = 'Mac';
-      d.tvName = 'TV';
-      d.mac = { ...FACTORY_DEFAULT_SLOTS.MAC };
+      d.h1Name = defaultProfileAlias('HOST1');
+      d.h2Name = defaultProfileAlias('HOST2');
+      d.h3Name = defaultProfileAlias('HOST3');
+      d.tvName = defaultProfileAlias('TV');
+      d.h1 = { ...FACTORY_DEFAULT_SLOTS.HOST1 };
+      d.h2 = { ...FACTORY_DEFAULT_SLOTS.HOST2 };
+      d.h3 = { ...FACTORY_DEFAULT_SLOTS.HOST3 };
       d.tv = { ...FACTORY_DEFAULT_SLOTS.TV };
       d.rev += 1;
-      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:2100');
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       return reply({
         ok: true,
         rev: d.rev,
-        message: 'Restored MAC and TV profiles to factory defaults (Wi-Fi & TV pairing kept).'
+        message: 'All host profiles and TV restored to universal defaults.'
       });
     }
 
@@ -1039,10 +1185,11 @@ class PadLinkService {
         }
       }
 
-      const status = await this.call<FirmwareStatusPacket>({ path: '/api/status' });
-      if (!status || !status.profiles) {
+      const rawStatus = await this.call<FirmwareStatusPacket>({ path: '/api/status' });
+      if (!rawStatus || !rawStatus.profiles) {
         throw new Error('Unexpected status reply from MacroPad.');
       }
+      const status = await this.enrichStatusWithAllProfiles(rawStatus, 3000);
 
       this.applyTelemetryFromStatus(status, vendorProduct);
       this.connectStatusListeners.forEach(fn => fn(status));
@@ -1059,6 +1206,96 @@ class PadLinkService {
     } finally {
       this.isOpening = false;
     }
+  }
+
+  private async enrichStatusWithAllProfiles(
+    status: FirmwareStatusPacket,
+    timeoutMs = 3000
+  ): Promise<FirmwareStatusPacket> {
+    const rawSlot = Number(status.ble?.active_host ?? status.ble_slot ?? 1);
+    const activeHost: BleHostSlot = rawSlot === 2 ? 2 : rawSlot === 3 ? 3 : 1;
+    const normalizedActive = normalizeHardwareProfileId(
+      status.profiles?.active,
+      activeHost
+    );
+
+    const existingItems = status.profiles?.items || [];
+    const hasAllThreeHosts =
+      existingItems.some(i => i.id === 'HOST1' || i.id === 'H1') &&
+      existingItems.some(i => i.id === 'HOST2' || i.id === 'H2') &&
+      existingItems.some(i => i.id === 'HOST3' || i.id === 'H3');
+
+    if (hasAllThreeHosts) {
+      return {
+        ...status,
+        profiles: {
+          active: normalizedActive,
+          items: existingItems.map(item => ({
+            ...item,
+            id: normalizeHardwareProfileId(item.id, activeHost)
+          }))
+        }
+      };
+    }
+
+    try {
+      const exp = await this.call<HardwareBackupPayload>(
+        { path: '/api/config/export' },
+        timeoutMs
+      );
+      if (exp && exp.schema === 'studio-pad-config' && (exp.version === 2 || exp.h1_b1)) {
+        const extractPrefix = (
+          prefix: 'h1' | 'h2' | 'h3' | 'tv',
+          fallback: Record<HardwareSlotId, string>
+        ): Record<HardwareSlotId, string> => {
+          const out = { ...fallback };
+          for (const slot of HARDWARE_SLOTS) {
+            const val = exp[`${prefix}_${slot}`];
+            if (typeof val === 'string' && val.length > 0) {
+              out[slot] = val;
+            }
+          }
+          return out;
+        };
+
+        return {
+          ...status,
+          profiles: {
+            active: normalizedActive,
+            items: [
+              {
+                id: 'HOST1',
+                name: exp.h1_name || 'Host 1',
+                controls: extractPrefix('h1', FACTORY_DEFAULT_SLOTS.HOST1)
+              },
+              {
+                id: 'HOST2',
+                name: exp.h2_name || 'Host 2',
+                controls: extractPrefix('h2', FACTORY_DEFAULT_SLOTS.HOST2)
+              },
+              {
+                id: 'HOST3',
+                name: exp.h3_name || 'Host 3',
+                controls: extractPrefix('h3', FACTORY_DEFAULT_SLOTS.HOST3)
+              },
+              {
+                id: 'TV',
+                name: exp.tv_name || 'TV',
+                controls: extractPrefix('tv', FACTORY_DEFAULT_SLOTS.TV)
+              }
+            ]
+          }
+        };
+      }
+    } catch (_) {}
+
+    return {
+      ...status,
+      profiles: {
+        ...status.profiles,
+        active: normalizedActive
+      }
+    };
   }
 
   private async readLoop(port: any) {
@@ -1078,7 +1315,18 @@ class PadLinkService {
         while ((i = this.buf.indexOf('\n')) >= 0) {
           const line = this.buf.slice(0, i).trim();
           this.buf = this.buf.slice(i + 1);
-          if (!line.startsWith('{')) continue; // skip ESP32 boot noise
+          if (!line.startsWith('{')) {
+            // Detect physical ESP32 reboot (e.g. Mode+Dial BLE host switch) over UART bridge
+            if (
+              !this.isOpening &&
+              this.connectionInfo.connected &&
+              (line.includes('rst:0x') || line.includes('boot:0x'))
+            ) {
+              this.logSerial('info', 'Detected ESP32 hardware reboot — scheduling live resync');
+              this.schedulePostRebootResync(port);
+            }
+            continue;
+          }
 
           this.logSerial('rx', line);
 
@@ -1148,13 +1396,30 @@ class PadLinkService {
       };
       this.emitConnection();
     } else if (e.event === 'profile' && this.connectionInfo.telemetry) {
-      const nextActive: HardwareProfileId =
-        (e.active || e.profile) === 'TV' ? 'TV' : 'MAC';
+      const currentSlot = this.connectionInfo.telemetry.bleActiveHost ?? 1;
+      const nextActive = normalizeHardwareProfileId(
+        e.active || e.profile,
+        currentSlot
+      );
       this.connectionInfo = {
         ...this.connectionInfo,
         telemetry: {
           ...this.connectionInfo.telemetry,
           activeProfile: nextActive
+        }
+      };
+      this.emitConnection();
+    } else if (e.event === 'ble_host' && this.connectionInfo.telemetry) {
+      const slotNum = Number(e.ble_slot);
+      const nextSlot: BleHostSlot = slotNum === 2 ? 2 : slotNum === 3 ? 3 : 1;
+      const wasTv = this.connectionInfo.telemetry.activeProfile === 'TV';
+      this.connectionInfo = {
+        ...this.connectionInfo,
+        telemetry: {
+          ...this.connectionInfo.telemetry,
+          bleActiveHost: nextSlot,
+          bleDeviceName: `Studio Pad ${nextSlot}`,
+          activeProfile: wasTv ? 'TV' : bleSlotToProfileId(nextSlot)
         }
       };
       this.emitConnection();
@@ -1182,10 +1447,14 @@ class PadLinkService {
     const activeHost: BleHostSlot = rawSlot === 2 ? 2 : rawSlot === 3 ? 3 : 1;
     const maxHosts = Number(pkt.ble?.max_hosts ?? 3);
     const bleDeviceName = pkt.ble?.device_name || `Studio Pad ${activeHost}`;
+    const activeProfile = normalizeHardwareProfileId(
+      pkt.profiles?.active,
+      activeHost
+    );
 
     const telemetry: HardwareTelemetry = {
       apiVersion: Number(pkt.api_version ?? 1),
-      activeProfile: pkt.profiles?.active === 'TV' ? 'TV' : 'MAC',
+      activeProfile,
       wifiConnected: Boolean(pkt.connection?.wifi_connected ?? pkt.wifi_connected),
       ip: pkt.connection?.ip || pkt.ip || '',
       ssid: pkt.ssid || '',
@@ -1293,26 +1562,32 @@ class PadLinkService {
   }
 
   public async fetchStatus(timeoutMs = 3000): Promise<FirmwareStatusPacket> {
-    const res = await this.call<FirmwareStatusPacket>({ path: '/api/status' }, timeoutMs);
-    if (!res || !res.profiles) {
-      throw new Error((res as any)?.message || 'Unexpected status reply from MacroPad.');
+    const rawRes = await this.call<FirmwareStatusPacket>({ path: '/api/status' }, timeoutMs);
+    if (!rawRes || !rawRes.profiles) {
+      throw new Error((rawRes as any)?.message || 'Unexpected status reply from MacroPad.');
     }
-    return res;
+    const enriched = await this.enrichStatusWithAllProfiles(rawRes, timeoutMs);
+    this.applyTelemetryFromStatus(enriched, this.connectionInfo.vendorProduct);
+    return enriched;
   }
 
   public async activateProfile(
     profile: HardwareProfileId
   ): Promise<{ ok: boolean; rev?: number; active?: HardwareProfileId; message?: string }> {
+    const wireProfile = profile === 'TV' ? 'TV' : 'MAC';
     const res = await this.call({
       path: '/api/profile/activate',
-      profile
+      profile: wireProfile
     });
     if (res?.ok && this.connectionInfo.telemetry) {
+      const currentHost = this.connectionInfo.telemetry.bleActiveHost ?? 1;
+      const effectiveActive: HardwareProfileId =
+        profile === 'TV' ? 'TV' : bleSlotToProfileId(currentHost);
       this.connectionInfo = {
         ...this.connectionInfo,
         telemetry: {
           ...this.connectionInfo.telemetry,
-          activeProfile: profile
+          activeProfile: effectiveActive
         }
       };
       this.emitConnection();
@@ -1430,78 +1705,67 @@ class PadLinkService {
   public async importHardwareConfig(
     backup: HardwareBackupPayload
   ): Promise<{ ok: boolean; rev?: number; message?: string }> {
-    const macName = sanitizeFirmwareAlias(backup.mac_name, 'MAC');
-    const tvName = sanitizeFirmwareAlias(backup.tv_name, 'TV');
-    const macSlots: Record<HardwareSlotId, string> = {
-      b1: backup.mac_b1 || FACTORY_DEFAULT_SLOTS.MAC.b1,
-      b2: backup.mac_b2 || FACTORY_DEFAULT_SLOTS.MAC.b2,
-      b3: backup.mac_b3 || FACTORY_DEFAULT_SLOTS.MAC.b3,
-      b4: backup.mac_b4 || FACTORY_DEFAULT_SLOTS.MAC.b4,
-      b5: backup.mac_b5 || FACTORY_DEFAULT_SLOTS.MAC.b5,
-      b6: backup.mac_b6 || FACTORY_DEFAULT_SLOTS.MAC.b6,
-      b7: backup.mac_b7 || FACTORY_DEFAULT_SLOTS.MAC.b7,
-      b8: backup.mac_b8 || FACTORY_DEFAULT_SLOTS.MAC.b8,
-      dial: backup.mac_dial || FACTORY_DEFAULT_SLOTS.MAC.dial,
-      enc_cw: backup.mac_enc_cw || FACTORY_DEFAULT_SLOTS.MAC.enc_cw,
-      enc_ccw: backup.mac_enc_ccw || FACTORY_DEFAULT_SLOTS.MAC.enc_ccw
-    };
-    const tvSlots: Record<HardwareSlotId, string> = {
-      b1: backup.tv_b1 || FACTORY_DEFAULT_SLOTS.TV.b1,
-      b2: backup.tv_b2 || FACTORY_DEFAULT_SLOTS.TV.b2,
-      b3: backup.tv_b3 || FACTORY_DEFAULT_SLOTS.TV.b3,
-      b4: backup.tv_b4 || FACTORY_DEFAULT_SLOTS.TV.b4,
-      b5: backup.tv_b5 || FACTORY_DEFAULT_SLOTS.TV.b5,
-      b6: backup.tv_b6 || FACTORY_DEFAULT_SLOTS.TV.b6,
-      b7: backup.tv_b7 || FACTORY_DEFAULT_SLOTS.TV.b7,
-      b8: backup.tv_b8 || FACTORY_DEFAULT_SLOTS.TV.b8,
-      dial: backup.tv_dial || FACTORY_DEFAULT_SLOTS.TV.dial,
-      enc_cw: backup.tv_enc_cw || FACTORY_DEFAULT_SLOTS.TV.enc_cw,
-      enc_ccw: backup.tv_enc_ccw || FACTORY_DEFAULT_SLOTS.TV.enc_ccw
+    const h1Name = sanitizeFirmwareAlias(backup.h1_name || backup.mac_name || '', 'HOST1');
+    const h2Name = sanitizeFirmwareAlias(backup.h2_name || '', 'HOST2');
+    const h3Name = sanitizeFirmwareAlias(backup.h3_name || '', 'HOST3');
+    const tvName = sanitizeFirmwareAlias(backup.tv_name || '', 'TV');
+
+    const buildSlots = (
+      prefix: 'h1' | 'h2' | 'h3' | 'tv',
+      defaults: Record<HardwareSlotId, string>,
+      allowLegacyMacFallback = false
+    ): Record<HardwareSlotId, string> => {
+      const slots = { ...defaults };
+      for (const s of HARDWARE_SLOTS) {
+        const direct = backup[`${prefix}_${s}`];
+        const legacy = allowLegacyMacFallback ? backup[`mac_${s}`] : undefined;
+        if (typeof direct === 'string' && isValidFirmwareAction(direct)) {
+          slots[s] = direct;
+        } else if (typeof legacy === 'string' && isValidFirmwareAction(legacy)) {
+          slots[s] = legacy;
+        }
+      }
+      return slots;
     };
 
-    const payload: Record<string, any> = {
-      path: '/api/config/import',
-      schema: 'studio-pad-config',
-      version: 1,
-      mac_name: macName,
-      tv_name: tvName,
-      mac_b1: macSlots.b1,
-      mac_b2: macSlots.b2,
-      mac_b3: macSlots.b3,
-      mac_b4: macSlots.b4,
-      mac_b5: macSlots.b5,
-      mac_b6: macSlots.b6,
-      mac_b7: macSlots.b7,
-      mac_b8: macSlots.b8,
-      mac_dial: macSlots.dial,
-      tv_b1: tvSlots.b1,
-      tv_b2: tvSlots.b2,
-      tv_b3: tvSlots.b3,
-      tv_b4: tvSlots.b4,
-      tv_b5: tvSlots.b5,
-      tv_b6: tvSlots.b6,
-      tv_b7: tvSlots.b7,
-      tv_b8: tvSlots.b8,
-      tv_dial: tvSlots.dial
-    };
+    const h1Slots = buildSlots('h1', FACTORY_DEFAULT_SLOTS.HOST1, true);
+    const h2Slots = buildSlots('h2', FACTORY_DEFAULT_SLOTS.HOST2, false);
+    const h3Slots = buildSlots('h3', FACTORY_DEFAULT_SLOTS.HOST3, false);
+    const tvSlots = buildSlots('tv', FACTORY_DEFAULT_SLOTS.TV, false);
 
-    if (backup.mac_enc_cw) payload.mac_enc_cw = macSlots.enc_cw;
-    if (backup.mac_enc_ccw) payload.mac_enc_ccw = macSlots.enc_ccw;
-    if (backup.tv_enc_cw) payload.tv_enc_cw = tvSlots.enc_cw;
-    if (backup.tv_enc_ccw) payload.tv_enc_ccw = tvSlots.enc_ccw;
-
-    if (!this.demoModeActive && JSON.stringify(payload).length + 1 > 1536) {
-      await this.saveFullProfile('MAC', macSlots);
-      await this.saveFullProfile('TV', tvSlots);
-      await this.renameProfile('MAC', macName);
-      return await this.renameProfile('TV', tvName);
+    if (this.demoModeActive) {
+      const res = await this.call(
+        {
+          path: '/api/config/import',
+          schema: 'studio-pad-config',
+          version: 2,
+          h1_name: h1Name,
+          h2_name: h2Name,
+          h3_name: h3Name,
+          tv_name: tvName,
+          ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`h1_${s}`, h1Slots[s]])),
+          ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`h2_${s}`, h2Slots[s]])),
+          ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`h3_${s}`, h3Slots[s]])),
+          ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`tv_${s}`, tvSlots[s]]))
+        },
+        4000
+      );
+      if (!res?.ok) {
+        throw new Error(res?.message || 'Device rejected configuration backup.');
+      }
+      return res;
     }
 
-    const res = await this.call(payload, 4000);
-    if (!res?.ok) {
-      throw new Error(res?.message || 'Device rejected configuration backup.');
-    }
-    return res;
+    // Write each profile sequentially over USB Serial so every packet stays well
+    // under the ESP32 1536-byte line buffer and works even when serial /api/config/import is absent.
+    await this.saveFullProfile('HOST1', h1Slots);
+    await this.saveFullProfile('HOST2', h2Slots);
+    await this.saveFullProfile('HOST3', h3Slots);
+    await this.saveFullProfile('TV', tvSlots);
+    await this.renameProfile('HOST1', h1Name);
+    await this.renameProfile('HOST2', h2Name);
+    await this.renameProfile('HOST3', h3Name);
+    return await this.renameProfile('TV', tvName);
   }
 
   private schedulePostRebootResync(expectedPort: any) {
@@ -1517,9 +1781,16 @@ class PadLinkService {
           { path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 },
           2500
         ).catch(() => {});
-        await this.fetchStatus(3000).catch(() => {});
+        const st = await this.fetchStatus(3000);
+        const rawSlot = Number(st.ble?.active_host ?? st.ble_slot ?? 1);
+        const slot: BleHostSlot = rawSlot === 2 ? 2 : rawSlot === 3 ? 3 : 1;
+        this.handleHardwareEvent({
+          event: 'ble_host',
+          ble_slot: slot,
+          active: normalizeHardwareProfileId(st.profiles?.active, slot)
+        });
       } catch {}
-    }, 2200);
+    }, 2000);
   }
 
   /**
@@ -1547,12 +1818,14 @@ class PadLinkService {
     }
 
     if (this.connectionInfo.telemetry) {
+      const wasTv = this.connectionInfo.telemetry.activeProfile === 'TV';
       this.connectionInfo = {
         ...this.connectionInfo,
         telemetry: {
           ...this.connectionInfo.telemetry,
           bleActiveHost: slot,
-          bleDeviceName: `Studio Pad ${slot}`
+          bleDeviceName: `Studio Pad ${slot}`,
+          activeProfile: wasTv ? 'TV' : bleSlotToProfileId(slot)
         }
       };
       this.emitConnection();
@@ -1561,7 +1834,7 @@ class PadLinkService {
     if (!this.demoModeActive && activePort && prevHost !== slot) {
       this.logSerial(
         'info',
-        `ESP32 rebooting into Host ${slot} (Studio Pad ${slot}) — resyncing in ~2.2s`
+        `ESP32 rebooting into Host ${slot} (Studio Pad ${slot}) — resyncing in ~2.0s`
       );
       this.schedulePostRebootResync(activePort);
     }

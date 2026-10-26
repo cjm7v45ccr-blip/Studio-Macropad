@@ -9,7 +9,12 @@ import {
   HardwareSlotId,
   KeyAppearance,
   KeyControlConfig,
-  KeyboardLayoutId
+  KeyboardLayoutId,
+  StudioProfile,
+  bleSlotToProfileId,
+  isBleHostProfile,
+  profileIdToBleSlot,
+  profileShortTag
 } from '../types/studio';
 import { ICON_LIBRARY, KeycapIcon } from '../data/iconRegistry';
 import {
@@ -30,6 +35,7 @@ import {
 
 interface ButtonInspectorProps {
   keyConfig: KeyControlConfig;
+  profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
   activeProfileName: string;
   customMacros: CustomMacroItem[];
@@ -40,6 +46,7 @@ interface ButtonInspectorProps {
   onResetSlotToDefault: (slot: HardwareSlotId) => void;
   onUpdateAppearance: (patch: Partial<KeyAppearance>) => void;
   onResetAppearance: () => void;
+  onSelectProfile: (id: HardwareProfileId) => void;
   onToggleProfileMode: () => void;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   onTestBinding: (binding: ActionBinding) => void;
@@ -61,6 +68,7 @@ const COLOR_SWATCHES = [
 
 export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   keyConfig,
+  profiles,
   activeProfileId,
   activeProfileName,
   customMacros,
@@ -71,6 +79,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   onResetSlotToDefault,
   onUpdateAppearance,
   onResetAppearance,
+  onSelectProfile,
   onToggleProfileMode,
   onSwitchBleHost,
   onTestBinding,
@@ -96,10 +105,16 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     }
   }, [selectionKey, trackedSelectionKey, keyConfig.triggers.tap]);
 
-  const activeBleHost: BleHostSlot = connection.telemetry?.bleActiveHost ?? 1;
+  const activeBleHost: BleHostSlot =
+    connection.telemetry?.bleActiveHost ?? profileIdToBleSlot(activeProfileId) ?? 1;
 
   // Dedicated Mode Switch Inspector (9th physical button)
   if (keyConfig.isModeSwitch || keyConfig.id === 'k9') {
+    const activeHostProf = profiles.find(
+      p => p.id === bleSlotToProfileId(activeBleHost)
+    );
+    const activeHostDisplay = activeHostProf?.name || `Host ${activeBleHost}`;
+
     return (
       <aside className="w-full lg:w-[400px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col lg:h-full overflow-hidden">
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
@@ -112,7 +127,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 Mode Switch
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Profile, Multi-Host BLE & Setup Button
+                Mode Toggle, Multi-Host BLE & Setup
               </p>
             </div>
           </div>
@@ -125,7 +140,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               <span>Hardware Gestures</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              This physical key controls profiles, instant Bluetooth host switching, and USB setup:
+              This physical key controls mode switching, multi-device Bluetooth selection, and USB setup:
             </p>
             <ul className="space-y-2 text-xs text-[var(--text-secondary)] pt-1">
               <li className="flex items-start gap-2">
@@ -133,7 +148,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                   Short Press
                 </span>
                 <span>
-                  Switches active profile between <strong>MAC</strong> and <strong>TV</strong>.
+                  Toggles between your active Bluetooth host (<strong>{activeHostDisplay}</strong>) and <strong>TV</strong>.
                 </span>
               </li>
               <li className="flex items-start gap-2">
@@ -141,8 +156,8 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                   Hold + Dial
                 </span>
                 <span>
-                  Instantly cycles between <strong>Host 1</strong>, <strong>Host 2</strong>, and{' '}
-                  <strong>Host 3</strong> (<span className="font-mono">Studio Pad 1–3</span>).
+                  Cycles between <strong>Host 1</strong>, <strong>Host 2</strong>, and{' '}
+                  <strong>Host 3</strong> — each with its own independent button layout and Bluetooth MAC.
                 </span>
               </li>
               <li className="flex items-start gap-2">
@@ -162,7 +177,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           >
             <ArrowLeftRight className="w-4 h-4 shrink-0" />
             <span>
-              Switch to {activeProfileId === 'MAC' ? 'TV' : 'MAC'} Profile
+              Switch to {activeProfileId === 'TV' ? activeHostDisplay : 'TV'} Profile
             </span>
           </button>
 
@@ -176,23 +191,32 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
                 {connection.connected
                   ? connection.telemetry?.bleDeviceName || `Studio Pad ${activeBleHost}`
-                  : 'Connect USB to switch'}
+                  : 'Inspect or edit'}
               </span>
             </div>
 
             <div
               role="group"
-              aria-label="Select active Bluetooth host"
+              aria-label="Select Bluetooth host"
               className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]"
             >
               {([1, 2, 3] as const).map(slot => {
-                const isCurrent = connection.connected && activeBleHost === slot;
+                const hostProfId = bleSlotToProfileId(slot);
+                const hostProf = profiles.find(p => p.id === hostProfId);
+                const isCurrent = connection.connected
+                  ? activeBleHost === slot
+                  : activeProfileId === hostProfId;
                 return (
                   <button
                     key={slot}
                     type="button"
-                    disabled={!connection.connected}
-                    onClick={() => onSwitchBleHost(slot)}
+                    onClick={() => {
+                      if (connection.connected) {
+                        onSwitchBleHost(slot);
+                      } else {
+                        onSelectProfile(hostProfId);
+                      }
+                    }}
                     style={
                       isCurrent
                         ? {
@@ -201,7 +225,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                           }
                         : undefined
                     }
-                    className={`py-2 px-2 rounded-lg border text-center transition-colors cursor-pointer disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap ${
+                    className={`py-2 px-2 rounded-lg border text-center transition-colors cursor-pointer whitespace-nowrap min-w-0 ${
                       isCurrent
                         ? 'text-[var(--text-primary)] font-semibold'
                         : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
@@ -210,14 +234,16 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                     <div className="font-mono text-[10px] text-sky-400 tabular-nums">
                       [H{slot}]
                     </div>
-                    <div className="text-[11px] mt-0.5">Host {slot}</div>
+                    <div className="text-[11px] mt-0.5 truncate">
+                      {hostProf?.name || `Host ${slot}`}
+                    </div>
                   </button>
                 );
               })}
             </div>
 
             <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              Each slot uses its own virtual hardware MAC address and Bluetooth name (<span className="font-mono">Studio Pad 1–3</span>).
+              Each host stores its own 11 button & knob bindings plus a dedicated Bluetooth MAC (<span className="font-mono">Studio Pad 1–3</span>).
             </p>
           </div>
         </div>
@@ -293,8 +319,8 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 </h2>
 
               </div>
-              <p className="text-xs text-[var(--text-muted)] truncate">
-                {activeProfileName} ({activeProfileId}) · {slotMeta.short}
+              <p className="text-xs text-[var(--text-muted)] truncate tabular-nums">
+                {activeProfileName} ({profileShortTag(activeProfileId)}) · {slotMeta.short}
               </p>
             </div>
           </div>
@@ -379,12 +405,12 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 </span>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[9px] text-cyan-400/80">128×64 · {slotMeta.short}</span>
-                  {activeProfileId === 'MAC' && (
+                  {isBleHostProfile(activeProfileId) && (
                     <span
-                      title={`Active BLE Host Badge ([H${activeBleHost}])`}
+                      title={`Active BLE Host Badge ([${profileShortTag(activeProfileId)}])`}
                       className="px-1.5 py-0.5 rounded bg-black border border-white/80 text-white font-mono text-[9px] font-bold leading-none tabular-nums"
                     >
-                      [H{activeBleHost}]
+                      [{profileShortTag(activeProfileId)}]
                     </span>
                   )}
                 </div>

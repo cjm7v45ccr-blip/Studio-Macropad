@@ -9,7 +9,8 @@ import {
   HardwareProfileId,
   HardwareSlotId,
   KeyboardLayoutId,
-  SlotRepeatMap
+  SlotRepeatMap,
+  profileShortTag
 } from '../types/studio';
 import {
   FACTORY_DEFAULT_SLOTS,
@@ -231,7 +232,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
 
             </div>
             <p className="text-xs text-[var(--text-muted)] truncate">
-              {activeProfileName} ({activeProfileId}) · {slotMeta.short}
+              {activeProfileName} ({profileShortTag(activeProfileId)}) · {slotMeta.short}
             </p>
           </div>
         </div>

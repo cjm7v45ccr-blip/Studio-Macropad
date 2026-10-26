@@ -4,9 +4,11 @@ import {
   DebugLogEntry,
   DeviceConnectionInfo,
   KeyboardLayoutId,
+  StudioProfile,
   StudioSettings,
   SyncStatusPill,
-  ThemeMode
+  ThemeMode,
+  bleSlotToProfileId
 } from '../types/studio';
 import { ToastVariant } from '../hooks/useStudioState';
 import { usbHardware } from '../services/usbHardwareService';
@@ -35,6 +37,7 @@ import {
 } from 'lucide-react';
 
 interface SettingsViewProps {
+  profiles: StudioProfile[];
   settings: StudioSettings;
   connection: DeviceConnectionInfo;
   syncStatus: SyncStatusPill;
@@ -42,6 +45,7 @@ interface SettingsViewProps {
   currentDeviceId: string | null;
   onUpdateSettings: (patch: Partial<StudioSettings>) => void;
   onPullFromUsb: () => Promise<boolean>;
+  onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   onResetBothProfiles: () => Promise<void> | void;
   onClearLocalCache: () => void;
   onToast: (msg: string, variant?: ToastVariant) => void;
@@ -67,6 +71,7 @@ const KEYBOARD_LAYOUTS: { id: KeyboardLayoutId; label: string }[] = [
 ];
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
+  profiles,
   settings,
   connection,
   syncStatus,
@@ -74,6 +79,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   currentDeviceId,
   onUpdateSettings,
   onPullFromUsb,
+  onSwitchBleHost,
   onResetBothProfiles,
   onClearLocalCache,
   onToast
@@ -304,10 +310,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (!connection.connected || bleBusy) return;
     setBleBusy(true);
     try {
-      const res = await usbHardware.switchBleHost(slot);
-      onToast(res.message || `Switched to Studio Pad ${slot} (Host ${slot})`);
-    } catch (err: any) {
-      onToast(err?.message || 'Could not switch Bluetooth host', 'error');
+      await onSwitchBleHost(slot);
     } finally {
       setBleBusy(false);
     }
@@ -461,7 +464,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-[var(--text-muted)]">
-                  3 independent Bluetooth host slots with unique MAC addresses (<span className="font-mono">Studio Pad 1–3</span>). Hold <span className="font-mono">Mode</span> + rotate the dial on hardware to cycle instantly.
+                  3 independent Bluetooth host profiles with unique MAC addresses (<span className="font-mono">Studio Pad 1–3</span>) and separate 11-control button layouts. Hold <span className="font-mono">Mode</span> + rotate the dial on hardware to cycle instantly.
                 </p>
               </div>
             </div>
@@ -490,6 +493,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           >
             {([1, 2, 3] as const).map(slot => {
               const isActive = connection.connected && (telemetry?.bleActiveHost ?? 1) === slot;
+              const hostProf = profiles.find(p => p.id === bleSlotToProfileId(slot));
+              const customName = hostProf?.name || `Host ${slot}`;
               return (
                 <button
                   key={slot}
@@ -512,15 +517,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/70 border border-white/25 text-white tabular-nums">
+                      <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/70 border border-white/25 text-white tabular-nums shrink-0">
                         [H{slot}]
                       </span>
-                      <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap">
-                        Host {slot}
+                      <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                        {customName}
                       </span>
                     </div>
                     <div className="font-mono text-[11px] text-[var(--text-muted)] mt-1 truncate">
-                      Studio Pad {slot}
+                      Studio Pad {slot} · 11 controls
                     </div>
                   </div>
                   {isActive && (
@@ -1020,25 +1025,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* 8. Reset Both Profiles & Clear Browser Cache */}
+        {/* 8. Reset All 4 Profiles & Clear Browser Cache */}
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                Reset both profiles (`/api/device/reset-settings`)
+                Reset all 4 profiles (`/api/device/reset-settings`)
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Asks you to type <span className="font-mono font-semibold">RESET</span> and restores factory defaults on MAC and TV while keeping Wi-Fi & TV pairing intact.
+                Asks you to type <span className="font-mono font-semibold">RESET</span> and restores universal defaults across Host 1, Host 2, Host 3, and TV while keeping Wi-Fi & TV pairing intact.
               </p>
             </div>
 
             <button
               type="button"
               onClick={() => setResetProfilesModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/12 hover:bg-rose-500/20 border border-rose-500/35 text-xs font-semibold text-rose-300 cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/12 hover:bg-rose-500/20 border border-rose-500/35 text-xs font-semibold text-rose-300 cursor-pointer whitespace-nowrap shrink-0"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset both profiles</span>
+              <span>Reset all profiles</span>
             </button>
           </div>
 
@@ -1056,7 +1061,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setConfirmClearLocal(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-semibold text-[var(--text-secondary)] hover:text-rose-400 cursor-pointer whitespace-nowrap"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-semibold text-[var(--text-secondary)] hover:text-rose-400 cursor-pointer whitespace-nowrap shrink-0"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Clear Local Cache</span>
@@ -1069,14 +1074,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onClearLocalCache();
                     setConfirmClearLocal(false);
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-rose-500 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                  className="px-3.5 py-2 rounded-xl bg-rose-500 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Confirm Clear
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmClearLocal(false)}
-                  className="px-3 py-2 rounded-xl bg-[var(--bg-input)] text-xs text-[var(--text-muted)] cursor-pointer whitespace-nowrap"
+                  className="px-3 py-2 rounded-xl bg-[var(--bg-input)] text-xs text-[var(--text-muted)] cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Cancel
                 </button>
@@ -1098,12 +1103,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         onCancel={() => setForgetTvModalOpen(false)}
       />
 
-      {/* Reset Both Profiles Modal (requires typing RESET) */}
+      {/* Reset All 4 Profiles Modal (requires typing RESET) */}
       <DiffConfirmModal
         isOpen={resetProfilesModalOpen}
-        title="Reset both profiles to factory defaults?"
-        description="All 22 controls across MAC and TV will be restored to factory actions. Wi-Fi and TV pairing remain untouched."
-        confirmLabel="Reset Both Profiles"
+        title="Reset all 4 profiles to universal defaults?"
+        description="All 44 controls across Host 1, Host 2, Host 3, and TV will be restored to universal factory actions. Wi-Fi and TV pairing remain untouched."
+        confirmLabel="Reset All 4 Profiles"
         tone="danger"
         requireWord="RESET"
         onConfirm={async () => {

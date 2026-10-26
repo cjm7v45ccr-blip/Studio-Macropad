@@ -68,7 +68,7 @@ export const SyncConflictModal: React.FC<SyncConflictModalProps> = ({
             </div>
           ) : (
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              Your local draft was marked modified while unplugged. Choose whether to write your website draft (`MAC` & `TV` profiles via `/api/profile/save`) or adopt the MacroPad’s current settings.
+              Your local draft was marked modified while unplugged. Choose whether to write your website draft (`Host 1–3` & `TV` profiles via `/api/profile/save`) or adopt the MacroPad’s current settings.
             </p>
           )}
 

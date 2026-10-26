@@ -8,7 +8,8 @@ import {
   KeyId,
   SlotRepeatMap,
   StudioProfile,
-  TextMacroRepeatConfig
+  TextMacroRepeatConfig,
+  defaultProfileAlias
 } from '../types/studio';
 import {
   buildFirmwareActionFromTextConfig,
@@ -52,6 +53,13 @@ export const SLOT_TO_ACTION_KEY: Record<ButtonSlotId, ActionKeyId> = {
   b6: 'k6',
   b7: 'k7',
   b8: 'k8'
+};
+
+export const PROFILE_ACCENT_COLORS: Record<HardwareProfileId, string> = {
+  HOST1: '#3B82F6',
+  HOST2: '#6366F1',
+  HOST3: '#06B6D4',
+  TV: '#10B981'
 };
 
 export function emptyAction(): ActionBinding {
@@ -134,7 +142,7 @@ export function buildHardwareProfile(
   existingProfile?: StudioProfile,
   repeatConfigs?: SlotRepeatMap
 ): StudioProfile {
-  const accent = id === 'MAC' ? '#3B82F6' : '#10B981';
+  const accent = PROFILE_ACCENT_COLORS[id];
   const prevKeys = existingProfile?.layers[0]?.keys;
 
   const prevAppFor = (kid: ActionKeyId): KeyAppearance | undefined => {
@@ -197,12 +205,12 @@ export function buildHardwareProfile(
 
   return {
     id,
-    name: name || (id === 'MAC' ? 'Mac' : 'TV'),
+    name: name || defaultProfileAlias(id),
     activeLayerIndex: 0,
     layers: [
       {
         id: `hw-${id.toLowerCase()}`,
-        name: id === 'MAC' ? 'MAC Hardware Layer' : 'TV Hardware Layer',
+        name: `${defaultProfileAlias(id)} Hardware Layer`,
         color: accent,
         keys,
         encoder: buildHardwareEncoder(
@@ -219,9 +227,11 @@ export function buildHardwareProfile(
   };
 }
 
-export function buildBlankHardwareProfiles(): [StudioProfile, StudioProfile] {
+export function buildBlankHardwareProfiles(): StudioProfile[] {
   return [
-    buildHardwareProfile('MAC', 'Mac'),
+    buildHardwareProfile('HOST1', 'Host 1'),
+    buildHardwareProfile('HOST2', 'Host 2'),
+    buildHardwareProfile('HOST3', 'Host 3'),
     buildHardwareProfile('TV', 'TV')
   ];
 }

@@ -1,11 +1,15 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  HARDWARE_PROFILE_IDS,
   HardwareBackupPayload,
   HardwareProfileId,
   HardwareSlotId,
   SlotRepeatMap,
   StudioProfile,
-  UserPreset
+  UserPreset,
+  isBleHostProfile,
+  normalizeHardwareProfileId,
+  profileShortTag
 } from '../types/studio';
 import { CURATED_PRESETS, ProfilePreset } from '../data/presetProfiles';
 import {
@@ -24,14 +28,14 @@ import {
   Copy,
   RefreshCw,
   ArrowRight,
-  Laptop,
+  Bluetooth,
   Tv,
   Sparkles,
   RotateCcw
 } from 'lucide-react';
 
 interface LibraryViewProps {
-  profiles: [StudioProfile, StudioProfile];
+  profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
   userPresets: UserPreset[];
   isConnected: boolean;
@@ -76,7 +80,7 @@ type PendingModalAction =
       rows: DiffPreviewRow[];
     }
   | {
-      kind: 'reset_both';
+      kind: 'reset_all';
       rows: DiffPreviewRow[];
     };
 
@@ -100,6 +104,33 @@ function buildSlotDiffRows(
   });
 }
 
+function extractBackupSlotsForProfile(
+  backup: HardwareBackupPayload,
+  targetProfId: HardwareProfileId
+): Record<HardwareSlotId, string> {
+  const defaults = FACTORY_DEFAULT_SLOTS[targetProfId];
+  const prefix =
+    targetProfId === 'TV'
+      ? 'tv_'
+      : targetProfId === 'HOST2'
+      ? 'h2_'
+      : targetProfId === 'HOST3'
+      ? 'h3_'
+      : 'h1_';
+
+  const result = { ...defaults };
+  for (const slot of HARDWARE_SLOTS) {
+    const directVal = backup[`${prefix}${slot}`];
+    const legacyMacVal = targetProfId !== 'TV' ? backup[`mac_${slot}`] : undefined;
+    if (typeof directVal === 'string' && directVal) {
+      result[slot] = directVal;
+    } else if (typeof legacyMacVal === 'string' && legacyMacVal) {
+      result[slot] = legacyMacVal;
+    }
+  }
+  return result;
+}
+
 export const LibraryView: React.FC<LibraryViewProps> = ({
   profiles,
   activeProfileId,
@@ -119,11 +150,23 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [presetNameDraft, setPresetNameDraft] = useState('');
   const [saveProfileTarget, setSaveProfileTarget] =
     useState<HardwareProfileId>(activeProfileId);
+  const [copySource, setCopySource] = useState<HardwareProfileId>('HOST1');
+  const [copyTarget, setCopyTarget] = useState<HardwareProfileId>('HOST2');
   const [pendingAction, setPendingAction] = useState<PendingModalAction | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
-  const macProfile = profiles.find(p => p.id === 'MAC') || profiles[0];
-  const tvProfile = profiles.find(p => p.id === 'TV') || profiles[1];
+  useEffect(() => {
+    setSaveProfileTarget(activeProfileId);
+  }, [activeProfileId]);
+
+  const getProfile = (id: HardwareProfileId): StudioProfile =>
+    profiles.find(p => p.id === id) || profiles[0];
+
+  const formatProfileLabel = (id: HardwareProfileId): string => {
+    const prof = getProfile(id);
+    const short = profileShortTag(id);
+    return `${prof.name} (${short})`;
+  };
 
   const handleSaveMyPreset = () => {
     onSaveUserSnapshot(presetNameDraft, saveProfileTarget);
@@ -134,9 +177,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     preset: ProfilePreset,
     targetProfId: HardwareProfileId
   ) => {
-    const currentProf = targetProfId === 'MAC' ? macProfile : tvProfile;
+    const currentProf = getProfile(targetProfId);
     const beforeSlots = extractProfileSlots(currentProf);
-    const rows = buildSlotDiffRows(targetProfId, beforeSlots, preset.bindings);
+    const rows = buildSlotDiffRows(
+      formatProfileLabel(targetProfId),
+      beforeSlots,
+      preset.bindings
+    );
     setPendingAction({
       kind: 'curated_preset',
       preset,
@@ -146,50 +193,20 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   const openMyPresetPreview = (userPreset: UserPreset, targetProfId: HardwareProfileId) => {
-    const currentProf = targetProfId === 'MAC' ? macProfile : tvProfile;
+    const currentProf = getProfile(targetProfId);
     const beforeSlots = extractProfileSlots(currentProf);
     const savedSlots: Record<HardwareSlotId, string> = userPreset.profileSlots
       ? {
           ...FACTORY_DEFAULT_SLOTS[targetProfId],
           ...userPreset.profileSlots
         }
-      : {
-          b1:
-            targetProfId === 'MAC' ? userPreset.backup.mac_b1 : userPreset.backup.tv_b1,
-          b2:
-            targetProfId === 'MAC' ? userPreset.backup.mac_b2 : userPreset.backup.tv_b2,
-          b3:
-            targetProfId === 'MAC' ? userPreset.backup.mac_b3 : userPreset.backup.tv_b3,
-          b4:
-            targetProfId === 'MAC' ? userPreset.backup.mac_b4 : userPreset.backup.tv_b4,
-          b5:
-            (targetProfId === 'MAC'
-              ? userPreset.backup.mac_b5
-              : userPreset.backup.tv_b5) || FACTORY_DEFAULT_SLOTS[targetProfId].b5,
-          b6:
-            (targetProfId === 'MAC'
-              ? userPreset.backup.mac_b6
-              : userPreset.backup.tv_b6) || FACTORY_DEFAULT_SLOTS[targetProfId].b6,
-          b7:
-            (targetProfId === 'MAC'
-              ? userPreset.backup.mac_b7
-              : userPreset.backup.tv_b7) || FACTORY_DEFAULT_SLOTS[targetProfId].b7,
-          b8:
-            (targetProfId === 'MAC'
-              ? userPreset.backup.mac_b8
-              : userPreset.backup.tv_b8) || FACTORY_DEFAULT_SLOTS[targetProfId].b8,
-          dial:
-            targetProfId === 'MAC' ? userPreset.backup.mac_dial : userPreset.backup.tv_dial,
-          enc_cw:
-            (targetProfId === 'MAC'
-              ? userPreset.backup.mac_enc_cw
-              : userPreset.backup.tv_enc_cw) || FACTORY_DEFAULT_SLOTS[targetProfId].enc_cw,
-          enc_ccw:
-            (targetProfId === 'MAC'
-              ? userPreset.backup.mac_enc_ccw
-              : userPreset.backup.tv_enc_ccw) || FACTORY_DEFAULT_SLOTS[targetProfId].enc_ccw
-        };
-    const rows = buildSlotDiffRows(targetProfId, beforeSlots, savedSlots);
+      : extractBackupSlotsForProfile(userPreset.backup, targetProfId);
+
+    const rows = buildSlotDiffRows(
+      formatProfileLabel(targetProfId),
+      beforeSlots,
+      savedSlots
+    );
     setPendingAction({
       kind: 'my_preset',
       preset: userPreset,
@@ -200,11 +217,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   const openCopyConfirm = (source: HardwareProfileId, target: HardwareProfileId) => {
-    const srcProf = source === 'MAC' ? macProfile : tvProfile;
-    const tgtProf = target === 'MAC' ? macProfile : tvProfile;
+    if (source === target) return;
+    const srcProf = getProfile(source);
+    const tgtProf = getProfile(target);
     const srcSlots = extractProfileSlots(srcProf);
     const tgtSlots = extractProfileSlots(tgtProf);
-    const rows = buildSlotDiffRows(target, tgtSlots, srcSlots);
+    const rows = buildSlotDiffRows(
+      formatProfileLabel(target),
+      tgtSlots,
+      srcSlots
+    );
     setPendingAction({
       kind: 'copy_profile',
       source,
@@ -213,41 +235,55 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     });
   };
 
-  const openResetBothConfirm = () => {
-    const macRows = buildSlotDiffRows(
-      'MAC',
-      extractProfileSlots(macProfile),
-      FACTORY_DEFAULT_SLOTS.MAC
-    );
-    const tvRows = buildSlotDiffRows(
-      'TV',
-      extractProfileSlots(tvProfile),
-      FACTORY_DEFAULT_SLOTS.TV
-    );
+  const openResetAllConfirm = () => {
+    const allRows: DiffPreviewRow[] = [];
+    for (const id of HARDWARE_PROFILE_IDS) {
+      const prof = getProfile(id);
+      allRows.push(
+        ...buildSlotDiffRows(
+          formatProfileLabel(id),
+          extractProfileSlots(prof),
+          FACTORY_DEFAULT_SLOTS[id]
+        )
+      );
+    }
     setPendingAction({
-      kind: 'reset_both',
-      rows: [...macRows, ...tvRows]
+      kind: 'reset_all',
+      rows: allRows
     });
   };
 
   const handleConfirmPendingAction = () => {
     if (!pendingAction) return;
     if (pendingAction.kind === 'curated_preset') {
+      const targetName = formatProfileLabel(pendingAction.targetProfile);
       onAssignProfileSlots(
         pendingAction.targetProfile,
         pendingAction.preset.bindings,
-        `Applied "${pendingAction.preset.title}" preset to ${pendingAction.targetProfile}`
+        `Applied "${pendingAction.preset.title}" preset to ${targetName}`
       );
     } else if (pendingAction.kind === 'my_preset') {
+      const savedOrigin = normalizeHardwareProfileId(pendingAction.preset.targetProfile, 1);
+      const remappedRepeats: SlotRepeatMap = {};
+      if (pendingAction.preset.repeatConfigs) {
+        for (const slot of HARDWARE_SLOTS) {
+          const cfg =
+            pendingAction.preset.repeatConfigs[`${savedOrigin}:${slot}`] ||
+            pendingAction.preset.repeatConfigs[`MAC:${slot}`];
+          if (cfg) {
+            remappedRepeats[`${pendingAction.targetProfile}:${slot}`] = cfg;
+          }
+        }
+      }
       onAssignProfileSlots(
         pendingAction.targetProfile,
         pendingAction.slots,
-        `Applied "${pendingAction.preset.name}" to ${pendingAction.targetProfile}`,
-        pendingAction.preset.repeatConfigs
+        `Applied "${pendingAction.preset.name}" to ${formatProfileLabel(pendingAction.targetProfile)}`,
+        remappedRepeats
       );
     } else if (pendingAction.kind === 'copy_profile') {
       onCopyHardwareProfile(pendingAction.source, pendingAction.target);
-    } else if (pendingAction.kind === 'reset_both') {
+    } else if (pendingAction.kind === 'reset_all') {
       onResetBothProfiles();
     }
     setPendingAction(null);
@@ -263,7 +299,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               Profiles, Presets & Backups
             </h1>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Preview and apply 11-control presets, save your own layouts, copy profiles, or download and restore JSON backups.
+              Assign independent 11-control layouts to Bluetooth Hosts 1–3 and TV, clone bindings across devices, or download v2 JSON backups.
             </p>
           </div>
 
@@ -272,7 +308,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <button
                 type="button"
                 onClick={onPullFromUsb}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Read Pad</span>
@@ -282,7 +318,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               type="button"
               onClick={onExportBackupFile}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               <Download className="w-3.5 h-3.5 text-[var(--accent)]" />
               <span>Download backup</span>
@@ -292,7 +328,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               type="button"
               onClick={() => importRef.current?.click()}
               style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>Restore backup</span>
@@ -311,45 +347,54 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         </div>
 
-        {/* Section 1: 6 Built-In Presets (each previews an 11-control diff before applying) */}
+        {/* Section 1: Built-In Presets (each previews an 11-control diff before applying to any Host or TV) */}
         <section className="space-y-4">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-              Built-In Presets (6 Layouts · All 11 Controls)
+              Built-In Presets ({CURATED_PRESETS.length} Layouts · All 11 Controls)
             </h2>
             <p className="text-xs text-[var(--text-muted)]">
-              Every preset previews a before/after diff across Keys 1–8, Knob Press, Turn Right, and Turn Left before writing.
+              Apply different OS or app layouts to each Bluetooth Host (e.g. Mac on Host 1, Windows on Host 2, Streamer on Host 3) and Smart TV on TV.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {CURATED_PRESETS.map(preset => {
-              const ModeIcon = preset.mode === 'MAC' ? Laptop : Tv;
+              const blePreset = isBleHostProfile(preset.mode);
+              const ModeIcon = blePreset ? Bluetooth : Tv;
+              const primaryTarget: HardwareProfileId =
+                preset.mode === 'TV'
+                  ? 'TV'
+                  : isBleHostProfile(activeProfileId)
+                  ? activeProfileId
+                  : preset.mode;
+              const secondaryTargets = HARDWARE_PROFILE_IDS.filter(
+                id => id !== primaryTarget
+              );
+
               return (
                 <div
                   key={preset.id}
                   className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] flex flex-col justify-between gap-4 transition-colors"
                 >
                   <div className="space-y-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                    <div className="min-w-0">
+                      <div className="flex items-center justify-between gap-2">
                         <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
                           {preset.title}
                         </h3>
-                        <p className="text-[11px] text-[var(--text-muted)]">
-                          {preset.subtitle}
-                        </p>
+                        <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-muted)] shrink-0">
+                          <ModeIcon
+                            className={`w-3.5 h-3.5 ${
+                              blePreset ? 'text-sky-400' : 'text-emerald-400'
+                            }`}
+                          />
+                          <span>{blePreset ? 'BLE Host' : 'Smart TV'}</span>
+                        </span>
                       </div>
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10px] font-bold shrink-0 ${
-                          preset.mode === 'MAC'
-                            ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
-                            : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                        }`}
-                      >
-                        <ModeIcon className="w-3 h-3" />
-                        <span>{preset.mode}</span>
-                      </span>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                        {preset.subtitle}
+                      </p>
                     </div>
 
                     <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
@@ -373,28 +418,27 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex items-center gap-1.5 pt-1">
                     <button
                       type="button"
-                      onClick={() => openCuratedPresetPreview(preset, preset.mode)}
+                      onClick={() => openCuratedPresetPreview(preset, primaryTarget)}
                       style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                      className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+                      className="flex-1 py-2 px-2.5 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap truncate"
+                      title={`Preview & apply to ${formatProfileLabel(primaryTarget)}`}
                     >
-                      Apply to {preset.mode}
+                      Apply to {profileShortTag(primaryTarget)}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openCuratedPresetPreview(
-                          preset,
-                          preset.mode === 'MAC' ? 'TV' : 'MAC'
-                        )
-                      }
-                      className="py-2 px-2.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
-                      title={`Preview & apply to ${preset.mode === 'MAC' ? 'TV' : 'MAC'} instead`}
-                    >
-                      → {preset.mode === 'MAC' ? 'TV' : 'MAC'}
-                    </button>
+                    {secondaryTargets.map(altId => (
+                      <button
+                        key={altId}
+                        type="button"
+                        onClick={() => openCuratedPresetPreview(preset, altId)}
+                        className="py-2 px-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                        title={`Preview & apply to ${formatProfileLabel(altId)}`}
+                      >
+                        {profileShortTag(altId)}
+                      </button>
+                    ))}
                   </div>
                 </div>
               );
@@ -402,7 +446,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         </section>
 
-        {/* Section 2: My Presets (Save current profile under a name & reapply later) */}
+        {/* Section 2: My Presets (Save any Host or TV profile under a name & reapply later) */}
         <section className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -410,7 +454,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 My presets ({userPresets.length})
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Save your current profile under a custom name so you can reapply all 11 controls anytime.
+                Save any Host or TV layout under a custom name so you can reapply its 11 controls to any device slot later.
               </p>
             </div>
 
@@ -423,8 +467,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 aria-label="Profile to save"
                 className="px-2.5 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)]"
               >
-                <option value="MAC">Current MAC Profile</option>
-                <option value="TV">Current TV Profile</option>
+                {profiles.map(p => (
+                  <option key={p.id} value={p.id}>
+                    [{profileShortTag(p.id)}] {p.name}
+                  </option>
+                ))}
               </select>
 
               <input
@@ -443,7 +490,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 type="button"
                 onClick={handleSaveMyPreset}
                 style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
               >
                 <BookmarkPlus className="w-3.5 h-3.5" />
                 <span>Save to My presets</span>
@@ -457,13 +504,19 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 No saved presets in My presets yet
               </div>
               <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
-                Customize your MAC or TV controls, type a name above, and click Save to My presets.
+                Customize Host 1, Host 2, Host 3, or TV controls, type a name above, and click Save to My presets.
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {userPresets.map(snap => {
-                const defaultTarget: HardwareProfileId = snap.targetProfile || 'MAC';
+                const defaultTarget: HardwareProfileId = normalizeHardwareProfileId(
+                  snap.targetProfile,
+                  1
+                );
+                const otherTargets = HARDWARE_PROFILE_IDS.filter(
+                  id => id !== defaultTarget
+                );
                 return (
                   <div
                     key={snap.id}
@@ -478,8 +531,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               {snap.name}
                             </h3>
                           </div>
-                          <p className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">
-                            Saved {snap.createdAt} · {defaultTarget} profile
+                          <p className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5 tabular-nums">
+                            Saved {snap.createdAt} · {profileShortTag(defaultTarget)} snapshot
                           </p>
                         </div>
                         <button
@@ -507,7 +560,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                   describeFirmwareAction(
                                     snap.profileSlots![s] ||
                                       FACTORY_DEFAULT_SLOTS[defaultTarget][s],
-                                    snap.repeatConfigs?.[`${defaultTarget}:${s}`]
+                                    snap.repeatConfigs?.[`${defaultTarget}:${s}`] ||
+                                      snap.repeatConfigs?.[`MAC:${s}`]
                                   ).shortLabel
                                 }
                               </span>
@@ -517,36 +571,35 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
                         onClick={() => openMyPresetPreview(snap, defaultTarget)}
                         style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
                         className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
                       >
-                        Apply to {defaultTarget}
+                        Apply to {profileShortTag(defaultTarget)}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openMyPresetPreview(
-                            snap,
-                            defaultTarget === 'MAC' ? 'TV' : 'MAC'
-                          )
-                        }
-                        className="py-2 px-3 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-                      >
-                        Apply to {defaultTarget === 'MAC' ? 'TV' : 'MAC'}
-                      </button>
+                      {otherTargets.map(altId => (
+                        <button
+                          key={altId}
+                          type="button"
+                          onClick={() => openMyPresetPreview(snap, altId)}
+                          className="py-2 px-2.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                          title={`Apply "${snap.name}" to ${formatProfileLabel(altId)}`}
+                        >
+                          {profileShortTag(altId)}
+                        </button>
+                      ))}
                       <button
                         type="button"
                         onClick={() =>
                           onApplyHardwareBackup(snap.backup, snap.repeatConfigs)
                         }
-                        className="py-2 px-3 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-                        title="Restore both MAC and TV profiles from this snapshot"
+                        className="py-2 px-2.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                        title="Restore all 4 profiles from this full snapshot"
                       >
-                        Restore Both
+                        Restore All
                       </button>
                     </div>
                   </div>
@@ -556,73 +609,120 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           )}
         </section>
 
-        {/* Section 3: Profile Copy & Reset Operations (all confirmed with Diff / RESET) */}
+        {/* Section 3: 4-Profile Clone & Factory Reset Operations */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex flex-col justify-between gap-4">
+          <div className="md:col-span-2 p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex flex-col justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                 <Copy className="w-4 h-4 text-sky-400" />
-                <span>Copy MAC → TV</span>
+                <span>Clone Bindings Between Profiles</span>
               </div>
               <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                Previews the 11-slot diff and copies all MAC bindings onto the TV profile.
+                Copy all 11 button and rotary dial assignments from any Host or TV profile onto another device slot with a full diff preview.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => openCopyConfirm('MAC', 'TV')}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-            >
-              <span>Copy MAC</span>
-              <ArrowRight className="w-3.5 h-3.5 text-[var(--accent)]" />
-              <span>TV</span>
-            </button>
-          </div>
 
-          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex flex-col justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-                <Copy className="w-4 h-4 text-emerald-400" />
-                <span>Copy TV → MAC</span>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-end gap-2.5">
+              <label className="space-y-1 text-xs text-[var(--text-secondary)]">
+                <span>Source profile</span>
+                <select
+                  value={copySource}
+                  onChange={e => {
+                    const nextSrc = e.target.value as HardwareProfileId;
+                    setCopySource(nextSrc);
+                    if (nextSrc === copyTarget) {
+                      const fallback = HARDWARE_PROFILE_IDS.find(id => id !== nextSrc);
+                      if (fallback) setCopyTarget(fallback);
+                    }
+                  }}
+                  aria-label="Source profile to copy from"
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                >
+                  {profiles.map(p => (
+                    <option key={p.id} value={p.id}>
+                      [{profileShortTag(p.id)}] {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="hidden sm:flex items-center justify-center pb-2.5 text-[var(--text-muted)]">
+                <ArrowRight className="w-4 h-4" />
               </div>
-              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                Previews the 11-slot diff and copies all TV bindings onto the MAC profile.
-              </p>
+
+              <label className="space-y-1 text-xs text-[var(--text-secondary)]">
+                <span>Target profile</span>
+                <select
+                  value={copyTarget}
+                  onChange={e => setCopyTarget(e.target.value as HardwareProfileId)}
+                  aria-label="Target profile to overwrite"
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                >
+                  {profiles.map(p => (
+                    <option key={p.id} value={p.id} disabled={p.id === copySource}>
+                      [{profileShortTag(p.id)}] {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-            <button
-              type="button"
-              onClick={() => openCopyConfirm('TV', 'MAC')}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-            >
-              <span>Copy TV</span>
-              <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
-              <span>MAC</span>
-            </button>
+
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(
+                  [
+                    ['HOST1', 'HOST2'],
+                    ['HOST1', 'HOST3'],
+                    ['HOST2', 'HOST3']
+                  ] as const
+                ).map(([src, tgt]) => (
+                  <button
+                    key={`${src}-${tgt}`}
+                    type="button"
+                    onClick={() => openCopyConfirm(src, tgt)}
+                    className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    {profileShortTag(src)} → {profileShortTag(tgt)}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                disabled={copySource === copyTarget}
+                onClick={() => openCopyConfirm(copySource, copyTarget)}
+                className="flex items-center justify-center gap-2 py-2 px-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <span>Copy {profileShortTag(copySource)}</span>
+                <ArrowRight className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>{profileShortTag(copyTarget)}</span>
+              </button>
+            </div>
           </div>
 
           <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex flex-col justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                 <RotateCcw className="w-4 h-4 text-rose-400" />
-                <span>Reset both profiles</span>
+                <span>Reset all 4 profiles</span>
               </div>
               <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                Asks you to type <span className="font-mono font-semibold">RESET</span> and restores all 22 controls to factory defaults while keeping Wi-Fi & TV pairing.
+                Asks you to type <span className="font-mono font-semibold">RESET</span> and restores all 44 controls across Host 1–3 and TV to universal defaults while keeping Wi-Fi & TV pairing.
               </p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={openResetBothConfirm}
+                onClick={openResetAllConfirm}
                 className="flex-1 py-2 px-3 rounded-xl bg-rose-500/12 hover:bg-rose-500/20 border border-rose-500/35 text-xs font-semibold text-rose-300 cursor-pointer whitespace-nowrap"
               >
-                Reset both profiles
+                Reset all profiles
               </button>
               {isConnected && (
                 <button
                   type="button"
                   onClick={onPushAllToUsb}
-                  className="py-2 px-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+                  className="py-2 px-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Push All
                 </button>
@@ -637,29 +737,29 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         isOpen={pendingAction !== null}
         title={
           pendingAction?.kind === 'curated_preset'
-            ? `Apply "${pendingAction.preset.title}" to ${pendingAction.targetProfile}?`
+            ? `Apply "${pendingAction.preset.title}" to ${formatProfileLabel(pendingAction.targetProfile)}?`
             : pendingAction?.kind === 'my_preset'
-            ? `Apply "${pendingAction.preset.name}" to ${pendingAction.targetProfile}?`
+            ? `Apply "${pendingAction.preset.name}" to ${formatProfileLabel(pendingAction.targetProfile)}?`
             : pendingAction?.kind === 'copy_profile'
-            ? `Copy ${pendingAction.source} → ${pendingAction.target}?`
-            : 'Reset both profiles to factory defaults?'
+            ? `Copy ${formatProfileLabel(pendingAction.source)} → ${formatProfileLabel(pendingAction.target)}?`
+            : 'Reset all 4 profiles to universal defaults?'
         }
         description={
           pendingAction?.kind === 'curated_preset' || pendingAction?.kind === 'my_preset'
-            ? `Review the 11 control changes that will be written to ${pendingAction.targetProfile}.`
+            ? `Review the 11 control changes that will be written to ${formatProfileLabel(pendingAction.targetProfile)}.`
             : pendingAction?.kind === 'copy_profile'
-            ? `All 11 controls on ${pendingAction.target} will be overwritten with ${pendingAction.source}'s bindings.`
-            : 'This restores all 22 controls across MAC and TV to factory defaults. Wi-Fi and SmartCast TV pairing are preserved.'
+            ? `All 11 controls on ${formatProfileLabel(pendingAction.target)} will be overwritten with ${formatProfileLabel(pendingAction.source)}'s bindings.`
+            : 'This restores all 44 controls across Host 1, Host 2, Host 3, and TV to universal factory defaults. Wi-Fi and SmartCast TV pairing are preserved.'
         }
         confirmLabel={
-          pendingAction?.kind === 'reset_both'
-            ? 'Reset Both Profiles'
+          pendingAction?.kind === 'reset_all'
+            ? 'Reset All 4 Profiles'
             : pendingAction?.kind === 'copy_profile'
-            ? `Copy ${pendingAction.source} → ${pendingAction.target}`
+            ? `Copy ${profileShortTag(pendingAction.source)} → ${profileShortTag(pendingAction.target)}`
             : 'Apply Preset (11 Controls)'
         }
-        tone={pendingAction?.kind === 'reset_both' ? 'danger' : 'accent'}
-        requireWord={pendingAction?.kind === 'reset_both' ? 'RESET' : undefined}
+        tone={pendingAction?.kind === 'reset_all' ? 'danger' : 'accent'}
+        requireWord={pendingAction?.kind === 'reset_all' ? 'RESET' : undefined}
         rows={pendingAction?.rows || []}
         onConfirm={handleConfirmPendingAction}
         onCancel={() => setPendingAction(null)}

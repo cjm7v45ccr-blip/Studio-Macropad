@@ -8,7 +8,9 @@ import {
   HardwareSlotId,
   MacroStepConfig,
   StudioProfile,
-  TextMacroRepeatConfig
+  TextMacroRepeatConfig,
+  isBleHostProfile,
+  profileShortTag
 } from '../types/studio';
 import {
   FIRMWARE_STATIC_CATALOG,
@@ -41,7 +43,8 @@ import {
   Laptop,
   Tv,
   CornerDownLeft,
-  Layers
+  Layers,
+  Bluetooth
 } from 'lucide-react';
 
 export interface GlobalMacroSearchOpenBuilderPayload {
@@ -53,7 +56,7 @@ export interface GlobalMacroSearchOpenBuilderPayload {
 }
 
 interface GlobalMacroSearchProps {
-  profiles: [StudioProfile, StudioProfile];
+  profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
   selectedControl: ControlId;
   customMacros: CustomMacroItem[];
@@ -442,7 +445,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           : deriveAppearanceForAction(rawAction, undefined, binding?.repeatConfig);
 
         const metaParts = [
-          `${prof.name} (${prof.id})`,
+          `${prof.name} (${profileShortTag(prof.id)})`,
           slotLabel,
           rawAction ? desc?.shortLabel || rawAction : 'Empty'
         ];
@@ -453,7 +456,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           filterGroup: 'assigned',
           title: displayTitle,
           metaParts,
-          searchBlob: `${displayTitle} ${prof.name} ${prof.id} ${slotLabel} ${SLOT_LABELS[slot].full} ${slot} ${rawAction} ${desc?.description || ''} assigned pad key knob`.toLowerCase(),
+          searchBlob: `${displayTitle} ${prof.name} ${prof.id} ${profileShortTag(prof.id)} ${slotLabel} ${SLOT_LABELS[slot].full} ${slot} ${rawAction} ${desc?.description || ''} assigned pad key knob`.toLowerCase(),
           icon: appearance.icon,
           iconColor: appearance.labelColor,
           action: rawAction,
@@ -469,8 +472,12 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         kind: 'assigned',
         filterGroup: 'assigned',
         title: 'Hardware Mode Switch',
-        metaParts: [`${prof.name} (${prof.id})`, 'Key 9', 'MAC / TV · Hold+Dial: BLE Host 1–3'],
-        searchBlob: `hardware mode switch key 9 k9 9th button profile toggle bluetooth ble host 1 2 3 dial setup oled ${prof.name} ${prof.id}`.toLowerCase(),
+        metaParts: [
+          `${prof.name} (${profileShortTag(prof.id)})`,
+          'Key 9',
+          'BLE Host / TV · Hold+Dial: Host 1–3'
+        ],
+        searchBlob: `hardware mode switch key 9 k9 9th button profile toggle bluetooth ble host 1 2 3 dial setup oled ${prof.name} ${prof.id} ${profileShortTag(prof.id)}`.toLowerCase(),
         icon: 'layers',
         iconColor: '#38BDF8',
         assignedProfileId: prof.id,
@@ -498,15 +505,20 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     });
 
     CURATED_PRESETS.forEach(preset => {
+      const bleMode = isBleHostProfile(preset.mode);
       results.push({
         id: `preset-${preset.id}`,
         kind: 'preset',
         filterGroup: 'templates',
         title: preset.title,
-        metaParts: ['Full Pad Preset', `${preset.mode} Mode`, preset.subtitle],
-        searchBlob: `${preset.title} ${preset.subtitle} ${preset.description} ${preset.mode} preset layout profile`.toLowerCase(),
-        icon: preset.mode === 'MAC' ? 'monitor' : 'tv',
-        iconColor: preset.mode === 'MAC' ? '#3B82F6' : '#10B981',
+        metaParts: [
+          'Full Pad Preset',
+          `${profileShortTag(preset.mode)} Mode`,
+          preset.subtitle
+        ],
+        searchBlob: `${preset.title} ${preset.subtitle} ${preset.description} ${preset.mode} ${profileShortTag(preset.mode)} preset layout profile`.toLowerCase(),
+        icon: bleMode ? 'monitor' : 'tv',
+        iconColor: bleMode ? '#3B82F6' : '#10B981',
         presetMode: preset.mode,
         presetBindings: preset.bindings
       });
@@ -902,25 +914,26 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <div className="inline-flex items-center p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                    {(['MAC', 'TV'] as const).map(profId => {
-                      const active = assignProfile === profId;
-                      const ProfIcon = profId === 'MAC' ? Laptop : Tv;
+                    {profiles.map(prof => {
+                      const active = assignProfile === prof.id;
+                      const ProfIcon = isBleHostProfile(prof.id) ? Bluetooth : Tv;
                       return (
                         <button
-                          key={profId}
+                          key={prof.id}
                           type="button"
                           onClick={() => {
-                            setAssignProfile(profId);
+                            setAssignProfile(prof.id);
                             inputRef.current?.focus();
                           }}
-                          className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                          title={`${prof.name} (${profileShortTag(prof.id)})`}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                             active
                               ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
                               : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                           }`}
                         >
                           <ProfIcon className="w-3 h-3" />
-                          <span>{profId}</span>
+                          <span>{profileShortTag(prof.id)}</span>
                         </button>
                       );
                     })}
@@ -1109,7 +1122,12 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                             </>
                           ) : entry.kind === 'preset' ? (
                             <>
-                              <span>Apply {entry.presetMode}</span>
+                              <span>
+                                Apply{' '}
+                                {entry.presetMode
+                                  ? profileShortTag(entry.presetMode)
+                                  : ''}
+                              </span>
                               <CornerDownLeft className="w-3 h-3" />
                             </>
                           ) : (

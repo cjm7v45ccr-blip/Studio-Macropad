@@ -10,7 +10,9 @@ import {
   MacroStepActionType,
   MacroStepConfig,
   StudioProfile,
-  TextMacroRepeatConfig
+  TextMacroRepeatConfig,
+  isBleHostProfile,
+  profileShortTag
 } from '../types/studio';
 import {
   FIRMWARE_STATIC_CATALOG,
@@ -85,7 +87,7 @@ export interface MacroEditorExternalTarget {
 }
 
 interface MacroEditorViewProps {
-  profiles: [StudioProfile, StudioProfile];
+  profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
   customMacros: CustomMacroItem[];
   keyboardLayout: KeyboardLayoutId;
@@ -1129,19 +1131,23 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
             {importDrawerOpen && (
               <div className="space-y-2.5 pt-1">
                 <div className="flex items-center justify-between gap-1.5">
-                  <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex-1">
+                  <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex-1 min-w-0">
                     {profiles.map(p => (
                       <button
                         key={p.id}
                         type="button"
                         onClick={() => setImportProfileId(p.id)}
-                        className={`py-1 px-2 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                        title={`${p.name} (${profileShortTag(p.id)})`}
+                        className={`py-1 px-2 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap truncate ${
                           importProfileId === p.id
                             ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                             : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                         }`}
                       >
-                        {p.name}
+                        <span className="font-mono text-[10px] opacity-75 mr-1">
+                          {profileShortTag(p.id)}
+                        </span>
+                        <span>{p.name}</span>
                       </button>
                     ))}
                   </div>
@@ -2446,23 +2452,27 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   Assign to Pad
                 </span>
 
-                <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex-wrap">
                   {profiles.map(p => {
-                    const ProfIcon = p.id === 'MAC' ? Laptop : Tv;
+                    const ProfIcon = isBleHostProfile(p.id) ? Bluetooth : Tv;
                     const active = targetProfile === p.id;
                     return (
                       <button
                         key={p.id}
                         type="button"
                         onClick={() => setTargetProfile(p.id)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                        title={`${p.name} (${profileShortTag(p.id)})`}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                           active
                             ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                             : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                         }`}
                       >
-                        <ProfIcon className="w-3.5 h-3.5" />
-                        <span>{p.name}</span>
+                        <ProfIcon className="w-3.5 h-3.5 shrink-0" />
+                        <span className="font-mono text-[10px] opacity-75">
+                          {profileShortTag(p.id)}
+                        </span>
+                        <span className="truncate max-w-[96px]">{p.name}</span>
                       </button>
                     );
                   })}

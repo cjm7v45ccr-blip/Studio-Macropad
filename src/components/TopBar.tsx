@@ -1,12 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   BleHostSlot,
   DeviceConnectionInfo,
   HardwareProfileId,
   StudioProfile,
-  SyncStatusPill
+  SyncStatusPill,
+  defaultProfileAlias,
+  isBleHostProfile,
+  profileIdToBleSlot,
+  profileShortTag
 } from '../types/studio';
 import { validateFirmwareAlias } from '../data/firmwareCatalog';
+import { PROFILE_ACCENT_COLORS } from '../data/presetTemplates';
 import { PWAInstallButton } from './PWAInstallButton';
 import {
   Undo2,
@@ -37,7 +42,7 @@ interface TopBarProps {
   onStartDemoMode: () => void;
   onOpenConnectModal: () => void;
   onPullFromUsb: () => void;
-  profiles: [StudioProfile, StudioProfile];
+  profiles: StudioProfile[];
   activeProfile: StudioProfile;
   onSelectProfile: (id: HardwareProfileId) => void;
   onRenameProfile: (id: HardwareProfileId, name: string) => Promise<boolean> | boolean;
@@ -77,8 +82,22 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [renamingId, setRenamingId] = useState<HardwareProfileId | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const copyMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!copyMenuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (copyMenuRef.current && !copyMenuRef.current.contains(e.target as Node)) {
+        setCopyMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleOutside);
+    return () => window.removeEventListener('mousedown', handleOutside);
+  }, [copyMenuOpen]);
 
   const startRename = (prof: StudioProfile) => {
+    setCopyMenuOpen(false);
     setRenamingId(prof.id);
     setRenameDraft(prof.name);
     setRenameError(null);
@@ -106,7 +125,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   const hwActiveProfile = connection.telemetry?.activeProfile;
-  const otherProfileId: HardwareProfileId = activeProfile.id === 'MAC' ? 'TV' : 'MAC';
+  const liveBleHost = connection.telemetry?.bleActiveHost ?? 1;
+  const selectedBleSlot = profileIdToBleSlot(activeProfile.id);
+  const canActivateViewedBleHost =
+    connection.connected &&
+    selectedBleSlot !== null &&
+    selectedBleSlot !== liveBleHost;
 
   const pillStyles: Record<
     SyncStatusPill,
@@ -188,7 +212,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Live Multi-Host BLE & Wi-Fi Badges when connected */}
         {connection.connected && connection.telemetry && (
-          <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-[10px] shrink-0">
+          <div className="hidden 2xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-[10px] shrink-0">
             <span
               className={`flex items-center gap-1 ${
                 connection.telemetry.bleConnected ? 'text-sky-400' : 'text-zinc-500'
@@ -214,7 +238,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     key={slot}
                     type="button"
                     onClick={() => onSwitchBleHost(slot)}
-                    title={`Switch to Host ${slot} (Studio Pad ${slot})`}
+                    title={`Switch live Bluetooth radio to Host ${slot} (Studio Pad ${slot})`}
                     className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors cursor-pointer tabular-nums whitespace-nowrap ${
                       isActiveHost
                         ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
@@ -248,7 +272,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onPullFromUsb}
             disabled={isSyncingUsb}
-            title="Read latest /api/status from MacroPad"
+            title="Read latest status & all 4 profiles from MacroPad"
             className="hidden sm:inline-flex p-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-colors cursor-pointer shrink-0"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncingUsb ? 'animate-spin' : ''}`} />
@@ -256,28 +280,36 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
-      {/* Center: Hardware MAC / TV Profile Selector + "Active on pad" badge */}
+      {/* Center: 4-Profile Selector (Host 1, Host 2, Host 3, TV) */}
       <div className="flex items-center gap-1.5 min-w-0 order-3 lg:order-2 w-full sm:w-auto justify-between sm:justify-center">
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] min-w-0 flex-1 sm:flex-initial">
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] min-w-0 flex-1 sm:flex-initial overflow-x-auto">
           {profiles.map(prof => {
             const selected = prof.id === activeProfile.id;
             const isLiveOnPad = connection.connected && hwActiveProfile === prof.id;
-            const Icon = prof.id === 'MAC' ? Laptop : Tv;
+            const accent = PROFILE_ACCENT_COLORS[prof.id];
+            const Icon = isBleHostProfile(prof.id) ? Laptop : Tv;
+            const shortTag = profileShortTag(prof.id);
+            const hasCustomAlias = prof.name !== defaultProfileAlias(prof.id);
 
             return (
               <button
                 key={prof.id}
                 type="button"
                 onClick={() => onSelectProfile(prof.id)}
+                title={
+                  isBleHostProfile(prof.id)
+                    ? `${prof.name} (${shortTag} · Studio Pad ${profileIdToBleSlot(prof.id)})${isLiveOnPad ? ' — Live on pad' : ''}`
+                    : `${prof.name} (SmartCast TV Profile)${isLiveOnPad ? ' — Live on pad' : ''}`
+                }
                 style={
                   selected
                     ? {
                         backgroundColor: 'var(--bg-elevated)',
-                        borderColor: prof.id === 'MAC' ? '#3B82F6' : '#10B981'
+                        borderColor: accent
                       }
                     : undefined
                 }
-                className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border cursor-pointer whitespace-nowrap min-w-0 ${
+                className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border cursor-pointer whitespace-nowrap shrink-0 min-w-0 ${
                   selected
                     ? 'text-[var(--text-primary)] shadow-sm'
                     : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
@@ -286,23 +318,23 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <Icon
                   className="w-3.5 h-3.5 shrink-0"
                   style={{
-                    color: selected
-                      ? prof.id === 'MAC'
-                        ? '#3B82F6'
-                        : '#10B981'
-                      : undefined
+                    color: selected ? accent : undefined
                   }}
                 />
-                <span className="truncate max-w-[84px] sm:max-w-[110px]">{prof.name}</span>
-                <span className="font-mono text-[10px] opacity-65 hidden md:inline">
-                  ({prof.id})
+                <span className="truncate max-w-[78px] sm:max-w-[100px] tabular-nums">
+                  {prof.name}
                 </span>
+                {hasCustomAlias && (
+                  <span className="font-mono text-[10px] opacity-60 tabular-nums hidden xl:inline">
+                    {shortTag}
+                  </span>
+                )}
                 {isLiveOnPad && (
                   <span
-                    className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono text-[9px] font-bold shrink-0"
-                    title="Real active profile on the physical pad"
+                    className="font-mono text-[9px] font-semibold text-emerald-400 shrink-0"
+                    title="Currently active on physical MacroPad"
                   >
-                    Active on pad
+                    · Live
                   </span>
                 )}
               </button>
@@ -310,7 +342,20 @@ export const TopBar: React.FC<TopBarProps> = ({
           })}
         </div>
 
-        {/* Inline Hardware Alias Rename (`mac_name` / `tv_name`) with live >20 / symbol validation */}
+        {/* 1-click Live Radio Switch when editing a non-active BLE Host while connected */}
+        {canActivateViewedBleHost && selectedBleSlot !== null && (
+          <button
+            type="button"
+            onClick={() => onSwitchBleHost(selectedBleSlot)}
+            title={`Switch MacroPad Bluetooth radio to Studio Pad ${selectedBleSlot} (${activeProfile.name})`}
+            className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-500/12 hover:bg-sky-500/20 border border-sky-500/35 text-[11px] font-semibold text-sky-300 transition-colors cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
+          >
+            <Bluetooth className="w-3 h-3 shrink-0" />
+            <span>Activate H{selectedBleSlot}</span>
+          </button>
+        )}
+
+        {/* Inline Hardware Alias Rename + 4-Profile Copy Menu */}
         {renamingId ? (
           <div className="relative flex items-center gap-1 shrink-0">
             <input
@@ -325,7 +370,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 }
               }}
               autoFocus
-              aria-label={`Rename ${renamingId} profile`}
+              aria-label={`Rename ${defaultProfileAlias(renamingId)} profile`}
               placeholder="1–20 chars"
               className={`w-28 sm:w-36 px-2 py-1 rounded-lg bg-[var(--bg-input)] border text-xs text-[var(--text-primary)] focus:outline-none ${
                 renameError ? 'border-rose-500' : 'border-[var(--accent)]'
@@ -357,23 +402,62 @@ export const TopBar: React.FC<TopBarProps> = ({
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-0.5 shrink-0">
+          <div className="relative flex items-center gap-0.5 shrink-0" ref={copyMenuRef}>
             <button
               type="button"
               onClick={() => startRename(activeProfile)}
-              title={`Rename ${activeProfile.id} profile (1–20 letters, numbers, spaces, - or _)`}
+              title={`Rename ${activeProfile.name} (${profileShortTag(activeProfile.id)})`}
               className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer"
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
-              onClick={() => onRequestCopyProfile(activeProfile.id, otherProfileId)}
-              title={`Copy ${activeProfile.id} → ${otherProfileId} (preview diff)`}
-              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer"
+              onClick={() => setCopyMenuOpen(prev => !prev)}
+              title={`Copy ${activeProfile.name} bindings to another profile`}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                copyMenuOpen
+                  ? 'bg-[var(--bg-input)] text-[var(--text-primary)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)]'
+              }`}
             >
               <Copy className="w-3.5 h-3.5" />
             </button>
+
+            {copyMenuOpen && (
+              <div className="absolute top-full right-0 mt-1.5 w-52 p-1.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] shadow-2xl z-50">
+                <div className="px-2 py-1 text-[11px] font-medium text-[var(--text-muted)]">
+                  Copy {activeProfile.name} to…
+                </div>
+                {profiles
+                  .filter(p => p.id !== activeProfile.id)
+                  .map(target => {
+                    const TargetIcon = isBleHostProfile(target.id) ? Laptop : Tv;
+                    return (
+                      <button
+                        key={target.id}
+                        type="button"
+                        onClick={() => {
+                          setCopyMenuOpen(false);
+                          onRequestCopyProfile(activeProfile.id, target.id);
+                        }}
+                        className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <TargetIcon
+                            className="w-3.5 h-3.5 shrink-0"
+                            style={{ color: PROFILE_ACCENT_COLORS[target.id] }}
+                          />
+                          <span className="truncate font-medium">{target.name}</span>
+                        </span>
+                        <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">
+                          {profileShortTag(target.id)}
+                        </span>
+                      </button>
+                    );
+                  })}
+              </div>
+            )}
           </div>
         )}
       </div>

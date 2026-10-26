@@ -7,7 +7,8 @@ import {
   KeyAppearance,
   KeyboardLayoutId,
   MacroStepConfig,
-  TextMacroRepeatConfig
+  TextMacroRepeatConfig,
+  defaultProfileAlias
 } from '../types/studio';
 
 export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
@@ -38,23 +39,27 @@ export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; 
   enc_ccw: { short: 'Turn Left', full: 'Turn Left (CCW)', pin: '' }
 };
 
+export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
+  b1: 'MEDIA:PLAY_PAUSE',
+  b2: 'MEDIA:NEXT',
+  b3: 'MEDIA:PREV',
+  b4: 'MEDIA:MUTE',
+  b5: 'KEY:F13',
+  b6: 'KEY:F14',
+  b7: 'KEY:F15',
+  b8: 'BLE:NEXT_HOST',
+  dial: 'MEDIA:MUTE',
+  enc_cw: 'MEDIA:VOL_UP',
+  enc_ccw: 'MEDIA:VOL_DOWN'
+};
+
 export const FACTORY_DEFAULT_SLOTS: Record<
   HardwareProfileId,
   Record<HardwareSlotId, string>
 > = {
-  MAC: {
-    b1: 'MEDIA:PLAY_PAUSE',
-    b2: 'KEY:F13',
-    b3: 'KEY:F14',
-    b4: 'KEY:F15',
-    b5: 'MACRO:COPY',
-    b6: 'MACRO:PASTE',
-    b7: 'MACRO:UNDO',
-    b8: 'MACRO:SAVE',
-    dial: 'MEDIA:MUTE',
-    enc_cw: 'MEDIA:VOL_UP',
-    enc_ccw: 'MEDIA:VOL_DOWN'
-  },
+  HOST1: { ...UNIVERSAL_BLE_DEFAULT_SLOTS },
+  HOST2: { ...UNIVERSAL_BLE_DEFAULT_SLOTS },
+  HOST3: { ...UNIVERSAL_BLE_DEFAULT_SLOTS },
   TV: {
     b1: 'TV:POWER',
     b2: 'APP:YOUTUBE',
@@ -304,9 +309,12 @@ export function isValidFirmwareAlias(name: string): boolean {
   return validateFirmwareAlias(name).valid;
 }
 
-export function sanitizeFirmwareAlias(raw: string, fallback: HardwareProfileId = 'MAC'): string {
-  const cleaned = raw.replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 20).trim();
-  return cleaned || (fallback === 'MAC' ? 'Mac' : 'TV');
+export function sanitizeFirmwareAlias(
+  raw: string,
+  fallback: HardwareProfileId = 'HOST1'
+): string {
+  const cleaned = (raw || '').replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 20).trim();
+  return cleaned || defaultProfileAlias(fallback);
 }
 
 export function sanitizeSerialString(str: string, maxLen = 123): string {
