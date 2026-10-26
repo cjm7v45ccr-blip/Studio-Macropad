@@ -41,9 +41,9 @@ export function profileShortTag(id: HardwareProfileId): string {
 }
 
 export function defaultProfileAlias(id: HardwareProfileId): string {
-  if (id === 'HOST1') return 'Host 1';
-  if (id === 'HOST2') return 'Host 2';
-  if (id === 'HOST3') return 'Host 3';
+  if (id === 'HOST1') return 'Device 1';
+  if (id === 'HOST2') return 'Device 2';
+  if (id === 'HOST3') return 'Device 3';
   return 'TV';
 }
 

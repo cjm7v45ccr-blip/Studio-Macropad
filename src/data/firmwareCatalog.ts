@@ -248,7 +248,12 @@ export function validateTextMacroInput(
 }
 
 export function isValidFirmwareAction(action: string): boolean {
-  if (!action || action.length < 3 || action.length > 128) return false;
+  if (!action || action.length < 3 || action.length > 256) return false;
+  if (action.includes('||')) {
+    const parts = action.split('||').map(p => p.trim()).filter(Boolean);
+    if (parts.length === 0) return false;
+    return parts.every(p => isValidFirmwareAction(p));
+  }
   if (STATIC_MAP.has(action)) return true;
 
   if (action.startsWith('SHORTCUT:')) {
@@ -660,6 +665,20 @@ export function actionToMacroSteps(
   }
 
   const stamp = Date.now();
+  if (action && action.includes('||')) {
+    const subActions = action.split('||').map(a => a.trim()).filter(Boolean);
+    const steps: MacroStepConfig[] = [];
+    subActions.forEach((sub, idx) => {
+      const singleSteps = actionToMacroSteps(sub);
+      if (singleSteps.length > 0) {
+        steps.push({
+          ...singleSteps[0],
+          id: `step-${stamp}-${idx + 1}`
+        });
+      }
+    });
+    if (steps.length > 0) return steps;
+  }
 
   if (repeatConfig || action.startsWith('TEXT:')) {
     const cfg = parseTextConfigFromFirmwareAction(action, repeatConfig);
@@ -779,7 +798,7 @@ export function actionToMacroSteps(
  * Build the base single-step ESP32 firmware action for a Text/Button Repeat or Multi-Step configuration.
  * - If steps are present:
  *   - Special native optimization: 2 steps [text (0ms, 1x), key=enter (1x)] -> `TEXT:<text>\n`
- *   - Otherwise uses the first valid non-delay step's firmware action string as the slot's base action
+ *   - Otherwise serializes all valid non-delay steps joined by `||` so macros execute standalone on the pad.
  * - Legacy fallback when steps is empty: uses `text` / `followUpKey`
  */
 export function buildFirmwareActionFromTextConfig(cfg: TextMacroRepeatConfig): string {
@@ -805,7 +824,9 @@ export function buildFirmwareActionFromTextConfig(cfg: TextMacroRepeatConfig): s
       return `TEXT:${cfg.steps[0].value}\n`;
     }
 
-    return stepToFirmwareAction(nonDelaySteps[0]);
+    const actions = nonDelaySteps.map(s => stepToFirmwareAction(s)).filter(Boolean);
+    if (actions.length === 1) return actions[0];
+    return actions.join('||');
   }
 
   const hasNativeTrailingNewline =
