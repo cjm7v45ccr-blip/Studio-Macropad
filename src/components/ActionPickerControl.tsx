@@ -43,7 +43,8 @@ import {
   Repeat,
   Search,
   X,
-  AlertCircle
+  AlertCircle,
+  Bluetooth
 } from 'lucide-react';
 
 interface ActionPickerControlProps {
@@ -61,6 +62,7 @@ interface ActionPickerControlProps {
 type PickerCategoryTab =
   | 'os_shortcuts'
   | 'media'
+  | 'ble'
   | 'shortcut'
   | 'text'
   | 'tv'
@@ -73,6 +75,7 @@ const ACTION_TABS: {
 }[] = [
   { id: 'os_shortcuts', label: 'Shortcuts', icon: Laptop },
   { id: 'media', label: 'Media / F13', icon: Volume2 },
+  { id: 'ble', label: 'BLE Hosts', icon: Bluetooth },
   { id: 'shortcut', label: 'Custom Key', icon: Command },
   { id: 'text', label: 'Type Text', icon: FileText },
   { id: 'tv', label: 'TV Remote', icon: Tv },
@@ -523,7 +526,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
 
       {/* Firmware Action Category Tabs */}
       {!trimmedQuery && (
-        <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+        <div className="flex flex-wrap gap-1 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
           {ACTION_TABS.map(tab => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -532,7 +535,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap ${
+                className={`flex-1 min-w-[98px] flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                   active
                     ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm border border-[var(--border-strong)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] border border-transparent'
@@ -609,6 +612,23 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 );
               })}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Multi-Host BLE Engine Context Strip */}
+      {!trimmedQuery && activeTab === 'ble' && (
+        <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-2 text-[11px] text-[var(--text-secondary)]">
+          <div className="min-w-0">
+            <span className="font-semibold text-[var(--text-primary)]">
+              Multi-Host BLE (Studio Pad 1–3):
+            </span>{' '}
+            Hold <span className="font-mono text-[var(--text-primary)]">Mode</span> + turn the dial on hardware to switch hosts anytime.
+          </div>
+          {connection.connected && connection.telemetry && (
+            <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-sky-300 shrink-0 tabular-nums">
+              [H{connection.telemetry.bleActiveHost}] Active
+            </span>
           )}
         </div>
       )}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  BleHostSlot,
   DeviceConnectionInfo,
   HardwareProfileId,
   StudioProfile,
@@ -46,6 +47,7 @@ interface TopBarProps {
   onUndo: () => void;
   onRedo: () => void;
   onSaveToDevice: () => void;
+  onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   searchSlot?: React.ReactNode;
 }
 
@@ -69,6 +71,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onUndo,
   onRedo,
   onSaveToDevice,
+  onSwitchBleHost,
   searchSlot
 }) => {
   const [renamingId, setRenamingId] = useState<HardwareProfileId | null>(null);
@@ -149,7 +152,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               Studio MacroPad
             </div>
             <div className="text-[10px] font-mono text-[var(--text-muted)] whitespace-nowrap">
-              {connection.transport === 'demo' ? 'Demo Mode · v2.1.0' : 'ESP32 USB Link'}
+              {connection.transport === 'demo' ? 'Demo Mode · v3.2-PRO' : 'ESP32 USB Link'}
             </div>
           </div>
         </div>
@@ -183,7 +186,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </button>
 
-        {/* Live BLE / Wi-Fi Event Badges when connected */}
+        {/* Live Multi-Host BLE & Wi-Fi Badges when connected */}
         {connection.connected && connection.telemetry && (
           <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-[10px] shrink-0">
             <span
@@ -192,13 +195,37 @@ export const TopBar: React.FC<TopBarProps> = ({
               }`}
               title={
                 connection.telemetry.bleConnected
-                  ? 'Bluetooth Keyboard Connected'
-                  : 'Bluetooth Disconnected'
+                  ? `Bluetooth Connected · ${connection.telemetry.bleDeviceName}`
+                  : `Bluetooth Disconnected · ${connection.telemetry.bleDeviceName}`
               }
             >
               <Bluetooth className="w-3 h-3" />
               <span>BLE</span>
             </span>
+            <div
+              role="group"
+              aria-label="Switch Bluetooth host"
+              className="flex items-center gap-0.5 pl-0.5"
+            >
+              {([1, 2, 3] as const).map(slot => {
+                const isActiveHost = connection.telemetry?.bleActiveHost === slot;
+                return (
+                  <button
+                    key={slot}
+                    type="button"
+                    onClick={() => onSwitchBleHost(slot)}
+                    title={`Switch to Host ${slot} (Studio Pad ${slot})`}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors cursor-pointer tabular-nums whitespace-nowrap ${
+                      isActiveHost
+                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-transparent'
+                    }`}
+                  >
+                    H{slot}
+                  </button>
+                );
+              })}
+            </div>
             <span className="text-zinc-700">·</span>
             <span
               className={`flex items-center gap-1 ${

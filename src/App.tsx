@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ActionBinding,
   ActiveRepeatJob,
+  BleHostSlot,
   CanvasViewMode,
   ControlId,
   DeviceConnectionInfo,
   EncoderSubControlId,
   HardwareProfileId,
+  HardwareSlotId,
   KeyId,
   SidebarSection
 } from './types/studio';
@@ -24,6 +26,12 @@ import {
   getActionTestAvailability,
   requiresUsbSequenceExecution
 } from './data/firmwareCatalog';
+import {
+  ActionKeyId,
+  ButtonSlotId,
+  KEY_TO_SLOT,
+  SLOT_TO_ACTION_KEY
+} from './data/presetTemplates';
 import { TopBar } from './components/TopBar';
 import { LeftSidebar } from './components/LeftSidebar';
 import { MacropadCanvas } from './components/MacropadCanvas';
@@ -186,6 +194,22 @@ export default function App() {
     [connection, showToast]
   );
 
+  const handleSwitchBleHost = useCallback(
+    async (slot: BleHostSlot) => {
+      if (!connection.connected) {
+        showToast('Connect MacroPad via USB (or start Demo Mode) to switch BLE host', 'error');
+        return;
+      }
+      try {
+        const res = await usbHardware.switchBleHost(slot);
+        showToast(res.message || `Switched to Host ${slot} (Studio Pad ${slot})`);
+      } catch (err: any) {
+        showToast(err?.message || 'Could not switch Bluetooth host', 'error');
+      }
+    },
+    [connection.connected, showToast]
+  );
+
   const isEncoderControlSelected =
     selectedControl === 'encoder' ||
     selectedControl === 'dial' ||
@@ -203,6 +227,43 @@ export default function App() {
     ? studio.activeLayer.keys[selectedControl as KeyId] ||
       studio.activeLayer.keys.k1
     : null;
+
+  const selectedHardwareSlot: HardwareSlotId = isEncoderControlSelected
+    ? selectedEncoderSubControl
+    : selectedControl === 'k9'
+    ? 'b1'
+    : KEY_TO_SLOT[selectedControl as ActionKeyId] || 'b1';
+
+  const handleOpenMacroBuilderForSlot = useCallback(
+    (slot: HardwareSlotId, binding: ActionBinding) => {
+      const desc = binding.value
+        ? describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel
+        : '';
+      setExternalMacroTarget({
+        requestId: Date.now(),
+        name: desc || `${SLOT_LABELS[slot].short} Macro`,
+        action: binding.value,
+        repeatConfig: binding.repeatConfig,
+        targetProfile: studio.activeProfile.id,
+        targetSlot: slot
+      });
+      setActiveSection('macros');
+    },
+    [studio.activeProfile.id]
+  );
+
+  const handleJumpToSlotControl = useCallback(
+    (profileId: HardwareProfileId, slot: HardwareSlotId) => {
+      studio.selectProfile(profileId);
+      if (slot === 'dial' || slot === 'enc_cw' || slot === 'enc_ccw') {
+        setSelectedControl(slot);
+      } else {
+        setSelectedControl(SLOT_TO_ACTION_KEY[slot as ButtonSlotId] || 'k1');
+      }
+      setActiveSection('device');
+    },
+    [studio]
+  );
 
   const topBarCopyDiffRows: DiffPreviewRow[] = useMemo(() => {
     if (!pendingCopyPair) return [];
@@ -253,6 +314,7 @@ export default function App() {
         onUndo={studio.undo}
         onRedo={studio.redo}
         onSaveToDevice={handleSaveToDevice}
+        onSwitchBleHost={handleSwitchBleHost}
         searchSlot={
           <GlobalMacroSearch
             profiles={studio.profiles}
@@ -327,6 +389,7 @@ export default function App() {
               onStartDemoMode={handleStartDemoMode}
               onPullFromUsb={handlePullFromUsb}
               onExecuteHardwareBinding={handleExecuteHardwareBinding}
+              onSwitchBleHost={handleSwitchBleHost}
             />
 
             {isEncoderControlSelected ? (
@@ -357,7 +420,15 @@ export default function App() {
                   handleExecuteHardwareBinding(binding);
                 }}
                 onStopRepeat={handleStopRepeat}
-                onOpenMacroBuilder={() => setActiveSection('macros')}
+                onOpenMacroBuilder={() => {
+                  const activeBind =
+                    selectedEncoderSubControl === 'dial'
+                      ? studio.activeLayer.encoder.dial
+                      : selectedEncoderSubControl === 'enc_cw'
+                      ? studio.activeLayer.encoder.cw
+                      : studio.activeLayer.encoder.ccw;
+                  handleOpenMacroBuilderForSlot(selectedEncoderSubControl, activeBind);
+                }}
               />
             ) : (
               selectedKeyConfig && (
@@ -385,11 +456,17 @@ export default function App() {
                     studio.resetKeyAppearance(selectedKeyConfig.id)
                   }
                   onToggleProfileMode={studio.toggleActiveProfile}
+                  onSwitchBleHost={handleSwitchBleHost}
                   onTestBinding={binding => {
                     handleExecuteHardwareBinding(binding);
                   }}
                   onStopRepeat={handleStopRepeat}
-                  onOpenMacroBuilder={() => setActiveSection('macros')}
+                  onOpenMacroBuilder={() =>
+                    handleOpenMacroBuilderForSlot(
+                      KEY_TO_SLOT[selectedKeyConfig.id as ActionKeyId] || 'b1',
+                      selectedKeyConfig.triggers.tap
+                    )
+                  }
                 />
               )
             )}
@@ -405,6 +482,7 @@ export default function App() {
             connection={connection}
             activeRepeatJob={activeRepeatJob}
             externalTarget={externalMacroTarget}
+            initialTargetSlot={selectedHardwareSlot}
             onSaveMacro={studio.saveCustomMacro}
             onDeleteMacro={studio.deleteCustomMacro}
             onAssignSlot={studio.assignSlotAction}
@@ -413,6 +491,7 @@ export default function App() {
             }}
             onStopRepeat={handleStopRepeat}
             onPullFromUsb={handlePullFromUsb}
+            onJumpToControl={handleJumpToSlotControl}
           />
         )}
 

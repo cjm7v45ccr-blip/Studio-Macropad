@@ -182,6 +182,7 @@ const CATALOG_CATEGORY_LABELS: Record<string, string> = {
   media: 'Media & Function',
   mac_macro: 'macOS Macro',
   win_macro: 'Windows Macro',
+  ble: 'Multi-Host BLE',
   tv: 'Smart TV',
   tv_app: 'Streaming App'
 };
@@ -468,8 +469,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         kind: 'assigned',
         filterGroup: 'assigned',
         title: 'Hardware Mode Switch',
-        metaParts: [`${prof.name} (${prof.id})`, 'Key 9', 'MAC / TV Toggle · 3s Setup'],
-        searchBlob: `hardware mode switch key 9 k9 9th button profile toggle setup oled ${prof.name} ${prof.id}`.toLowerCase(),
+        metaParts: [`${prof.name} (${prof.id})`, 'Key 9', 'MAC / TV · Hold+Dial: BLE Host 1–3'],
+        searchBlob: `hardware mode switch key 9 k9 9th button profile toggle bluetooth ble host 1 2 3 dial setup oled ${prof.name} ${prof.id}`.toLowerCase(),
         icon: 'layers',
         iconColor: '#38BDF8',
         assignedProfileId: prof.id,

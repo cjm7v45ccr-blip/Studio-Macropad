@@ -309,6 +309,9 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
               );
             })}
           </div>
+          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed pt-0.5">
+            Hardware shortcut: holding <span className="font-semibold text-[var(--text-secondary)]">Mode</span> while rotating the dial cycles BLE Hosts 1–3 without overriding these bindings.
+          </p>
         </div>
 
         {/* Quick Knob Presets & Swap Directions */}

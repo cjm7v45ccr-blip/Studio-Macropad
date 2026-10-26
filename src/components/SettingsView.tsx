@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  BleHostSlot,
   DebugLogEntry,
   DeviceConnectionInfo,
   KeyboardLayoutId,
@@ -103,6 +104,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // HTTP API Security State (live from pad only — never stored in localStorage)
   const [httpToken, setHttpToken] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
+  const [bleBusy, setBleBusy] = useState(false);
 
   // Reset Confirmations
   const [resetProfilesModalOpen, setResetProfilesModalOpen] = useState(false);
@@ -298,6 +300,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const handleSwitchBleHost = async (slot: BleHostSlot) => {
+    if (!connection.connected || bleBusy) return;
+    setBleBusy(true);
+    try {
+      const res = await usbHardware.switchBleHost(slot);
+      onToast(res.message || `Switched to Studio Pad ${slot} (Host ${slot})`);
+    } catch (err: any) {
+      onToast(err?.message || 'Could not switch Bluetooth host', 'error');
+    } finally {
+      setBleBusy(false);
+    }
+  };
+
   const handleCopyDebugConsole = async () => {
     const formatted = debugLogs
       .map(e => `[${e.timestamp}] ${e.direction.toUpperCase()}: ${e.line}`)
@@ -423,43 +438,100 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           )}
         </div>
 
-        {/* 2. Live Bluetooth Status Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
-                connection.connected && telemetry?.bleConnected
-                  ? 'bg-sky-500/15 border-sky-500/35 text-sky-400'
-                  : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
+        {/* 2. Multi-Host Bluetooth Engine (`/api/ble/switch`) */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                  connection.connected && telemetry?.bleConnected
+                    ? 'bg-sky-500/15 border-sky-500/35 text-sky-400'
+                    : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
+                }`}
+              >
+                <Bluetooth className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-2 flex-wrap">
+                  <span>Multi-Host Bluetooth Engine</span>
+                  {connection.connected && telemetry && (
+                    <span className="font-mono text-[11px] font-semibold text-sky-400 tabular-nums">
+                      [H{telemetry.bleActiveHost}] {telemetry.bleDeviceName}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-[var(--text-muted)]">
+                  3 independent Bluetooth host slots with unique MAC addresses (<span className="font-mono">Studio Pad 1–3</span>). Hold <span className="font-mono">Mode</span> + rotate the dial on hardware to cycle instantly.
+                </p>
+              </div>
+            </div>
+
+            <span
+              className={`px-3 py-1 rounded-full border text-xs font-semibold font-mono whitespace-nowrap shrink-0 ${
+                !connection.connected
+                  ? 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
+                  : telemetry?.bleConnected
+                  ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-300'
+                  : 'bg-amber-500/12 border-amber-500/35 text-amber-300'
               }`}
             >
-              <Bluetooth className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-[var(--text-primary)]">
-                Bluetooth Keyboard ("Studio Pad")
-              </div>
-              <p className="text-xs text-[var(--text-muted)]">
-                Updates live as your computer connects or disconnects over Bluetooth HID.
-              </p>
-            </div>
+              {!connection.connected
+                ? 'Pad Disconnected'
+                : telemetry?.bleConnected
+                ? 'Connected'
+                : 'Disconnected'}
+            </span>
           </div>
 
-          <span
-            className={`px-3 py-1 rounded-full border text-xs font-semibold font-mono ${
-              !connection.connected
-                ? 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
-                : telemetry?.bleConnected
-                ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-300'
-                : 'bg-amber-500/12 border-amber-500/35 text-amber-300'
-            }`}
+          <div
+            role="group"
+            aria-label="Multi-Host BLE slot switcher"
+            className="grid grid-cols-1 sm:grid-cols-3 gap-2.5"
           >
-            {!connection.connected
-              ? 'Pad Disconnected'
-              : telemetry?.bleConnected
-              ? 'Connected'
-              : 'Disconnected'}
-          </span>
+            {([1, 2, 3] as const).map(slot => {
+              const isActive = connection.connected && (telemetry?.bleActiveHost ?? 1) === slot;
+              return (
+                <button
+                  key={slot}
+                  type="button"
+                  disabled={!connection.connected || bleBusy}
+                  onClick={() => handleSwitchBleHost(slot)}
+                  style={
+                    isActive
+                      ? {
+                          borderColor: 'var(--accent)',
+                          backgroundColor: 'rgba(var(--accent-rgb), 0.14)'
+                        }
+                      : undefined
+                  }
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer disabled:opacity-45 disabled:pointer-events-none flex items-center justify-between gap-2 ${
+                    isActive
+                      ? 'text-[var(--text-primary)] shadow-sm'
+                      : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/70 border border-white/25 text-white tabular-nums">
+                        [H{slot}]
+                      </span>
+                      <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap">
+                        Host {slot}
+                      </span>
+                    </div>
+                    <div className="font-mono text-[11px] text-[var(--text-muted)] mt-1 truncate">
+                      Studio Pad {slot}
+                    </div>
+                  </div>
+                  {isActive && (
+                    <span className="text-[10px] font-mono font-semibold text-sky-400 shrink-0">
+                      Active
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* 3. Wi-Fi Provisioning Card (saved SSID, never stores password, Connecting… -> IP or error within 20s) */}

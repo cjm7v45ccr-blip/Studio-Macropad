@@ -25,10 +25,13 @@ export type EncoderPlacement = 'grid' | 'top';
 
 export type TriggerType = 'tap';
 
+export type BleHostSlot = 1 | 2 | 3;
+
 export type ActionType =
   | 'mac_macro'
   | 'win_macro'
   | 'media'
+  | 'ble'
   | 'shortcut'
   | 'text'
   | 'tv'
@@ -41,6 +44,7 @@ export type MacroStepActionType =
   | 'key'
   | 'media'
   | 'os_action'
+  | 'ble'
   | 'tv'
   | 'delay';
 
@@ -171,6 +175,7 @@ export interface HardwareEventPacket {
   active?: HardwareProfileId;
   profile?: HardwareProfileId;
   ble?: boolean;
+  ble_slot?: number;
   wifi?: boolean;
   ip?: string;
   rev?: number;
@@ -277,6 +282,9 @@ export interface HardwareTelemetry {
   ip: string;
   ssid: string;
   bleConnected: boolean;
+  bleActiveHost: BleHostSlot;
+  bleMaxHosts: number;
+  bleDeviceName: string;
   freeHeap: number;
   httpApiEnabled: boolean;
   tvConfigured: boolean;

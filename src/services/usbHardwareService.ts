@@ -1,4 +1,5 @@
 import {
+  BleHostSlot,
   DebugLogEntry,
   DeviceConnectionInfo,
   HardwareBackupPayload,
@@ -32,6 +33,11 @@ export interface FirmwareStatusPacket {
     ip: string;
     ble_connected: boolean;
   };
+  ble?: {
+    active_host: number;
+    max_hosts: number;
+    device_name: string;
+  };
   diagnostics?: {
     free_heap: number;
     http_api_enabled?: boolean;
@@ -50,6 +56,7 @@ export interface FirmwareStatusPacket {
       controls: Record<HardwareSlotId, string>;
     }[];
   };
+  ble_slot?: number;
   wifi_connected?: boolean;
   ip?: string;
   heap?: number;
@@ -90,6 +97,7 @@ interface VirtualDemoPadState {
   mac: Record<HardwareSlotId, string>;
   tv: Record<HardwareSlotId, string>;
   bleConnected: boolean;
+  bleSlot: BleHostSlot;
   wifiConnected: boolean;
   ip: string;
   ssid: string;
@@ -176,6 +184,7 @@ class PadLinkService {
   private isOpening = false;
   private manualDisconnect = false;
   private desiredEventsEnabled = true;
+  private rebootResyncTimer: number | null = null;
 
   private debugLogs: DebugLogEntry[] = [];
 
@@ -310,6 +319,10 @@ class PadLinkService {
 
   private markDisconnected() {
     this.demoModeActive = false;
+    if (this.rebootResyncTimer !== null) {
+      window.clearTimeout(this.rebootResyncTimer);
+      this.rebootResyncTimer = null;
+    }
     if (this.pendingReject) {
       const rej = this.pendingReject;
       this.pending = null;
@@ -422,6 +435,7 @@ class PadLinkService {
         mac: initialMac,
         tv: initialTv,
         bleConnected: true,
+        bleSlot: 1,
         wifiConnected: true,
         ip: '192.168.1.42',
         ssid: 'Studio-WiFi',
@@ -436,10 +450,10 @@ class PadLinkService {
       };
     }
 
-    this.logSerial('info', 'Started Demo Mode (virtual Studio Pad · firmware 2.1.0 · API v2)');
+    this.logSerial('info', 'Started Demo Mode (virtual Studio Pad · firmware 3.2-PRO · Multi-Host BLE)');
     await this.call({ path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 });
     const status = await this.call<FirmwareStatusPacket>({ path: '/api/status' });
-    this.applyTelemetryFromStatus(status, 'DEMO:2100');
+    this.applyTelemetryFromStatus(status, 'DEMO:3200');
     this.connectStatusListeners.forEach(fn => fn(status));
     return status;
   }
@@ -476,6 +490,40 @@ class PadLinkService {
     }
   }
 
+  public simulateDemoHostCycle(delta: 1 | -1 = 1): BleHostSlot {
+    if (!this.demoModeActive || !this.demoPad) return 1;
+    const nextIdx = (this.demoPad.bleSlot - 1 + (delta > 0 ? 1 : 2)) % 3;
+    const nextSlot = (nextIdx + 1) as BleHostSlot;
+    this.demoPad.bleSlot = nextSlot;
+    this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+    if (this.demoPad.eventsEnabled) {
+      const evt: HardwareEventPacket = {
+        event: 'ble_host',
+        ble_slot: nextSlot
+      };
+      this.logSerial('rx', JSON.stringify(evt));
+      this.handleHardwareEvent(evt);
+    }
+    return nextSlot;
+  }
+
+  private applyDemoBleActionSideEffect(action: string): boolean {
+    if (!this.demoPad) return false;
+    if (action === 'BLE:HOST1') {
+      this.demoPad.bleSlot = 1;
+    } else if (action === 'BLE:HOST2') {
+      this.demoPad.bleSlot = 2;
+    } else if (action === 'BLE:HOST3') {
+      this.demoPad.bleSlot = 3;
+    } else if (action === 'BLE:NEXT_HOST') {
+      this.demoPad.bleSlot = (((this.demoPad.bleSlot % 3) + 1) as BleHostSlot);
+    } else {
+      return false;
+    }
+    this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+    return true;
+  }
+
   public simulateDemoPadInput(slot: HardwareFlashSlot) {
     if (!this.demoModeActive || !this.demoPad) return;
     if (slot === 'mode') {
@@ -493,6 +541,9 @@ class PadLinkService {
 
     const activeMap = this.demoPad.active === 'MAC' ? this.demoPad.mac : this.demoPad.tv;
     const action = activeMap[slot] || '';
+    if (action.startsWith('BLE:')) {
+      this.applyDemoBleActionSideEffect(action);
+    }
     if (!this.demoPad.eventsEnabled) return;
 
     if (slot === 'enc_cw' || slot === 'enc_ccw') {
@@ -519,19 +570,25 @@ class PadLinkService {
     const d = this.demoPad!;
     return {
       ok: true,
-      api_version: 2,
+      api_version: 1,
       rev: d.rev,
+      ble_slot: d.bleSlot,
       ssid: d.ssid,
       device: {
         id: 'demo-pad',
-        name: 'Studio Pad (Demo)',
-        firmware: '2.1.0',
+        name: 'Studio MacroPad',
+        firmware: '3.2-PRO',
         connection_type: 'DEMO'
       },
       connection: {
         wifi_connected: d.wifiConnected,
         ip: d.wifiConnected ? d.ip : '',
         ble_connected: d.bleConnected
+      },
+      ble: {
+        active_host: d.bleSlot,
+        max_hosts: 3,
+        device_name: `Studio Pad ${d.bleSlot}`
       },
       diagnostics: {
         free_heap: 184320,
@@ -599,8 +656,23 @@ class PadLinkService {
       return reply({ ok: true, enabled: d.eventsEnabled ? 1 : 0 });
     }
 
-    if (path === '/api/status') {
+    if (path === '/api/status' || path === '/api/device') {
       return reply(this.buildDemoStatusPacket());
+    }
+
+    if (path === '/api/ble/switch') {
+      const slot = Number(obj.slot);
+      if (slot !== 1 && slot !== 2 && slot !== 3) {
+        return reply({ ok: false, message: 'Invalid host slot.' });
+      }
+      d.bleSlot = slot as BleHostSlot;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      if (d.eventsEnabled) {
+        const evt: HardwareEventPacket = { event: 'ble_host', ble_slot: slot };
+        this.logSerial('rx', JSON.stringify(evt));
+        this.handleHardwareEvent(evt);
+      }
+      return reply({ ok: true, message: 'Switching BLE host...' });
     }
 
     if (path === '/api/profile/activate') {
@@ -757,6 +829,13 @@ class PadLinkService {
       const act = String(obj.action || '');
       if (!isValidFirmwareAction(act)) {
         return reply({ ok: false, message: 'Unsupported action.' });
+      }
+      if (act.startsWith('BLE:')) {
+        this.applyDemoBleActionSideEffect(act);
+        return reply({
+          ok: true,
+          message: `Switched to Studio Pad ${d.bleSlot} (Host ${d.bleSlot})`
+        });
       }
       const isTv =
         act.startsWith('TV:') ||
@@ -1099,13 +1178,21 @@ class PadLinkService {
         : `v${rawFw}`
       : this.connectionInfo.firmwareVersion;
 
+    const rawSlot = Number(pkt.ble?.active_host ?? pkt.ble_slot ?? 1);
+    const activeHost: BleHostSlot = rawSlot === 2 ? 2 : rawSlot === 3 ? 3 : 1;
+    const maxHosts = Number(pkt.ble?.max_hosts ?? 3);
+    const bleDeviceName = pkt.ble?.device_name || `Studio Pad ${activeHost}`;
+
     const telemetry: HardwareTelemetry = {
-      apiVersion: Number(pkt.api_version ?? 2),
+      apiVersion: Number(pkt.api_version ?? 1),
       activeProfile: pkt.profiles?.active === 'TV' ? 'TV' : 'MAC',
       wifiConnected: Boolean(pkt.connection?.wifi_connected ?? pkt.wifi_connected),
       ip: pkt.connection?.ip || pkt.ip || '',
       ssid: pkt.ssid || '',
       bleConnected: Boolean(pkt.connection?.ble_connected),
+      bleActiveHost: activeHost,
+      bleMaxHosts: maxHosts,
+      bleDeviceName,
       freeHeap: Number(pkt.diagnostics?.free_heap ?? pkt.heap ?? 0),
       httpApiEnabled: Boolean(pkt.diagnostics?.http_api_enabled),
       tvConfigured: Boolean(pkt.tv?.configured),
@@ -1417,10 +1504,95 @@ class PadLinkService {
     return res;
   }
 
+  private schedulePostRebootResync(expectedPort: any) {
+    if (this.rebootResyncTimer !== null) {
+      window.clearTimeout(this.rebootResyncTimer);
+    }
+    this.rebootResyncTimer = window.setTimeout(async () => {
+      this.rebootResyncTimer = null;
+      if (this.demoModeActive || !this.port || this.port !== expectedPort) return;
+      if (!this.connectionInfo.connected) return;
+      try {
+        await this.call(
+          { path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 },
+          2500
+        ).catch(() => {});
+        await this.fetchStatus(3000).catch(() => {});
+      } catch {}
+    }, 2200);
+  }
+
+  /**
+   * Switches the active Multi-Host BLE slot (1, 2, or 3) via `/api/ble/switch`.
+   * On physical ESP32 hardware, switching to a new slot stores `ble_slot` in NVS
+   * and triggers `ESP.restart()` (~350ms after replying) to apply the virtual MAC
+   * and device name ("Studio Pad 1..3"), so we optimistically update telemetry
+   * and automatically re-enable live events + refresh `/api/status` once booted.
+   */
+  public async switchBleHost(
+    slot: BleHostSlot
+  ): Promise<{ ok: boolean; message?: string; slot: BleHostSlot }> {
+    if (slot !== 1 && slot !== 2 && slot !== 3) {
+      throw new Error('Host slot must be 1, 2, or 3.');
+    }
+    const prevHost = this.connectionInfo.telemetry?.bleActiveHost;
+    const activePort = this.port;
+
+    const res = await this.call({
+      path: '/api/ble/switch',
+      slot
+    });
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Device could not switch BLE host.');
+    }
+
+    if (this.connectionInfo.telemetry) {
+      this.connectionInfo = {
+        ...this.connectionInfo,
+        telemetry: {
+          ...this.connectionInfo.telemetry,
+          bleActiveHost: slot,
+          bleDeviceName: `Studio Pad ${slot}`
+        }
+      };
+      this.emitConnection();
+    }
+
+    if (!this.demoModeActive && activePort && prevHost !== slot) {
+      this.logSerial(
+        'info',
+        `ESP32 rebooting into Host ${slot} (Studio Pad ${slot}) — resyncing in ~2.2s`
+      );
+      this.schedulePostRebootResync(activePort);
+    }
+
+    return {
+      ok: true,
+      slot,
+      message:
+        prevHost === slot
+          ? `Host ${slot} (Studio Pad ${slot}) is already active.`
+          : `Switched to Host ${slot} (Studio Pad ${slot}).`
+    };
+  }
+
   public async testAction(action: string): Promise<{ ok: boolean; message?: string }> {
     if (!isValidFirmwareAction(action)) {
       throw new Error('Assign a valid firmware action first.');
     }
+
+    // Route BLE:* host switch actions through `/api/ble/switch` so the device
+    // always sends its JSON reply prior to `switchBleDevice()` / `ESP.restart()`.
+    if (action === 'BLE:HOST1' || action === 'BLE:HOST2' || action === 'BLE:HOST3') {
+      const targetSlot = Number(action.slice(-1)) as BleHostSlot;
+      return await this.switchBleHost(targetSlot);
+    }
+    if (action === 'BLE:NEXT_HOST') {
+      const current = this.connectionInfo.telemetry?.bleActiveHost ?? 1;
+      const nextSlot = (((current % 3) + 1) as BleHostSlot);
+      return await this.switchBleHost(nextSlot);
+    }
+
     const res = await this.call({
       path: '/api/test/action',
       action

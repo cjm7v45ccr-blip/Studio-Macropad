@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   ActionBinding,
   ActiveRepeatJob,
+  BleHostSlot,
   CustomMacroItem,
   DeviceConnectionInfo,
   HardwareProfileId,
@@ -24,7 +25,7 @@ import {
   Search,
   Layers,
   ArrowLeftRight,
-  Cpu
+  Bluetooth
 } from 'lucide-react';
 
 interface ButtonInspectorProps {
@@ -40,6 +41,7 @@ interface ButtonInspectorProps {
   onUpdateAppearance: (patch: Partial<KeyAppearance>) => void;
   onResetAppearance: () => void;
   onToggleProfileMode: () => void;
+  onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   onTestBinding: (binding: ActionBinding) => void;
   onStopRepeat: () => void;
   onOpenMacroBuilder: () => void;
@@ -70,6 +72,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   onUpdateAppearance,
   onResetAppearance,
   onToggleProfileMode,
+  onSwitchBleHost,
   onTestBinding,
   onStopRepeat,
   onOpenMacroBuilder
@@ -93,6 +96,8 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     }
   }, [selectionKey, trackedSelectionKey, keyConfig.triggers.tap]);
 
+  const activeBleHost: BleHostSlot = connection.telemetry?.bleActiveHost ?? 1;
+
   // Dedicated Mode Switch Inspector (9th physical button)
   if (keyConfig.isModeSwitch || keyConfig.id === 'k9') {
     return (
@@ -103,14 +108,11 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               <Layers className="w-5 h-5 text-sky-400" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                  Mode Switch
-                </h2>
-
-              </div>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                Mode Switch
+              </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Profile & Setup Button
+                Profile, Multi-Host BLE & Setup Button
               </p>
             </div>
           </div>
@@ -120,14 +122,14 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2.5">
             <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
               <Layers className="w-4 h-4 text-[var(--accent)]" />
-              <span>Dedicated Mode Control</span>
+              <span>Hardware Gestures</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              This physical button switches active profiles and enters setup mode on the display:
+              This physical key controls profiles, instant Bluetooth host switching, and USB setup:
             </p>
             <ul className="space-y-2 text-xs text-[var(--text-secondary)] pt-1">
               <li className="flex items-start gap-2">
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] shrink-0">
+                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] shrink-0 whitespace-nowrap">
                   Short Press
                 </span>
                 <span>
@@ -135,7 +137,16 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] shrink-0">
+                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-sky-300 shrink-0 whitespace-nowrap">
+                  Hold + Dial
+                </span>
+                <span>
+                  Instantly cycles between <strong>Host 1</strong>, <strong>Host 2</strong>, and{' '}
+                  <strong>Host 3</strong> (<span className="font-mono">Studio Pad 1–3</span>).
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] shrink-0 whitespace-nowrap">
                   Hold 3 Sec
                 </span>
                 <span>Enters or exits Setup Mode on the 128×64 OLED display.</span>
@@ -147,13 +158,68 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             type="button"
             onClick={onToggleProfileMode}
             style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
           >
-            <ArrowLeftRight className="w-4 h-4" />
+            <ArrowLeftRight className="w-4 h-4 shrink-0" />
             <span>
               Switch to {activeProfileId === 'MAC' ? 'TV' : 'MAC'} Profile
             </span>
           </button>
+
+          {/* Direct Web & Serial Multi-Host BLE Switcher (/api/ble/switch) */}
+          <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
+                <Bluetooth className="w-4 h-4 text-sky-400 shrink-0" />
+                <span>Multi-Host BLE Engine</span>
+              </div>
+              <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                {connection.connected
+                  ? connection.telemetry?.bleDeviceName || `Studio Pad ${activeBleHost}`
+                  : 'Connect USB to switch'}
+              </span>
+            </div>
+
+            <div
+              role="group"
+              aria-label="Select active Bluetooth host"
+              className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]"
+            >
+              {([1, 2, 3] as const).map(slot => {
+                const isCurrent = connection.connected && activeBleHost === slot;
+                return (
+                  <button
+                    key={slot}
+                    type="button"
+                    disabled={!connection.connected}
+                    onClick={() => onSwitchBleHost(slot)}
+                    style={
+                      isCurrent
+                        ? {
+                            borderColor: 'var(--accent)',
+                            backgroundColor: 'rgba(var(--accent-rgb), 0.16)'
+                          }
+                        : undefined
+                    }
+                    className={`py-2 px-2 rounded-lg border text-center transition-colors cursor-pointer disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap ${
+                      isCurrent
+                        ? 'text-[var(--text-primary)] font-semibold'
+                        : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    <div className="font-mono text-[10px] text-sky-400 tabular-nums">
+                      [H{slot}]
+                    </div>
+                    <div className="text-[11px] mt-0.5">Host {slot}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+              Each slot uses its own virtual hardware MAC address and Bluetooth name (<span className="font-mono">Studio Pad 1–3</span>).
+            </p>
+          </div>
         </div>
       </aside>
     );
@@ -306,12 +372,22 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           <div className="space-y-5">
             {/* Virtual OLED Preview Box */}
             <div className="p-3.5 rounded-2xl bg-[#02060a] border border-cyan-500/40 shadow-[0_0_16px_rgba(6,182,212,0.2)] flex flex-col items-center justify-center space-y-2 font-mono text-cyan-300">
-              <div className="w-full flex items-center justify-between text-[10px] border-b border-cyan-500/20 pb-1 text-cyan-400">
+              <div className="w-full flex items-center justify-between text-[10px] border-b border-cyan-500/20 pb-1.5 text-cyan-400">
                 <span className="font-bold flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
                   OLED LIVE PREVIEW
                 </span>
-                <span className="text-[9px] text-cyan-400/80">128×64 · {slotMeta.short}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] text-cyan-400/80">128×64 · {slotMeta.short}</span>
+                  {activeProfileId === 'MAC' && (
+                    <span
+                      title={`Active BLE Host Badge ([H${activeBleHost}])`}
+                      className="px-1.5 py-0.5 rounded bg-black border border-white/80 text-white font-mono text-[9px] font-bold leading-none tabular-nums"
+                    >
+                      [H{activeBleHost}]
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="py-2.5 flex flex-col items-center justify-center space-y-1.5">
                 <div className="w-12 h-12 rounded-xl bg-cyan-950/70 border border-cyan-500/45 flex items-center justify-center shadow-inner">

@@ -120,7 +120,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                 Connect Studio MacroPad
               </h3>
               <p className="text-[11px] text-[var(--text-muted)]">
-                115,200 baud · Firmware 2.1.0 (API v2)
+                115,200 baud · Firmware 3.2-PRO · Multi-Host BLE
               </p>
             </div>
           </div>
@@ -170,13 +170,18 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
 
               {telemetry && (
                 <div className="grid grid-cols-3 gap-2 pt-2 border-t border-emerald-500/20 font-mono text-[10px]">
-                  <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
+                  <div
+                    className="flex items-center gap-1.5 text-[var(--text-secondary)]"
+                    title={telemetry.bleDeviceName || `Studio Pad ${telemetry.bleActiveHost}`}
+                  >
                     <Bluetooth
-                      className={`w-3.5 h-3.5 ${
+                      className={`w-3.5 h-3.5 shrink-0 ${
                         telemetry.bleConnected ? 'text-sky-400' : 'text-zinc-500'
                       }`}
                     />
-                    <span>{telemetry.bleConnected ? 'BLE Ready' : 'BLE Down'}</span>
+                    <span className="truncate tabular-nums">
+                      [H{telemetry.bleActiveHost}] {telemetry.bleConnected ? 'Ready' : 'Down'}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
                     <Wifi

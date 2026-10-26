@@ -126,6 +126,12 @@ export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   { action: 'WIN:DESKTOP', label: 'Show Desktop (Win+D)', shortLabel: 'Desktop', description: 'Windows + D toggle desktop', category: 'win_macro', icon: 'monitor', color: '#60A5FA' },
   { action: 'WIN:RUN', label: 'Run Dialog (Win+R)', shortLabel: 'Run', description: 'Windows + R command prompt', category: 'win_macro', icon: 'play-circle', color: '#38BDF8' },
 
+  // BLE:* Multi-Host Bluetooth Engine (4)
+  { action: 'BLE:HOST1', label: 'Host 1 (Studio Pad 1)', shortLabel: 'Host 1', description: 'Switch to Host 1 virtual MAC (Studio Pad 1)', category: 'ble', icon: 'bluetooth', color: '#38BDF8' },
+  { action: 'BLE:HOST2', label: 'Host 2 (Studio Pad 2)', shortLabel: 'Host 2', description: 'Switch to Host 2 virtual MAC (Studio Pad 2)', category: 'ble', icon: 'bluetooth', color: '#60A5FA' },
+  { action: 'BLE:HOST3', label: 'Host 3 (Studio Pad 3)', shortLabel: 'Host 3', description: 'Switch to Host 3 virtual MAC (Studio Pad 3)', category: 'ble', icon: 'bluetooth', color: '#818CF8' },
+  { action: 'BLE:NEXT_HOST', label: 'Next BLE Host (Cycle 1–3)', shortLabel: 'Next Host', description: 'Cycle active Bluetooth host (Studio Pad 1 → 2 → 3)', category: 'ble', icon: 'bluetooth', color: '#34D399' },
+
   // TV:* SmartCast Remote (25)
   { action: 'TV:POWER', label: 'TV Power', shortLabel: 'TV Power', description: 'SmartCast power toggle (11, 2)', category: 'tv', icon: 'power', color: '#F87171' },
   { action: 'TV:VOL_UP', label: 'TV Volume +', shortLabel: 'TV Vol +', description: 'Increase TV volume (5, 1)', category: 'tv', icon: 'volume-2', color: '#34D399' },
@@ -366,11 +372,17 @@ export function getActionTestAvailability(
     return { canTest: true, reason: null };
   }
 
+  // Direct Multi-Host BLE switching executes regardless of current BLE connection state
+  if (actionStr.startsWith('BLE:')) {
+    return { canTest: true, reason: null };
+  }
+
   // Otherwise BLE HID action (MEDIA:, KEY:, MACRO:, WIN:, SHORTCUT:, TEXT:)
   if (!tel.bleConnected) {
+    const hostName = tel.bleDeviceName || `Studio Pad ${tel.bleActiveHost || 1}`;
     return {
       canTest: false,
-      reason: 'Bluetooth is disconnected — pair your computer with "Studio Pad".'
+      reason: `Bluetooth is disconnected — pair your computer with "${hostName}" (Host ${tel.bleActiveHost || 1}).`
     };
   }
   return { canTest: true, reason: null };
@@ -542,6 +554,7 @@ export function stepToFirmwareAction(step: MacroStepConfig): string {
     step.actionType === 'shortcut' ||
     step.actionType === 'media' ||
     step.actionType === 'os_action' ||
+    step.actionType === 'ble' ||
     step.actionType === 'tv'
   ) {
     return isValidFirmwareAction(step.value) ? step.value : '';
@@ -713,6 +726,19 @@ export function actionToMacroSteps(
         id: `step-${stamp}-1`,
         label: 'System Action',
         actionType: 'os_action',
+        value: action,
+        delayMs: 0,
+        repeatCount: 1
+      }
+    ];
+  }
+
+  if (action.startsWith('BLE:')) {
+    return [
+      {
+        id: `step-${stamp}-1`,
+        label: 'BLE Host Switch',
+        actionType: 'ble',
         value: action,
         delayMs: 0,
         repeatCount: 1
@@ -978,6 +1004,9 @@ export function firmwareActionToBinding(
   }
   if (trimmed.startsWith('MEDIA:') || trimmed.startsWith('KEY:')) {
     return { type: 'media', value: trimmed };
+  }
+  if (trimmed.startsWith('BLE:')) {
+    return { type: 'ble', value: trimmed };
   }
 
   return { type: 'none', value: '' };

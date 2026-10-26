@@ -46,23 +46,31 @@ import {
   Play,
   Square,
   Radio,
-  Send,
+  Check,
   Command,
   FileText,
   Tv,
   Laptop,
   Save,
   RefreshCw,
-  Repeat,
   AlertCircle,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   GripVertical,
   Clock,
   Copy,
   Volume2,
   CornerDownLeft,
-  Eye
+  Eye,
+  Search,
+  X,
+  ArrowLeft,
+  ArrowUpRight,
+  Disc,
+  RotateCcw,
+  RotateCw,
+  Bluetooth
 } from 'lucide-react';
 
 export interface MacroEditorExternalTarget {
@@ -72,6 +80,8 @@ export interface MacroEditorExternalTarget {
   action: string;
   repeatConfig?: TextMacroRepeatConfig;
   stepsOverride?: Omit<MacroStepConfig, 'id'>[];
+  targetProfile?: HardwareProfileId;
+  targetSlot?: HardwareSlotId;
 }
 
 interface MacroEditorViewProps {
@@ -82,6 +92,7 @@ interface MacroEditorViewProps {
   connection: DeviceConnectionInfo;
   activeRepeatJob?: ActiveRepeatJob | null;
   externalTarget?: MacroEditorExternalTarget | null;
+  initialTargetSlot?: HardwareSlotId;
   onSaveMacro: (macro: CustomMacroItem) => void;
   onDeleteMacro: (id: string) => void;
   onAssignSlot: (
@@ -92,6 +103,7 @@ interface MacroEditorViewProps {
   onTestBinding: (binding: ActionBinding) => void;
   onStopRepeat: () => void;
   onPullFromUsb: () => void;
+  onJumpToControl?: (profileId: HardwareProfileId, slot: HardwareSlotId) => void;
 }
 
 const MOD_LIST = [
@@ -102,24 +114,57 @@ const MOD_LIST = [
   { id: 'win', label: '⊞ Win' }
 ];
 
-const QUICK_DELAY_PRESETS = [0, 100, 250, 500, 1000];
+const QUICK_DELAY_PRESETS = [0, 100, 250, 500];
 const PAUSE_STEP_PRESETS = [100, 250, 500, 1000, 2000];
+
+const BUTTON_GRID_SLOTS: HardwareSlotId[] = [
+  'b1',
+  'b2',
+  'b3',
+  'b4',
+  'b5',
+  'b6',
+  'b7',
+  'b8'
+];
+
+const ENCODER_SLOTS: {
+  slot: HardwareSlotId;
+  shortTitle: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { slot: 'dial', shortTitle: 'Press', icon: Disc },
+  { slot: 'enc_ccw', shortTitle: 'Turn L', icon: RotateCcw },
+  { slot: 'enc_cw', shortTitle: 'Turn R', icon: RotateCw }
+];
+
+const STEP_TYPE_ORDER: MacroStepActionType[] = [
+  'shortcut',
+  'text',
+  'key',
+  'delay',
+  'media',
+  'os_action',
+  'ble',
+  'tv'
+];
 
 const STEP_TYPE_META: Record<
   MacroStepActionType,
   {
     label: string;
-    addLabel: string;
+    shortLabel: string;
     icon: React.ComponentType<{ className?: string }>;
   }
 > = {
-  shortcut: { label: 'Keyboard Shortcut', addLabel: 'Shortcut', icon: Command },
-  text: { label: 'Type Text', addLabel: 'Type Text', icon: FileText },
-  key: { label: 'Single Key', addLabel: 'Key Press', icon: CornerDownLeft },
-  media: { label: 'Media & Function', addLabel: 'Media', icon: Volume2 },
-  os_action: { label: 'System Action', addLabel: 'System', icon: Laptop },
-  tv: { label: 'Smart TV Control', addLabel: 'TV Control', icon: Tv },
-  delay: { label: 'Timed Wait', addLabel: 'Wait Delay', icon: Clock }
+  shortcut: { label: 'Keyboard Shortcut', shortLabel: 'Shortcut', icon: Command },
+  text: { label: 'Type Text', shortLabel: 'Type Text', icon: FileText },
+  key: { label: 'Key Press', shortLabel: 'Key Press', icon: CornerDownLeft },
+  delay: { label: 'Timed Wait', shortLabel: 'Wait', icon: Clock },
+  media: { label: 'Media & Function', shortLabel: 'Media', icon: Volume2 },
+  os_action: { label: 'System Action', shortLabel: 'System', icon: Laptop },
+  ble: { label: 'BLE Host Switch', shortLabel: 'BLE Host', icon: Bluetooth },
+  tv: { label: 'Smart TV', shortLabel: 'Smart TV', icon: Tv }
 };
 
 export interface StarterTemplate {
@@ -261,7 +306,7 @@ function createDefaultStep(actionType: MacroStepActionType, indexSeed = 0): Macr
     case 'key':
       return {
         id,
-        label: 'Single Key',
+        label: 'Key Press',
         actionType: 'key',
         value: 'enter',
         delayMs: 100,
@@ -285,10 +330,19 @@ function createDefaultStep(actionType: MacroStepActionType, indexSeed = 0): Macr
         delayMs: 150,
         repeatCount: 1
       };
+    case 'ble':
+      return {
+        id,
+        label: 'BLE Host Switch',
+        actionType: 'ble',
+        value: 'BLE:NEXT_HOST',
+        delayMs: 0,
+        repeatCount: 1
+      };
     case 'tv':
       return {
         id,
-        label: 'Smart TV Control',
+        label: 'Smart TV',
         actionType: 'tv',
         value: 'TV:MUTE',
         delayMs: 300,
@@ -306,17 +360,46 @@ function createDefaultStep(actionType: MacroStepActionType, indexSeed = 0): Macr
   }
 }
 
-function formatDurationMs(ms: number): string {
+function formatDurationCompact(ms: number): string {
+  if (ms <= 0) return '0 ms';
   if (ms < 1000) return `${ms} ms`;
-  const seconds = (ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 2);
-  return `${seconds} s (${ms} ms)`;
+  const seconds = (ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1);
+  return `${seconds} s`;
 }
 
-function delayBarPercent(ms: number): number {
-  if (ms <= 0) return 0;
-  // Smooth log-like visual proportion between 8% and 100% up to 3000ms
-  const clamped = Math.min(3000, Math.max(10, ms));
-  return Math.min(100, Math.max(8, Math.round((Math.log10(clamped) / Math.log10(3000)) * 100)));
+function formatHumanStepSummary(step: MacroStepConfig): {
+  title: string;
+  detail: string;
+} {
+  switch (step.actionType) {
+    case 'shortcut':
+      return {
+        title: formatShortcutPretty(step.value) || 'Shortcut',
+        detail: 'Keyboard Shortcut'
+      };
+    case 'text':
+      return {
+        title: step.value ? `"${step.value}"` : 'Enter text…',
+        detail: 'Type Text'
+      };
+    case 'key':
+      return {
+        title: step.value ? step.value.toUpperCase() : 'Choose key',
+        detail: 'Key Press'
+      };
+    case 'delay':
+      return {
+        title: `Wait ${step.delayMs * Math.max(1, step.repeatCount || 1)} ms`,
+        detail: 'Timed Wait'
+      };
+    default: {
+      const desc = describeMacroStep(step);
+      return {
+        title: desc.shortLabel,
+        detail: STEP_TYPE_META[step.actionType].label
+      };
+    }
+  }
 }
 
 export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
@@ -327,16 +410,27 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   connection,
   activeRepeatJob,
   externalTarget,
+  initialTargetSlot = 'b1',
   onSaveMacro,
   onDeleteMacro,
   onAssignSlot,
   onTestBinding,
   onStopRepeat,
-  onPullFromUsb
+  onPullFromUsb,
+  onJumpToControl
 }) => {
-  const [sidebarTab, setSidebarTab] = useState<'sequences' | 'controls'>('sequences');
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [importDrawerOpen, setImportDrawerOpen] = useState(false);
+  const [importProfileId, setImportProfileId] =
+    useState<HardwareProfileId>(activeProfileId);
+
   const [selectedMacroId, setSelectedMacroId] = useState<string | null>(null);
-  const [macroName, setMacroName] = useState('Open App & Run');
+  const [macroName, setMacroName] = useState('Open App via Search');
+  const [justSavedFeedback, setJustSavedFeedback] = useState(false);
+  const [justAssignedSlot, setJustAssignedSlot] = useState<{
+    profile: HardwareProfileId;
+    slot: HardwareSlotId;
+  } | null>(null);
 
   // Visual step sequence state
   const [macroSteps, setMacroSteps] = useState<MacroStepConfig[]>(() =>
@@ -346,12 +440,15 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     }))
   );
 
+  // Progressive disclosure: only one step expanded at a time (null = all collapsed)
+  const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
+
   // Sequence-level repeat / loop controls
   const [repeatCountInput, setRepeatCountInput] = useState<string>('1');
   const [loopUntilStopped, setLoopUntilStopped] = useState<boolean>(false);
   const [repeatDelayInput, setRepeatDelayInput] = useState<string>('500');
 
-  // Drag-and-drop state with precise insertion indicator
+  // Drag-and-drop state
   const [dragArmedStepId, setDragArmedStepId] = useState<string | null>(null);
   const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{
@@ -359,7 +456,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     position: 'before' | 'after';
   } | null>(null);
 
-  // Per-step keyboard shortcut recorder
+  // Per-step keyboard shortcut / key recorder
   const [recordingStepId, setRecordingStepId] = useState<string | null>(null);
   const [stepRecorderError, setStepRecorderError] = useState<{
     stepId: string;
@@ -368,45 +465,76 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
   // Target control assignment
   const [targetProfile, setTargetProfile] = useState<HardwareProfileId>(activeProfileId);
-  const [targetSlot, setTargetSlot] = useState<HardwareSlotId>('b1');
+  const [targetSlot, setTargetSlot] = useState<HardwareSlotId>(initialTargetSlot);
 
   useEffect(() => {
     setTargetProfile(activeProfileId);
+    setImportProfileId(activeProfileId);
   }, [activeProfileId]);
 
   useEffect(() => {
+    setTargetSlot(initialTargetSlot);
+  }, [initialTargetSlot]);
+
+  useEffect(() => {
+    if (!justSavedFeedback) return;
+    const t = setTimeout(() => setJustSavedFeedback(false), 1800);
+    return () => clearTimeout(t);
+  }, [justSavedFeedback]);
+
+  useEffect(() => {
+    if (!justAssignedSlot) return;
+    const t = setTimeout(() => setJustAssignedSlot(null), 3500);
+    return () => clearTimeout(t);
+  }, [justAssignedSlot]);
+
+  useEffect(() => {
     if (!externalTarget) return;
-    setSidebarTab('sequences');
     setSelectedMacroId(externalTarget.macroId ?? null);
     setRecordingStepId(null);
     setStepRecorderError(null);
     setMacroName(externalTarget.name);
 
+    if (externalTarget.targetProfile) {
+      setTargetProfile(externalTarget.targetProfile);
+    }
+    if (externalTarget.targetSlot) {
+      setTargetSlot(externalTarget.targetSlot);
+    }
+
     if (externalTarget.stepsOverride && externalTarget.stepsOverride.length > 0) {
-      setMacroSteps(
-        externalTarget.stepsOverride.map((s, idx) => ({
-          ...s,
-          id: `ext-${externalTarget.requestId}-${idx}`
-        }))
-      );
+      const hydrated = externalTarget.stepsOverride.map((s, idx) => ({
+        ...s,
+        id: `ext-${externalTarget.requestId}-${idx}`
+      }));
+      setMacroSteps(hydrated);
+      setExpandedStepId(hydrated.length === 1 ? hydrated[0].id : null);
       setRepeatCountInput('1');
       setLoopUntilStopped(false);
       setRepeatDelayInput('500');
-    } else {
+    } else if (externalTarget.action) {
       const convertedSteps = actionToMacroSteps(
         externalTarget.action,
         externalTarget.repeatConfig
       );
-      setMacroSteps(
-        convertedSteps.length > 0 ? convertedSteps : [createDefaultStep('shortcut', 1)]
-      );
+      const nextSteps =
+        convertedSteps.length > 0 ? convertedSteps : [createDefaultStep('shortcut', 1)];
+      setMacroSteps(nextSteps);
+      setExpandedStepId(nextSteps.length === 1 ? nextSteps[0].id : null);
       setRepeatCountInput(String(externalTarget.repeatConfig?.repeatCount || 1));
       setLoopUntilStopped(Boolean(externalTarget.repeatConfig?.loopUntilStopped));
       setRepeatDelayInput(String(externalTarget.repeatConfig?.repeatDelayMs || 500));
+    } else {
+      const first = createDefaultStep('shortcut', 1);
+      setMacroSteps([first]);
+      setExpandedStepId(first.id);
+      setRepeatCountInput('1');
+      setLoopUntilStopped(false);
+      setRepeatDelayInput('500');
     }
   }, [externalTarget]);
 
-  // Reset drag arming on global mouseup so inputs never stay locked in draggable state
+  // Reset drag arming on global mouseup
   useEffect(() => {
     if (!dragArmedStepId) return;
     const handleUp = () => setDragArmedStepId(null);
@@ -420,6 +548,12 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     const onKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
+
+      if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        setRecordingStepId(null);
+        return;
+      }
+
       if (['Meta', 'Control', 'Shift', 'Alt'].includes(e.key)) return;
 
       const capturedMods: string[] = [];
@@ -438,14 +572,19 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
         return;
       }
 
-      const nextShortcut = buildFirmwareShortcut(capturedMods, fwKey);
       setStepRecorderError(null);
       setMacroSteps(prev =>
-        prev.map(s =>
-          s.id === recordingStepId
-            ? { ...s, actionType: 'shortcut', value: nextShortcut }
-            : s
-        )
+        prev.map(s => {
+          if (s.id !== recordingStepId) return s;
+          if (s.actionType === 'key' && capturedMods.length === 0) {
+            return { ...s, value: fwKey };
+          }
+          return {
+            ...s,
+            actionType: 'shortcut',
+            value: buildFirmwareShortcut(capturedMods, fwKey)
+          };
+        })
       );
       setRecordingStepId(null);
     };
@@ -462,9 +601,10 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     setStepRecorderError(null);
     setMacroName(nameLabel);
     const convertedSteps = actionToMacroSteps(action, repeatConfig);
-    setMacroSteps(
-      convertedSteps.length > 0 ? convertedSteps : [createDefaultStep('shortcut', 1)]
-    );
+    const nextSteps =
+      convertedSteps.length > 0 ? convertedSteps : [createDefaultStep('shortcut', 1)];
+    setMacroSteps(nextSteps);
+    setExpandedStepId(nextSteps.length === 1 ? nextSteps[0].id : null);
     setRepeatCountInput(String(repeatConfig?.repeatCount || 1));
     setLoopUntilStopped(Boolean(repeatConfig?.loopUntilStopped));
     setRepeatDelayInput(String(repeatConfig?.repeatDelayMs || 500));
@@ -475,12 +615,25 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     setRecordingStepId(null);
     setStepRecorderError(null);
     setMacroName(tpl.name);
-    setMacroSteps(
-      tpl.steps.map((s, idx) => ({
-        ...s,
-        id: `tpl-${Date.now()}-${idx}`
-      }))
-    );
+    const nextSteps = tpl.steps.map((s, idx) => ({
+      ...s,
+      id: `tpl-${Date.now()}-${idx}`
+    }));
+    setMacroSteps(nextSteps);
+    setExpandedStepId(null);
+    setRepeatCountInput('1');
+    setLoopUntilStopped(false);
+    setRepeatDelayInput('500');
+  };
+
+  const handleStartBlankMacro = () => {
+    setSelectedMacroId(null);
+    setRecordingStepId(null);
+    setStepRecorderError(null);
+    setMacroName('Untitled Macro');
+    const first = { ...createDefaultStep('shortcut', 1), delayMs: 0 };
+    setMacroSteps([first]);
+    setExpandedStepId(first.id);
     setRepeatCountInput('1');
     setLoopUntilStopped(false);
     setRepeatDelayInput('500');
@@ -494,6 +647,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
   const changeStepType = (stepId: string, nextType: MacroStepActionType) => {
     const template = createDefaultStep(nextType);
+    setRecordingStepId(null);
+    setStepRecorderError(null);
     setMacroSteps(prev =>
       prev.map(step =>
         step.id === stepId
@@ -510,53 +665,64 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   };
 
   const appendStep = (type: MacroStepActionType) => {
+    const nextStep = createDefaultStep(type, macroSteps.length + 1);
+    if (type !== 'delay') {
+      nextStep.delayMs = 0;
+    }
     setMacroSteps(prev => {
-      // Ensure previous trailing step has a sensible 150ms transition delay if it was 0ms
       const adjusted = prev.map((s, idx) =>
         idx === prev.length - 1 && s.actionType !== 'delay' && s.delayMs === 0
           ? { ...s, delayMs: 150 }
           : s
       );
-      const nextStep = createDefaultStep(type, prev.length + 1);
-      // Last step defaults to 0ms post-delay unless it is a pure wait step
-      if (type !== 'delay') {
-        nextStep.delayMs = 0;
-      }
       return [...adjusted, nextStep];
     });
+    setExpandedStepId(nextStep.id);
   };
 
-  const insertStepAfter = (index: number, type: MacroStepActionType = 'key') => {
+  const insertStepAfter = (
+    index: number,
+    type: MacroStepActionType = 'key',
+    valueOverride?: string
+  ) => {
+    const inserted = createDefaultStep(type, macroSteps.length + 1);
+    if (valueOverride !== undefined) {
+      inserted.value = valueOverride;
+    }
     setMacroSteps(prev => {
       const copy = [...prev];
       if (copy[index] && copy[index].actionType !== 'delay' && copy[index].delayMs === 0) {
-        copy[index] = { ...copy[index], delayMs: 150 };
+        copy[index] = { ...copy[index], delayMs: 120 };
       }
-      const inserted = createDefaultStep(type, copy.length + 1);
       if (index === copy.length - 1 && type !== 'delay') {
         inserted.delayMs = 0;
       }
       copy.splice(index + 1, 0, inserted);
       return copy;
     });
+    if (valueOverride === undefined) {
+      setExpandedStepId(inserted.id);
+    }
   };
 
   const duplicateStep = (index: number) => {
+    const target = macroSteps[index];
+    if (!target) return;
+    const clone: MacroStepConfig = {
+      ...target,
+      id: `step-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    };
     setMacroSteps(prev => {
-      const target = prev[index];
-      if (!target) return prev;
       const copy = [...prev];
-      const clone: MacroStepConfig = {
-        ...target,
-        id: `step-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-      };
       copy.splice(index + 1, 0, clone);
       return copy;
     });
+    setExpandedStepId(clone.id);
   };
 
   const removeStep = (stepId: string) => {
     if (recordingStepId === stepId) setRecordingStepId(null);
+    if (expandedStepId === stepId) setExpandedStepId(null);
     setMacroSteps(prev => prev.filter(s => s.id !== stepId));
   };
 
@@ -593,27 +759,45 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   // Sequence validation & timing calculations
   const timingSummary = useMemo(() => calculateStepsTiming(macroSteps), [macroSteps]);
 
-  const stepValidationIssue = useMemo((): string | null => {
+  const stepValidation = useMemo((): {
+    message: string;
+    stepId: string | null;
+  } | null => {
     if (macroSteps.length === 0) {
-      return 'Add at least one action step to build a macro.';
+      return {
+        message: 'Add at least one step to build this macro.',
+        stepId: null
+      };
     }
     const actionable = macroSteps.filter(s => s.actionType !== 'delay');
     if (actionable.length === 0) {
-      return 'Add at least one action step (sequences cannot contain only wait delays).';
+      return {
+        message: 'Add at least one action step (a macro cannot only wait).',
+        stepId: macroSteps[0]?.id ?? null
+      };
     }
     for (let i = 0; i < macroSteps.length; i++) {
       const s = macroSteps[i];
       if (s.actionType === 'delay') continue;
       if (s.actionType === 'text') {
         if (!s.value) {
-          return `Step ${String(i + 1).padStart(2, '0')}: Enter text to type.`;
+          return {
+            message: `Step ${String(i + 1).padStart(2, '0')}: Enter the text to type.`,
+            stepId: s.id
+          };
         }
         const check = validateTextMacroInput(s.value, 123);
         if (!check.valid) {
-          return `Step ${String(i + 1).padStart(2, '0')}: ${check.error}`;
+          return {
+            message: `Step ${String(i + 1).padStart(2, '0')}: ${check.error}`,
+            stepId: s.id
+          };
         }
       } else if (!stepToFirmwareAction(s)) {
-        return `Step ${String(i + 1).padStart(2, '0')}: Complete the action configuration.`;
+        return {
+          message: `Step ${String(i + 1).padStart(2, '0')}: Finish configuring this step.`,
+          stepId: s.id
+        };
       }
     }
     return null;
@@ -629,7 +813,6 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   );
 
   const builtRepeatConfig: TextMacroRepeatConfig = useMemo(() => {
-    // Also populate legacy text/followUpKey fields when sequence is [text] or [text, key]
     let legacyText = '';
     let legacyFollowUp = '';
     let legacyKeyDelay = 0;
@@ -668,14 +851,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     : builtRepeatConfig;
 
   const builtAction = useMemo(() => {
-    if (stepValidationIssue) return '';
+    if (stepValidation) return '';
     if (isSingleNativeStep) {
       return stepToFirmwareAction(macroSteps[0]);
     }
     return buildFirmwareActionFromTextConfig(builtRepeatConfig);
-  }, [stepValidationIssue, isSingleNativeStep, macroSteps, builtRepeatConfig]);
+  }, [stepValidation, isSingleNativeStep, macroSteps, builtRepeatConfig]);
 
-  const isSequenceValid = !stepValidationIssue && isValidFirmwareAction(builtAction);
+  const isSequenceValid = !stepValidation && isValidFirmwareAction(builtAction);
   const builtBinding = useMemo(
     () => firmwareActionToBinding(builtAction, effectiveRepeatConfig),
     [builtAction, effectiveRepeatConfig]
@@ -704,15 +887,17 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     };
     onSaveMacro(item);
     setSelectedMacroId(item.id);
+    setJustSavedFeedback(true);
   };
 
   const handleAssignToControl = () => {
     if (!isSequenceValid) return;
     handleSaveMacroItem();
     onAssignSlot(targetProfile, targetSlot, builtBinding);
+    setJustAssignedSlot({ profile: targetProfile, slot: targetSlot });
   };
 
-  // Categorized static catalog options for inline step pickers
+  // Categorized static catalog options
   const mediaCatalog = useMemo(
     () => FIRMWARE_STATIC_CATALOG.filter(item => item.category === 'media'),
     []
@@ -724,6 +909,10 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
       ),
     []
   );
+  const bleCatalog = useMemo(
+    () => FIRMWARE_STATIC_CATALOG.filter(item => item.category === 'ble'),
+    []
+  );
   const tvCatalog = useMemo(
     () =>
       FIRMWARE_STATIC_CATALOG.filter(
@@ -732,339 +921,349 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     []
   );
 
-  // Build proportional segments for the visual timeline overview bar
-  const timelineSegments = useMemo(() => {
-    const segs: {
-      key: string;
-      kind: 'step' | 'delay';
-      stepIndex: number;
-      label: string;
-      weight: number;
-      ms?: number;
-    }[] = [];
+  // Filtered library items
+  const normalizedQuery = libraryQuery.trim().toLowerCase();
+  const filteredSavedMacros = useMemo(() => {
+    if (!normalizedQuery) return customMacros;
+    return customMacros.filter(m => m.name.toLowerCase().includes(normalizedQuery));
+  }, [customMacros, normalizedQuery]);
 
-    macroSteps.forEach((step, idx) => {
-      const desc = describeMacroStep(step);
-      const isLast = idx === macroSteps.length - 1;
-      const repeats = Math.max(1, step.repeatCount || 1);
+  const filteredTemplates = useMemo(() => {
+    if (!normalizedQuery) return STARTER_TEMPLATES;
+    return STARTER_TEMPLATES.filter(
+      tpl =>
+        tpl.name.toLowerCase().includes(normalizedQuery) ||
+        tpl.steps.some(s => s.label.toLowerCase().includes(normalizedQuery))
+    );
+  }, [normalizedQuery]);
 
-      if (step.actionType === 'delay') {
-        const waitMs = Math.max(0, step.delayMs) * repeats;
-        segs.push({
-          key: `${step.id}-wait`,
-          kind: 'delay',
-          stepIndex: idx,
-          label: `${waitMs} ms`,
-          weight: Math.max(1, Math.min(4, waitMs / 250)),
-          ms: waitMs
-        });
-      } else {
-        segs.push({
-          key: `${step.id}-act`,
-          kind: 'step',
-          stepIndex: idx,
-          label: `${String(idx + 1).padStart(2, '0')} ${desc.shortLabel}`,
-          weight: 1.6
-        });
-        const postDelay =
-          (!isLast ? Math.max(0, step.delayMs) : 0) +
-          (repeats > 1 ? (repeats - 1) * Math.max(0, step.delayMs) : 0);
-        if (postDelay > 0) {
-          segs.push({
-            key: `${step.id}-delay`,
-            kind: 'delay',
-            stepIndex: idx,
-            label: `${postDelay} ms`,
-            weight: Math.max(0.9, Math.min(3.6, postDelay / 250)),
-            ms: postDelay
-          });
-        }
-      }
-    });
+  const activeTargetProfileObj =
+    profiles.find(p => p.id === targetProfile) || profiles[0];
+  const targetProfileSlots = useMemo(
+    () => extractProfileSlots(activeTargetProfileObj),
+    [activeTargetProfileObj]
+  );
 
-    return segs;
-  }, [macroSteps]);
+  const importProfileObj =
+    profiles.find(p => p.id === importProfileId) || profiles[0];
+  const importProfileSlots = useMemo(
+    () => extractProfileSlots(importProfileObj),
+    [importProfileObj]
+  );
+
+  const currentSlotAction = targetProfileSlots[targetSlot];
+  const currentSlotBinding = getBindingForProfileSlot(
+    profiles,
+    targetProfile,
+    targetSlot
+  );
+  const currentSlotDesc = currentSlotAction
+    ? describeFirmwareAction(currentSlotAction, currentSlotBinding?.repeatConfig)
+        .shortLabel
+    : 'Unassigned';
 
   return (
-    <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-w-0">
-      {/* Left Sidebar: Saved Sequences, Starter Templates & Pad Controls */}
-      <aside className="w-full lg:w-80 xl:w-96 shrink-0 bg-[var(--bg-panel)] border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] flex flex-col lg:overflow-hidden">
+    <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-w-0 bg-[var(--bg-canvas)]">
+      {/* Left Library Rail: Clean Browse, Search & Load */}
+      <aside className="w-full lg:w-72 xl:w-80 shrink-0 bg-[var(--bg-panel)] border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] flex flex-col lg:overflow-hidden">
         <div className="p-4 border-b border-[var(--border-subtle)] space-y-3">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-              Macro Sequences
+              Macro Library
             </h2>
             <button
               type="button"
-              onClick={() => {
-                setSelectedMacroId(null);
-                setMacroName('New Macro Sequence');
-                setMacroSteps([
-                  createDefaultStep('shortcut', 1),
-                  { ...createDefaultStep('key', 2), delayMs: 0 }
-                ]);
-                setRepeatCountInput('1');
-                setLoopUntilStopped(false);
-                setRepeatDelayInput('500');
-              }}
+              onClick={handleStartBlankMacro}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
-              <span>New Sequence</span>
+              <span>New</span>
             </button>
           </div>
 
-          {/* Segmented Switcher: Saved Sequences vs Pad Controls */}
-          <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-            <button
-              type="button"
-              onClick={() => setSidebarTab('sequences')}
-              className={`py-1.5 px-3 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                sidebarTab === 'sequences'
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-              }`}
-            >
-              Saved & Templates
-            </button>
-            <button
-              type="button"
-              onClick={() => setSidebarTab('controls')}
-              className={`py-1.5 px-3 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                sidebarTab === 'controls'
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-              }`}
-            >
-              Pad Controls
-            </button>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={libraryQuery}
+              onChange={e => setLibraryQuery(e.target.value)}
+              placeholder="Filter saved or templates…"
+              className="w-full pl-8 pr-7 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+            />
+            {libraryQuery && (
+              <button
+                type="button"
+                onClick={() => setLibraryQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                aria-label="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="flex-1 lg:overflow-y-auto p-4 space-y-5">
-          {sidebarTab === 'sequences' ? (
-            <>
-              {/* User's Saved Custom Macros */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
-                  <span className="font-semibold text-[var(--text-secondary)]">
-                    Saved Macros
-                  </span>
-                  <span className="font-mono tabular-nums">{customMacros.length}</span>
-                </div>
+        <div className="flex-1 lg:overflow-y-auto p-4 space-y-6">
+          {/* Saved Macros */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+              <span className="font-medium text-[var(--text-secondary)]">Saved</span>
+              <span className="font-mono tabular-nums">{filteredSavedMacros.length}</span>
+            </div>
 
-                {customMacros.length === 0 ? (
-                  <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-muted)] leading-relaxed">
-                    No saved sequences yet. Build a step list on the right and click Save Macro, or start from a template below.
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {customMacros.map(m => {
-                      const stepsForMacro = actionToMacroSteps(m.action, m.repeatConfig);
-                      const { totalDelayMs } = calculateStepsTiming(stepsForMacro);
-                      const isSelected = selectedMacroId === m.id;
-                      return (
-                        <div
-                          key={m.id}
-                          style={
-                            isSelected
-                              ? {
-                                  borderColor: 'var(--accent)',
-                                  backgroundColor: 'rgba(var(--accent-rgb), 0.10)'
-                                }
-                              : undefined
-                          }
-                          className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] flex items-center justify-between gap-2 transition-colors"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedMacroId(m.id);
-                              loadIntoBuilder(m.action, m.name, m.repeatConfig);
-                            }}
-                            className="min-w-0 flex-1 text-left cursor-pointer"
-                          >
-                            <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                              {m.name}
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] font-mono tabular-nums mt-0.5 truncate">
-                              <span>
-                                {stepsForMacro.length}{' '}
-                                {stepsForMacro.length === 1 ? 'step' : 'steps'}
-                              </span>
-                              <span aria-hidden="true">·</span>
-                              <span>{totalDelayMs} ms delay</span>
-                            </div>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onDeleteMacro(m.id);
-                              if (selectedMacroId === m.id) setSelectedMacroId(null);
-                            }}
-                            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-rose-400 hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer shrink-0"
-                            title="Delete saved macro"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Starter Multi-Step Templates */}
-              <div className="pt-4 border-t border-[var(--border-subtle)] space-y-2">
-                <div className="text-xs font-semibold text-[var(--text-secondary)]">
-                  Sequence Templates
-                </div>
-                <div className="space-y-1.5">
-                  {STARTER_TEMPLATES.map(tpl => (
-                    <button
-                      key={tpl.id}
-                      type="button"
-                      onClick={() => applyStarterTemplate(tpl)}
-                      className="w-full text-left p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+            {customMacros.length === 0 ? (
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed py-1">
+                Macros you save or assign appear here for reuse across profiles.
+              </p>
+            ) : filteredSavedMacros.length === 0 ? (
+              <p className="text-xs text-[var(--text-muted)] py-1">
+                No saved macros match "{libraryQuery}".
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {filteredSavedMacros.map(m => {
+                  const stepsForMacro = actionToMacroSteps(m.action, m.repeatConfig);
+                  const { totalDelayMs } = calculateStepsTiming(stepsForMacro);
+                  const isSelected = selectedMacroId === m.id;
+                  return (
+                    <div
+                      key={m.id}
+                      className={`group px-2.5 py-2 rounded-lg border flex items-center justify-between gap-2 transition-colors ${
+                        isSelected
+                          ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.10)]'
+                          : 'bg-transparent border-transparent hover:bg-[var(--bg-input)] hover:border-[var(--border-subtle)]'
+                      }`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                          {tpl.name}
-                        </span>
-                        <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">
-                          {tpl.summary}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
-                        {tpl.steps.map(s => s.label).join(' → ')}
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedMacroId(m.id);
+                          loadIntoBuilder(m.action, m.name, m.repeatConfig);
+                        }}
+                        className="min-w-0 flex-1 text-left cursor-pointer"
+                      >
+                        <div className="text-xs font-medium text-[var(--text-primary)] truncate">
+                          {m.name}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] font-mono tabular-nums mt-0.5 truncate">
+                          <span>
+                            {stepsForMacro.length}{' '}
+                            {stepsForMacro.length === 1 ? 'step' : 'steps'}
+                          </span>
+                          {totalDelayMs > 0 && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span>{formatDurationCompact(totalDelayMs)}</span>
+                            </>
+                          )}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onDeleteMacro(m.id);
+                          if (selectedMacroId === m.id) setSelectedMacroId(null);
+                        }}
+                        className="p-1 rounded-md text-[var(--text-muted)] opacity-60 group-hover:opacity-100 hover:text-rose-400 hover:bg-[var(--bg-elevated)] transition-all cursor-pointer shrink-0"
+                        title="Delete saved macro"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            </>
-          ) : (
-            <div className="space-y-4">
-              {connection.connected && (
-                <button
-                  type="button"
-                  onClick={onPullFromUsb}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Refresh Controls from Device</span>
-                </button>
-              )}
+            )}
+          </section>
 
-              {profiles.map(prof => {
-                const slots = extractProfileSlots(prof);
-                const ProfIcon = prof.id === 'MAC' ? Laptop : Tv;
-                return (
-                  <div key={prof.id} className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 font-semibold text-[var(--text-primary)]">
-                        <ProfIcon
-                          className="w-3.5 h-3.5"
-                          style={{ color: prof.id === 'MAC' ? '#3B82F6' : '#10B981' }}
-                        />
-                        <span>{prof.name} Profile</span>
-                      </div>
-                      <span className="text-[11px] text-[var(--text-muted)] font-mono tabular-nums">
-                        11 controls
+          {/* Starter Templates */}
+          <section className="pt-4 border-t border-[var(--border-subtle)] space-y-2">
+            <div className="text-xs font-medium text-[var(--text-secondary)]">
+              Starter Recipes
+            </div>
+            {filteredTemplates.length === 0 ? (
+              <p className="text-xs text-[var(--text-muted)] py-1">
+                No starter recipes match "{libraryQuery}".
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {filteredTemplates.map(tpl => (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => applyStarterTemplate(tpl)}
+                    className="w-full text-left px-2.5 py-2 rounded-lg border border-transparent hover:bg-[var(--bg-input)] hover:border-[var(--border-subtle)] transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-[var(--text-primary)] truncate">
+                        {tpl.name}
+                      </span>
+                      <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">
+                        {tpl.steps.length} steps
                       </span>
                     </div>
-
-                    <div className="space-y-1">
-                      {HARDWARE_SLOTS.map(slot => {
-                        const act = slots[slot];
-                        const slotBinding = getBindingForProfileSlot(profiles, prof.id, slot);
-                        const desc = describeFirmwareAction(act, slotBinding?.repeatConfig);
-                        const isTarget =
-                          targetProfile === prof.id && targetSlot === slot;
-                        return (
-                          <button
-                            key={`${prof.id}-${slot}`}
-                            type="button"
-                            onClick={() => {
-                              setTargetProfile(prof.id);
-                              setTargetSlot(slot);
-                              setSelectedMacroId(null);
-                              if (act) {
-                                loadIntoBuilder(
-                                  act,
-                                  `${prof.name} · ${SLOT_LABELS[slot].short}`,
-                                  slotBinding?.repeatConfig
-                                );
-                              }
-                            }}
-                            style={
-                              isTarget
-                                ? {
-                                    borderColor: 'var(--accent)',
-                                    backgroundColor: 'rgba(var(--accent-rgb), 0.10)'
-                                  }
-                                : undefined
-                            }
-                            className="w-full text-left px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] flex items-center justify-between gap-2 transition-colors cursor-pointer"
-                          >
-                            <span className="text-xs font-medium text-[var(--text-primary)] shrink-0">
-                              {SLOT_LABELS[slot].short}
-                            </span>
-                            <span
-                              className={`text-xs truncate ${
-                                act
-                                  ? 'text-[var(--text-secondary)]'
-                                  : 'text-[var(--text-muted)] italic'
-                              }`}
-                            >
-                              {act ? desc.shortLabel : 'Unassigned'}
-                            </span>
-                          </button>
-                        );
-                      })}
+                    <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
+                      {tpl.steps.map(s => s.label).join(' → ')}
                     </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Collapsible Import from Existing Pad Key */}
+          <section className="pt-4 border-t border-[var(--border-subtle)] space-y-2.5">
+            <button
+              type="button"
+              onClick={() => setImportDrawerOpen(prev => !prev)}
+              className="w-full flex items-center justify-between text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+            >
+              <span>Load from Pad Key</span>
+              {importDrawerOpen ? (
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+              )}
+            </button>
+
+            {importDrawerOpen && (
+              <div className="space-y-2.5 pt-1">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex-1">
+                    {profiles.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setImportProfileId(p.id)}
+                        className={`py-1 px-2 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                          importProfileId === p.id
+                            ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                            : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                        }`}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  {connection.connected && (
+                    <button
+                      type="button"
+                      onClick={onPullFromUsb}
+                      title="Refresh controls from connected pad"
+                      className="p-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer shrink-0"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-0.5">
+                  {HARDWARE_SLOTS.map(slot => {
+                    const act = importProfileSlots[slot];
+                    const slotBind = getBindingForProfileSlot(
+                      profiles,
+                      importProfileId,
+                      slot
+                    );
+                    const desc = describeFirmwareAction(act, slotBind?.repeatConfig);
+                    return (
+                      <button
+                        key={`${importProfileId}-${slot}`}
+                        type="button"
+                        disabled={!act}
+                        onClick={() => {
+                          if (!act) return;
+                          setSelectedMacroId(null);
+                          setTargetProfile(importProfileId);
+                          setTargetSlot(slot);
+                          loadIntoBuilder(
+                            act,
+                            `${SLOT_LABELS[slot].short} · ${desc.shortLabel}`,
+                            slotBind?.repeatConfig
+                          );
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-[var(--bg-input)] disabled:opacity-40 disabled:pointer-events-none flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer"
+                      >
+                        <span className="font-mono text-[11px] text-[var(--text-muted)] shrink-0">
+                          {SLOT_LABELS[slot].short}
+                        </span>
+                        <span className="text-[var(--text-secondary)] truncate">
+                          {act ? desc.shortLabel : 'Empty'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
         </div>
       </aside>
 
-      {/* Main Workspace: Visual Step-Based Macro Sequence Builder */}
-      <main className="flex-1 lg:overflow-y-auto p-4 sm:p-6 lg:p-8 min-w-0">
-        <div className="max-w-3xl mx-auto space-y-6">
-          {/* Header & Primary Sequence Controls */}
-          <div className="p-5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+      {/* Main Studio Canvas: Minimal, Focused Step Sequence Builder */}
+      <main className="flex-1 lg:overflow-y-auto px-4 py-5 sm:px-8 sm:py-7 min-w-0">
+        <div className="max-w-2xl mx-auto space-y-7">
+          {/* Top Context & Document Header */}
+          <header className="space-y-3 pb-5 border-b border-[var(--border-subtle)]">
+            {onJumpToControl && (
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => onJumpToControl(targetProfile, targetSlot)}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Pad</span>
+                </button>
+
+                <span className="text-xs text-[var(--text-muted)] font-mono tabular-nums truncate">
+                  Target: {activeTargetProfileObj.name} · {SLOT_LABELS[targetSlot].short}
+                </span>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex-1 min-w-0 space-y-1">
-                <label
-                  htmlFor="macro-sequence-name"
-                  className="text-xs font-medium text-[var(--text-muted)] block"
-                >
-                  Sequence Name
-                </label>
                 <input
                   id="macro-sequence-name"
                   type="text"
                   maxLength={36}
+                  aria-label="Macro name"
                   value={macroName}
                   onChange={e => setMacroName(e.target.value)}
-                  placeholder="Name this macro sequence…"
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-sm font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                  placeholder="Untitled Macro"
+                  className="w-full bg-transparent text-lg sm:text-xl font-semibold text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border-b border-transparent hover:border-[var(--border-strong)] focus:border-[var(--accent)] focus:outline-none py-0.5 transition-colors"
                 />
+
+                {/* Quiet Unboxed Inline Summary (Zero Pills) */}
+                <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] font-mono tabular-nums flex-wrap">
+                  <span>
+                    {macroSteps.length} {macroSteps.length === 1 ? 'step' : 'steps'}
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span>{formatDurationCompact(timingSummary.totalDelayMs)} wait</span>
+                  <span aria-hidden="true">·</span>
+                  <span>
+                    {loopUntilStopped
+                      ? `Loops every ${formatDurationCompact(parsedRepeatDelay)}`
+                      : parsedRepeatCount > 1
+                      ? `Repeats ${parsedRepeatCount}×`
+                      : 'Runs once'}
+                  </span>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap shrink-0 sm:self-end">
+              {/* Clean 3-Action Toolbar */}
+              <div className="flex items-center gap-2 shrink-0">
                 {isJobRunning ? (
                   <button
                     type="button"
                     onClick={onStopRepeat}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-500/15 border border-rose-500/40 hover:bg-rose-500/25 text-xs font-semibold text-rose-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/40 hover:bg-rose-500/25 text-xs font-semibold text-rose-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Square className="w-3.5 h-3.5 fill-current" />
                     <span>
-                      Stop{isSimulating ? ' Preview' : ` (${activeRepeatJob?.currentIteration})`}
+                      Stop{isSimulating ? '' : ` (${activeRepeatJob?.currentIteration})`}
                     </span>
                   </button>
                 ) : (
@@ -1073,22 +1272,22 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       type="button"
                       disabled={!isSequenceValid}
                       onClick={handlePreviewSimulation}
-                      title="Watch each step and sequential delay animate on the timeline"
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      title="Animate each step in order to verify flow and timing"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
                     >
-                      <Eye className="w-3.5 h-3.5 text-[var(--accent)]" />
-                      <span>Preview Timing</span>
+                      <Eye className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                      <span>Preview</span>
                     </button>
 
                     <button
                       type="button"
                       disabled={!isSequenceValid || !testAvail.canTest}
                       onClick={() => onTestBinding(builtBinding)}
-                      title={testAvail.reason || 'Execute sequence on connected pad'}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      title={testAvail.reason || 'Run live on connected MacroPad'}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
                     >
                       <Play className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Test on Pad</span>
+                      <span>Test</span>
                     </button>
                   </>
                 )}
@@ -1097,380 +1296,315 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   type="button"
                   disabled={!isSequenceValid}
                   onClick={handleSaveMacroItem}
-                  style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>Save Macro</span>
+                  {justSavedFeedback ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Saved</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                      <span>Save</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
 
-            {/* Clean Unboxed Sequence Telemetry Bar */}
-            <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap text-xs text-[var(--text-secondary)]">
-              <div className="flex items-center gap-2 font-mono tabular-nums flex-wrap">
-                <span>
-                  {macroSteps.length} {macroSteps.length === 1 ? 'step' : 'steps'}
-                </span>
-                <span aria-hidden="true" className="text-[var(--text-muted)]">
-                  ·
-                </span>
-                <span>{timingSummary.actionStepCount} actions</span>
-                <span aria-hidden="true" className="text-[var(--text-muted)]">
-                  ·
-                </span>
-                <span className="text-[var(--text-primary)] font-semibold">
-                  {formatDurationMs(timingSummary.totalDelayMs)} sequential delay
-                </span>
-                <span aria-hidden="true" className="text-[var(--text-muted)]">
-                  ·
-                </span>
-                <span>
-                  {loopUntilStopped
-                    ? `Continuous loop (${parsedRepeatDelay} ms)`
-                    : parsedRepeatCount > 1
-                    ? `${parsedRepeatCount}× cycles (${parsedRepeatDelay} ms)`
-                    : 'Single pass'}
-                </span>
+            {stepValidation && (
+              <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-300">
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="truncate">{stepValidation.message}</span>
+                </div>
+                {stepValidation.stepId && expandedStepId !== stepValidation.stepId && (
+                  <button
+                    type="button"
+                    onClick={() => setExpandedStepId(stepValidation.stepId)}
+                    className="font-semibold text-amber-200 hover:underline cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    Edit step
+                  </button>
+                )}
               </div>
+            )}
+          </header>
 
-              {isSequenceValid && !testAvail.canTest && testAvail.reason && (
-                <span className="text-[11px] text-amber-400">
-                  {testAvail.reason}
+          {/* Step Sequence Section (Progressive Disclosure Accordion) */}
+          <section className="space-y-3" aria-label="Macro steps">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-[var(--text-secondary)]">
+                Steps
+              </span>
+              {expandedStepId && macroSteps.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setExpandedStepId(null)}
+                  className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  Collapse step
+                </button>
+              ) : (
+                <span className="text-[var(--text-muted)]">
+                  Click any step to edit · drag to reorder
                 </span>
               )}
             </div>
 
-            {/* Proportional Sequence Timeline Map */}
-            {timelineSegments.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
-                  <span>Execution Timeline Overview (click any segment to jump)</span>
-                  <span className="font-mono tabular-nums">
-                    Drag steps below to reorder
-                  </span>
-                </div>
-                <div className="flex items-stretch gap-1 w-full overflow-x-auto py-0.5">
-                  {timelineSegments.map(seg => {
-                    const isStepActive =
-                      isJobRunning &&
-                      activeRepeatJob?.activeStepIndex === seg.stepIndex &&
-                      ((seg.kind === 'step' && activeRepeatJob?.activeStepPhase === 'action') ||
-                        (seg.kind === 'delay' && activeRepeatJob?.activeStepPhase === 'delay'));
-
-                    return (
-                      <button
-                        key={seg.key}
-                        type="button"
-                        onClick={() => {
-                          const el = document.getElementById(
-                            `macro-step-node-${macroSteps[seg.stepIndex]?.id}`
-                          );
-                          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }}
-                        style={{
-                          flexGrow: seg.weight,
-                          flexBasis: seg.kind === 'delay' ? '52px' : '84px',
-                          ...(isStepActive
-                            ? {
-                                borderColor: 'var(--accent)',
-                                backgroundColor: 'rgba(var(--accent-rgb), 0.22)'
-                              }
-                            : {})
-                        }}
-                        className={`px-2 py-1.5 rounded-md border text-[11px] font-mono tabular-nums truncate text-center transition-colors cursor-pointer ${
-                          seg.kind === 'delay'
-                            ? 'bg-[var(--bg-canvas)] border-dashed border-[var(--border-strong)] text-[var(--text-muted)]'
-                            : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-primary)] font-medium'
-                        }`}
-                        title={seg.label}
-                      >
-                        {seg.kind === 'delay' ? `Wait ${seg.label}` : seg.label}
-                      </button>
-                    );
-                  })}
-                </div>
+            {macroSteps.length === 0 ? (
+              <div className="py-10 px-6 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-center space-y-3">
+                <p className="text-sm font-medium text-[var(--text-primary)]">
+                  No steps yet
+                </p>
+                <p className="text-xs text-[var(--text-muted)] max-w-sm mx-auto">
+                  Start with a shortcut, typed text, or key press below to build a custom action sequence.
+                </p>
               </div>
-            )}
+            ) : (
+              <div className="space-y-2" role="list">
+                {macroSteps.map((step, idx) => {
+                  const isLastStep = idx === macroSteps.length - 1;
+                  const isExpanded = expandedStepId === step.id;
+                  const StepIcon = STEP_TYPE_META[step.actionType].icon;
+                  const human = formatHumanStepSummary(step);
 
-            {stepValidationIssue && (
-              <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-xs text-amber-300">
-                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>{stepValidationIssue}</span>
-              </div>
-            )}
-          </div>
+                  const isExecutingAction =
+                    isJobRunning &&
+                    activeRepeatJob?.activeStepIndex === idx &&
+                    activeRepeatJob?.activeStepPhase === 'action';
 
-          {/* Add Step Action Bar */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-[var(--text-secondary)]">
-              Add Step to Sequence
-            </span>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {(
-                ['shortcut', 'text', 'key', 'media', 'os_action', 'tv', 'delay'] as const
-              ).map(type => {
-                const meta = STEP_TYPE_META[type];
-                const Icon = meta.icon;
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => appendStep(type)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    <Plus className="w-3 h-3 text-[var(--accent)]" />
-                    <Icon className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-                    <span>{meta.addLabel}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+                  const isExecutingDelay =
+                    isJobRunning &&
+                    activeRepeatJob?.activeStepIndex === idx &&
+                    activeRepeatJob?.activeStepPhase === 'delay';
 
-          {/* Vertical Step-Based Sequence List with Drag-and-Drop & Explicit Delay Timing */}
-          {macroSteps.length === 0 ? (
-            <div className="p-8 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-center space-y-3">
-              <p className="text-sm font-medium text-[var(--text-primary)]">
-                Sequence is empty
-              </p>
-              <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
-                Add keyboard shortcuts, typed text, single keys, media controls, TV commands, or timed wait pauses to build a visual multi-step macro.
-              </p>
-              <div className="flex items-center justify-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => appendStep('shortcut')}
-                  style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                  className="px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
-                >
-                  Add First Step
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-0" role="list" aria-label="Macro sequence steps">
-              {macroSteps.map((step, idx) => {
-                const isLastStep = idx === macroSteps.length - 1;
-                const StepIcon = STEP_TYPE_META[step.actionType].icon;
-                const stepSummary = describeMacroStep(step);
+                  const isStepActive = isExecutingAction || isExecutingDelay;
+                  const isDragged = draggedStepIndex === idx;
 
-                const isExecutingAction =
-                  isJobRunning &&
-                  activeRepeatJob?.activeStepIndex === idx &&
-                  activeRepeatJob?.activeStepPhase === 'action';
+                  const showDropBefore =
+                    dropIndicator?.index === idx &&
+                    dropIndicator.position === 'before' &&
+                    draggedStepIndex !== idx;
+                  const showDropAfter =
+                    dropIndicator?.index === idx &&
+                    dropIndicator.position === 'after' &&
+                    draggedStepIndex !== idx;
 
-                const isExecutingDelay =
-                  isJobRunning &&
-                  activeRepeatJob?.activeStepIndex === idx &&
-                  activeRepeatJob?.activeStepPhase === 'delay';
+                  const parsedShortcut =
+                    step.actionType === 'shortcut'
+                      ? parseFirmwareShortcut(step.value)
+                      : { mods: ['cmd'], key: 'c' };
 
-                const isDragged = draggedStepIndex === idx;
-                const showDropBefore =
-                  dropIndicator?.index === idx &&
-                  dropIndicator.position === 'before' &&
-                  draggedStepIndex !== idx;
-                const showDropAfter =
-                  dropIndicator?.index === idx &&
-                  dropIndicator.position === 'after' &&
-                  draggedStepIndex !== idx;
+                  const textCheck =
+                    step.actionType === 'text'
+                      ? validateTextMacroInput(step.value, 123)
+                      : { valid: true, error: null };
 
-                const parsedShortcut =
-                  step.actionType === 'shortcut'
-                    ? parseFirmwareShortcut(step.value)
-                    : { mods: ['cmd'], key: 'c' };
+                  const isCustomTvKey = step.value.startsWith('TVKEY:');
+                  const isCustomTvApp = step.value.startsWith('TVAPP:');
+                  const tvKeyParts = isCustomTvKey
+                    ? step.value.split(':')
+                    : ['TVKEY', '5', '1'];
+                  const tvAppParts = isCustomTvApp
+                    ? step.value.split(':')
+                    : ['TVAPP', '1', '4', ''];
 
-                const textCheck =
-                  step.actionType === 'text'
-                    ? validateTextMacroInput(step.value, 123)
-                    : { valid: true, error: null };
+                  const nextStepIsEnter =
+                    macroSteps[idx + 1]?.actionType === 'key' &&
+                    macroSteps[idx + 1]?.value === 'enter';
 
-                const isCustomTvKey = step.value.startsWith('TVKEY:');
-                const isCustomTvApp = step.value.startsWith('TVAPP:');
-                const tvKeyParts = isCustomTvKey ? step.value.split(':') : ['TVKEY', '5', '1'];
-                const tvAppParts = isCustomTvApp ? step.value.split(':') : ['TVAPP', '1', '4', ''];
+                  return (
+                    <div
+                      key={step.id}
+                      id={`macro-step-node-${step.id}`}
+                      role="listitem"
+                      draggable={dragArmedStepId === step.id}
+                      onDragStart={e => {
+                        setDraggedStepIndex(idx);
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', String(idx));
+                      }}
+                      onDragOver={e => {
+                        e.preventDefault();
+                        if (draggedStepIndex === null) return;
+                        e.dataTransfer.dropEffect = 'move';
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const midpoint = rect.top + rect.height / 2;
+                        const position: 'before' | 'after' =
+                          e.clientY < midpoint ? 'before' : 'after';
+                        if (
+                          !dropIndicator ||
+                          dropIndicator.index !== idx ||
+                          dropIndicator.position !== position
+                        ) {
+                          setDropIndicator({ index: idx, position });
+                        }
+                      }}
+                      onDragLeave={e => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setDropIndicator(prev => (prev?.index === idx ? null : prev));
+                        }
+                      }}
+                      onDrop={e => {
+                        e.preventDefault();
+                        const from =
+                          draggedStepIndex !== null
+                            ? draggedStepIndex
+                            : parseInt(e.dataTransfer.getData('text/plain'), 10);
+                        if (!Number.isNaN(from) && dropIndicator) {
+                          reorderStepsOnDrop(from, idx, dropIndicator.position);
+                        } else if (!Number.isNaN(from) && from !== idx) {
+                          reorderStepsOnDrop(from, idx, 'before');
+                        }
+                        setDraggedStepIndex(null);
+                        setDropIndicator(null);
+                        setDragArmedStepId(null);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedStepIndex(null);
+                        setDropIndicator(null);
+                        setDragArmedStepId(null);
+                      }}
+                    >
+                      {showDropBefore && (
+                        <div className="h-0.5 w-full rounded-full mb-1.5 bg-[var(--accent)]" />
+                      )}
 
-                return (
-                  <div
-                    key={step.id}
-                    id={`macro-step-node-${step.id}`}
-                    role="listitem"
-                    draggable={dragArmedStepId === step.id}
-                    onDragStart={e => {
-                      setDraggedStepIndex(idx);
-                      e.dataTransfer.effectAllowed = 'move';
-                      e.dataTransfer.setData('text/plain', String(idx));
-                    }}
-                    onDragOver={e => {
-                      e.preventDefault();
-                      if (draggedStepIndex === null) return;
-                      e.dataTransfer.dropEffect = 'move';
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const midpoint = rect.top + rect.height / 2;
-                      const position: 'before' | 'after' =
-                        e.clientY < midpoint ? 'before' : 'after';
-                      if (
-                        !dropIndicator ||
-                        dropIndicator.index !== idx ||
-                        dropIndicator.position !== position
-                      ) {
-                        setDropIndicator({ index: idx, position });
-                      }
-                    }}
-                    onDragLeave={e => {
-                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                        setDropIndicator(prev => (prev?.index === idx ? null : prev));
-                      }
-                    }}
-                    onDrop={e => {
-                      e.preventDefault();
-                      const from =
-                        draggedStepIndex !== null
-                          ? draggedStepIndex
-                          : parseInt(e.dataTransfer.getData('text/plain'), 10);
-                      if (!Number.isNaN(from) && dropIndicator) {
-                        reorderStepsOnDrop(from, idx, dropIndicator.position);
-                      } else if (!Number.isNaN(from) && from !== idx) {
-                        reorderStepsOnDrop(from, idx, 'before');
-                      }
-                      setDraggedStepIndex(null);
-                      setDropIndicator(null);
-                      setDragArmedStepId(null);
-                    }}
-                    onDragEnd={() => {
-                      setDraggedStepIndex(null);
-                      setDropIndicator(null);
-                      setDragArmedStepId(null);
-                    }}
-                    className="relative"
-                  >
-                    {/* Drop Insertion Indicator Line (Before) */}
-                    {showDropBefore && (
-                      <div
-                        className="h-0.5 w-full rounded-full mb-2"
-                        style={{ backgroundColor: 'var(--accent)' }}
-                      />
-                    )}
-
-                    {/* Timeline Row: Left Spine + Right Step Surface */}
-                    <div className="flex items-stretch gap-3 sm:gap-4">
-                      {/* Left Vertical Stepper Spine */}
-                      <div className="flex flex-col items-center w-8 shrink-0 select-none">
+                      {!isExpanded ? (
+                        /* COLLAPSED STEP ROW: Scannable, Calm, Single-Line */
                         <div
-                          style={
-                            isExecutingAction || (step.actionType === 'delay' && isExecutingDelay)
-                              ? {
-                                  borderColor: 'var(--accent)',
-                                  backgroundColor: 'var(--accent)',
-                                  color: '#FFFFFF'
-                                }
-                              : undefined
-                          }
-                          className="w-8 h-8 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-strong)] flex items-center justify-center font-mono text-xs font-bold tabular-nums text-[var(--text-primary)] transition-colors shrink-0"
+                          onClick={() => setExpandedStepId(step.id)}
+                          className={`group px-3.5 py-3 rounded-xl bg-[var(--bg-panel)] border flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                            isStepActive
+                              ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.10)]'
+                              : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                          } ${isDragged ? 'opacity-45 border-dashed' : ''}`}
                         >
-                          {String(idx + 1).padStart(2, '0')}
-                        </div>
-                        {!isLastStep && (
-                          <div
-                            style={
-                              isExecutingDelay
-                                ? { backgroundColor: 'var(--accent)' }
-                                : undefined
-                            }
-                            className="w-px flex-1 bg-[var(--border-strong)] my-1 transition-colors"
-                          />
-                        )}
-                      </div>
-
-                      {/* Step Card + Post-Step Sequential Delay Connector */}
-                      <div className="flex-1 min-w-0">
-                        <div
-                          style={
-                            isExecutingAction || (step.actionType === 'delay' && isExecutingDelay)
-                              ? {
-                                  borderColor: 'var(--accent)',
-                                  backgroundColor: 'rgba(var(--accent-rgb), 0.08)'
-                                }
-                              : undefined
-                          }
-                          className={`p-4 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-opacity space-y-3 ${
-                            isDragged ? 'opacity-45 border-dashed' : ''
-                          }`}
-                        >
-                          {/* Step Header Bar */}
-                          <div
-                            onMouseDown={e => {
-                              const interactive = (e.target as HTMLElement).closest(
-                                'select, input, textarea, button'
-                              );
-                              if (!interactive) {
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div
+                              onMouseDown={e => {
+                                e.stopPropagation();
                                 setDragArmedStepId(step.id);
-                              }
-                            }}
-                            className="flex items-center justify-between gap-2 flex-wrap"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div
-                                onMouseDown={() => setDragArmedStepId(step.id)}
-                                className="p-1 -ml-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] cursor-grab active:cursor-grabbing shrink-0"
-                                title="Drag to reorder step"
-                              >
-                                <GripVertical className="w-4 h-4" />
-                              </div>
-
-                              <StepIcon className="w-4 h-4 text-[var(--accent)] shrink-0" />
-
-                              <select
-                                aria-label={`Step ${idx + 1} type`}
-                                value={step.actionType}
-                                onChange={e =>
-                                  changeStepType(step.id, e.target.value as MacroStepActionType)
-                                }
-                                className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
-                              >
-                                {(Object.keys(STEP_TYPE_META) as MacroStepActionType[]).map(
-                                  typeKey => (
-                                    <option key={typeKey} value={typeKey}>
-                                      {STEP_TYPE_META[typeKey].label}
-                                    </option>
-                                  )
-                                )}
-                              </select>
-
-                              <span className="text-xs text-[var(--text-muted)] truncate hidden sm:inline">
-                                · {stepSummary.fullLabel}
-                              </span>
+                              }}
+                              onClick={e => e.stopPropagation()}
+                              className="p-0.5 -ml-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-grab active:cursor-grabbing shrink-0"
+                              title="Drag to reorder"
+                            >
+                              <GripVertical className="w-4 h-4" />
                             </div>
 
-                            {/* Step Repeat & Reorder / Duplicate / Delete Actions */}
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {step.actionType !== 'delay' && (
-                                <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] mr-1">
-                                  <span>Repeat</span>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    max={99}
-                                    value={step.repeatCount}
-                                    onChange={e =>
-                                      updateStep(step.id, {
-                                        repeatCount: Math.max(
-                                          1,
-                                          Math.min(99, parseInt(e.target.value, 10) || 1)
-                                        )
-                                      })
-                                    }
-                                    className="w-12 px-2 py-1 rounded-md bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] text-center focus:outline-none focus:border-[var(--accent)]"
-                                  />
-                                  <span className="font-mono text-[var(--text-muted)]">×</span>
-                                </label>
-                              )}
+                            <span className="font-mono text-xs text-[var(--text-muted)] tabular-nums w-5 shrink-0">
+                              {String(idx + 1).padStart(2, '0')}
+                            </span>
 
+                            <StepIcon className="w-4 h-4 text-[var(--accent)] shrink-0" />
+
+                            <div className="flex items-baseline gap-2 min-w-0">
+                              <span className="text-sm font-medium text-[var(--text-primary)] truncate">
+                                {human.title}
+                              </span>
+                              <span className="text-xs text-[var(--text-muted)] truncate hidden sm:inline">
+                                {human.detail}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 shrink-0">
+                            {/* Inline Execution / Timing Summary */}
+                            <div className="font-mono text-xs tabular-nums text-[var(--text-muted)] flex items-center gap-1.5">
+                              {isExecutingAction ? (
+                                <span className="text-[var(--accent)] font-semibold">
+                                  Running…
+                                </span>
+                              ) : isExecutingDelay ? (
+                                <span className="text-[var(--accent)] font-semibold">
+                                  Wait {step.delayMs} ms…
+                                </span>
+                              ) : (
+                                <>
+                                  {step.actionType !== 'delay' && step.repeatCount > 1 && (
+                                    <span>{step.repeatCount}×</span>
+                                  )}
+                                  {!isLastStep &&
+                                    step.actionType !== 'delay' &&
+                                    step.delayMs > 0 && (
+                                      <span>+{step.delayMs} ms</span>
+                                    )}
+                                </>
+                              )}
+                            </div>
+
+                            {/* Quick Hover Reorder & Delete */}
+                            <div
+                              onClick={e => e.stopPropagation()}
+                              className="hidden sm:flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+                            >
                               <button
                                 type="button"
                                 disabled={idx === 0}
                                 onClick={() => moveStepByOffset(idx, -1)}
-                                className="p-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                                className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] disabled:opacity-25 disabled:pointer-events-none cursor-pointer"
+                                title="Move up"
+                              >
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isLastStep}
+                                onClick={() => moveStepByOffset(idx, 1)}
+                                className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] disabled:opacity-25 disabled:pointer-events-none cursor-pointer"
+                                title="Move down"
+                              >
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeStep(step.id)}
+                                className="p-1 rounded text-[var(--text-muted)] hover:text-rose-400 hover:bg-[var(--bg-input)] cursor-pointer"
+                                title="Delete step"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <ChevronRight className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+                          </div>
+                        </div>
+                      ) : (
+                        /* EXPANDED ACTIVE STEP EDITOR: Focused, Calm, Zero Clutter */
+                        <div
+                          className={`p-4 sm:p-5 rounded-xl bg-[var(--bg-panel)] border space-y-4 ${
+                            isStepActive
+                              ? 'border-[var(--accent)]'
+                              : 'border-[var(--border-strong)]'
+                          } ${isDragged ? 'opacity-45 border-dashed' : ''}`}
+                        >
+                          {/* Expanded Top Header */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div
+                                onMouseDown={() => setDragArmedStepId(step.id)}
+                                className="p-0.5 -ml-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-grab active:cursor-grabbing shrink-0"
+                                title="Drag to reorder"
+                              >
+                                <GripVertical className="w-4 h-4" />
+                              </div>
+                              <span className="font-mono text-xs font-semibold text-[var(--accent)] tabular-nums">
+                                Step {String(idx + 1).padStart(2, '0')}
+                              </span>
+                              <span className="text-xs text-[var(--text-muted)] truncate">
+                                · {human.title}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={() => moveStepByOffset(idx, -1)}
+                                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                                 title="Move step up"
                               >
                                 <ChevronUp className="w-3.5 h-3.5" />
@@ -1479,7 +1613,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                 type="button"
                                 disabled={isLastStep}
                                 onClick={() => moveStepByOffset(idx, 1)}
-                                className="p-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                                 title="Move step down"
                               >
                                 <ChevronDown className="w-3.5 h-3.5" />
@@ -1487,7 +1621,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => duplicateStep(idx)}
-                                className="p-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] cursor-pointer"
                                 title="Duplicate step"
                               >
                                 <Copy className="w-3.5 h-3.5" />
@@ -1495,103 +1629,134 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => removeStep(step.id)}
-                                className="p-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-rose-400 cursor-pointer"
-                                title="Remove step"
+                                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-rose-400 hover:bg-[var(--bg-input)] cursor-pointer"
+                                title="Delete step"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRecordingStepId(null);
+                                  setExpandedStepId(null);
+                                }}
+                                className="ml-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                              >
+                                Done
                               </button>
                             </div>
                           </div>
 
-                          {/* Step Type-Specific Inline Editor */}
+                          {/* Clean Horizontal Action Type Selector */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {STEP_TYPE_ORDER.map(typeKey => {
+                              const meta = STEP_TYPE_META[typeKey];
+                              const Icon = meta.icon;
+                              const isTypeSelected = step.actionType === typeKey;
+                              return (
+                                <button
+                                  key={typeKey}
+                                  type="button"
+                                  onClick={() => changeStepType(step.id, typeKey)}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                                    isTypeSelected
+                                      ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)]'
+                                      : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                                  }`}
+                                >
+                                  <Icon className="w-3.5 h-3.5" />
+                                  <span>{meta.shortLabel}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Focused Configuration Body for Active Type */}
                           {step.actionType === 'shortcut' && (
-                            <div className="space-y-3 pt-1">
-                              <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  {MOD_LIST.map(m => {
-                                    const isModActive = parsedShortcut.mods.includes(m.id);
-                                    return (
-                                      <button
-                                        key={m.id}
-                                        type="button"
-                                        onClick={() => {
-                                          const nextMods = isModActive
-                                            ? parsedShortcut.mods.filter(x => x !== m.id)
-                                            : [...parsedShortcut.mods, m.id];
-                                          updateStep(step.id, {
-                                            value: buildFirmwareShortcut(
-                                              nextMods,
-                                              parsedShortcut.key
-                                            )
-                                          });
-                                        }}
-                                        style={
-                                          isModActive
-                                            ? {
-                                                borderColor: 'var(--accent)',
-                                                backgroundColor: 'rgba(var(--accent-rgb), 0.16)'
-                                              }
-                                            : undefined
-                                        }
-                                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono transition-colors cursor-pointer whitespace-nowrap ${
-                                          isModActive
-                                            ? 'text-[var(--text-primary)] font-semibold'
-                                            : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                                        }`}
-                                      >
-                                        {m.label}
-                                      </button>
-                                    );
-                                  })}
-
-                                  <span className="text-xs text-[var(--text-muted)] px-0.5">+</span>
-
-                                  <select
-                                    value={parsedShortcut.key}
-                                    onChange={e =>
-                                      updateStep(step.id, {
-                                        value: buildFirmwareShortcut(
-                                          parsedShortcut.mods,
-                                          e.target.value
-                                        )
-                                      })
-                                    }
-                                    className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
-                                  >
-                                    {FIRMWARE_SUPPORTED_KEYS.map(k => (
-                                      <option key={k} value={k}>
-                                        {k.toUpperCase()}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono text-xs font-semibold text-[var(--accent)]">
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex-wrap">
+                                <div className="space-y-0.5">
+                                  <div className="text-[11px] text-[var(--text-muted)]">
+                                    Current shortcut
+                                  </div>
+                                  <div className="font-mono text-sm font-semibold text-[var(--text-primary)]">
                                     {formatShortcutPretty(step.value)}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setStepRecorderError(null);
-                                      setRecordingStepId(prev =>
-                                        prev === step.id ? null : step.id
-                                      );
-                                    }}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                                      recordingStepId === step.id
-                                        ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
-                                        : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--accent)] text-[var(--text-primary)]'
-                                    }`}
-                                  >
-                                    <Radio className="w-3.5 h-3.5" />
-                                    <span>
-                                      {recordingStepId === step.id
-                                        ? 'Press keys…'
-                                        : 'Record Keys'}
-                                    </span>
-                                  </button>
+                                  </div>
                                 </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setStepRecorderError(null);
+                                    setRecordingStepId(prev =>
+                                      prev === step.id ? null : step.id
+                                    );
+                                  }}
+                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                                    recordingStepId === step.id
+                                      ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                      : 'bg-[var(--bg-panel)] border-[var(--border-strong)] hover:border-[var(--accent)] text-[var(--text-primary)]'
+                                  }`}
+                                >
+                                  <Radio className="w-3.5 h-3.5" />
+                                  <span>
+                                    {recordingStepId === step.id
+                                      ? 'Press keys now (Esc to cancel)…'
+                                      : 'Record Keystroke'}
+                                  </span>
+                                </button>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {MOD_LIST.map(m => {
+                                  const isModActive = parsedShortcut.mods.includes(m.id);
+                                  return (
+                                    <button
+                                      key={m.id}
+                                      type="button"
+                                      onClick={() => {
+                                        const nextMods = isModActive
+                                          ? parsedShortcut.mods.filter(x => x !== m.id)
+                                          : [...parsedShortcut.mods, m.id];
+                                        updateStep(step.id, {
+                                          value: buildFirmwareShortcut(
+                                            nextMods,
+                                            parsedShortcut.key
+                                          )
+                                        });
+                                      }}
+                                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono transition-colors cursor-pointer whitespace-nowrap ${
+                                        isModActive
+                                          ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] font-semibold'
+                                          : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                                      }`}
+                                    >
+                                      {m.label}
+                                    </button>
+                                  );
+                                })}
+
+                                <span className="text-xs text-[var(--text-muted)] px-1">+</span>
+
+                                <select
+                                  aria-label="Shortcut key"
+                                  value={parsedShortcut.key}
+                                  onChange={e =>
+                                    updateStep(step.id, {
+                                      value: buildFirmwareShortcut(
+                                        parsedShortcut.mods,
+                                        e.target.value
+                                      )
+                                    })
+                                  }
+                                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
+                                >
+                                  {FIRMWARE_SUPPORTED_KEYS.map(k => (
+                                    <option key={k} value={k}>
+                                      {k.toUpperCase()}
+                                    </option>
+                                  ))}
+                                </select>
                               </div>
 
                               {stepRecorderError?.stepId === step.id && (
@@ -1603,10 +1768,10 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           )}
 
                           {step.actionType === 'text' && (
-                            <div className="space-y-1.5 pt-1">
+                            <div className="space-y-2">
                               <div className="flex items-center justify-between text-xs">
                                 <span className="text-[var(--text-secondary)]">
-                                  Text characters to type sequentially
+                                  Text to type
                                 </span>
                                 <span
                                   className={`font-mono tabular-nums ${
@@ -1623,68 +1788,116 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                 maxLength={123}
                                 value={step.value}
                                 onChange={e => updateStep(step.id, { value: e.target.value })}
-                                placeholder="Enter text string to type…"
+                                placeholder="e.g. git status"
                                 className={`w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border text-xs font-mono text-[var(--text-primary)] focus:outline-none ${
                                   !textCheck.valid
                                     ? 'border-rose-500'
                                     : 'border-[var(--border-subtle)] focus:border-[var(--accent)]'
                                 }`}
                               />
-                              {!textCheck.valid && textCheck.error && (
-                                <p className="text-xs text-rose-400">{textCheck.error}</p>
-                              )}
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                {!textCheck.valid && textCheck.error ? (
+                                  <p className="text-xs text-rose-400">{textCheck.error}</p>
+                                ) : (
+                                  <span className="text-[11px] text-[var(--text-muted)]">
+                                    Types characters in order on your computer.
+                                  </span>
+                                )}
+
+                                {!nextStepIsEnter && (
+                                  <button
+                                    type="button"
+                                    onClick={() => insertStepAfter(idx, 'key', 'enter')}
+                                    className="text-xs font-medium text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0"
+                                  >
+                                    + Add Enter key after
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           )}
 
                           {step.actionType === 'key' && (
-                            <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {(['enter', 'tab', 'space', 'esc', 'backspace'] as const).map(
-                                  quickKey => {
+                            <div className="space-y-2.5">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {(
+                                    [
+                                      'enter',
+                                      'tab',
+                                      'space',
+                                      'esc',
+                                      'backspace',
+                                      'up',
+                                      'down'
+                                    ] as const
+                                  ).map(quickKey => {
                                     const active = step.value === quickKey;
                                     return (
                                       <button
                                         key={quickKey}
                                         type="button"
                                         onClick={() => updateStep(step.id, { value: quickKey })}
-                                        style={
-                                          active
-                                            ? {
-                                                borderColor: 'var(--accent)',
-                                                backgroundColor: 'rgba(var(--accent-rgb), 0.16)'
-                                              }
-                                            : undefined
-                                        }
                                         className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono uppercase cursor-pointer whitespace-nowrap ${
                                           active
-                                            ? 'text-[var(--text-primary)] font-semibold'
+                                            ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] font-semibold'
                                             : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                                         }`}
                                       >
                                         {quickKey}
                                       </button>
                                     );
-                                  }
-                                )}
+                                  })}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <select
+                                    aria-label="Single key"
+                                    value={step.value}
+                                    onChange={e => updateStep(step.id, { value: e.target.value })}
+                                    className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
+                                  >
+                                    {FIRMWARE_SUPPORTED_KEYS.map(k => (
+                                      <option key={k} value={k}>
+                                        Key: {k.toUpperCase()}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setStepRecorderError(null);
+                                      setRecordingStepId(prev =>
+                                        prev === step.id ? null : step.id
+                                      );
+                                    }}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium cursor-pointer whitespace-nowrap ${
+                                      recordingStepId === step.id
+                                        ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                        : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--accent)] text-[var(--text-primary)]'
+                                    }`}
+                                  >
+                                    <Radio className="w-3.5 h-3.5" />
+                                    <span>
+                                      {recordingStepId === step.id ? 'Press key…' : 'Record'}
+                                    </span>
+                                  </button>
+                                </div>
                               </div>
 
-                              <select
-                                value={step.value}
-                                onChange={e => updateStep(step.id, { value: e.target.value })}
-                                className="px-3 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
-                              >
-                                {FIRMWARE_SUPPORTED_KEYS.map(k => (
-                                  <option key={k} value={k}>
-                                    Key: {k.toUpperCase()}
-                                  </option>
-                                ))}
-                              </select>
+                              {stepRecorderError?.stepId === step.id && (
+                                <p className="text-xs text-rose-400">
+                                  {stepRecorderError.message}
+                                </p>
+                              )}
                             </div>
                           )}
 
                           {step.actionType === 'media' && (
-                            <div className="pt-1">
+                            <div>
                               <select
+                                aria-label="Media or function key"
                                 value={step.value}
                                 onChange={e => updateStep(step.id, { value: e.target.value })}
                                 className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
@@ -1699,13 +1912,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           )}
 
                           {step.actionType === 'os_action' && (
-                            <div className="pt-1">
+                            <div>
                               <select
+                                aria-label="System action"
                                 value={step.value}
                                 onChange={e => updateStep(step.id, { value: e.target.value })}
                                 className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
                               >
-                                <optgroup label="macOS Actions">
+                                <optgroup label="macOS">
                                   {osCatalog
                                     .filter(i => i.category === 'mac_macro')
                                     .map(item => (
@@ -1714,7 +1928,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                       </option>
                                     ))}
                                 </optgroup>
-                                <optgroup label="Windows Actions">
+                                <optgroup label="Windows">
                                   {osCatalog
                                     .filter(i => i.category === 'win_macro')
                                     .map(item => (
@@ -1727,52 +1941,79 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             </div>
                           )}
 
-                          {step.actionType === 'tv' && (
-                            <div className="space-y-2.5 pt-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {[
-                                  { id: 'preset', label: 'Remote & Apps', active: !isCustomTvKey && !isCustomTvApp },
-                                  { id: 'tvkey', label: 'Custom Remote Code', active: isCustomTvKey },
-                                  { id: 'tvapp', label: 'Custom App Launch', active: isCustomTvApp }
-                                ].map(modeBtn => (
-                                  <button
-                                    key={modeBtn.id}
-                                    type="button"
-                                    onClick={() => {
-                                      if (modeBtn.id === 'preset') {
-                                        updateStep(step.id, { value: 'TV:MUTE' });
-                                      } else if (modeBtn.id === 'tvkey') {
-                                        updateStep(step.id, { value: 'TVKEY:5:1' });
-                                      } else {
-                                        updateStep(step.id, { value: 'TVAPP:1:4' });
-                                      }
-                                    }}
-                                    style={
-                                      modeBtn.active
-                                        ? {
-                                            borderColor: 'var(--accent)',
-                                            backgroundColor: 'rgba(var(--accent-rgb), 0.14)'
-                                          }
-                                        : undefined
-                                    }
-                                    className={`px-2.5 py-1 rounded-lg border text-xs font-medium cursor-pointer whitespace-nowrap ${
-                                      modeBtn.active
-                                        ? 'text-[var(--text-primary)]'
-                                        : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
-                                    }`}
-                                  >
-                                    {modeBtn.label}
-                                  </button>
+                          {step.actionType === 'ble' && (
+                            <div className="space-y-2">
+                              <select
+                                aria-label="Bluetooth host switch action"
+                                value={step.value}
+                                onChange={e => updateStep(step.id, { value: e.target.value })}
+                                className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
+                              >
+                                {bleCatalog.map(item => (
+                                  <option key={item.action} value={item.action}>
+                                    {item.label} — {item.description}
+                                  </option>
                                 ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {step.actionType === 'tv' && (
+                            <div className="space-y-2.5">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="text-xs text-[var(--text-secondary)]">
+                                  Smart TV command
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  {[
+                                    {
+                                      id: 'preset',
+                                      label: 'Standard',
+                                      active: !isCustomTvKey && !isCustomTvApp
+                                    },
+                                    {
+                                      id: 'tvkey',
+                                      label: 'Remote Code',
+                                      active: isCustomTvKey
+                                    },
+                                    {
+                                      id: 'tvapp',
+                                      label: 'Custom App',
+                                      active: isCustomTvApp
+                                    }
+                                  ].map(modeBtn => (
+                                    <button
+                                      key={modeBtn.id}
+                                      type="button"
+                                      onClick={() => {
+                                        if (modeBtn.id === 'preset') {
+                                          updateStep(step.id, { value: 'TV:MUTE' });
+                                        } else if (modeBtn.id === 'tvkey') {
+                                          updateStep(step.id, { value: 'TVKEY:5:1' });
+                                        } else {
+                                          updateStep(step.id, { value: 'TVAPP:1:4' });
+                                        }
+                                      }}
+                                      className={`px-2 py-1 rounded-md border text-[11px] font-medium cursor-pointer whitespace-nowrap ${
+                                        modeBtn.active
+                                          ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)]'
+                                          : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
+                                      }`}
+                                    >
+                                      {modeBtn.label}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
 
                               {!isCustomTvKey && !isCustomTvApp && (
                                 <select
+                                  aria-label="Smart TV action"
                                   value={step.value}
                                   onChange={e => updateStep(step.id, { value: e.target.value })}
                                   className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
                                 >
-                                  <optgroup label="TV Remote Controls">
+                                  <optgroup label="TV Remote">
                                     {tvCatalog
                                       .filter(i => i.category === 'tv')
                                       .map(item => (
@@ -1802,8 +2043,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                       min={0}
                                       value={tvKeyParts[1] || '5'}
                                       onChange={e => {
-                                        const cs = Math.max(0, parseInt(e.target.value, 10) || 0);
-                                        const cd = Math.max(0, parseInt(tvKeyParts[2] || '1', 10) || 0);
+                                        const cs = Math.max(
+                                          0,
+                                          parseInt(e.target.value, 10) || 0
+                                        );
+                                        const cd = Math.max(
+                                          0,
+                                          parseInt(tvKeyParts[2] || '1', 10) || 0
+                                        );
                                         updateStep(step.id, { value: `TVKEY:${cs}:${cd}` });
                                       }}
                                       className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)]"
@@ -1816,8 +2063,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                       min={0}
                                       value={tvKeyParts[2] || '1'}
                                       onChange={e => {
-                                        const cs = Math.max(0, parseInt(tvKeyParts[1] || '5', 10) || 0);
-                                        const cd = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                        const cs = Math.max(
+                                          0,
+                                          parseInt(tvKeyParts[1] || '5', 10) || 0
+                                        );
+                                        const cd = Math.max(
+                                          0,
+                                          parseInt(e.target.value, 10) || 0
+                                        );
                                         updateStep(step.id, { value: `TVKEY:${cs}:${cd}` });
                                       }}
                                       className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)]"
@@ -1829,16 +2082,25 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               {isCustomTvApp && (
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                                   <label className="space-y-1 text-xs text-[var(--text-secondary)]">
-                                    <span>App Identifier</span>
+                                    <span>App ID</span>
                                     <input
                                       type="text"
                                       value={tvAppParts[1] || '1'}
                                       onChange={e => {
-                                        const cleanId = sanitizeSerialString(e.target.value.trim(), 32) || '1';
-                                        const ns = Math.max(0, parseInt(tvAppParts[2] || '4', 10) || 0);
-                                        const url = sanitizeSerialString((tvAppParts.slice(3).join(':') || '').trim(), 80);
+                                        const cleanId =
+                                          sanitizeSerialString(e.target.value.trim(), 32) || '1';
+                                        const ns = Math.max(
+                                          0,
+                                          parseInt(tvAppParts[2] || '4', 10) || 0
+                                        );
+                                        const url = sanitizeSerialString(
+                                          (tvAppParts.slice(3).join(':') || '').trim(),
+                                          80
+                                        );
                                         updateStep(step.id, {
-                                          value: url ? `TVAPP:${cleanId}:${ns}:${url}` : `TVAPP:${cleanId}:${ns}`
+                                          value: url
+                                            ? `TVAPP:${cleanId}:${ns}:${url}`
+                                            : `TVAPP:${cleanId}:${ns}`
                                         });
                                       }}
                                       className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)]"
@@ -1851,30 +2113,54 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                       min={0}
                                       value={tvAppParts[2] || '4'}
                                       onChange={e => {
-                                        const cleanId = sanitizeSerialString((tvAppParts[1] || '1').trim(), 32) || '1';
-                                        const ns = Math.max(0, parseInt(e.target.value, 10) || 0);
-                                        const url = sanitizeSerialString((tvAppParts.slice(3).join(':') || '').trim(), 80);
+                                        const cleanId =
+                                          sanitizeSerialString(
+                                            (tvAppParts[1] || '1').trim(),
+                                            32
+                                          ) || '1';
+                                        const ns = Math.max(
+                                          0,
+                                          parseInt(e.target.value, 10) || 0
+                                        );
+                                        const url = sanitizeSerialString(
+                                          (tvAppParts.slice(3).join(':') || '').trim(),
+                                          80
+                                        );
                                         updateStep(step.id, {
-                                          value: url ? `TVAPP:${cleanId}:${ns}:${url}` : `TVAPP:${cleanId}:${ns}`
+                                          value: url
+                                            ? `TVAPP:${cleanId}:${ns}:${url}`
+                                            : `TVAPP:${cleanId}:${ns}`
                                         });
                                       }}
                                       className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)]"
                                     />
                                   </label>
                                   <label className="space-y-1 text-xs text-[var(--text-secondary)]">
-                                    <span>Deep-Link Path (optional)</span>
+                                    <span>Deep Link (optional)</span>
                                     <input
                                       type="text"
                                       value={tvAppParts.slice(3).join(':') || ''}
                                       onChange={e => {
-                                        const cleanId = sanitizeSerialString((tvAppParts[1] || '1').trim(), 32) || '1';
-                                        const ns = Math.max(0, parseInt(tvAppParts[2] || '4', 10) || 0);
-                                        const url = sanitizeSerialString(e.target.value.trim(), 80);
+                                        const cleanId =
+                                          sanitizeSerialString(
+                                            (tvAppParts[1] || '1').trim(),
+                                            32
+                                          ) || '1';
+                                        const ns = Math.max(
+                                          0,
+                                          parseInt(tvAppParts[2] || '4', 10) || 0
+                                        );
+                                        const url = sanitizeSerialString(
+                                          e.target.value.trim(),
+                                          80
+                                        );
                                         updateStep(step.id, {
-                                          value: url ? `TVAPP:${cleanId}:${ns}:${url}` : `TVAPP:${cleanId}:${ns}`
+                                          value: url
+                                            ? `TVAPP:${cleanId}:${ns}:${url}`
+                                            : `TVAPP:${cleanId}:${ns}`
                                         });
                                       }}
-                                      placeholder="Optional URL"
+                                      placeholder="Optional path"
                                       className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)]"
                                     />
                                   </label>
@@ -1883,89 +2169,33 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             </div>
                           )}
 
-                          {/* Standalone Wait Delay Step Editor */}
                           {step.actionType === 'delay' && (
-                            <div className="space-y-2.5 pt-1">
-                              <div className="flex items-center justify-between gap-3 flex-wrap">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  {PAUSE_STEP_PRESETS.map(msVal => {
-                                    const active = step.delayMs === msVal;
-                                    return (
-                                      <button
-                                        key={msVal}
-                                        type="button"
-                                        onClick={() => updateStep(step.id, { delayMs: msVal })}
-                                        style={
-                                          active
-                                            ? {
-                                                borderColor: 'var(--accent)',
-                                                backgroundColor: 'rgba(var(--accent-rgb), 0.16)'
-                                              }
-                                            : undefined
-                                        }
-                                        className={`px-2.5 py-1 rounded-md border text-xs font-mono tabular-nums cursor-pointer whitespace-nowrap ${
-                                          active
-                                            ? 'text-[var(--text-primary)] font-semibold'
-                                            : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                                        }`}
-                                      >
-                                        {msVal} ms
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-xs text-[var(--text-secondary)]">
-                                    Wait Duration:
-                                  </span>
-                                  <input
-                                    type="number"
-                                    min={10}
-                                    max={60000}
-                                    step={50}
-                                    value={step.delayMs}
-                                    onChange={e =>
-                                      updateStep(step.id, {
-                                        delayMs: Math.max(
-                                          0,
-                                          Math.min(60000, parseInt(e.target.value, 10) || 0)
-                                        )
-                                      })
-                                    }
-                                    className="w-24 px-2.5 py-1 rounded-md bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] text-right focus:outline-none focus:border-[var(--accent)]"
-                                  />
-                                  <span className="text-xs font-mono text-[var(--text-muted)]">
-                                    ms
-                                  </span>
-                                </div>
+                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {PAUSE_STEP_PRESETS.map(msVal => {
+                                  const active = step.delayMs === msVal;
+                                  return (
+                                    <button
+                                      key={msVal}
+                                      type="button"
+                                      onClick={() => updateStep(step.id, { delayMs: msVal })}
+                                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono tabular-nums cursor-pointer whitespace-nowrap ${
+                                        active
+                                          ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] font-semibold'
+                                          : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                                      }`}
+                                    >
+                                      {msVal >= 1000 ? `${msVal / 1000} s` : `${msVal} ms`}
+                                    </button>
+                                  );
+                                })}
                               </div>
 
-                              {/* Visual Timing Proportion Bar */}
-                              <div className="h-1.5 w-full rounded-full bg-[var(--bg-input)] overflow-hidden">
-                                <div
-                                  className="h-full rounded-full transition-opacity"
-                                  style={{
-                                    width: `${delayBarPercent(step.delayMs)}%`,
-                                    backgroundColor: 'var(--accent)',
-                                    opacity: isExecutingDelay ? 1 : 0.65
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Intra-step repeat interval on the final step when repeatCount > 1 */}
-                          {isLastStep && step.actionType !== 'delay' && step.repeatCount > 1 && (
-                            <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 flex-wrap text-xs">
-                              <span className="text-[var(--text-secondary)] flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5 text-[var(--accent)]" />
-                                <span>Interval between each of the {step.repeatCount} repeats</span>
-                              </span>
                               <div className="flex items-center gap-1.5">
                                 <input
+                                  aria-label="Wait duration in milliseconds"
                                   type="number"
-                                  min={0}
+                                  min={10}
                                   max={60000}
                                   step={50}
                                   value={step.delayMs}
@@ -1977,56 +2207,32 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                       )
                                     })
                                   }
-                                  className="w-20 px-2 py-1 rounded-md bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] text-right focus:outline-none focus:border-[var(--accent)]"
+                                  className="w-24 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] text-right focus:outline-none focus:border-[var(--accent)]"
                                 />
-                                <span className="font-mono text-[var(--text-muted)]">ms</span>
+                                <span className="text-xs font-mono text-[var(--text-muted)]">
+                                  ms
+                                </span>
                               </div>
                             </div>
                           )}
-                        </div>
 
-                        {/* Explicit Sequential Delay Timing Node Between Steps */}
-                        {!isLastStep && (
-                          <div className="py-2.5 pl-1 pr-1 flex flex-col gap-1.5">
-                            {step.actionType !== 'delay' ? (
-                              <div
-                                style={
-                                  isExecutingDelay
-                                    ? {
-                                        borderColor: 'var(--accent)',
-                                        backgroundColor: 'rgba(var(--accent-rgb), 0.12)'
-                                      }
-                                    : undefined
-                                }
-                                className="px-3 py-2 rounded-lg bg-[var(--bg-canvas)] border border-dashed border-[var(--border-strong)] flex items-center justify-between gap-3 flex-wrap transition-colors"
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <Clock className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                                  <span className="text-xs text-[var(--text-secondary)]">
-                                    {step.repeatCount > 1
-                                      ? `Repeat & delay before Step ${String(idx + 2).padStart(2, '0')}`
-                                      : `Delay before Step ${String(idx + 2).padStart(2, '0')}`}
+                          {/* Quiet Hairline Step Timing & Repeat Footer */}
+                          {step.actionType !== 'delay' && (
+                            <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap text-xs">
+                              {(!isLastStep || step.repeatCount > 1) ? (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[var(--text-muted)]">
+                                    {isLastStep ? 'Interval:' : 'Wait after:'}
                                   </span>
-                                  {/* Proportional Mini Timing Bar */}
-                                  <div className="hidden sm:block w-24 h-1.5 rounded-full bg-[var(--bg-panel)] overflow-hidden shrink-0">
-                                    <div
-                                      className="h-full rounded-full"
-                                      style={{
-                                        width: `${delayBarPercent(step.delayMs)}%`,
-                                        backgroundColor: 'var(--accent)'
-                                      }}
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <div className="hidden md:flex items-center gap-1">
+                                  <div className="flex items-center gap-1">
                                     {QUICK_DELAY_PRESETS.map(presetMs => (
                                       <button
                                         key={presetMs}
                                         type="button"
-                                        onClick={() => updateStep(step.id, { delayMs: presetMs })}
-                                        className={`px-1.5 py-0.5 rounded text-[11px] font-mono tabular-nums transition-colors cursor-pointer ${
+                                        onClick={() =>
+                                          updateStep(step.id, { delayMs: presetMs })
+                                        }
+                                        className={`px-2 py-0.5 rounded text-[11px] font-mono tabular-nums transition-colors cursor-pointer ${
                                           step.delayMs === presetMs
                                             ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold border border-[var(--border-strong)]'
                                             : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
@@ -2036,10 +2242,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                       </button>
                                     ))}
                                   </div>
-
                                   <div className="flex items-center gap-1">
                                     <input
-                                      aria-label={`Delay after step ${idx + 1} in milliseconds`}
+                                      aria-label="Wait after step in milliseconds"
                                       type="number"
                                       min={0}
                                       max={60000}
@@ -2053,67 +2258,83 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                           )
                                         })
                                       }
-                                      className="w-20 px-2 py-1 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] text-right focus:outline-none focus:border-[var(--accent)]"
+                                      className="w-16 px-2 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] text-right focus:outline-none focus:border-[var(--accent)]"
                                     />
-                                    <span className="text-xs font-mono text-[var(--text-muted)]">
+                                    <span className="font-mono text-[11px] text-[var(--text-muted)]">
                                       ms
                                     </span>
                                   </div>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => insertStepAfter(idx)}
-                                    className="ml-1 px-2 py-1 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
-                                    title="Insert a new step here"
-                                  >
-                                    + Insert
-                                  </button>
                                 </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between px-2 text-[11px] text-[var(--text-muted)] font-mono tabular-nums">
-                                <span>
-                                  Then proceed to Step {String(idx + 2).padStart(2, '0')} after{' '}
-                                  {step.delayMs * Math.max(1, step.repeatCount)} ms wait
+                              ) : (
+                                <span className="text-[var(--text-muted)]">
+                                  Final step in sequence
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={() => insertStepAfter(idx)}
-                                  className="px-2 py-0.5 rounded bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-sans font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-                                >
-                                  + Insert
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                              )}
 
-                    {/* Drop Insertion Indicator Line (After) */}
-                    {showDropAfter && (
-                      <div
-                        className="h-0.5 w-full rounded-full mt-2"
-                        style={{ backgroundColor: 'var(--accent)' }}
-                      />
-                    )}
-                  </div>
+                              <label className="flex items-center gap-1.5 text-[var(--text-muted)]">
+                                <span>Repeat step</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={99}
+                                  value={step.repeatCount}
+                                  onChange={e =>
+                                    updateStep(step.id, {
+                                      repeatCount: Math.max(
+                                        1,
+                                        Math.min(99, parseInt(e.target.value, 10) || 1)
+                                      )
+                                    })
+                                  }
+                                  className="w-12 px-1.5 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] text-center focus:outline-none focus:border-[var(--accent)]"
+                                />
+                                <span className="font-mono">×</span>
+                              </label>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {showDropAfter && (
+                        <div className="h-0.5 w-full rounded-full mt-1.5 bg-[var(--accent)]" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Calm "+ Add Step" Strip */}
+            <div className="pt-1 flex items-center gap-1.5 flex-wrap">
+              {STEP_TYPE_ORDER.map(type => {
+                const meta = STEP_TYPE_META[type];
+                const Icon = meta.icon;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => appendStep(type)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Plus className="w-3 h-3 text-[var(--accent)]" />
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{meta.shortLabel}</span>
+                  </button>
                 );
               })}
             </div>
-          )}
+          </section>
 
-          {/* Sequence Cycle Repeat & Direct Control Assignment */}
-          <div className="p-5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-5">
-            {/* Sequence Cycle / Loop Options */}
+          {/* Playback & Visual MacroPad Destination */}
+          <section className="p-5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-5">
+            {/* Minimal Playback Selector */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-                  <Repeat className="w-4 h-4 text-[var(--accent)]" />
-                  <span>Sequence Cycle Mode</span>
-                </div>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <span className="text-xs font-semibold text-[var(--text-primary)]">
+                  When Triggered
+                </span>
 
-                <div className="flex items-center gap-1 p-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
                   <button
                     type="button"
                     onClick={() => {
@@ -2122,11 +2343,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     }}
                     className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                       !loopUntilStopped && parsedRepeatCount === 1
-                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                         : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
                   >
-                    Single Pass
+                    Run Once
                   </button>
                   <button
                     type="button"
@@ -2136,22 +2357,22 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     }}
                     className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                       !loopUntilStopped && parsedRepeatCount > 1
-                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                         : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
                   >
-                    Repeat Count
+                    Repeat
                   </button>
                   <button
                     type="button"
                     onClick={() => setLoopUntilStopped(true)}
                     className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                       loopUntilStopped
-                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                         : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
                   >
-                    Loop Until Stopped
+                    Loop
                   </button>
                 </div>
               </div>
@@ -2160,7 +2381,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   {!loopUntilStopped ? (
                     <label className="space-y-1 text-xs text-[var(--text-secondary)]">
-                      <span>Total Cycles (2–999)</span>
+                      <span>Repeat count</span>
                       <input
                         type="number"
                         min={2}
@@ -2174,20 +2395,20 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             )
                           )
                         }
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                        className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                       />
                     </label>
                   ) : (
                     <div className="space-y-1 text-xs text-[var(--text-secondary)]">
-                      <span>Loop Behavior</span>
-                      <div className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)]">
-                        Press assigned control again or click Stop to end loop
+                      <span>Stop condition</span>
+                      <div className="px-3 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-muted)]">
+                        Press key again or click Stop
                       </div>
                     </div>
                   )}
 
                   <label className="space-y-1 text-xs text-[var(--text-secondary)]">
-                    <span>Delay Between Cycles (ms)</span>
+                    <span>Pause between runs (ms)</span>
                     <input
                       type="number"
                       min={10}
@@ -2205,66 +2426,183 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           )
                         )
                       }
-                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                      className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                     />
                   </label>
                 </div>
               )}
 
               {needsLiveRunner && (
-                <p className="text-xs text-[var(--text-muted)]">
-                  Step 01 saves directly to your pad; subsequent steps and timed delays run seamlessly while your pad is connected.
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Step 01 saves onto the pad; subsequent timed steps run automatically while connected via USB.
                 </p>
               )}
             </div>
 
-            {/* Direct Control Assignment */}
-            <div className="pt-4 border-t border-[var(--border-subtle)] space-y-3">
-              <div className="text-xs font-semibold text-[var(--text-primary)]">
-                Assign Sequence to Control
+            {/* Visual MacroPad Control Picker */}
+            <div className="pt-4 border-t border-[var(--border-subtle)] space-y-3.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-[var(--text-primary)]">
+                  Assign to Pad
+                </span>
+
+                <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                  {profiles.map(p => {
+                    const ProfIcon = p.id === 'MAC' ? Laptop : Tv;
+                    const active = targetProfile === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setTargetProfile(p.id)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                          active
+                            ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                            : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                        }`}
+                      >
+                        <ProfIcon className="w-3.5 h-3.5" />
+                        <span>{p.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <select
-                  aria-label="Target profile"
-                  value={targetProfile}
-                  onChange={e => setTargetProfile(e.target.value as HardwareProfileId)}
-                  className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
-                >
-                  {profiles.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} Profile ({p.id})
-                    </option>
-                  ))}
-                </select>
 
-                <select
-                  aria-label="Target physical control"
-                  value={targetSlot}
-                  onChange={e => setTargetSlot(e.target.value as HardwareSlotId)}
-                  className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
-                >
-                  {HARDWARE_SLOTS.map(s => (
-                    <option key={s} value={s}>
-                      {SLOT_LABELS[s].full}
-                    </option>
-                  ))}
-                </select>
+              {/* Mini Physical Layout: 2x4 Keys + 3 Rotary Knob Slots */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                {/* 8 Keys (2 rows x 4 columns) */}
+                <div className="sm:col-span-8 grid grid-cols-4 gap-1.5">
+                  {BUTTON_GRID_SLOTS.map((slot, i) => {
+                    const act = targetProfileSlots[slot];
+                    const slotBind = getBindingForProfileSlot(
+                      profiles,
+                      targetProfile,
+                      slot
+                    );
+                    const label = act
+                      ? describeFirmwareAction(act, slotBind?.repeatConfig).shortLabel
+                      : 'Empty';
+                    const isSelected = targetSlot === slot;
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => setTargetSlot(slot)}
+                        className={`p-2 rounded-lg border text-left transition-colors cursor-pointer min-w-0 ${
+                          isSelected
+                            ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.12)]'
+                            : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                        }`}
+                      >
+                        <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                          K{i + 1}
+                        </div>
+                        <div
+                          className={`text-[11px] font-medium truncate mt-0.5 ${
+                            act ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
+                          }`}
+                        >
+                          {label}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
 
-                <button
-                  type="button"
-                  disabled={!isSequenceValid}
-                  onClick={handleAssignToControl}
-                  style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>
-                    Assign to {targetProfile} · {SLOT_LABELS[targetSlot].short}
-                  </span>
-                </button>
+                {/* 3 Rotary Encoder Actions */}
+                <div className="sm:col-span-4 flex sm:flex-col gap-1.5">
+                  {ENCODER_SLOTS.map(({ slot, shortTitle, icon: KnobIcon }) => {
+                    const act = targetProfileSlots[slot];
+                    const slotBind = getBindingForProfileSlot(
+                      profiles,
+                      targetProfile,
+                      slot
+                    );
+                    const label = act
+                      ? describeFirmwareAction(act, slotBind?.repeatConfig).shortLabel
+                      : 'Empty';
+                    const isSelected = targetSlot === slot;
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => setTargetSlot(slot)}
+                        className={`flex-1 px-2.5 py-1.5 rounded-lg border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer min-w-0 ${
+                          isSelected
+                            ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.12)]'
+                            : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <KnobIcon className="w-3 h-3 text-[var(--text-muted)]" />
+                          <span className="font-mono text-[10px] text-[var(--text-muted)] whitespace-nowrap">
+                            {shortTitle}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[11px] font-medium truncate ${
+                            act ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
+                          }`}
+                        >
+                          {label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Assign Action Footer */}
+              <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-xs text-[var(--text-muted)] truncate">
+                  {justAssignedSlot &&
+                  justAssignedSlot.profile === targetProfile &&
+                  justAssignedSlot.slot === targetSlot ? (
+                    <span className="text-emerald-400 font-medium">
+                      Assigned to {activeTargetProfileObj.name} ·{' '}
+                      {SLOT_LABELS[targetSlot].short}
+                    </span>
+                  ) : (
+                    <span>
+                      Current on {SLOT_LABELS[targetSlot].short}:{' '}
+                      <span className="text-[var(--text-secondary)] font-medium">
+                        {currentSlotDesc}
+                      </span>
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {onJumpToControl &&
+                    justAssignedSlot &&
+                    justAssignedSlot.profile === targetProfile &&
+                    justAssignedSlot.slot === targetSlot && (
+                      <button
+                        type="button"
+                        onClick={() => onJumpToControl(targetProfile, targetSlot)}
+                        className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        <span>View on Pad</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                  <button
+                    type="button"
+                    disabled={!isSequenceValid}
+                    onClick={handleAssignToControl}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>
+                      Assign to {SLOT_LABELS[targetSlot].short}
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          </section>
         </div>
       </main>
     </div>

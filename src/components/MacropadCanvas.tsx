@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   ActionBinding,
+  BleHostSlot,
   CanvasViewMode,
   ConflictWarning,
   ControlId,
@@ -54,6 +55,7 @@ interface MacropadCanvasProps {
   onStartDemoMode: () => void;
   onPullFromUsb: () => void;
   onExecuteHardwareBinding: (binding: ActionBinding) => Promise<boolean>;
+  onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
 }
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
@@ -103,13 +105,15 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   onConnectUsbPad,
   onStartDemoMode,
   onPullFromUsb,
-  onExecuteHardwareBinding
+  onExecuteHardwareBinding,
+  onSwitchBleHost
 }) => {
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [knobAngle, setKnobAngle] = useState(0);
   const [knobPressed, setKnobPressed] = useState(false);
   const [flashedSlots, setFlashedSlots] = useState<Set<HardwareFlashSlot>>(new Set());
   const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
+  const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
 
   const flashTimersRef = useRef<Record<string, number>>({});
   const pendingAngleDeltaRef = useRef<number>(0);
@@ -192,6 +196,19 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         soundEngine.playKeyClick();
         const nextProf = (e.active || e.profile) === 'TV' ? 'TV' : 'MAC';
         pushLog('Mode', 'Press', `Switched profile to ${nextProf}`, 'hardware');
+        return;
+      }
+
+      if (e.event === 'ble_host') {
+        const hostNum = e.ble_slot === 2 ? 2 : e.ble_slot === 3 ? 3 : 1;
+        triggerSlotFlash('mode');
+        soundEngine.playDialTick();
+        pushLog(
+          'Mode + Dial',
+          `[H${hostNum}]`,
+          `Switched BLE to Studio Pad ${hostNum} (Host ${hostNum})`,
+          'hardware'
+        );
         return;
       }
 
@@ -328,7 +345,48 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
   };
 
-  const triggerEncoderSpin = async (dir: 'cw' | 'ccw') => {
+  const activeBleHost: BleHostSlot = connection.connected
+    ? connection.telemetry?.bleActiveHost ?? 1
+    : offlineBleHost;
+
+  const triggerModePlusDialHostSwitch = async (dir: 'cw' | 'ccw') => {
+    queueKnobAngleDelta(dir === 'cw' ? 24 : -24);
+    soundEngine.playDialTick();
+
+    const delta = dir === 'cw' ? 1 : -1;
+    if (connection.transport === 'demo') {
+      usbHardware.simulateDemoHostCycle(delta);
+      return;
+    }
+
+    const nextIdx = (activeBleHost - 1 + (delta > 0 ? 1 : 2)) % 3;
+    const nextSlot = (nextIdx + 1) as BleHostSlot;
+
+    if (connection.connected) {
+      await onSwitchBleHost(nextSlot);
+      pushLog(
+        'Mode + Dial',
+        `[H${nextSlot}]`,
+        `Switched BLE to Studio Pad ${nextSlot} (Host ${nextSlot})`,
+        'usb-test'
+      );
+    } else {
+      setOfflineBleHost(nextSlot);
+      pushLog(
+        'Mode + Dial',
+        `[H${nextSlot}]`,
+        `Simulated switch to Studio Pad ${nextSlot} (Host ${nextSlot})`,
+        'sim'
+      );
+    }
+  };
+
+  const triggerEncoderSpin = async (dir: 'cw' | 'ccw', holdModeCombo = false) => {
+    if (viewMode === 'test' && (holdModeCombo || pressedKey === 'k9')) {
+      await triggerModePlusDialHostSwitch(dir);
+      return;
+    }
+
     const subId: ControlId = dir === 'cw' ? 'enc_cw' : 'enc_ccw';
     queueKnobAngleDelta(dir === 'cw' ? 24 : -24);
     soundEngine.playDialTick();
@@ -357,7 +415,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
   const handleEncoderWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    triggerEncoderSpin(e.deltaY > 0 ? 'cw' : 'ccw');
+    triggerEncoderSpin(e.deltaY > 0 ? 'cw' : 'ccw', e.shiftKey);
   };
 
   const activateDialPush = async () => {
@@ -767,7 +825,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     className={`flex items-center gap-0.5 ${
                       telemetry?.bleConnected ? 'text-sky-400' : 'text-zinc-600'
                     }`}
-                    title={telemetry?.bleConnected ? 'BLE Connected' : 'BLE Disconnected'}
+                    title={
+                      telemetry?.bleConnected
+                        ? `BLE Connected · ${telemetry.bleDeviceName || `Studio Pad ${activeBleHost}`}`
+                        : `BLE Disconnected · ${telemetry?.bleDeviceName || `Studio Pad ${activeBleHost}`}`
+                    }
                   >
                     <Bluetooth className="w-3 h-3" />
                     <span>BLE</span>
@@ -799,6 +861,29 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 <span className="text-zinc-500">
                   {connection.connecting ? 'CONNECTING…' : 'OFFLINE'}
                 </span>
+              )}
+
+              {/* Hardware SSD1306 Upper-Right Host Badge in MAC Mode ([H1], [H2], [H3]) */}
+              {activeProfileId === 'MAC' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextSlot = (((activeBleHost % 3) + 1) as BleHostSlot);
+                    if (connection.connected) {
+                      onSwitchBleHost(nextSlot);
+                    } else {
+                      setOfflineBleHost(nextSlot);
+                    }
+                  }}
+                  title={
+                    connection.connected
+                      ? `Active Host: ${telemetry?.bleDeviceName || `Studio Pad ${activeBleHost}`} — click to cycle host (/api/ble/switch) or hold Mode + turn Dial`
+                      : `Previewing Host ${activeBleHost} (Studio Pad ${activeBleHost}) — click to preview [H1]–[H3]`
+                  }
+                  className="px-1.5 py-0.5 rounded bg-black border border-white/75 text-white font-mono text-[10px] font-bold leading-none tracking-tight hover:border-sky-400 hover:text-sky-200 transition-colors cursor-pointer tabular-nums shrink-0"
+                >
+                  [H{activeBleHost}]
+                </button>
               )}
             </div>
           </div>
@@ -888,38 +973,52 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               )}
             </div>
 
-            {connection.transport === 'demo' && (
-              <div className="flex items-center gap-1.5 flex-wrap pb-2 border-b border-[var(--border-subtle)]">
-                <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] mr-1">
-                  Simulate pad:
-                </span>
-                {(
-                  [
-                    { slot: 'b1', label: 'Key 1' },
-                    { slot: 'b2', label: 'Key 2' },
-                    { slot: 'b3', label: 'Key 3' },
-                    { slot: 'b4', label: 'Key 4' },
-                    { slot: 'b5', label: 'Key 5' },
-                    { slot: 'b6', label: 'Key 6' },
-                    { slot: 'b7', label: 'Key 7' },
-                    { slot: 'b8', label: 'Key 8' },
-                    { slot: 'dial', label: 'Knob', icon: Disc },
-                    { slot: 'enc_ccw', label: 'Turn Left' },
-                    { slot: 'enc_cw', label: 'Turn Right' },
-                    { slot: 'mode', label: 'Mode' }
-                  ] as const
-                ).map(btn => (
-                  <button
-                    key={btn.slot}
-                    type="button"
-                    onClick={() => usbHardware.simulateDemoPadInput(btn.slot)}
-                    className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[10px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-                  >
-                    {btn.label}
-                  </button>
-                ))}
+            <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-[var(--border-subtle)]">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {connection.transport === 'demo' && (
+                  <>
+                    <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] mr-1">
+                      Simulate pad:
+                    </span>
+                    {(
+                      [
+                        { slot: 'b1', label: 'Key 1' },
+                        { slot: 'b2', label: 'Key 2' },
+                        { slot: 'b3', label: 'Key 3' },
+                        { slot: 'b4', label: 'Key 4' },
+                        { slot: 'b5', label: 'Key 5' },
+                        { slot: 'b6', label: 'Key 6' },
+                        { slot: 'b7', label: 'Key 7' },
+                        { slot: 'b8', label: 'Key 8' },
+                        { slot: 'dial', label: 'Knob', icon: Disc },
+                        { slot: 'enc_ccw', label: 'Turn Left' },
+                        { slot: 'enc_cw', label: 'Turn Right' },
+                        { slot: 'mode', label: 'Mode' }
+                      ] as const
+                    ).map(btn => (
+                      <button
+                        key={btn.slot}
+                        type="button"
+                        onClick={() => usbHardware.simulateDemoPadInput(btn.slot)}
+                        className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[10px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => triggerModePlusDialHostSwitch('cw')}
+                  title="Simulate holding Mode + rotating Dial clockwise to switch BLE Host"
+                  className="px-2 py-1 rounded-md bg-sky-500/12 hover:bg-sky-500/20 border border-sky-500/35 text-[10px] font-mono text-sky-300 cursor-pointer whitespace-nowrap flex items-center gap-1"
+                >
+                  <Bluetooth className="w-3 h-3 shrink-0" />
+                  <span>Mode + Dial ↻ ([H{(((activeBleHost % 3) + 1))}])</span>
+                </button>
               </div>
-            )}
+            </div>
 
             {testLog.length === 0 ? (
               <p className="text-xs text-[var(--text-muted)] py-1.5">
