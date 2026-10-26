@@ -101,8 +101,8 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
   onStopRepeat,
   onOpenMacroBuilder
 }) => {
-  const [osMode, setOsMode] = useState<'mac' | 'win'>(() =>
-    binding.type === 'win_macro' ? 'win' : 'mac'
+  const [osMode, setOsMode] = useState<'all' | 'mac' | 'win'>(() =>
+    binding.type === 'win_macro' ? 'win' : binding.type === 'mac_macro' ? 'mac' : 'all'
   );
   const [activeTab, setActiveTab] = useState<PickerCategoryTab>(() => {
     if (binding.type === 'mac_macro' || binding.type === 'win_macro' || binding.type === 'none') {
@@ -338,9 +338,8 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
   // - If searchQuery is typed, search across all categories (respecting Mac MACRO: vs Windows WIN: toggle)
   // - Otherwise show items for the active category tab
   const staticItemsToDisplay = FIRMWARE_STATIC_CATALOG.filter(spec => {
-    // Enforce Mac vs Windows toggle: show ONLY MACRO: or WIN: shortcuts
-    if (spec.category === 'mac_macro' && osMode !== 'mac') return false;
-    if (spec.category === 'win_macro' && osMode !== 'win') return false;
+    if (spec.category === 'mac_macro' && osMode !== 'all' && osMode !== 'mac') return false;
+    if (spec.category === 'win_macro' && osMode !== 'all' && osMode !== 'win') return false;
 
     if (trimmedQuery) {
       return (
@@ -352,6 +351,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     }
 
     if (activeTab === 'os_shortcuts') {
+      if (osMode === 'all') return spec.category === 'mac_macro' || spec.category === 'win_macro';
       return osMode === 'mac'
         ? spec.category === 'mac_macro'
         : spec.category === 'win_macro';
@@ -414,7 +414,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
         )}
       </div>
 
-      {/* Search Bar + Mac/Windows Shortcut Toggle */}
+      {/* Search Bar + Platform Shortcut Toggle */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1 min-w-0">
           <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -422,7 +422,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search actions (e.g. mute)…"
+            placeholder="Search actions (e.g. mute, copy)…"
             aria-label="Search actions"
             className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
           />
@@ -438,12 +438,24 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
           )}
         </div>
 
-        {/* Mac / Windows Toggle: shows ONLY MACRO: or WIN: shortcuts */}
+        {/* Platform Toggle: All OS, Mac, Windows/Linux */}
         <div
           role="group"
           aria-label="Operating system shortcut toggle"
           className="flex items-center p-0.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] shrink-0"
         >
+          <button
+            type="button"
+            onClick={() => setOsMode('all')}
+            className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+              osMode === 'all'
+                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+            }`}
+            title="Show All Cross-Platform Shortcuts (Mac, Windows, Linux, Mobile)"
+          >
+            <span>All OS</span>
+          </button>
           <button
             type="button"
             onClick={() => setOsMode('mac')}
@@ -452,7 +464,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
-            title="Show MACRO: macOS shortcuts"
+            title="Show Mac / Apple Shortcuts"
           >
             <Laptop className="w-3 h-3" />
             <span>Mac</span>
@@ -465,10 +477,10 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
-            title="Show WIN: Windows shortcuts"
+            title="Show Windows / Linux Shortcuts"
           >
             <Monitor className="w-3 h-3" />
-            <span>Windows</span>
+            <span>PC/Linux</span>
           </button>
         </div>
       </div>
@@ -546,7 +558,9 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                   {tab.id === 'os_shortcuts'
                     ? osMode === 'mac'
                       ? 'Mac Shortcuts'
-                      : 'Win Shortcuts'
+                      : osMode === 'win'
+                      ? 'PC/Linux Shortcuts'
+                      : 'All OS Shortcuts'
                     : tab.label}
                 </span>
               </button>
