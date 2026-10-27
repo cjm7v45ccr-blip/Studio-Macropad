@@ -343,6 +343,80 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [showBlueprint, setShowBlueprint] = useState(false);
   const [blueprintTab, setBlueprintTab] = useState<BlueprintTab>('github_actions');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleLocalBinSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    if (!connection.connected) {
+      onToast('Connect your MacroPad via USB (or start Demo Mode) first', 'error');
+      return;
+    }
+
+    try {
+      const arrayBuf = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuf);
+      const sha256 = await computeSha256Hex(bytes);
+      const versionLabel = file.name.replace(/\.[^/.]+$/, '');
+
+      await runOptionalBackupStep('usb_serial', versionLabel);
+
+      setInstallProgress({
+        stage: 'verifying_hash',
+        method: 'usb_serial',
+        percent: 38,
+        bytesWritten: bytes.byteLength,
+        totalBytes: bytes.byteLength,
+        sha256,
+        message: `Loaded local ${file.name} (${formatBytesCompact(bytes.byteLength)}) · SHA-256 (${sha256.slice(0, 12)}…) · Starting USB stream…`,
+        targetVersion: versionLabel
+      });
+
+      const res = await usbHardware.installFirmwareViaUsbSerial({
+        bytes,
+        version: versionLabel,
+        sha256,
+        onProgress: (pct, sent, total, msg) => {
+          const scaledPct = Math.min(99, Math.round(38 + (pct / 100) * 61));
+          setInstallProgress({
+            stage: pct >= 96 ? 'rebooting' : 'flashing',
+            method: 'usb_serial',
+            percent: scaledPct,
+            bytesWritten: sent,
+            totalBytes: total,
+            sha256,
+            message: msg,
+            targetVersion: versionLabel
+          });
+        }
+      });
+
+      setInstallProgress({
+        stage: 'complete',
+        method: 'usb_serial',
+        percent: 100,
+        bytesWritten: bytes.byteLength,
+        totalBytes: bytes.byteLength,
+        sha256,
+        message: res.message,
+        targetVersion: versionLabel
+      });
+      onToast(res.message, 'success');
+      await onCheckFirmwareUpdate({ force: true, silent: true });
+    } catch (err: any) {
+      const msg = err?.message || 'Local firmware flash failed';
+      setInstallProgress({
+        stage: 'error',
+        method: 'usb_serial',
+        percent: 0,
+        message: msg,
+        targetVersion: file.name
+      });
+      onToast(msg, 'error');
+    }
+  };
 
   useEffect(() => {
     setRepoDraft(settings.firmwareRepo || DEFAULT_FIRMWARE_GITHUB_REPO);
@@ -841,8 +915,15 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
           </label>
         )}
 
-        {/* Flash Action Button (USB Serial Only) */}
+        {/* Flash Action Buttons */}
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".bin"
+            className="hidden"
+            onChange={handleLocalBinSelected}
+          />
           <button
             type="button"
             disabled={isFlashing || !connection.connected || !primaryBinAsset}
@@ -858,11 +939,79 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
           >
             <Usb className="w-3.5 h-3.5" />
             <span>
-              {selectedRelease
+              {selectedRelease && primaryBinAsset
                 ? `Flash v${selectedRelease.version} via USB Serial`
                 : 'Flash via USB Serial'}
             </span>
           </button>
+
+          <button
+            type="button"
+            disabled={isFlashing || !connection.connected}
+            onClick={() => fileInputRef.current?.click()}
+            title="Select any custom compiled .bin file from your computer and flash over USB WebSerial"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <FileUp className="w-3.5 h-3.5 text-[var(--accent)]" />
+            <span>Flash Local .bin File</span>
+          </button>
+
+          {padWifiOnline && primaryBinAsset && selectedRelease && (
+            <button
+              type="button"
+              disabled={isFlashing}
+              onClick={async () => {
+                try {
+                  await runOptionalBackupStep('wifi_ota', selectedRelease.version);
+                  setInstallProgress({
+                    stage: 'downloading',
+                    method: 'wifi_ota',
+                    percent: 10,
+                    message: `Instructing ESP32 to download ${primaryBinAsset.name} over Wi-Fi…`,
+                    targetVersion: selectedRelease.version
+                  });
+                  const res = await usbHardware.installFirmwareViaWifiOta({
+                    url: primaryBinAsset.downloadUrl,
+                    version: selectedRelease.version,
+                    sha256: primaryBinAsset.sha256,
+                    onProgress: (pct, msg, phase) => {
+                      setInstallProgress({
+                        stage: phase,
+                        method: 'wifi_ota',
+                        percent: pct,
+                        message: msg,
+                        targetVersion: selectedRelease.version
+                      });
+                    }
+                  });
+                  setInstallProgress({
+                    stage: 'complete',
+                    method: 'wifi_ota',
+                    percent: 100,
+                    message: res.message,
+                    targetVersion: selectedRelease.version
+                  });
+                  onToast(res.message, 'success');
+                  await onCheckFirmwareUpdate({ force: true, silent: true });
+                } catch (err: any) {
+                  const msg = err?.message || 'Wi-Fi OTA update failed';
+                  setInstallProgress({
+                    stage: 'error',
+                    method: 'wifi_ota',
+                    percent: 0,
+                    message: msg,
+                    targetVersion: selectedRelease.version
+                  });
+                  onToast(msg, 'error');
+                }
+              }}
+              title="ESP32 downloads the firmware binary directly from GitHub over Wi-Fi"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Install v{selectedRelease.version} via Wi-Fi OTA</span>
+            </button>
+          )}
         </div>
 
         {/* Live Staged Flash Progress */}
