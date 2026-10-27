@@ -1,11 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  CustomMacroItem,
   HARDWARE_PROFILE_IDS,
   HardwareBackupPayload,
   HardwareProfileId,
   HardwareSlotId,
   SlotRepeatMap,
   StudioProfile,
+  TextMacroRepeatConfig,
   UserPreset,
   isBleHostProfile,
   normalizeHardwareProfileId,
@@ -16,9 +18,17 @@ import {
   FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
   SLOT_LABELS,
-  describeFirmwareAction
+  actionToMacroSteps,
+  calculateStepsTiming,
+  describeFirmwareAction,
+  getMacroCanonicalSignature,
+  getProfilePresetSignature
 } from '../data/firmwareCatalog';
-import { extractProfileSlots } from '../hooks/useStudioState';
+import {
+  extractProfileSlots,
+  extractRepeatMapFromProfiles,
+  getBindingForProfileSlot
+} from '../hooks/useStudioState';
 import { DiffConfirmModal, DiffPreviewRow } from './DiffConfirmModal';
 import {
   Download,
@@ -30,14 +40,18 @@ import {
   ArrowRight,
   Bluetooth,
   Tv,
-  Sparkles,
-  RotateCcw
+  Sliders,
+  RotateCcw,
+  Search,
+  X,
+  Wand2
 } from 'lucide-react';
 
 interface LibraryViewProps {
   profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
   userPresets: UserPreset[];
+  customMacros: CustomMacroItem[];
   isConnected: boolean;
   onPullFromUsb: () => void;
   onPushAllToUsb: () => void;
@@ -51,6 +65,16 @@ interface LibraryViewProps {
   onResetBothProfiles: () => void;
   onSaveUserSnapshot: (name: string, profileId?: HardwareProfileId) => void;
   onDeleteUserSnapshot: (id: string) => void;
+  onDeleteMacro: (id: string) => void;
+  onCleanUpDuplicateMacros: () => void;
+  onExportMacrosFile: () => void;
+  onImportMacrosFile: (file: File) => void;
+  onOpenInMacroEditor: (payload: {
+    macroId?: string | null;
+    name: string;
+    action: string;
+    repeatConfig?: TextMacroRepeatConfig;
+  }) => void;
   onApplyHardwareBackup: (
     backup: HardwareBackupPayload,
     repeatConfigs?: SlotRepeatMap
@@ -58,6 +82,8 @@ interface LibraryViewProps {
   onExportBackupFile: () => void;
   onImportBackupFile: (file: File) => void;
 }
+
+type LibraryModeFilter = 'all' | 'ble' | 'tv';
 
 type PendingModalAction =
   | {
@@ -135,6 +161,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   profiles,
   activeProfileId,
   userPresets,
+  customMacros,
   isConnected,
   onPullFromUsb,
   onPushAllToUsb,
@@ -143,17 +170,25 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onResetBothProfiles,
   onSaveUserSnapshot,
   onDeleteUserSnapshot,
+  onDeleteMacro,
+  onCleanUpDuplicateMacros,
+  onExportMacrosFile,
+  onImportMacrosFile,
+  onOpenInMacroEditor,
   onApplyHardwareBackup,
   onExportBackupFile,
   onImportBackupFile
 }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [modeFilter, setModeFilter] = useState<LibraryModeFilter>('all');
   const [presetNameDraft, setPresetNameDraft] = useState('');
   const [saveProfileTarget, setSaveProfileTarget] =
     useState<HardwareProfileId>(activeProfileId);
   const [copySource, setCopySource] = useState<HardwareProfileId>('HOST1');
   const [copyTarget, setCopyTarget] = useState<HardwareProfileId>('HOST2');
   const [pendingAction, setPendingAction] = useState<PendingModalAction | null>(null);
-  const importRef = useRef<HTMLInputElement>(null);
+  const importBackupRef = useRef<HTMLInputElement>(null);
+  const importMacrosRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setSaveProfileTarget(activeProfileId);
@@ -168,8 +203,123 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     return `${prof.name} (${short})`;
   };
 
+  // Detect whether saving `saveProfileTarget` matches an already-saved UserPreset (by 11-slot canonical signature or name)
+  const matchingExistingPreset = useMemo(() => {
+    if (userPresets.length === 0) return null;
+    const targetProf = profiles.find(p => p.id === saveProfileTarget) || profiles[0];
+    if (!targetProf) return null;
+    const currentSlots = extractProfileSlots(targetProf);
+    const currentRepeatMap = extractRepeatMapFromProfiles(profiles);
+    const targetSig = getProfilePresetSignature(
+      currentSlots,
+      currentRepeatMap,
+      saveProfileTarget
+    );
+    const cleanDraftName = presetNameDraft.trim().toLowerCase();
+
+    for (const snap of userPresets) {
+      const origin = normalizeHardwareProfileId(snap.targetProfile, 1);
+      const snapSlots: Record<HardwareSlotId, string> = snap.profileSlots
+        ? { ...FACTORY_DEFAULT_SLOTS[origin], ...snap.profileSlots }
+        : extractBackupSlotsForProfile(snap.backup, origin);
+      const snapSig = getProfilePresetSignature(snapSlots, snap.repeatConfigs, origin);
+      if (snapSig === targetSig) {
+        return { preset: snap, reason: 'identical_layout' as const };
+      }
+      if (cleanDraftName && snap.name.trim().toLowerCase() === cleanDraftName) {
+        return { preset: snap, reason: 'same_name' as const };
+      }
+    }
+    return null;
+  }, [userPresets, profiles, saveProfileTarget, presetNameDraft]);
+
+  // Precompute bound slots across H1-H3 and TV for every saved macro (canonical signature match)
+  const macroProvenanceMap = useMemo(() => {
+    const sigToUsages = new Map<string, string[]>();
+    for (const prof of profiles) {
+      for (const slot of HARDWARE_SLOTS) {
+        const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+        if (!bind?.value) continue;
+        const sig = getMacroCanonicalSignature(bind.value, bind.repeatConfig);
+        if (!sig) continue;
+        const list = sigToUsages.get(sig) || [];
+        list.push(`${profileShortTag(prof.id)} ${SLOT_LABELS[slot].short}`);
+        sigToUsages.set(sig, list);
+      }
+    }
+    return sigToUsages;
+  }, [profiles]);
+
+  const duplicateMacroCount = useMemo(() => {
+    const seen = new Set<string>();
+    let dupes = 0;
+    for (const m of customMacros) {
+      const sig = getMacroCanonicalSignature(m.action, m.repeatConfig);
+      const key = sig || m.action.trim();
+      if (seen.has(key)) {
+        dupes += 1;
+      } else {
+        seen.add(key);
+      }
+    }
+    return dupes;
+  }, [customMacros]);
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  const filteredCuratedPresets = useMemo(() => {
+    return CURATED_PRESETS.filter(preset => {
+      const blePreset = isBleHostProfile(preset.mode);
+      if (modeFilter === 'ble' && !blePreset) return false;
+      if (modeFilter === 'tv' && blePreset) return false;
+      if (!normalizedQuery) return true;
+      const slotText = HARDWARE_SLOTS.map(
+        s => describeFirmwareAction(preset.bindings[s]).shortLabel
+      ).join(' ');
+      const blob =
+        `${preset.title} ${preset.subtitle} ${preset.description} ${slotText}`.toLowerCase();
+      return blob.includes(normalizedQuery);
+    });
+  }, [modeFilter, normalizedQuery]);
+
+  const filteredUserPresets = useMemo(() => {
+    return userPresets.filter(snap => {
+      const target = normalizeHardwareProfileId(snap.targetProfile, 1);
+      const bleSnap = isBleHostProfile(target);
+      if (modeFilter === 'ble' && !bleSnap) return false;
+      if (modeFilter === 'tv' && bleSnap) return false;
+      if (!normalizedQuery) return true;
+      const slotText = snap.profileSlots
+        ? HARDWARE_SLOTS.map(
+            s => describeFirmwareAction(snap.profileSlots![s] || '').shortLabel
+          ).join(' ')
+        : '';
+      return `${snap.name} ${profileShortTag(target)} ${slotText}`
+        .toLowerCase()
+        .includes(normalizedQuery);
+    });
+  }, [userPresets, modeFilter, normalizedQuery]);
+
+  const filteredCustomMacros = useMemo(() => {
+    return customMacros.filter(macro => {
+      const isTvMacro =
+        macro.action.startsWith('TV:') ||
+        macro.action.startsWith('TVKEY:') ||
+        macro.action.startsWith('TVAPP:');
+      if (modeFilter === 'ble' && isTvMacro) return false;
+      if (modeFilter === 'tv' && !isTvMacro) return false;
+      if (!normalizedQuery) return true;
+      const steps = actionToMacroSteps(macro.action, macro.repeatConfig);
+      const stepLabels = steps.map(s => `${s.label} ${s.value}`).join(' ');
+      return `${macro.name} ${macro.action} ${stepLabels}`
+        .toLowerCase()
+        .includes(normalizedQuery);
+    });
+  }, [customMacros, modeFilter, normalizedQuery]);
+
   const handleSaveMyPreset = () => {
-    onSaveUserSnapshot(presetNameDraft, saveProfileTarget);
+    const fallbackName = `${getProfile(saveProfileTarget).name} Layout`;
+    onSaveUserSnapshot(presetNameDraft.trim() || fallbackName, saveProfileTarget);
     setPresetNameDraft('');
   };
 
@@ -296,10 +446,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-lg font-bold text-[var(--text-primary)]">
-              Profiles, Presets & Backups
+              Profiles, Macro Library & Backups
             </h1>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Assign independent 11-control layouts to Bluetooth Hosts 1–3 and TV, clone bindings across devices, or download v2 JSON backups.
+              Manage saved macros, apply 11-control OS or TV layouts across Hosts 1–3, clone device profiles, or export full v2 JSON backups.
             </p>
           </div>
 
@@ -326,15 +476,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
             <button
               type="button"
-              onClick={() => importRef.current?.click()}
-              style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+              onClick={() => importBackupRef.current?.click()}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>Restore backup</span>
             </button>
             <input
-              ref={importRef}
+              ref={importBackupRef}
               type="file"
               accept="application/json,.json"
               onChange={e => {
@@ -347,169 +496,426 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         </div>
 
-        {/* Section 1: Built-In Presets (each previews an 11-control diff before applying to any Host or TV) */}
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-              Built-In Presets ({CURATED_PRESETS.length} Layouts · All 11 Controls)
-            </h2>
-            <p className="text-xs text-[var(--text-muted)]">
-              Apply different OS or app layouts to each Bluetooth Host (e.g. Mac on Host 1, Windows on Host 2, Streamer on Host 3) and Smart TV on TV.
-            </p>
+        {/* Unified Search & Mode Filter Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Filter presets, saved macros, or bound actions…"
+              aria-label="Filter library presets and saved macros"
+              className="w-full pl-8 pr-8 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear library search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {CURATED_PRESETS.map(preset => {
-              const blePreset = isBleHostProfile(preset.mode);
-              const ModeIcon = blePreset ? Bluetooth : Tv;
-              const primaryTarget: HardwareProfileId =
-                preset.mode === 'TV'
-                  ? 'TV'
-                  : isBleHostProfile(activeProfileId)
-                  ? activeProfileId
-                  : preset.mode;
-              const secondaryTargets = HARDWARE_PROFILE_IDS.filter(
-                id => id !== primaryTarget
-              );
-
+          <div
+            role="group"
+            aria-label="Filter library by target mode"
+            className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] shrink-0 self-start sm:self-auto"
+          >
+            {(
+              [
+                { id: 'all', label: 'All Modes' },
+                { id: 'ble', label: 'BLE Hosts' },
+                { id: 'tv', label: 'Smart TV' }
+              ] as const
+            ).map(tab => {
+              const active = modeFilter === tab.id;
               return (
-                <div
-                  key={preset.id}
-                  className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] flex flex-col justify-between gap-4 transition-colors"
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setModeFilter(tab.id)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                    active
+                      ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                  }`}
                 >
-                  <div className="space-y-2.5">
-                    <div className="min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                          {preset.title}
-                        </h3>
-                        <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-muted)] shrink-0">
-                          <ModeIcon
-                            className={`w-3.5 h-3.5 ${
-                              blePreset ? 'text-sky-400' : 'text-emerald-400'
-                            }`}
-                          />
-                          <span>{blePreset ? 'BLE Host' : 'Smart TV'}</span>
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                        {preset.subtitle}
-                      </p>
-                    </div>
-
-                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                      {preset.description}
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-1 text-[10px] font-mono pt-1">
-                      {HARDWARE_SLOTS.map(slot => (
-                        <div
-                          key={slot}
-                          className="px-2 py-1 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] truncate"
-                        >
-                          <span className="text-[var(--text-muted)]">
-                            {SLOT_LABELS[slot].short}:{' '}
-                          </span>
-                          <span className="text-[var(--text-primary)]">
-                            {describeFirmwareAction(preset.bindings[slot]).shortLabel}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => openCuratedPresetPreview(preset, primaryTarget)}
-                      style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                      className="flex-1 py-2 px-2.5 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap truncate"
-                      title={`Preview & apply to ${formatProfileLabel(primaryTarget)}`}
-                    >
-                      Apply to {profileShortTag(primaryTarget)}
-                    </button>
-                    {secondaryTargets.map(altId => (
-                      <button
-                        key={altId}
-                        type="button"
-                        onClick={() => openCuratedPresetPreview(preset, altId)}
-                        className="py-2 px-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                        title={`Preview & apply to ${formatProfileLabel(altId)}`}
-                      >
-                        {profileShortTag(altId)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                  {tab.label}
+                </button>
               );
             })}
           </div>
-        </section>
+        </div>
 
-        {/* Section 2: My Presets (Save any Host or TV profile under a name & reapply later) */}
+        {/* Section 1: Saved Macro Library (Deduplicated, Provenance-Tracked, Exportable) */}
         <section className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                My presets ({userPresets.length})
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
+                Saved Macros ({filteredCustomMacros.length}
+                {filteredCustomMacros.length !== customMacros.length
+                  ? ` of ${customMacros.length}`
+                  : ''}
+                )
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Save any Host or TV layout under a custom name so you can reapply its 11 controls to any device slot later.
+                Canonical signature matching blocks duplicate macros automatically and keeps bound keys in sync when edited.
               </p>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <select
-                value={saveProfileTarget}
-                onChange={e =>
-                  setSaveProfileTarget(e.target.value as HardwareProfileId)
-                }
-                aria-label="Profile to save"
-                className="px-2.5 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)]"
-              >
-                {profiles.map(p => (
-                  <option key={p.id} value={p.id}>
-                    [{profileShortTag(p.id)}] {p.name}
-                  </option>
-                ))}
-              </select>
+              {duplicateMacroCount > 0 && (
+                <button
+                  type="button"
+                  onClick={onCleanUpDuplicateMacros}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/12 border border-amber-500/35 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 transition-colors cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  <span>Merge {duplicateMacroCount} duplicate{duplicateMacroCount > 1 ? 's' : ''}</span>
+                </button>
+              )}
 
-              <input
-                type="text"
-                maxLength={32}
-                value={presetNameDraft}
-                onChange={e => setPresetNameDraft(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleSaveMyPreset();
-                }}
-                placeholder="Preset name…"
-                aria-label="New preset name"
-                className="px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-              />
               <button
                 type="button"
-                onClick={handleSaveMyPreset}
-                style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+                disabled={customMacros.length === 0}
+                onClick={onExportMacrosFile}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
-                <BookmarkPlus className="w-3.5 h-3.5" />
-                <span>Save to My presets</span>
+                <Download className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>Export macros</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => importMacrosRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Upload className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>Import macros</span>
+              </button>
+              <input
+                ref={importMacrosRef}
+                type="file"
+                accept="application/json,.json"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) onImportMacrosFile(file);
+                  e.target.value = '';
+                }}
+                className="hidden"
+              />
             </div>
           </div>
 
-          {userPresets.length === 0 ? (
+          {filteredCustomMacros.length === 0 ? (
+            <div className="p-6 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-[var(--text-secondary)]">
+                  {customMacros.length === 0
+                    ? 'No custom macros saved yet'
+                    : 'No saved macros match the current filter'}
+                </div>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {customMacros.length === 0
+                    ? 'Record live keystrokes, chain multi-step sequences, or customize starter recipes in the Macro Builder.'
+                    : 'Clear the search filter or switch mode tabs to view all saved sequences.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenInMacroEditor({
+                    macroId: null,
+                    name: '',
+                    action: 'SHORTCUT:cmd,shift:4'
+                  })
+                }
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0 self-start sm:self-auto"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Open Macro Builder</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {filteredCustomMacros.map(macro => {
+                const steps = actionToMacroSteps(macro.action, macro.repeatConfig);
+                const { totalDelayMs } = calculateStepsTiming(steps);
+                const sig = getMacroCanonicalSignature(macro.action, macro.repeatConfig);
+                const boundLocations = sig ? macroProvenanceMap.get(sig) || [] : [];
+                const cycleSummary = macro.repeatConfig?.loopUntilStopped
+                  ? 'Loop until stopped'
+                  : macro.repeatConfig && macro.repeatConfig.repeatCount > 1
+                  ? `${macro.repeatConfig.repeatCount}× cycles`
+                  : null;
+
+                return (
+                  <div
+                    key={macro.id}
+                    className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] flex flex-col justify-between gap-3 transition-colors"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                            {macro.name}
+                          </h3>
+                          <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-mono text-[var(--text-muted)] mt-0.5 tabular-nums">
+                            <span>
+                              {steps.length} {steps.length === 1 ? 'step' : 'steps'}
+                            </span>
+                            {totalDelayMs > 0 && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span>{totalDelayMs} ms wait</span>
+                              </>
+                            )}
+                            {cycleSummary && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span>{cycleSummary}</span>
+                              </>
+                            )}
+                            <span aria-hidden="true">·</span>
+                            <span>
+                              {macro.source === 'device' ? 'Synced from pad' : 'Saved'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onOpenInMacroEditor({
+                                macroId: macro.id,
+                                name: macro.name,
+                                action: macro.action,
+                                repeatConfig: macro.repeatConfig
+                              })
+                            }
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                          >
+                            <Sliders className="w-3 h-3 text-[var(--accent)]" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDeleteMacro(macro.id)}
+                            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-rose-400 hover:bg-[var(--bg-input)] transition-colors cursor-pointer"
+                            title="Delete saved macro"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="font-mono text-[11px] text-[var(--text-secondary)] truncate">
+                        {describeFirmwareAction(macro.action, macro.repeatConfig).fullLabel}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 text-[11px] font-mono text-[var(--text-muted)]">
+                      <span className="truncate">
+                        {boundLocations.length > 0
+                          ? `Bound: ${boundLocations.join(', ')}`
+                          : 'Not assigned to a pad key yet'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Section 2: Built-In Presets (each previews an 11-control diff before applying to any Host or TV) */}
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
+              Built-In Presets ({filteredCuratedPresets.length} Layouts · All 11 Controls)
+            </h2>
+            <p className="text-xs text-[var(--text-muted)]">
+              Preview a full 11-control diff before applying OS or media layouts to Host 1, Host 2, Host 3, or Smart TV.
+            </p>
+          </div>
+
+          {filteredCuratedPresets.length === 0 ? (
+            <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs text-[var(--text-muted)] text-center">
+              No built-in presets match "{searchQuery}".
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredCuratedPresets.map(preset => {
+                const blePreset = isBleHostProfile(preset.mode);
+                const ModeIcon = blePreset ? Bluetooth : Tv;
+                const primaryTarget: HardwareProfileId =
+                  preset.mode === 'TV'
+                    ? 'TV'
+                    : isBleHostProfile(activeProfileId)
+                    ? activeProfileId
+                    : preset.mode;
+                const secondaryTargets = HARDWARE_PROFILE_IDS.filter(
+                  id => id !== primaryTarget
+                );
+
+                return (
+                  <div
+                    key={preset.id}
+                    className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] flex flex-col justify-between gap-4 transition-colors"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                            {preset.title}
+                          </h3>
+                          <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-muted)] shrink-0">
+                            <ModeIcon
+                              className={`w-3.5 h-3.5 ${
+                                blePreset ? 'text-sky-400' : 'text-emerald-400'
+                              }`}
+                            />
+                            <span>{blePreset ? 'BLE Host' : 'Smart TV'}</span>
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                          {preset.subtitle}
+                        </p>
+                      </div>
+
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                        {preset.description}
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-1 text-[10px] font-mono pt-1">
+                        {HARDWARE_SLOTS.map(slot => (
+                          <div
+                            key={slot}
+                            className="px-2 py-1 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] truncate"
+                          >
+                            <span className="text-[var(--text-muted)]">
+                              {SLOT_LABELS[slot].short}:{' '}
+                            </span>
+                            <span className="text-[var(--text-primary)]">
+                              {describeFirmwareAction(preset.bindings[slot]).shortLabel}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => openCuratedPresetPreview(preset, primaryTarget)}
+                        className="flex-1 py-2 px-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap truncate"
+                        title={`Preview & apply to ${formatProfileLabel(primaryTarget)}`}
+                      >
+                        Apply to {profileShortTag(primaryTarget)}
+                      </button>
+                      {secondaryTargets.map(altId => (
+                        <button
+                          key={altId}
+                          type="button"
+                          onClick={() => openCuratedPresetPreview(preset, altId)}
+                          className="py-2 px-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                          title={`Preview & apply to ${formatProfileLabel(altId)}`}
+                        >
+                          {profileShortTag(altId)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Section 3: My Presets (Deduplicated Layout Snapshots) */}
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
+                My Presets ({filteredUserPresets.length})
+              </h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                Snapshot any Host or TV layout so you can reapply its 11 controls later without saving duplicate copies.
+              </p>
+            </div>
+
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={saveProfileTarget}
+                  onChange={e =>
+                    setSaveProfileTarget(e.target.value as HardwareProfileId)
+                  }
+                  aria-label="Profile to save"
+                  className="px-2.5 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)]"
+                >
+                  {profiles.map(p => (
+                    <option key={p.id} value={p.id}>
+                      [{profileShortTag(p.id)}] {p.name}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  type="text"
+                  maxLength={32}
+                  value={presetNameDraft}
+                  onChange={e => setPresetNameDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleSaveMyPreset();
+                  }}
+                  placeholder={`${getProfile(saveProfileTarget).name} Layout`}
+                  aria-label="New preset name"
+                  className="px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveMyPreset}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <BookmarkPlus className="w-3.5 h-3.5" />
+                  <span>
+                    {matchingExistingPreset ? 'Update Preset' : 'Save Snapshot'}
+                  </span>
+                </button>
+              </div>
+
+              {matchingExistingPreset && (
+                <div className="text-[11px] font-mono text-amber-300">
+                  {matchingExistingPreset.reason === 'identical_layout'
+                    ? `Matches saved preset "${matchingExistingPreset.preset.name}" — saving updates it in place`
+                    : `Preset "${matchingExistingPreset.preset.name}" already exists — saving updates its 11 bindings`}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {filteredUserPresets.length === 0 ? (
             <div className="p-6 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-center space-y-1">
               <div className="text-xs font-semibold text-[var(--text-secondary)]">
-                No saved presets in My presets yet
+                {userPresets.length === 0
+                  ? 'No saved presets yet'
+                  : 'No saved presets match the current filter'}
               </div>
               <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
-                Customize Host 1, Host 2, Host 3, or TV controls, type a name above, and click Save to My presets.
+                {userPresets.length === 0
+                  ? 'Customize Host 1, Host 2, Host 3, or TV controls, enter a preset name above, and click Save Snapshot.'
+                  : 'Clear the search filter or switch mode tabs to view all saved snapshots.'}
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {userPresets.map(snap => {
+              {filteredUserPresets.map(snap => {
                 const defaultTarget: HardwareProfileId = normalizeHardwareProfileId(
                   snap.targetProfile,
                   1
@@ -525,12 +931,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <Sparkles className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                            <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                              {snap.name}
-                            </h3>
-                          </div>
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                            {snap.name}
+                          </h3>
                           <p className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5 tabular-nums">
                             Saved {snap.createdAt} · {profileShortTag(defaultTarget)} snapshot
                           </p>
@@ -575,8 +978,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <button
                         type="button"
                         onClick={() => openMyPresetPreview(snap, defaultTarget)}
-                        style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                        className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+                        className="flex-1 py-2 px-3 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
                       >
                         Apply to {profileShortTag(defaultTarget)}
                       </button>
@@ -609,7 +1011,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           )}
         </section>
 
-        {/* Section 3: 4-Profile Clone & Factory Reset Operations */}
+        {/* Section 4: 4-Profile Clone & Factory Reset Operations */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="md:col-span-2 p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex flex-col justify-between gap-4">
             <div className="space-y-1">

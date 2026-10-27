@@ -25,9 +25,12 @@ import { repeatMacroRunner } from './services/repeatMacroRunner';
 import {
   HARDWARE_SLOTS,
   SLOT_LABELS,
+  actionToMacroSteps,
   describeFirmwareAction,
   getActionTestAvailability,
-  requiresUsbSequenceExecution
+  getMacroCanonicalSignature,
+  requiresUsbSequenceExecution,
+  suggestSmartMacroName
 } from './data/firmwareCatalog';
 import {
   ActionKeyId,
@@ -45,6 +48,7 @@ import { GlobalMacroSearch } from './components/GlobalMacroSearch';
 import { LibraryView } from './components/LibraryView';
 import { SettingsView } from './components/SettingsView';
 import { UsbConnectModal } from './components/UsbConnectModal';
+import { SetupWizardModal, WizardCompletionPayload } from './components/SetupWizardModal';
 import { SyncConflictModal } from './components/SyncConflictModal';
 import { DiffConfirmModal, DiffPreviewRow } from './components/DiffConfirmModal';
 import { AlertCircle, CheckCircle2, Repeat, Square } from 'lucide-react';
@@ -75,6 +79,10 @@ export default function App() {
     useState<MacroEditorExternalTarget | null>(null);
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [connectModalError, setConnectModalError] = useState<string | null>(null);
+  const [setupWizardOpen, setSetupWizardOpen] = useState(false);
+  const [setupWizardTrigger, setSetupWizardTrigger] = useState<'hardware' | 'manual'>(
+    'manual'
+  );
   const [pendingCopyPair, setPendingCopyPair] = useState<{
     source: HardwareProfileId;
     target: HardwareProfileId;
@@ -89,11 +97,23 @@ export default function App() {
     const unsubConn = usbHardware.onConnectionChange(info => {
       setConnection(info);
     });
+    const unsubSetup = usbHardware.onSetupModeDetected(signal => {
+      if (signal.active) {
+        setConnectModalOpen(false);
+        setSetupWizardTrigger('hardware');
+        setSetupWizardOpen(true);
+      }
+    });
     const unsubJob = repeatMacroRunner.onJobChange(job => {
       setActiveRepeatJob(job);
     });
+    if (usbHardware.info.connected && usbHardware.info.telemetry?.setupMode) {
+      setSetupWizardTrigger('hardware');
+      setSetupWizardOpen(true);
+    }
     return () => {
       unsubConn();
+      unsubSetup();
       unsubJob();
     };
   }, []);
@@ -148,6 +168,70 @@ export default function App() {
       showToast(err?.message || 'Could not start Demo Mode', 'error');
     }
   }, [showToast]);
+
+  const handleOpenSetupWizard = useCallback(() => {
+    setSetupWizardTrigger(
+      connection.connected && connection.telemetry?.setupMode ? 'hardware' : 'manual'
+    );
+    setSetupWizardOpen(true);
+  }, [connection.connected, connection.telemetry?.setupMode]);
+
+  const handleStartDemoSetup = useCallback(async () => {
+    try {
+      setConnectModalError(null);
+      setConnectModalOpen(false);
+      await usbHardware.connectDemoMode({ setupMode: true });
+      setSetupWizardTrigger('hardware');
+      setSetupWizardOpen(true);
+      showToast('Demo MacroPad connected in Setup Mode');
+    } catch (err: any) {
+      showToast(err?.message || 'Could not start Demo Setup Mode', 'error');
+    }
+  }, [showToast]);
+
+  const handleEnterHardwareSetupMode = useCallback(async () => {
+    const res = await usbHardware.enterSetupMode();
+    if (res.ok) {
+      setSetupWizardTrigger('hardware');
+      setSetupWizardOpen(true);
+      showToast(res.message);
+    } else {
+      showToast(res.message, 'error');
+    }
+  }, [showToast]);
+
+  const handleCompleteSetup = useCallback(
+    async (payload: WizardCompletionPayload) => {
+      if (payload.keyboardLayout !== studio.settings.keyboardLayout) {
+        studio.updateSettings({ keyboardLayout: payload.keyboardLayout });
+      }
+
+      if (payload.backup) {
+        await studio.applyHardwareBackup(payload.backup);
+      } else if (payload.onlyRenameAliases) {
+        const aliasTargets: { id: HardwareProfileId; name: string }[] = [
+          { id: 'HOST1', name: payload.onlyRenameAliases.h1Name },
+          { id: 'HOST2', name: payload.onlyRenameAliases.h2Name },
+          { id: 'HOST3', name: payload.onlyRenameAliases.h3Name },
+          { id: 'TV', name: payload.onlyRenameAliases.tvName }
+        ];
+        for (const target of aliasTargets) {
+          const current = studio.profiles.find(p => p.id === target.id);
+          if (current && current.name !== target.name) {
+            await studio.renameProfile(target.id, target.name);
+          }
+        }
+      }
+
+      const doneRes = await usbHardware.completeSetupMode();
+      showToast(
+        connection.connected
+          ? doneRes.message || 'Saved setup to MacroPad and exited Setup Mode'
+          : 'Saved setup to offline workspace'
+      );
+    },
+    [connection.connected, showToast, studio]
+  );
 
   const handlePullFromUsb = useCallback(async () => {
     setIsSyncingUsb(true);
@@ -257,12 +341,30 @@ export default function App() {
 
   const handleOpenMacroBuilderForSlot = useCallback(
     (slot: HardwareSlotId, binding: ActionBinding) => {
-      const desc = binding.value
-        ? describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel
+      const sig = binding.value
+        ? getMacroCanonicalSignature(binding.value, binding.repeatConfig)
         : '';
+      const matchedSaved = sig
+        ? studio.customMacros.find(
+            m => getMacroCanonicalSignature(m.action, m.repeatConfig) === sig
+          ) || null
+        : null;
+      const derivedSteps = binding.value
+        ? actionToMacroSteps(binding.value, binding.repeatConfig)
+        : [];
+      const smartName =
+        matchedSaved?.name ||
+        (derivedSteps.length > 0
+          ? suggestSmartMacroName(derivedSteps, binding.repeatConfig)
+          : '') ||
+        (binding.value
+          ? describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel
+          : 'New Sequence');
+
       setExternalMacroTarget({
         requestId: Date.now(),
-        name: desc || `${SLOT_LABELS[slot].short} Macro`,
+        macroId: matchedSaved?.id ?? null,
+        name: smartName,
         action: binding.value,
         repeatConfig: binding.repeatConfig,
         targetProfile: studio.activeProfile.id,
@@ -270,7 +372,7 @@ export default function App() {
       });
       setActiveSection('macros');
     },
-    [studio.activeProfile.id]
+    [studio.activeProfile.id, studio.customMacros]
   );
 
   const handleJumpToSlotControl = useCallback(
@@ -346,6 +448,7 @@ export default function App() {
         onRedo={studio.redo}
         onSaveToDevice={handleSaveToDevice}
         onSwitchBleHost={handleSwitchBleHost}
+        onOpenSetupWizard={handleOpenSetupWizard}
         searchSlot={
           <GlobalMacroSearch
             profiles={studio.profiles}
@@ -422,6 +525,7 @@ export default function App() {
               onPullFromUsb={handlePullFromUsb}
               onExecuteHardwareBinding={handleExecuteHardwareBinding}
               onSwitchBleHost={handleSwitchBleHost}
+              onOpenSetupWizard={handleOpenSetupWizard}
             />
 
             {isEncoderControlSelected ? (
@@ -519,6 +623,9 @@ export default function App() {
             initialTargetSlot={selectedHardwareSlot}
             onSaveMacro={studio.saveCustomMacro}
             onDeleteMacro={studio.deleteCustomMacro}
+            onCleanUpDuplicateMacros={studio.cleanUpDuplicateMacros}
+            onExportMacrosFile={studio.exportMacrosFile}
+            onImportMacrosFile={studio.importMacrosFile}
             onAssignSlot={studio.assignSlotAction}
             onTestBinding={binding => {
               handleExecuteHardwareBinding(binding);
@@ -534,6 +641,7 @@ export default function App() {
             profiles={studio.profiles}
             activeProfileId={studio.activeProfile.id}
             userPresets={studio.userPresets}
+            customMacros={studio.customMacros}
             isConnected={connection.connected}
             onPullFromUsb={handlePullFromUsb}
             onPushAllToUsb={handleSaveToDevice}
@@ -542,6 +650,17 @@ export default function App() {
             onResetBothProfiles={studio.resetBothProfilesToDefault}
             onSaveUserSnapshot={studio.saveUserSnapshot}
             onDeleteUserSnapshot={studio.deleteUserSnapshot}
+            onDeleteMacro={studio.deleteCustomMacro}
+            onCleanUpDuplicateMacros={studio.cleanUpDuplicateMacros}
+            onExportMacrosFile={studio.exportMacrosFile}
+            onImportMacrosFile={studio.importMacrosFile}
+            onOpenInMacroEditor={payload => {
+              setExternalMacroTarget({
+                ...payload,
+                requestId: Date.now()
+              });
+              setActiveSection('macros');
+            }}
             onApplyHardwareBackup={studio.applyHardwareBackup}
             onExportBackupFile={studio.exportHardwareBackupFile}
             onImportBackupFile={studio.importHardwareBackupFile}
@@ -565,6 +684,9 @@ export default function App() {
             onSwitchBleHost={handleSwitchBleHost}
             onResetBothProfiles={studio.resetBothProfilesToDefault}
             onClearLocalCache={studio.clearLocalUnSyncedState}
+            onOpenSetupWizard={handleOpenSetupWizard}
+            onEnterHardwareSetupMode={handleEnterHardwareSetupMode}
+            onExportBackupFile={studio.exportHardwareBackupFile}
             onToast={showToast}
           />
         )}
@@ -592,6 +714,22 @@ export default function App() {
         }}
         connection={connection}
         onPullFromUsb={handlePullFromUsb}
+        onOpenSetupWizard={handleOpenSetupWizard}
+      />
+
+      {/* Guided Hardware & Multi-OS Setup Wizard */}
+      <SetupWizardModal
+        isOpen={setupWizardOpen && !studio.conflictPrompt}
+        triggerSource={setupWizardTrigger}
+        connection={connection}
+        profiles={studio.profiles}
+        keyboardLayout={studio.settings.keyboardLayout}
+        onClose={() => setSetupWizardOpen(false)}
+        onConnectUsbPad={handleConnectUsbPad}
+        onStartDemoSetup={handleStartDemoSetup}
+        onSwitchBleHost={handleSwitchBleHost}
+        onCompleteSetup={handleCompleteSetup}
+        onToast={showToast}
       />
 
       {/* TopBar Copy Profile Diff Confirmation Modal */}

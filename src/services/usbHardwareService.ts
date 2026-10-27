@@ -105,6 +105,7 @@ type ConnectionListener = (info: DeviceConnectionInfo) => void;
 type ConnectStatusListener = (status: FirmwareStatusPacket) => void;
 type HardwareEventListener = (event: HardwareEventPacket) => void;
 type SetupModeListener = (signal: SetupModeSignal) => void;
+type OtaEventListener = (event: HardwareEventPacket) => void;
 type DebugLogListener = (logs: DebugLogEntry[]) => void;
 
 function extractSetupModeFlag(pkt: any): boolean {
@@ -172,6 +173,9 @@ export function redactSerialLineSecrets(rawLine: string): string {
       if (typeof clone.token === 'string' && clone.token.length > 0) {
         clone.token = '[REDACTED]';
       }
+      if (clone.path === '/api/ota/chunk' && typeof clone.data === 'string') {
+        clone.data = `[${clone.data.length}b base64]`;
+      }
       return JSON.stringify(clone);
     }
   } catch {
@@ -180,6 +184,14 @@ export function redactSerialLineSecrets(rawLine: string): string {
       .replace(/("token"\s*:\s*)"[^"]*"/g, '$1"[REDACTED]"');
   }
   return rawLine;
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }
 
 function translateSerialOpenError(err: any): Error {
@@ -246,6 +258,7 @@ class PadLinkService {
   private connectStatusListeners = new Set<ConnectStatusListener>();
   private eventListeners = new Set<HardwareEventListener>();
   private setupModeListeners = new Set<SetupModeListener>();
+  private otaListeners = new Set<OtaEventListener>();
   private debugListeners = new Set<DebugLogListener>();
 
   constructor() {
@@ -332,6 +345,13 @@ class PadLinkService {
     this.setupModeListeners.add(fn);
     return () => {
       this.setupModeListeners.delete(fn);
+    };
+  }
+
+  public onOtaEvent(fn: OtaEventListener) {
+    this.otaListeners.add(fn);
+    return () => {
+      this.otaListeners.delete(fn);
     };
   }
 
@@ -857,9 +877,14 @@ class PadLinkService {
     };
   }
 
-  private async handleDemoCall(obj: Record<string, any>): Promise<any> {
-    this.logSerial('tx', JSON.stringify(obj));
-    await new Promise(r => setTimeout(r, 45));
+  private async handleDemoCall(
+    obj: Record<string, any>,
+    silentLog = false
+  ): Promise<any> {
+    if (!silentLog) {
+      this.logSerial('tx', JSON.stringify(obj));
+    }
+    await new Promise(r => setTimeout(r, silentLog ? 3 : 45));
 
     if (!this.demoPad) {
       throw new Error('Demo pad is disconnected.');
@@ -868,7 +893,9 @@ class PadLinkService {
     const path = String(obj.path || '');
 
     const reply = (payload: Record<string, any>) => {
-      this.logSerial('rx', JSON.stringify(payload));
+      if (!silentLog) {
+        this.logSerial('rx', JSON.stringify(payload));
+      }
       return payload;
     };
 
@@ -1260,6 +1287,109 @@ class PadLinkService {
       });
     }
 
+    if (path === '/api/ota/start') {
+      if (!d.wifiConnected) {
+        return reply({
+          ok: false,
+          message:
+            'MacroPad Wi-Fi is offline. Connect Wi-Fi first or use USB Serial Stream / Local .bin Flash.'
+        });
+      }
+      const nextVersion = String(obj.version || '3.3-PRO').replace(/^[vV]/, '');
+      window.setTimeout(() => {
+        if (!this.demoModeActive || !this.demoPad) return;
+        const stages: { phase: string; percent: number; message: string; delay: number }[] = [
+          {
+            phase: 'downloading',
+            percent: 18,
+            message: 'ESP32 connected to GitHub CDN over Wi-Fi…',
+            delay: 180
+          },
+          {
+            phase: 'downloading',
+            percent: 46,
+            message: 'Streaming firmware binary to OTA partition…',
+            delay: 420
+          },
+          {
+            phase: 'flashing',
+            percent: 78,
+            message: 'Writing flash sectors & verifying SHA-256 digest…',
+            delay: 720
+          },
+          {
+            phase: 'rebooting',
+            percent: 94,
+            message: 'Switching boot partition & restarting ESP32…',
+            delay: 1020
+          },
+          {
+            phase: 'complete',
+            percent: 100,
+            message: `Booted into firmware v${nextVersion}`,
+            delay: 1380
+          }
+        ];
+        stages.forEach(s => {
+          window.setTimeout(() => {
+            if (!this.demoModeActive || !this.demoPad) return;
+            if (s.phase === 'complete') {
+              this.demoPad.firmware = nextVersion;
+              this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+            }
+            const otaEvt: HardwareEventPacket = {
+              event: 'ota',
+              phase: s.phase,
+              percent: s.percent,
+              message: s.message
+            };
+            this.logSerial('rx', JSON.stringify(otaEvt));
+            this.handleHardwareEvent(otaEvt);
+          }, s.delay);
+        });
+      }, 40);
+
+      return reply({
+        ok: true,
+        message: `Started direct Wi-Fi OTA update to v${nextVersion}`
+      });
+    }
+
+    if (path === '/api/ota/begin') {
+      const totalSize = Number(obj.size || 0);
+      if (!Number.isFinite(totalSize) || totalSize <= 0) {
+        return reply({ ok: false, message: 'Invalid firmware image size.' });
+      }
+      return reply({
+        ok: true,
+        chunk_size: 512,
+        message: 'OTA partition erased and ready for USB serial stream.'
+      });
+    }
+
+    if (path === '/api/ota/chunk') {
+      return reply({ ok: true, seq: Number(obj.seq || 0) });
+    }
+
+    if (path === '/api/ota/end') {
+      const nextVersion = String(obj.version || '3.3-PRO').replace(/^[vV]/, '');
+      d.firmware = nextVersion;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      const doneEvt: HardwareEventPacket = {
+        event: 'ota',
+        phase: 'complete',
+        percent: 100,
+        message: `USB Serial OTA complete — running v${nextVersion}`
+      };
+      this.logSerial('rx', JSON.stringify(doneEvt));
+      this.handleHardwareEvent(doneEvt);
+      return reply({
+        ok: true,
+        firmware: nextVersion,
+        message: `Verified image & booted v${nextVersion}`
+      });
+    }
+
     return reply({ ok: false, message: `Unknown endpoint: ${path}` });
   }
 
@@ -1631,6 +1761,8 @@ class PadLinkService {
         lastSyncedAt: new Date().toLocaleTimeString()
       };
       this.emitConnection();
+    } else if (e.event === 'ota') {
+      this.otaListeners.forEach(fn => fn(e));
     }
 
     this.eventListeners.forEach(fn => fn(e));
@@ -1697,10 +1829,15 @@ class PadLinkService {
   /**
    * Serialized single-request-at-a-time JSON RPC over USB Serial (or virtual Demo Mode)
    */
-  public call<T = any>(obj: Record<string, any>, timeoutMs = 3000): Promise<T> {
+  public call<T = any>(
+    obj: Record<string, any>,
+    timeoutMs = 3000,
+    opts?: { silentLog?: boolean }
+  ): Promise<T> {
+    const silentLog = Boolean(opts?.silentLog);
     const run = () => {
       if (this.demoModeActive) {
-        return this.handleDemoCall(obj) as Promise<T>;
+        return this.handleDemoCall(obj, silentLog) as Promise<T>;
       }
 
       return new Promise<T>((resolve, reject) => {
@@ -1715,7 +1852,9 @@ class PadLinkService {
           return;
         }
 
-        this.logSerial('tx', encodedLine);
+        if (!silentLog) {
+          this.logSerial('tx', encodedLine);
+        }
 
         const t = window.setTimeout(() => {
           if (this.pending === onReply) {
@@ -2334,6 +2473,254 @@ class PadLinkService {
       }
     }
     return { ok: false, message: 'Connect MacroPad via USB or start Demo Mode first.' };
+  }
+
+  /**
+   * Direct Wi-Fi OTA Update (`/api/ota/start`):
+   * Instructs the connected ESP32 to download the `.bin` asset directly from GitHub over Wi-Fi
+   * using `<HTTPClient.h>` + `<Update.h>`, completely bypassing browser CORS restrictions!
+   */
+  public async installFirmwareViaWifiOta(params: {
+    url: string;
+    version: string;
+    sha256?: string;
+    onProgress?: (
+      percent: number,
+      message: string,
+      phase: 'downloading' | 'flashing' | 'rebooting' | 'complete'
+    ) => void;
+    timeoutMs?: number;
+  }): Promise<{ ok: boolean; firmwareVersion: string; message: string }> {
+    if (!this.connectionInfo.connected) {
+      throw new Error('Connect your MacroPad via USB (or start Demo Mode) before updating firmware.');
+    }
+
+    const cleanUrl = params.url.trim();
+    const cleanVersion = params.version.replace(/^[vV]/, '').trim();
+    if (!cleanUrl.startsWith('https://') && !cleanUrl.startsWith('http://')) {
+      throw new Error('Invalid firmware binary URL.');
+    }
+
+    let resolvedComplete = false;
+    let otaErrorMsg: string | null = null;
+
+    const unsubOta = this.onOtaEvent(evt => {
+      const pct = Number(evt.percent ?? evt.progress ?? 0);
+      const rawPhase = String(evt.phase || '').toLowerCase();
+      const msg = String(evt.message || 'Updating MacroPad firmware…');
+
+      if (rawPhase === 'error' || evt.ok === false) {
+        otaErrorMsg = msg || 'ESP32 reported an OTA flashing error.';
+        return;
+      }
+
+      const mappedPhase: 'downloading' | 'flashing' | 'rebooting' | 'complete' =
+        rawPhase === 'complete' || pct >= 100
+          ? 'complete'
+          : rawPhase === 'rebooting'
+          ? 'rebooting'
+          : rawPhase === 'flashing' || pct >= 55
+          ? 'flashing'
+          : 'downloading';
+
+      if (mappedPhase === 'complete') {
+        resolvedComplete = true;
+      }
+      params.onProgress?.(Math.min(100, Math.max(5, Math.round(pct))), msg, mappedPhase);
+    });
+
+    try {
+      params.onProgress?.(6, 'Sending GitHub OTA manifest to MacroPad…', 'downloading');
+      const startRes = await this.call(
+        {
+          path: '/api/ota/start',
+          url: cleanUrl,
+          version: cleanVersion,
+          ...(params.sha256 ? { sha256: params.sha256.slice(0, 64) } : {})
+        },
+        8000
+      );
+
+      if (!startRes?.ok) {
+        throw new Error(
+          startRes?.message ||
+            'Firmware did not accept /api/ota/start — check Wi-Fi connection or use USB Serial Stream.'
+        );
+      }
+
+      const deadline = Date.now() + (params.timeoutMs ?? 90000);
+      while (Date.now() < deadline && !resolvedComplete && !otaErrorMsg) {
+        await new Promise(r => setTimeout(r, 250));
+      }
+
+      if (otaErrorMsg) {
+        throw new Error(otaErrorMsg);
+      }
+
+      if (!this.demoModeActive) {
+        params.onProgress?.(95, 'Waiting for ESP32 reboot & PadLink handshake…', 'rebooting');
+        await new Promise(r => setTimeout(r, 2600));
+        await this.call(
+          { path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 },
+          3000
+        ).catch(() => {});
+        await this.fetchStatus(4000).catch(() => {});
+      }
+
+      const activeFw = this.connectionInfo.firmwareVersion || `v${cleanVersion}`;
+      params.onProgress?.(100, `MacroPad running ${activeFw}`, 'complete');
+      return {
+        ok: true,
+        firmwareVersion: activeFw,
+        message: `Updated MacroPad firmware to ${activeFw}`
+      };
+    } finally {
+      unsubOta();
+    }
+  }
+
+  /**
+   * Direct USB Serial Chunked OTA Update (`/api/ota/begin` -> `/api/ota/chunk` -> `/api/ota/end`):
+   * Streams raw `.bin` firmware bytes directly over WebSerial in 512-byte base64 packets (~735-byte JSON lines,
+   * safely under the 1536-byte serial buffer) so boards can be flashed even with zero Wi-Fi!
+   */
+  public async installFirmwareViaUsbSerial(params: {
+    bytes: Uint8Array;
+    version: string;
+    sha256?: string;
+    onProgress?: (
+      percent: number,
+      bytesSent: number,
+      totalBytes: number,
+      message: string
+    ) => void;
+    signal?: AbortSignal;
+  }): Promise<{ ok: boolean; firmwareVersion: string; message: string }> {
+    if (!this.connectionInfo.connected) {
+      throw new Error('Connect your MacroPad via USB (or start Demo Mode) before flashing.');
+    }
+
+    const totalBytes = params.bytes.byteLength;
+    if (totalBytes < 1024) {
+      throw new Error('Firmware binary is too small to be a valid ESP32 application image.');
+    }
+
+    const cleanVersion = (params.version || 'custom').replace(/^[vV]/, '').trim();
+    const CHUNK_BYTES = 512; // 512 raw bytes = 684 base64 chars -> ~735 byte JSON line (< 1536 limit)
+
+    this.logSerial(
+      'info',
+      `Starting USB Serial OTA stream (${totalBytes} bytes · target v${cleanVersion})`
+    );
+
+    const beginRes = await this.call(
+      {
+        path: '/api/ota/begin',
+        size: totalBytes,
+        version: cleanVersion,
+        ...(params.sha256 ? { sha256: params.sha256.slice(0, 64) } : {})
+      },
+      10000
+    );
+
+    if (!beginRes?.ok) {
+      throw new Error(
+        beginRes?.message ||
+          'Connected firmware does not expose /api/ota/begin yet — see the ESP32 OTA Firmware Blueprint below to enable in-app flashing.'
+      );
+    }
+
+    // In Demo Mode, cap simulated loop iterations so a real 1.2 MB .bin file tests briskly in ~1.2s
+    const stepStride = this.demoModeActive
+      ? Math.max(CHUNK_BYTES, Math.ceil(totalBytes / 40))
+      : CHUNK_BYTES;
+
+    let seq = 0;
+    let lastLoggedDecile = 0;
+
+    for (let offset = 0; offset < totalBytes; offset += stepStride) {
+      if (params.signal?.aborted) {
+        throw new Error('Firmware flash cancelled.');
+      }
+
+      const sliceEnd = Math.min(totalBytes, offset + CHUNK_BYTES);
+      const chunk = params.bytes.subarray(offset, sliceEnd);
+      const b64 = uint8ToBase64(chunk);
+
+      const chunkRes = await this.call(
+        {
+          path: '/api/ota/chunk',
+          seq,
+          data: b64
+        },
+        5000,
+        { silentLog: true }
+      );
+
+      if (!chunkRes?.ok) {
+        throw new Error(
+          chunkRes?.message || `MacroPad rejected OTA chunk #${seq} at byte ${offset}.`
+        );
+      }
+
+      seq += 1;
+      const bytesDone = Math.min(totalBytes, offset + stepStride);
+      const pct = Math.min(95, Math.max(1, Math.round((bytesDone / totalBytes) * 92) + 3));
+      const decile = Math.floor((bytesDone / totalBytes) * 10);
+      if (decile > lastLoggedDecile) {
+        lastLoggedDecile = decile;
+        this.logSerial(
+          'info',
+          `USB OTA progress: ${ decile * 10 }% (${bytesDone}/${totalBytes} bytes)`
+        );
+      }
+
+      params.onProgress?.(
+        pct,
+        bytesDone,
+        totalBytes,
+        `Streaming firmware over USB Serial (${Math.round((bytesDone / totalBytes) * 100)}%)…`
+      );
+    }
+
+    const endRes = await this.call(
+      {
+        path: '/api/ota/end',
+        size: totalBytes,
+        chunks: seq,
+        version: cleanVersion,
+        ...(params.sha256 ? { sha256: params.sha256.slice(0, 64) } : {})
+      },
+      12000
+    );
+
+    if (!endRes?.ok) {
+      throw new Error(endRes?.message || 'ESP32 checksum or OTA finalization failed.');
+    }
+
+    if (!this.demoModeActive) {
+      params.onProgress?.(
+        97,
+        totalBytes,
+        totalBytes,
+        'ESP32 rebooting into updated partition…'
+      );
+      await new Promise(r => setTimeout(r, 2600));
+      await this.call(
+        { path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 },
+        3000
+      ).catch(() => {});
+      await this.fetchStatus(4000).catch(() => {});
+    }
+
+    const activeFw = this.connectionInfo.firmwareVersion || `v${cleanVersion}`;
+    params.onProgress?.(100, totalBytes, totalBytes, `Flashed & verified ${activeFw}`);
+
+    return {
+      ok: true,
+      firmwareVersion: activeFw,
+      message: `Flashed ${activeFw} over USB Serial`
+    };
   }
 
   private async cleanupPort() {

@@ -22,7 +22,8 @@ import {
   deriveAppearanceForAction,
   describeFirmwareAction,
   firmwareActionToBinding,
-  getActionTestAvailability
+  getActionTestAvailability,
+  getMacroCanonicalSignature
 } from '../data/firmwareCatalog';
 import { extractProfileSlots, getBindingForProfileSlot } from '../hooks/useStudioState';
 import {
@@ -61,7 +62,7 @@ interface GlobalMacroSearchProps {
   selectedControl: ControlId;
   customMacros: CustomMacroItem[];
   connection: DeviceConnectionInfo;
-  onSaveMacro: (macro: CustomMacroItem) => void;
+  onSaveMacro: (macro: CustomMacroItem) => unknown;
   onAssignSlot: (
     profileId: HardwareProfileId,
     slot: HardwareSlotId,
@@ -275,7 +276,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
   const [assignSlot, setAssignSlot] = useState<HardwareSlotId>(() =>
     controlToHardwareSlot(selectedControl)
   );
-  const [panelTop, setPanelTop] = useState<number>(56);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -295,21 +295,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
   useEffect(() => {
     setAssignSlot(controlToHardwareSlot(selectedControl));
   }, [selectedControl]);
-
-  const updatePanelPosition = useCallback(() => {
-    const headerEl = wrapperRef.current?.closest('header');
-    if (headerEl) {
-      const rect = headerEl.getBoundingClientRect();
-      setPanelTop(Math.max(48, Math.round(rect.bottom + 6)));
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    updatePanelPosition();
-    window.addEventListener('resize', updatePanelPosition);
-    return () => window.removeEventListener('resize', updatePanelPosition);
-  }, [isOpen, updatePanelPosition]);
 
   // Close when clicking outside the search input and results panel
   useEffect(() => {
@@ -333,7 +318,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       const isModK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
       if (isModK) {
         e.preventDefault();
-        updatePanelPosition();
         setIsOpen(true);
         requestAnimationFrame(() => {
           inputRef.current?.focus();
@@ -352,7 +336,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           Boolean(active?.isContentEditable);
         if (!isEditable) {
           e.preventDefault();
-          updatePanelPosition();
           setIsOpen(true);
           requestAnimationFrame(() => {
             inputRef.current?.focus();
@@ -363,7 +346,18 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
     window.addEventListener('keydown', onKeyDown, false);
     return () => window.removeEventListener('keydown', onKeyDown, false);
-  }, [updatePanelPosition]);
+  }, []);
+
+  const customMacroBySignature = useMemo(() => {
+    const map = new Map<string, CustomMacroItem>();
+    for (const m of customMacros) {
+      const sig = getMacroCanonicalSignature(m.action, m.repeatConfig);
+      if (sig && !map.has(sig)) {
+        map.set(sig, m);
+      }
+    }
+    return map;
+  }, [customMacros]);
 
   // Build unified site-wide searchable entries
   const allEntries = useMemo<SearchResultEntry[]>(() => {
@@ -425,9 +419,10 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
             ? prof.layers[0].keys[controlId as ActionKeyId]
             : null;
 
-        const matchedCustom = rawAction
-          ? customMacros.find(m => m.action === rawAction)
-          : undefined;
+        const slotSig = rawAction
+          ? getMacroCanonicalSignature(rawAction, binding?.repeatConfig)
+          : '';
+        const matchedCustom = slotSig ? customMacroBySignature.get(slotSig) : undefined;
         const desc = rawAction
           ? describeFirmwareAction(rawAction, binding?.repeatConfig)
           : null;
@@ -461,6 +456,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           iconColor: appearance.labelColor,
           action: rawAction,
           binding,
+          customMacroId: matchedCustom?.id,
           assignedProfileId: prof.id,
           assignedControlId: controlId
         });
@@ -488,18 +484,21 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     // 3. Multi-Step Starter Sequences & Curated Pad Presets
     STARTER_TEMPLATES.forEach(tpl => {
       const compiled = buildStarterTemplateBinding(tpl.steps);
+      const tplSig = getMacroCanonicalSignature(compiled.action, compiled.repeatConfig);
+      const existingSaved = tplSig ? customMacroBySignature.get(tplSig) : undefined;
       const stepKeywords = tpl.steps.map(s => `${s.label} ${s.value}`).join(' ');
       results.push({
         id: `seq-tpl-${tpl.id}`,
         kind: 'sequence_template',
         filterGroup: 'templates',
         title: tpl.name,
-        metaParts: ['Starter Sequence', tpl.summary],
-        searchBlob: `${tpl.name} ${tpl.summary} ${stepKeywords} starter template multi step sequence macro`.toLowerCase(),
+        metaParts: ['Starter Recipe', tpl.summary],
+        searchBlob: `${tpl.name} ${tpl.summary} ${stepKeywords} starter template recipe multi step sequence macro`.toLowerCase(),
         icon: 'zap',
         iconColor: '#38BDF8',
         action: compiled.action,
         binding: compiled.binding,
+        customMacroId: existingSaved?.id,
         stepsOverride: tpl.steps
       });
     });
@@ -559,7 +558,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     });
 
     return results;
-  }, [profiles, activeProfileId, customMacros]);
+  }, [profiles, activeProfileId, customMacros, customMacroBySignature]);
 
   // Compute matching entries + per-tab counts for the current query
   const { filteredEntries, tabCounts } = useMemo(() => {
@@ -669,26 +668,29 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     (entry: SearchResultEntry) => {
       if (!entry.binding || !entry.action) return;
 
-      // If assigning a multi-step starter template directly, also save it to My Macros
+      // Save multi-step starter recipe to My Macros only if an equivalent macro isn't already saved
       if (entry.kind === 'sequence_template') {
-        const savedItem: CustomMacroItem = {
-          id: `macro-${Date.now()}`,
-          name: entry.title,
-          action: entry.action,
-          repeatConfig: entry.binding.repeatConfig,
-          createdAt: new Date().toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-          }),
-          source: 'user'
-        };
-        onSaveMacro(savedItem);
+        const sig = getMacroCanonicalSignature(entry.action, entry.binding.repeatConfig);
+        if (!sig || !customMacroBySignature.has(sig)) {
+          const savedItem: CustomMacroItem = {
+            id: `macro-${Date.now()}`,
+            name: entry.title,
+            action: entry.action,
+            repeatConfig: entry.binding.repeatConfig,
+            createdAt: new Date().toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit'
+            }),
+            source: 'user'
+          };
+          onSaveMacro(savedItem);
+        }
       }
 
       onAssignSlot(assignProfile, assignSlot, entry.binding);
       setIsOpen(false);
     },
-    [assignProfile, assignSlot, onAssignSlot, onSaveMacro]
+    [assignProfile, assignSlot, customMacroBySignature, onAssignSlot, onSaveMacro]
   );
 
   const handleOpenInBuilder = useCallback(
@@ -803,20 +805,11 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           ref={inputRef}
           type="text"
           value={query}
-          onFocus={() => {
-            updatePanelPosition();
-            setIsOpen(true);
-          }}
-          onClick={() => {
-            updatePanelPosition();
-            setIsOpen(true);
-          }}
+          onFocus={() => setIsOpen(true)}
+          onClick={() => setIsOpen(true)}
           onChange={e => {
             setQuery(e.target.value);
-            if (!isOpen) {
-              updatePanelPosition();
-              setIsOpen(true);
-            }
+            if (!isOpen) setIsOpen(true);
           }}
           onKeyDown={handleInputKeyDown}
           role="combobox"
@@ -857,8 +850,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
           <div
             ref={panelRef}
-            style={{ top: `${panelTop}px` }}
-            className="fixed left-1/2 -translate-x-1/2 w-[min(96vw,700px)] max-h-[calc(100dvh-76px)] z-50 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl flex flex-col overflow-hidden"
+            className="fixed top-14 left-1/2 -translate-x-1/2 w-[min(96vw,700px)] max-h-[calc(100dvh-76px)] z-50 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl flex flex-col overflow-hidden"
           >
             {/* Filter Tabs + Quick Target Slot Assignment Bar */}
             <div className="px-3.5 pt-3 pb-2.5 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)]/40 space-y-2.5 shrink-0">
@@ -989,8 +981,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           });
                           setIsOpen(false);
                         }}
-                        style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
                       >
                         <Sliders className="w-3.5 h-3.5" />
                         <span>Build “{query.trim().slice(0, 28)}” in Macro Editor</span>
@@ -1022,12 +1013,9 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                       aria-selected={isHighlighted}
                       onMouseEnter={() => setHighlightedIndex(idx)}
                       onClick={() => handlePrimaryAction(entry)}
-                      style={
-                        isHighlighted
-                          ? { backgroundColor: 'rgba(var(--accent-rgb), 0.09)' }
-                          : undefined
-                      }
-                      className="px-3.5 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer"
+                      className={`px-3.5 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                        isHighlighted ? 'bg-[rgba(var(--accent-rgb),0.09)]' : ''
+                      }`}
                     >
                       {/* Icon + Title + Unboxed Dot-Separated Metadata */}
                       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -1093,25 +1081,16 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                             className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
                           >
                             <Sliders className="w-3 h-3" />
-                            <span>{entry.kind === 'custom' ? 'Edit' : 'Customize'}</span>
+                            <span>{entry.customMacroId ? 'Edit' : 'Customize'}</span>
                           </button>
                         )}
 
                         <button
                           type="button"
                           onClick={() => handlePrimaryAction(entry)}
-                          style={
-                            isHighlighted
-                              ? {
-                                  backgroundColor: 'var(--accent)',
-                                  color: '#FFFFFF',
-                                  borderColor: 'var(--accent)'
-                                }
-                              : undefined
-                          }
                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                             isHighlighted
-                              ? 'shadow-sm'
+                              ? 'bg-[var(--accent)] border-[var(--accent)] text-white shadow-sm'
                               : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--border-strong)]'
                           }`}
                         >

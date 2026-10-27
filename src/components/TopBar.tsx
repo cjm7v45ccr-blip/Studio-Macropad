@@ -225,18 +225,6 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
         )}
 
-        {connection.connected && connection.telemetry?.setupMode && onOpenSetupWizard && (
-          <button
-            type="button"
-            onClick={onOpenSetupWizard}
-            title="Board is in Setup Mode — open guided setup wizard"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-            <span>Finish Setup</span>
-          </button>
-        )}
-
         {/* Live Multi-Host BLE & Wi-Fi Badges when connected */}
         {connection.connected && connection.telemetry && (
           <div className="hidden 2xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-[10px] shrink-0">
@@ -522,6 +510,18 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Redo2 className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        {onOpenSetupWizard && !(connection.connected && connection.telemetry?.setupMode) && (
+          <button
+            type="button"
+            onClick={onOpenSetupWizard}
+            title="Open Guided Setup Wizard (OS layout, Bluetooth hosts, Wi-Fi & TV)"
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden xl:inline">Guided Setup</span>
+          </button>
+        )}
 
         {!connection.connected && (
           <button

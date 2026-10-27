@@ -37,14 +37,22 @@ import {
   FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
   SLOT_LABELS,
+  actionToMacroSteps,
   bindingToFirmwareAction,
+  canonicalizeFirmwareAction,
   deriveAppearanceForAction,
   describeFirmwareAction,
+  findEquivalentBuiltInSpec,
   firmwareActionToBinding,
+  getMacroCanonicalSignature,
+  getProfilePresetSignature,
+  isGenericMacroName,
   isValidFirmwareAction,
   requiresUsbSequenceExecution,
   sanitizeFirmwareAlias,
-  validateFirmwareAlias
+  suggestSmartMacroName,
+  validateFirmwareAlias,
+  validateMacroSequenceDraft
 } from '../data/firmwareCatalog';
 import { FirmwareStatusPacket, usbHardware } from '../services/usbHardwareService';
 import { DEFAULT_FIRMWARE_GITHUB_REPO } from '../services/firmwareUpdateService';
@@ -485,8 +493,57 @@ function isCustomDynamicAction(action: string): boolean {
     action.startsWith('SHORTCUT:') ||
     action.startsWith('TEXT:') ||
     action.startsWith('TVKEY:') ||
-    action.startsWith('TVAPP:')
+    action.startsWith('TVAPP:') ||
+    action.includes('||')
   );
+}
+
+/**
+ * Deduplicates saved macros by deterministic canonical signature (ignoring ephemeral step IDs),
+ * repairs generic names ("Set Macro", "Untitled Macro", "3 Steps"), and drops invalid empty entries.
+ */
+export function deduplicateCustomMacros(items: CustomMacroItem[]): CustomMacroItem[] {
+  const bySig = new Map<string, CustomMacroItem>();
+
+  for (const raw of items) {
+    if (!raw || !raw.action) continue;
+    const canonAction = canonicalizeFirmwareAction(raw.action);
+    if (!canonAction || !isValidFirmwareAction(canonAction)) continue;
+
+    // Skip single-step custom entries that merely duplicate a native firmware built-in unless user explicitly added repeat timing
+    const hasSequence = requiresUsbSequenceExecution(raw.repeatConfig);
+    if (!hasSequence && raw.source === 'device' && findEquivalentBuiltInSpec(canonAction)) {
+      continue;
+    }
+
+    const sig = getMacroCanonicalSignature(canonAction, raw.repeatConfig);
+    if (!sig) continue;
+
+    const steps = actionToMacroSteps(canonAction, raw.repeatConfig);
+    const smartName = suggestSmartMacroName(steps, raw.repeatConfig);
+    const cleanedName = isGenericMacroName(raw.name) ? smartName : raw.name.trim();
+
+    const normalizedItem: CustomMacroItem = {
+      ...raw,
+      name: cleanedName,
+      action: canonAction
+    };
+
+    const existing = bySig.get(sig);
+    if (!existing) {
+      bySig.set(sig, normalizedItem);
+    } else {
+      // Prefer explicit 'user' macros over 'device' auto-discovered macros, and prefer custom-named macros
+      const preferCandidate =
+        (existing.source === 'device' && normalizedItem.source !== 'device') ||
+        (isGenericMacroName(existing.name) && !isGenericMacroName(raw.name));
+      if (preferCandidate) {
+        bySig.set(sig, normalizedItem);
+      }
+    }
+  }
+
+  return Array.from(bySig.values());
 }
 
 function mergeDiscoveredCustomMacros(
@@ -494,33 +551,41 @@ function mergeDiscoveredCustomMacros(
   serialized: SerializedPadProfiles,
   repeatConfigs?: SlotRepeatMap
 ): CustomMacroItem[] {
-  const merged = [...existing];
+  const merged = deduplicateCustomMacros(existing);
+  const knownSigs = new Set(
+    merged.map(m => getMacroCanonicalSignature(m.action, m.repeatConfig)).filter(Boolean)
+  );
+
   const allEntries = [
     ...Object.entries(serialized.h1).map(([slot, act]) => ({ profile: 'HOST1', slot, act })),
     ...Object.entries(serialized.h2).map(([slot, act]) => ({ profile: 'HOST2', slot, act })),
     ...Object.entries(serialized.h3).map(([slot, act]) => ({ profile: 'HOST3', slot, act })),
     ...Object.entries(serialized.tv).map(([slot, act]) => ({ profile: 'TV', slot, act }))
   ];
+
   for (const entry of allEntries) {
-    if (entry.act && isCustomDynamicAction(entry.act)) {
-      const slotRc = repeatConfigs?.[`${entry.profile}:${entry.slot}`];
-      const exists = merged.some(
-        m =>
-          m.action === entry.act &&
-          JSON.stringify(m.repeatConfig || null) === JSON.stringify(slotRc || null)
-      );
-      if (!exists) {
-        const desc = describeFirmwareAction(entry.act, slotRc);
-        merged.push({
-          id: `dev-macro-${entry.profile}-${entry.slot}-${merged.length}`,
-          name: `${desc.fullLabel} (${defaultProfileAlias(entry.profile as HardwareProfileId)} ${entry.slot.toUpperCase()})`,
-          action: entry.act,
-          repeatConfig: slotRc,
-          createdAt: 'Synced from Pad',
-          source: 'device'
-        });
-      }
-    }
+    if (!entry.act) continue;
+    const canonAct = canonicalizeFirmwareAction(entry.act);
+    const slotRc = repeatConfigs?.[`${entry.profile}:${entry.slot}`];
+    const isSequence = requiresUsbSequenceExecution(slotRc);
+
+    if (!isSequence && !isCustomDynamicAction(canonAct)) continue;
+    if (!isSequence && findEquivalentBuiltInSpec(canonAct)) continue;
+
+    const sig = getMacroCanonicalSignature(canonAct, slotRc);
+    if (!sig || knownSigs.has(sig)) continue;
+
+    knownSigs.add(sig);
+    const steps = actionToMacroSteps(canonAct, slotRc);
+    const smartName = suggestSmartMacroName(steps, slotRc);
+    merged.push({
+      id: `dev-macro-${entry.profile}-${entry.slot}-${merged.length}`,
+      name: smartName,
+      action: canonAct,
+      repeatConfig: slotRc,
+      createdAt: 'Synced from Pad',
+      source: 'device'
+    });
   }
   return merged;
 }
@@ -536,7 +601,9 @@ export function useStudioState(
         return {
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
           userPresets: Array.isArray(parsed.userPresets) ? parsed.userPresets : [],
-          customMacros: Array.isArray(parsed.customMacros) ? parsed.customMacros : [],
+          customMacros: Array.isArray(parsed.customMacros)
+            ? deduplicateCustomMacros(parsed.customMacros)
+            : [],
           appearanceOverrides: parsed.appearanceOverrides || {}
         };
       }
@@ -1151,7 +1218,8 @@ export function useStudioState(
       const tap = activeLayer.keys[kid]?.triggers.tap;
       const act = bindingToFirmwareAction(tap);
       if (!act) continue;
-      const signature = `${act}::${JSON.stringify(tap?.repeatConfig || null)}`;
+      const signature = getMacroCanonicalSignature(act, tap?.repeatConfig);
+      if (!signature) continue;
       const existing = seen.get(signature);
       if (existing) {
         warnings.push({
@@ -1370,6 +1438,7 @@ export function useStudioState(
 
       setPast(h => [...h.slice(-34), prevSnap]);
       setFuture([]);
+      snapshotRef.current = nextSnap;
       setSnapshot(nextSnap);
 
       return await runConnectedWrite(
@@ -1428,11 +1497,17 @@ export function useStudioState(
 
   const assignSlotAction = useCallback(
     (profileId: HardwareProfileId, slot: HardwareSlotId, binding: ActionBinding) => {
-      const actionStr = bindingToFirmwareAction(binding);
+      const rawActionStr = bindingToFirmwareAction(binding);
+      const actionStr = canonicalizeFirmwareAction(rawActionStr);
       if (!actionStr || !isValidFirmwareAction(actionStr)) {
         onToast('Rejected unsupported or incomplete firmware action', 'error');
         return;
       }
+
+      const normalizedBinding: ActionBinding = {
+        ...binding,
+        value: actionStr
+      };
 
       const prevSnap = snapshotRef.current;
       const nextProfiles = prevSnap.profiles.map(prof => {
@@ -1450,7 +1525,7 @@ export function useStudioState(
               customLabel: false,
               customIcon: existingApp.icon.startsWith('data:image/')
             },
-            binding.repeatConfig
+            normalizedBinding.repeatConfig
           );
 
           return {
@@ -1462,7 +1537,7 @@ export function useStudioState(
                   ...layer.keys,
                   [kid]: {
                     ...layer.keys[kid],
-                    triggers: { tap: binding },
+                    triggers: { tap: normalizedBinding },
                     appearance: nextAppearance
                   }
                 }
@@ -1473,7 +1548,7 @@ export function useStudioState(
 
         const nextEncoder: EncoderControlConfig = {
           ...layer.encoder,
-          [slot === 'dial' ? 'dial' : slot === 'enc_cw' ? 'cw' : 'ccw']: binding
+          [slot === 'dial' ? 'dial' : slot === 'enc_cw' ? 'cw' : 'ccw']: normalizedBinding
         };
 
         return {
@@ -1487,23 +1562,32 @@ export function useStudioState(
         };
       });
 
+      // Only auto-register in customMacros when it's a true multi-step/timed sequence or non-built-in custom command with no canonical match
       let nextMacros = prevSnap.customMacros;
-      if (isCustomDynamicAction(actionStr)) {
-        const exists = nextMacros.some(
-          m =>
-            m.action === actionStr &&
-            JSON.stringify(m.repeatConfig || null) ===
-              JSON.stringify(binding.repeatConfig || null)
+      const isSequence = requiresUsbSequenceExecution(normalizedBinding.repeatConfig);
+      const hasBuiltInEquivalent = !isSequence && Boolean(findEquivalentBuiltInSpec(actionStr));
+
+      if ((isSequence || isCustomDynamicAction(actionStr)) && !hasBuiltInEquivalent) {
+        const candidateSig = getMacroCanonicalSignature(
+          actionStr,
+          normalizedBinding.repeatConfig
         );
-        if (!exists) {
-          const info = describeFirmwareAction(actionStr, binding.repeatConfig);
+        const exists = nextMacros.some(
+          m => getMacroCanonicalSignature(m.action, m.repeatConfig) === candidateSig
+        );
+        if (!exists && candidateSig) {
+          const steps = actionToMacroSteps(actionStr, normalizedBinding.repeatConfig);
+          const smartName = suggestSmartMacroName(steps, normalizedBinding.repeatConfig);
           nextMacros = [
             {
               id: `custom-${Date.now()}`,
-              name: info.fullLabel,
+              name: smartName,
               action: actionStr,
-              repeatConfig: binding.repeatConfig,
-              createdAt: new Date().toLocaleTimeString(),
+              repeatConfig: normalizedBinding.repeatConfig,
+              createdAt: new Date().toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
               source: 'user'
             },
             ...nextMacros
@@ -1801,15 +1885,168 @@ export function useStudioState(
     return true;
   }, [pushBothProfilesSnapshot, onToast]);
 
-  const saveCustomMacro = useCallback((item: CustomMacroItem) => {
-    setSnapshot(prev => {
-      const exists = prev.customMacros.some(m => m.id === item.id);
-      const nextList = exists
-        ? prev.customMacros.map(m => (m.id === item.id ? item : m))
-        : [item, ...prev.customMacros];
-      return { ...prev, customMacros: nextList };
-    });
-  }, []);
+  const saveCustomMacro = useCallback(
+    (item: CustomMacroItem): { saved: CustomMacroItem | null; updatedSlotCount: number } => {
+      const steps =
+        item.repeatConfig?.steps && item.repeatConfig.steps.length > 0
+          ? item.repeatConfig.steps
+          : actionToMacroSteps(item.action, item.repeatConfig);
+
+      if (steps.length > 0) {
+        const check = validateMacroSequenceDraft(steps, item.repeatConfig);
+        if (!check.valid) {
+          onToast(check.issues[0]?.message || 'Complete all macro steps before saving', 'error');
+          return { saved: null, updatedSlotCount: 0 };
+        }
+      }
+
+      const canonAction = canonicalizeFirmwareAction(item.action);
+      if (!canonAction || !isValidFirmwareAction(canonAction)) {
+        onToast('Macro sequence is incomplete or exceeds 256-byte NVS limit', 'error');
+        return { saved: null, updatedSlotCount: 0 };
+      }
+
+      const smartName = suggestSmartMacroName(steps, item.repeatConfig);
+      const finalName = isGenericMacroName(item.name) ? smartName : item.name.trim();
+      const newSig = getMacroCanonicalSignature(canonAction, item.repeatConfig);
+
+      const prevSnap = snapshotRef.current;
+      const existingById = prevSnap.customMacros.find(m => m.id === item.id);
+      const oldSig = existingById
+        ? getMacroCanonicalSignature(existingById.action, existingById.repeatConfig)
+        : null;
+
+      // Check if another saved macro already has this exact canonical signature
+      const duplicateMatch = prevSnap.customMacros.find(
+        m =>
+          m.id !== item.id &&
+          getMacroCanonicalSignature(m.action, m.repeatConfig) === newSig
+      );
+
+      const finalMacro: CustomMacroItem = {
+        ...item,
+        id: duplicateMatch && !existingById ? duplicateMatch.id : item.id,
+        name: finalName,
+        action: canonAction,
+        source: 'user'
+      };
+
+      let nextList: CustomMacroItem[];
+      if (existingById) {
+        nextList = prevSnap.customMacros
+          .filter(m => !duplicateMatch || m.id !== duplicateMatch.id)
+          .map(m => (m.id === existingById.id ? finalMacro : m));
+      } else if (duplicateMatch) {
+        nextList = prevSnap.customMacros.map(m =>
+          m.id === duplicateMatch.id ? finalMacro : m
+        );
+      } else {
+        nextList = [finalMacro, ...prevSnap.customMacros];
+      }
+
+      // Propagate edits to all hardware slots across HOST1..3 & TV that were bound to `oldSig`
+      let updatedSlotCount = 0;
+      const updatedBinding = firmwareActionToBinding(canonAction, finalMacro.repeatConfig);
+      const slotsToPush: { profileId: HardwareProfileId; slot: HardwareSlotId }[] = [];
+
+      const nextProfiles =
+        oldSig && oldSig !== newSig
+          ? prevSnap.profiles.map(prof => {
+              const layer = prof.layers[0];
+              let profChanged = false;
+              const nextKeys = { ...layer.keys };
+
+              ACTION_KEY_IDS.forEach(kid => {
+                const slot = KEY_TO_SLOT[kid];
+                const tap = layer.keys[kid].triggers.tap;
+                const tapSig = getMacroCanonicalSignature(
+                  bindingToFirmwareAction(tap),
+                  tap.repeatConfig
+                );
+                if (tapSig && tapSig === oldSig) {
+                  profChanged = true;
+                  updatedSlotCount += 1;
+                  slotsToPush.push({ profileId: prof.id, slot });
+                  const existingApp = layer.keys[kid].appearance;
+                  nextKeys[kid] = {
+                    ...layer.keys[kid],
+                    triggers: { tap: updatedBinding },
+                    appearance: deriveAppearanceForAction(
+                      canonAction,
+                      existingApp,
+                      finalMacro.repeatConfig
+                    )
+                  };
+                }
+              });
+
+              const nextEncoder: EncoderControlConfig = { ...layer.encoder };
+              (['dial', 'cw', 'ccw'] as const).forEach(encKey => {
+                const hwSlot: HardwareSlotId =
+                  encKey === 'dial' ? 'dial' : encKey === 'cw' ? 'enc_cw' : 'enc_ccw';
+                const bind = layer.encoder[encKey];
+                const bindSig = getMacroCanonicalSignature(
+                  bindingToFirmwareAction(bind),
+                  bind.repeatConfig
+                );
+                if (bindSig && bindSig === oldSig) {
+                  profChanged = true;
+                  updatedSlotCount += 1;
+                  slotsToPush.push({ profileId: prof.id, slot: hwSlot });
+                  nextEncoder[encKey] = updatedBinding;
+                }
+              });
+
+              if (!profChanged) return prof;
+              return {
+                ...prof,
+                layers: [
+                  {
+                    ...layer,
+                    keys: nextKeys,
+                    encoder: nextEncoder
+                  }
+                ] as [typeof layer]
+              };
+            })
+          : prevSnap.profiles;
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: nextProfiles,
+        customMacros: nextList
+      };
+
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+
+      if (updatedSlotCount > 0) {
+        setPast(h => [...h.slice(-34), prevSnap]);
+        setFuture([]);
+        runConnectedWrite(
+          prevSnap,
+          nextSnap,
+          async () => {
+            let lastRes: { rev?: number } | undefined;
+            for (const target of slotsToPush) {
+              lastRes = await usbHardware.saveSlotBinding(
+                target.profileId,
+                target.slot,
+                canonAction
+              );
+            }
+            return lastRes;
+          },
+          `Saved "${finalName}" & updated ${updatedSlotCount} bound ${
+            updatedSlotCount === 1 ? 'control' : 'controls'
+          }`
+        );
+      }
+
+      return { saved: finalMacro, updatedSlotCount };
+    },
+    [onToast, runConnectedWrite]
+  );
 
   const deleteCustomMacro = useCallback((id: string) => {
     setSnapshot(prev => ({
@@ -1818,8 +2055,113 @@ export function useStudioState(
     }));
   }, []);
 
+  const cleanUpDuplicateMacros = useCallback((): number => {
+    const before = snapshotRef.current.customMacros.length;
+    const deduped = deduplicateCustomMacros(snapshotRef.current.customMacros);
+    const removed = Math.max(0, before - deduped.length);
+    setSnapshot(prev => ({
+      ...prev,
+      customMacros: deduped
+    }));
+    if (removed > 0) {
+      onToast(
+        `Cleaned up ${removed} duplicate or built-in redundant ${
+          removed === 1 ? 'macro' : 'macros'
+        }`
+      );
+    } else {
+      onToast('Macro library is already clean — zero duplicates found');
+    }
+    return removed;
+  }, [onToast]);
+
+  const exportMacrosFile = useCallback(() => {
+    const macros = deduplicateCustomMacros(snapshotRef.current.customMacros);
+    if (macros.length === 0) {
+      onToast('No custom macros in your library to export yet', 'error');
+      return;
+    }
+    const payload = {
+      schema: 'studio-pad-macros',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      macros
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json'
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'studio-pad-macros.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    onToast(`Exported ${macros.length} ${macros.length === 1 ? 'macro' : 'macros'} to studio-pad-macros.json`);
+  }, [onToast]);
+
+  const importMacrosFile = useCallback(
+    (file: File) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result));
+          const rawList: any[] = Array.isArray(parsed)
+            ? parsed
+            : Array.isArray(parsed?.macros)
+            ? parsed.macros
+            : [];
+          if (rawList.length === 0) {
+            onToast('No valid macros found in JSON file', 'error');
+            return;
+          }
+          const validIncoming: CustomMacroItem[] = [];
+          for (const raw of rawList) {
+            if (!raw || typeof raw.action !== 'string') continue;
+            const canon = canonicalizeFirmwareAction(raw.action);
+            if (!canon || !isValidFirmwareAction(canon)) continue;
+            const steps = actionToMacroSteps(canon, raw.repeatConfig);
+            validIncoming.push({
+              id: typeof raw.id === 'string' && raw.id ? raw.id : `import-${Date.now()}-${validIncoming.length}`,
+              name: isGenericMacroName(raw.name)
+                ? suggestSmartMacroName(steps, raw.repeatConfig)
+                : String(raw.name).trim(),
+              action: canon,
+              repeatConfig: raw.repeatConfig,
+              createdAt: raw.createdAt || 'Imported',
+              source: 'user'
+            });
+          }
+          if (validIncoming.length === 0) {
+            onToast('JSON file did not contain valid Studio MacroPad actions', 'error');
+            return;
+          }
+          const beforeCount = snapshotRef.current.customMacros.length;
+          const merged = deduplicateCustomMacros([
+            ...validIncoming,
+            ...snapshotRef.current.customMacros
+          ]);
+          const netAdded = Math.max(0, merged.length - beforeCount);
+          setSnapshot(prev => ({
+            ...prev,
+            customMacros: merged
+          }));
+          onToast(
+            netAdded > 0
+              ? `Imported ${netAdded} new ${netAdded === 1 ? 'macro' : 'macros'} (${validIncoming.length - netAdded} duplicates skipped)`
+              : `All ${validIncoming.length} macros in file already exist in your library`
+          );
+        } catch {
+          onToast('Failed to parse macro library JSON file', 'error');
+        }
+      };
+      reader.readAsText(file);
+    },
+    [onToast]
+  );
+
   /**
-   * Saves the active profile (and full backup) into "My presets" so it can be reapplied anytime
+   * Saves the active profile (and full backup) into "My presets" so it can be reapplied anytime.
+   * Automatically detects identical 11-slot layouts or matching preset names to update in place instead of duplicating.
    */
   const saveUserSnapshot = useCallback(
     (name: string, profileId?: HardwareProfileId) => {
@@ -1831,19 +2173,75 @@ export function useStudioState(
       const backup = buildBackupFromProfiles(snapshotRef.current.profiles);
       const repeatConfigs = extractRepeatMapFromProfiles(snapshotRef.current.profiles);
 
-      const entry: UserPreset = {
-        id: `preset-${Date.now()}`,
-        name: name.trim() || `${prof.name} Preset ${userPresets.length + 1}`,
-        createdAt: new Date().toLocaleString(),
-        targetProfile: targetProfId,
+      const candidateSig = getProfilePresetSignature(
         profileSlots,
-        backup,
-        repeatConfigs
-      };
-      setUserPresets(prev => [entry, ...prev]);
-      onToast(`Saved "${entry.name}" to My presets`);
+        repeatConfigs,
+        targetProfId
+      );
+      const trimmedName = name.trim();
+
+      setUserPresets(prev => {
+        const sameNameIdx = trimmedName
+          ? prev.findIndex(p => p.name.trim().toLowerCase() === trimmedName.toLowerCase())
+          : -1;
+
+        const sameLayoutIdx = prev.findIndex(p => {
+          if (!p.profileSlots) return false;
+          const pOrigin = normalizeHardwareProfileId(p.targetProfile, 1);
+          return (
+            getProfilePresetSignature(p.profileSlots, p.repeatConfigs, pOrigin) ===
+            candidateSig
+          );
+        });
+
+        const matchIdx = sameNameIdx >= 0 ? sameNameIdx : sameLayoutIdx;
+        if (matchIdx >= 0) {
+          const existing = prev[matchIdx];
+          const updatedEntry: UserPreset = {
+            ...existing,
+            name: trimmedName || existing.name,
+            createdAt: new Date().toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit'
+            }),
+            targetProfile: targetProfId,
+            profileSlots,
+            backup,
+            repeatConfigs
+          };
+          const next = [...prev];
+          next[matchIdx] = updatedEntry;
+          onToast(
+            sameNameIdx >= 0
+              ? `Updated preset "${updatedEntry.name}"`
+              : `Layout already matched "${existing.name}" — updated existing preset`
+          );
+          return next;
+        }
+
+        const autoName =
+          trimmedName ||
+          `${prof.name} · ${describeFirmwareAction(profileSlots.b1).shortLabel} + ${
+            describeFirmwareAction(profileSlots.b2).shortLabel
+          }`;
+
+        const entry: UserPreset = {
+          id: `preset-${Date.now()}`,
+          name: autoName.slice(0, 36),
+          createdAt: new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          targetProfile: targetProfId,
+          profileSlots,
+          backup,
+          repeatConfigs
+        };
+        onToast(`Saved "${entry.name}" to My presets`);
+        return [entry, ...prev];
+      });
     },
-    [userPresets.length, onToast]
+    [onToast]
   );
 
   const deleteUserSnapshot = useCallback((id: string) => {
@@ -2109,6 +2507,9 @@ export function useStudioState(
     pushAllToDeviceNow,
     saveCustomMacro,
     deleteCustomMacro,
+    cleanUpDuplicateMacros,
+    exportMacrosFile,
+    importMacrosFile,
     saveUserSnapshot,
     deleteUserSnapshot,
     applyHardwareBackup,

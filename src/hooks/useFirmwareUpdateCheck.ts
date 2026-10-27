@@ -7,7 +7,7 @@ import {
 import {
   DEFAULT_FIRMWARE_GITHUB_REPO,
   compareFirmwareVersions,
-  fetchLatestGitHubFirmware,
+  fetchGitHubFirmwareCatalog,
   parseGitHubRepoSlug
 } from '../services/firmwareUpdateService';
 
@@ -52,6 +52,7 @@ export function useFirmwareUpdateCheck({
     status: 'idle',
     installedVersion: effectiveInstalled,
     latestRelease: null,
+    recentReleases: [],
     checkedAt: null,
     repoSlug: normalizedSlug,
     error: null
@@ -94,10 +95,11 @@ export function useFirmwareUpdateCheck({
       }));
 
       try {
-        const release = await fetchLatestGitHubFirmware(targetInput, {
+        const catalog = await fetchGitHubFirmwareCatalog(targetInput, {
           force: Boolean(opts?.force),
           signal: controller.signal
         });
+        const release = catalog.latestRelease;
 
         const nowTime = new Date().toLocaleTimeString([], {
           hour: '2-digit',
@@ -110,6 +112,7 @@ export function useFirmwareUpdateCheck({
           status: nextStatus,
           installedVersion: currentInstalled,
           latestRelease: release,
+          recentReleases: catalog.recentReleases,
           checkedAt: nowTime,
           repoSlug: release?.repoSlug || slug,
           error: null

@@ -8,14 +8,19 @@ export const DEFAULT_FIRMWARE_GITHUB_REPO: string =
   'cjm7v45ccr-blip/Studio-Macropad';
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const SESSION_CACHE_PREFIX = 'studio_pad_fw_gh_cache_v1:';
+const SESSION_CACHE_PREFIX = 'studio_pad_fw_gh_cache_v2:';
 
-interface CachedReleaseRecord {
-  fetchedAt: number;
-  release: FirmwareReleaseInfo | null;
+export interface GitHubFirmwareCatalogResult {
+  latestRelease: FirmwareReleaseInfo | null;
+  recentReleases: FirmwareReleaseInfo[];
 }
 
-const memoryCache = new Map<string, CachedReleaseRecord>();
+interface CachedCatalogRecord {
+  fetchedAt: number;
+  catalog: GitHubFirmwareCatalogResult;
+}
+
+const memoryCache = new Map<string, CachedCatalogRecord>();
 
 export interface ParsedGitHubRepo {
   owner: string;
@@ -27,7 +32,7 @@ export function parseGitHubRepoSlug(input?: string | null): ParsedGitHubRepo | n
   const raw = (input || '').trim();
   if (!raw) return null;
 
-  let cleaned = raw
+  const cleaned = raw
     .replace(/^https?:\/\/(www\.)?github\.com\//i, '')
     .replace(/^github\.com\//i, '')
     .replace(/\.git$/i, '')
@@ -160,7 +165,7 @@ export function compareFirmwareVersions(
   return 0;
 }
 
-function readCachedRelease(slug: string): CachedReleaseRecord | null {
+function readCachedCatalog(slug: string): CachedCatalogRecord | null {
   const mem = memoryCache.get(slug);
   if (mem && Date.now() - mem.fetchedAt < CACHE_TTL_MS) {
     return mem;
@@ -168,10 +173,11 @@ function readCachedRelease(slug: string): CachedReleaseRecord | null {
   try {
     const raw = sessionStorage.getItem(`${SESSION_CACHE_PREFIX}${slug}`);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as CachedReleaseRecord;
+    const parsed = JSON.parse(raw) as CachedCatalogRecord;
     if (
       parsed &&
       typeof parsed.fetchedAt === 'number' &&
+      parsed.catalog &&
       Date.now() - parsed.fetchedAt < CACHE_TTL_MS
     ) {
       memoryCache.set(slug, parsed);
@@ -181,10 +187,10 @@ function readCachedRelease(slug: string): CachedReleaseRecord | null {
   return null;
 }
 
-function writeCachedRelease(slug: string, release: FirmwareReleaseInfo | null) {
-  const record: CachedReleaseRecord = {
+function writeCachedCatalog(slug: string, catalog: GitHubFirmwareCatalogResult) {
+  const record: CachedCatalogRecord = {
     fetchedAt: Date.now(),
-    release
+    catalog
   };
   memoryCache.set(slug, record);
   try {
@@ -193,7 +199,52 @@ function writeCachedRelease(slug: string, release: FirmwareReleaseInfo | null) {
 }
 
 function isFirmwareAssetName(name: string): boolean {
-  return /\.(bin|elf|uf2|hex|ino|zip)$/i.test(name);
+  return /\.(bin|elf|uf2|hex|ino|zip|json)$/i.test(name);
+}
+
+export function isAuxiliaryBootloaderAsset(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    lower.includes('bootloader') ||
+    lower.includes('partitions') ||
+    lower.includes('boot_app0') ||
+    lower.includes('ota_data') ||
+    lower.includes('merged')
+  );
+}
+
+/**
+ * Selects the primary OTA application `.bin` asset from a release's asset list,
+ * automatically skipping ESP32 `bootloader.bin`, `partitions.bin`, and `boot_app0.bin`.
+ */
+export function selectPrimaryOtaBinaryAsset(
+  assets: FirmwareReleaseAsset[] | undefined | null
+): FirmwareReleaseAsset | null {
+  if (!assets || assets.length === 0) return null;
+  const binAssets = assets.filter(a => /\.bin$/i.test(a.name));
+  if (binAssets.length === 0) return null;
+
+  const appBins = binAssets.filter(a => !isAuxiliaryBootloaderAsset(a.name));
+  if (appBins.length > 0) {
+    // Prefer assets explicitly containing firmware / studio / macropad / ota
+    const preferred = appBins.find(a =>
+      /(?:firmware|studio|macropad|pad|ota|app)/i.test(a.name)
+    );
+    return preferred || appBins[0];
+  }
+  return binAssets[0];
+}
+
+function parseSha256Digest(rawDigest: unknown): string | undefined {
+  if (typeof rawDigest !== 'string') return undefined;
+  const trimmed = rawDigest.trim();
+  if (/^sha256:[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.slice(7).toLowerCase();
+  }
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  return undefined;
 }
 
 function parseReleaseObject(
@@ -206,6 +257,8 @@ function parseReleaseObject(
   if (!version || !/\d/.test(version)) return null;
 
   const rawAssets: any[] = Array.isArray(rel.assets) ? rel.assets : [];
+  let manifestUrl: string | null = null;
+
   const assets: FirmwareReleaseAsset[] = rawAssets
     .filter(
       a =>
@@ -214,17 +267,41 @@ function parseReleaseObject(
         typeof a.browser_download_url === 'string' &&
         isFirmwareAssetName(a.name)
     )
-    .map(a => ({
-      name: a.name,
-      sizeBytes: typeof a.size === 'number' ? a.size : 0,
-      downloadUrl: a.browser_download_url
-    }));
+    .map(a => {
+      const name = String(a.name);
+      if (/manifest\.json$/i.test(name)) {
+        manifestUrl = a.browser_download_url;
+      }
+      return {
+        name,
+        sizeBytes: typeof a.size === 'number' ? a.size : 0,
+        downloadUrl: a.browser_download_url,
+        sha256: parseSha256Digest(a.digest),
+        isBinary: /\.bin$/i.test(name)
+      };
+    })
+    .filter(a => !/\.json$/i.test(a.name));
+
+  // Also parse SHA-256 checksums mentioned in release notes (`<64-hex>  firmware.bin`)
+  const bodyText = typeof rel.body === 'string' ? rel.body.trim() : '';
+  if (bodyText && assets.length > 0) {
+    for (const asset of assets) {
+      if (asset.sha256) continue;
+      const escapedName = asset.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`\\b([0-9a-fA-F]{64})\\b[^\\n]*${escapedName}`, 'i');
+      const revRe = new RegExp(`${escapedName}[^\\n]*\\b([0-9a-fA-F]{64})\\b`, 'i');
+      const m = bodyText.match(re) || bodyText.match(revRe);
+      if (m && m[1]) {
+        asset.sha256 = m[1].toLowerCase();
+      }
+    }
+  }
 
   return {
     version,
     rawTag: rawTag || version,
     title: String(rel.name || rawTag || `Firmware ${version}`).trim(),
-    notes: typeof rel.body === 'string' ? rel.body.trim() : '',
+    notes: bodyText,
     publishedAt: typeof rel.published_at === 'string' ? rel.published_at : null,
     htmlUrl:
       typeof rel.html_url === 'string' && rel.html_url
@@ -232,7 +309,8 @@ function parseReleaseObject(
         : `https://github.com/${repoSlug}/releases`,
     source: 'release',
     repoSlug,
-    assets
+    assets,
+    manifestUrl
   };
 }
 
@@ -287,14 +365,19 @@ function encodeGitHubPath(filePath: string): string {
 }
 
 /**
- * Fetches the newest published ESP32 firmware version from the configured GitHub repository.
- * Checks GitHub Releases first, and also inspects default-branch `.ino` / `config.h` firmware
- * definitions and repository tags so repos with or without formal GitHub Releases work seamlessly.
+ * Fetches both the newest published ESP32 firmware version and recent historical releases
+ * from any public GitHub repository (supports separate dedicated firmware repositories!).
+ *
+ * Inspects:
+ * 1. Formal GitHub Releases (`/releases?per_page=8`) including `.bin` assets and SHA-256 digests
+ * 2. Default-branch `.bin` builds (e.g. `dist/*.bin`, `build/*.bin`, `firmware/*.bin` served via CORS-enabled `raw.githubusercontent.com`)
+ * 3. Optional `firmware-manifest.json` / `manifest.json` in the repo root or `releases/` folder
+ * 4. Default-branch `.ino` / `config.h` `#define FIRMWARE_VERSION` and Git tags
  */
-export async function fetchLatestGitHubFirmware(
+export async function fetchGitHubFirmwareCatalog(
   repoInput?: string | null,
   options?: { force?: boolean; signal?: AbortSignal }
-): Promise<FirmwareReleaseInfo | null> {
+): Promise<GitHubFirmwareCatalogResult> {
   const parsedRepo = parseGitHubRepoSlug(repoInput || DEFAULT_FIRMWARE_GITHUB_REPO);
   if (!parsedRepo) {
     throw new Error('Enter a valid GitHub repository in owner/repo format.');
@@ -303,49 +386,35 @@ export async function fetchLatestGitHubFirmware(
   const { owner, repo, slug } = parsedRepo;
 
   if (!options?.force) {
-    const cached = readCachedRelease(slug);
+    const cached = readCachedCatalog(slug);
     if (cached) {
-      return cached.release;
+      return cached.catalog;
     }
   }
 
   const candidates: FirmwareReleaseInfo[] = [];
 
-  // 1. Check latest formal GitHub Release
-  const latestRelRes = await githubApiGet(
-    `https://api.github.com/repos/${owner}/${repo}/releases/latest`,
+  // 1. Fetch recent formal GitHub Releases (up to 8 so users can also pick/roll back versions)
+  const listRelRes = await githubApiGet(
+    `https://api.github.com/repos/${owner}/${repo}/releases?per_page=8`,
     options?.signal
   );
 
-  if (latestRelRes.status === 403 || latestRelRes.status === 429) {
-    throw new Error(buildRateLimitMessage(latestRelRes));
+  if (listRelRes.status === 403 || listRelRes.status === 429) {
+    throw new Error(buildRateLimitMessage(listRelRes));
   }
 
-  if (latestRelRes.ok) {
-    const relJson = await latestRelRes.json();
-    const parsed = parseReleaseObject(relJson, slug);
-    if (parsed) candidates.push(parsed);
-  } else if (latestRelRes.status === 404) {
-    // Check if there are pre-releases in /releases?per_page=5
-    const listRelRes = await githubApiGet(
-      `https://api.github.com/repos/${owner}/${repo}/releases?per_page=5`,
-      options?.signal
-    );
-    if (listRelRes.ok) {
-      const relList = await listRelRes.json();
-      if (Array.isArray(relList)) {
-        for (const item of relList) {
-          const parsed = parseReleaseObject(item, slug);
-          if (parsed) {
-            candidates.push(parsed);
-            break;
-          }
-        }
+  if (listRelRes.ok) {
+    const relList = await listRelRes.json();
+    if (Array.isArray(relList)) {
+      for (const item of relList) {
+        const parsed = parseReleaseObject(item, slug);
+        if (parsed) candidates.push(parsed);
       }
     }
   }
 
-  // 2. Verify repository metadata & scan default branch for `#define FIRMWARE_VERSION`
+  // 2. Verify repository metadata & scan default branch for CORS-friendly `.bin` files, `manifest.json`, and `#define FIRMWARE_VERSION`
   const repoMetaRes = await githubApiGet(
     `https://api.github.com/repos/${owner}/${repo}`,
     options?.signal
@@ -359,8 +428,12 @@ export async function fetchLatestGitHubFirmware(
 
   if (repoMetaRes.status === 403 || repoMetaRes.status === 429) {
     if (candidates.length > 0) {
-      writeCachedRelease(slug, candidates[0]);
-      return candidates[0];
+      const fallbackCatalog: GitHubFirmwareCatalogResult = {
+        latestRelease: candidates[0],
+        recentReleases: candidates
+      };
+      writeCachedCatalog(slug, fallbackCatalog);
+      return fallbackCatalog;
     }
     throw new Error(buildRateLimitMessage(repoMetaRes));
   }
@@ -371,7 +444,6 @@ export async function fetchLatestGitHubFirmware(
     const pushedAt =
       typeof repoMeta.pushed_at === 'string' ? repoMeta.pushed_at : null;
 
-    // Inspect recursive tree on default branch to locate `.ino` or `config.h` firmware version
     try {
       const treeRes = await githubApiGet(
         `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(
@@ -384,6 +456,117 @@ export async function fetchLatestGitHubFirmware(
         const treeData = await treeRes.json();
         const treeItems: any[] = Array.isArray(treeData?.tree) ? treeData.tree : [];
 
+        // Discover any committed `.bin` binaries in the repository (served with `Access-Control-Allow-Origin: *` via raw.githubusercontent.com!)
+        const repoBinNodes = treeItems.filter(
+          node =>
+            node &&
+            node.type === 'blob' &&
+            typeof node.path === 'string' &&
+            !node.path.includes('node_modules/') &&
+            /\.bin$/i.test(node.path)
+        );
+
+        const rawBinAssets: FirmwareReleaseAsset[] = repoBinNodes.map(node => {
+          const fileName = node.path.split('/').pop() || node.path;
+          const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
+            defaultBranch
+          )}/${encodeGitHubPath(node.path)}`;
+          return {
+            name: fileName,
+            sizeBytes: typeof node.size === 'number' ? node.size : 0,
+            downloadUrl: rawUrl,
+            corsSafeUrl: rawUrl,
+            isBinary: true
+          };
+        });
+
+        // Attach matching `corsSafeUrl` (`raw.githubusercontent.com/<owner>/<repo>/<tag>/...`) or defaultBranch fallback
+        if (repoBinNodes.length > 0 && candidates.length > 0) {
+          for (const rel of candidates) {
+            for (const asset of rel.assets) {
+              if (!asset.isBinary || asset.corsSafeUrl) continue;
+              const matchingNode = repoBinNodes.find(n => {
+                const base = (n.path.split('/').pop() || '').toLowerCase();
+                return base === asset.name.toLowerCase();
+              });
+              if (matchingNode && rel.rawTag) {
+                asset.corsSafeUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
+                  rel.rawTag
+                )}/${encodeGitHubPath(matchingNode.path)}`;
+              }
+            }
+          }
+        }
+
+        // Check if repository publishes a `firmware-manifest.json` or `ota/manifest.json`
+        const manifestNode = treeItems.find(
+          node =>
+            node &&
+            node.type === 'blob' &&
+            typeof node.path === 'string' &&
+            /(?:^|\/)(?:firmware-manifest|ota-manifest|manifest)\.json$/i.test(node.path) &&
+            !node.path.includes('node_modules/') &&
+            !node.path.includes('public/') &&
+            !node.path.includes('src/')
+        );
+
+        if (manifestNode) {
+          const manifestRawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
+            defaultBranch
+          )}/${encodeGitHubPath(manifestNode.path)}`;
+          try {
+            const mRes = await fetch(manifestRawUrl, { signal: options?.signal });
+            if (mRes.ok) {
+              const mJson = await mRes.json();
+              const mVer = normalizeFirmwareVersionLabel(
+                String(mJson?.version || mJson?.tag || '')
+              );
+              const mBinRel = typeof mJson?.bin === 'string'
+                ? mJson.bin
+                : typeof mJson?.url === 'string'
+                ? mJson.url
+                : '';
+              if (mVer && /\d/.test(mVer)) {
+                const resolvedBinUrl = mBinRel.startsWith('http')
+                  ? mBinRel
+                  : mBinRel
+                  ? `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
+                      defaultBranch
+                    )}/${encodeGitHubPath(mBinRel.replace(/^\.?\//, ''))}`
+                  : '';
+                const manifestAssets: FirmwareReleaseAsset[] = resolvedBinUrl
+                  ? [
+                      {
+                        name: resolvedBinUrl.split('/').pop() || `firmware-${mVer}.bin`,
+                        sizeBytes: typeof mJson?.size === 'number' ? mJson.size : 0,
+                        downloadUrl: resolvedBinUrl,
+                        corsSafeUrl: resolvedBinUrl.includes('raw.githubusercontent.com')
+                          ? resolvedBinUrl
+                          : undefined,
+                        sha256: parseSha256Digest(mJson?.sha256),
+                        isBinary: true
+                      }
+                    ]
+                  : rawBinAssets;
+
+                candidates.push({
+                  version: mVer,
+                  rawTag: String(mJson?.tag || `v${mVer}`),
+                  title: String(mJson?.title || `Firmware ${mVer}`),
+                  notes: String(mJson?.notes || mJson?.changelog || ''),
+                  publishedAt: typeof mJson?.published_at === 'string' ? mJson.published_at : pushedAt,
+                  htmlUrl: `https://github.com/${slug}`,
+                  source: 'release',
+                  repoSlug: slug,
+                  assets: manifestAssets,
+                  manifestUrl: manifestRawUrl
+                });
+              }
+            }
+          } catch {}
+        }
+
+        // Inspect firmware source headers for `#define FIRMWARE_VERSION`
         const firmwareFiles = treeItems
           .filter(
             node =>
@@ -414,6 +597,16 @@ export async function fetchLatestGitHubFirmware(
           const detectedVer = extractFirmwareVersionMacroFromSource(text);
           if (detectedVer) {
             const fileName = fileNode.path.split('/').pop() || fileNode.path;
+            const branchAssets: FirmwareReleaseAsset[] = [...rawBinAssets];
+            if (/\.ino$/i.test(fileName)) {
+              branchAssets.push({
+                name: fileName,
+                sizeBytes: typeof fileNode.size === 'number' ? fileNode.size : 0,
+                downloadUrl: rawUrl,
+                corsSafeUrl: rawUrl,
+                isBinary: false
+              });
+            }
             candidates.push({
               version: detectedVer,
               rawTag: detectedVer,
@@ -425,15 +618,7 @@ export async function fetchLatestGitHubFirmware(
               )}/${encodedPath}`,
               source: 'branch_source',
               repoSlug: slug,
-              assets: /\.ino$/i.test(fileName)
-                ? [
-                    {
-                      name: fileName,
-                      sizeBytes: typeof fileNode.size === 'number' ? fileNode.size : 0,
-                      downloadUrl: rawUrl
-                    }
-                  ]
-                : []
+              assets: branchAssets
             });
           }
         }
@@ -480,22 +665,158 @@ export async function fetchLatestGitHubFirmware(
   }
 
   if (candidates.length === 0) {
-    writeCachedRelease(slug, null);
-    return null;
+    const emptyCatalog: GitHubFirmwareCatalogResult = {
+      latestRelease: null,
+      recentReleases: []
+    };
+    writeCachedCatalog(slug, emptyCatalog);
+    return emptyCatalog;
   }
 
-  // Pick the highest version; if tied, prefer formal GitHub Release over branch source / tag
+  // Sort newest first; if versions tie, prefer formal Release with `.bin` over branch_source / tag
   candidates.sort((a, b) => {
     const cmp = compareFirmwareVersions(a.version, b.version);
-    if (cmp !== 0) return cmp; // if b > a, cmp === 1 -> b comes first
+    if (cmp !== 0) return cmp;
+    const aHasBin = selectPrimaryOtaBinaryAsset(a.assets) ? 0 : 1;
+    const bHasBin = selectPrimaryOtaBinaryAsset(b.assets) ? 0 : 1;
+    if (aHasBin !== bHasBin) return aHasBin - bHasBin;
     const sourcePriority = (s: FirmwareReleaseInfo['source']) =>
       s === 'release' ? 0 : s === 'tag' ? 1 : 2;
     return sourcePriority(a.source) - sourcePriority(b.source);
   });
 
-  const best = candidates[0];
-  writeCachedRelease(slug, best);
-  return best;
+  // Deduplicate by normalized version so each version appears once with its richest asset list
+  const deduped: FirmwareReleaseInfo[] = [];
+  const seenVersions = new Set<string>();
+  for (const item of candidates) {
+    const key = normalizeFirmwareVersionLabel(item.version).toLowerCase();
+    if (seenVersions.has(key)) continue;
+    seenVersions.add(key);
+    deduped.push(item);
+  }
+
+  const catalog: GitHubFirmwareCatalogResult = {
+    latestRelease: deduped[0] || null,
+    recentReleases: deduped.slice(0, 6)
+  };
+  writeCachedCatalog(slug, catalog);
+  return catalog;
+}
+
+export async function fetchLatestGitHubFirmware(
+  repoInput?: string | null,
+  options?: { force?: boolean; signal?: AbortSignal }
+): Promise<FirmwareReleaseInfo | null> {
+  const catalog = await fetchGitHubFirmwareCatalog(repoInput, options);
+  return catalog.latestRelease;
+}
+
+export class FirmwareCorsError extends Error {
+  public readonly assetUrl: string;
+  constructor(assetUrl: string, message?: string) {
+    super(
+      message ||
+        'Browser CORS blocked direct download from GitHub Releases S3 redirect. Use Wi-Fi Direct OTA (ESP32 fetches directly from GitHub), commit a CORS-accessible binary/manifest in your firmware repo, or drop the .bin file below.'
+    );
+    this.name = 'FirmwareCorsError';
+    this.assetUrl = assetUrl;
+  }
+}
+
+export async function computeSha256Hex(bytes: Uint8Array): Promise<string> {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const safeView = new Uint8Array(bytes);
+    const buf = await crypto.subtle.digest('SHA-256', safeView);
+    return Array.from(new Uint8Array(buf))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  return '';
+}
+
+/**
+ * Downloads a firmware `.bin` asset in the browser with streaming byte progress and SHA-256 verification.
+ * Automatically tries `corsSafeUrl` (`raw.githubusercontent.com` / GitHub Pages) first, then `downloadUrl`.
+ */
+export async function downloadFirmwareBinary(
+  asset: FirmwareReleaseAsset,
+  onProgress?: (loadedBytes: number, totalBytes: number) => void,
+  signal?: AbortSignal
+): Promise<{ bytes: Uint8Array; sha256: string }> {
+  const urlsToTry = Array.from(
+    new Set([asset.corsSafeUrl, asset.downloadUrl].filter((u): u is string => Boolean(u)))
+  );
+
+  let lastErr: any = null;
+  for (const url of urlsToTry) {
+    try {
+      const res = await fetch(url, { method: 'GET', mode: 'cors', signal });
+      if (!res.ok) {
+        lastErr = new Error(`HTTP ${res.status} when fetching ${asset.name}`);
+        continue;
+      }
+
+      const contentLen = Number(res.headers.get('content-length') || asset.sizeBytes || 0);
+      let bytes: Uint8Array;
+
+      if (res.body && typeof res.body.getReader === 'function') {
+        const reader = res.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let received = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            received += value.byteLength;
+            onProgress?.(received, contentLen || received);
+          }
+        }
+        bytes = new Uint8Array(received);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+      } else {
+        const ab = await res.arrayBuffer();
+        bytes = new Uint8Array(ab);
+        onProgress?.(bytes.byteLength, contentLen || bytes.byteLength);
+      }
+
+      if (bytes.byteLength < 1024) {
+        throw new Error(`Downloaded ${asset.name} is unexpectedly small (${bytes.byteLength} B).`);
+      }
+
+      const sha256 = await computeSha256Hex(bytes);
+      if (asset.sha256 && sha256 && asset.sha256.toLowerCase() !== sha256.toLowerCase()) {
+        throw new Error(
+          `SHA-256 checksum mismatch for ${asset.name} (expected ${asset.sha256.slice(0, 12)}…, got ${sha256.slice(0, 12)}…). Aborted before flashing.`
+        );
+      }
+
+      return { bytes, sha256 };
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw err;
+      if (err instanceof Error && err.message.includes('SHA-256 checksum mismatch')) {
+        throw err;
+      }
+      lastErr = err;
+    }
+  }
+
+  // TypeError: Failed to fetch from browser fetch() on github.com/.../releases/download/... is caused by GitHub's 302 S3 CORS policy
+  if (
+    lastErr instanceof TypeError ||
+    String(lastErr?.message || '').toLowerCase().includes('failed to fetch') ||
+    String(lastErr?.message || '').toLowerCase().includes('networkerror')
+  ) {
+    throw new FirmwareCorsError(asset.downloadUrl);
+  }
+
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error(`Unable to download ${asset.name} from GitHub.`);
 }
 
 export function formatBytesCompact(bytes: number): string {

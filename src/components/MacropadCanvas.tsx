@@ -62,6 +62,7 @@ interface MacropadCanvasProps {
   onPullFromUsb: () => void;
   onExecuteHardwareBinding: (binding: ActionBinding) => Promise<boolean>;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
+  onOpenSetupWizard?: () => void;
 }
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
@@ -113,7 +114,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   onStartDemoMode,
   onPullFromUsb,
   onExecuteHardwareBinding,
-  onSwitchBleHost
+  onSwitchBleHost,
+  onOpenSetupWizard
 }) => {
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [knobAngle, setKnobAngle] = useState(0);
@@ -798,6 +800,26 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
       )}
 
+      {/* Active Hardware Setup Mode Banner */}
+      {connection.connected && connection.telemetry?.setupMode && onOpenSetupWizard && (
+        <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/35 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <SlidersHorizontal className="w-4 h-4 text-amber-400 shrink-0" />
+            <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              <strong className="text-amber-300">Board is in Setup Mode.</strong> Choose your OS starter layout, name your 3 Bluetooth host slots, and optionally pair Wi-Fi or SmartCast TV.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenSetupWizard}
+            className="px-3.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/45 text-xs font-semibold text-amber-200 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shrink-0"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Open Setup Wizard</span>
+          </button>
+        </div>
+      )}
+
       {/* Connect / Demo Prompt Banner when disconnected on supported browsers */}
       {usbHardware.browserSupportsWebSerial && !connection.connected && !isSyncedWithHardware && (
         <div className="w-full max-w-2xl mt-3 px-3.5 py-3 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap">
@@ -809,12 +831,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               attached.
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
             <button
               type="button"
               onClick={onConnectUsbPad}
-              style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap flex items-center gap-1.5"
             >
               <Usb className="w-3.5 h-3.5" />
               <span>Connect USB pad</span>
@@ -827,6 +848,16 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               <PlayCircle className="w-3.5 h-3.5 text-emerald-400" />
               <span>Try demo mode</span>
             </button>
+            {onOpenSetupWizard && (
+              <button
+                type="button"
+                onClick={onOpenSetupWizard}
+                className="px-3 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Guided Setup</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -845,10 +876,23 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <div className="flex items-center gap-2 min-w-0">
               <span
                 className="w-2 h-2 rounded-full shrink-0"
-                style={{ backgroundColor: layer.color }}
+                style={{
+                  backgroundColor:
+                    connection.connected && connection.telemetry?.setupMode
+                      ? '#F59E0B'
+                      : layer.color
+                }}
               />
-              <span className="font-mono text-[10px] sm:text-[11px] font-bold text-sky-300 uppercase tracking-wider truncate tabular-nums">
-                {activeProfileName}
+              <span
+                className={`font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-wider truncate tabular-nums ${
+                  connection.connected && connection.telemetry?.setupMode
+                    ? 'text-amber-300'
+                    : 'text-sky-300'
+                }`}
+              >
+                {connection.connected && connection.telemetry?.setupMode
+                  ? `SETUP · ${activeProfileName}`
+                  : activeProfileName}
               </span>
             </div>
 

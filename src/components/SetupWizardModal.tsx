@@ -519,10 +519,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0"
-              style={{ backgroundColor: 'var(--accent)' }}
-            >
+            <div className="w-9 h-9 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white shrink-0">
               <Cpu className="w-4 h-4" />
             </div>
             <div className="min-w-0">
@@ -610,8 +607,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 <button
                   type="button"
                   onClick={onConnectUsbPad}
-                  style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Usb className="w-3.5 h-3.5" />
                   <span>Connect USB</span>
@@ -672,17 +668,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       key={card.id}
                       type="button"
                       onClick={() => handleSelectPrimaryOs(card.id)}
-                      style={
-                        selected
-                          ? {
-                              borderColor: 'var(--accent)',
-                              backgroundColor: 'rgba(var(--accent-rgb), 0.1)'
-                            }
-                          : undefined
-                      }
                       className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer space-y-1.5 ${
                         selected
-                          ? 'text-[var(--text-primary)]'
+                          ? 'bg-[var(--bg-elevated)] border-[var(--accent)] text-[var(--text-primary)]'
                           : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
                       }`}
                     >
@@ -894,17 +882,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                         type="button"
                         disabled={!connection.connected || bleBusy}
                         onClick={() => handleBleSlotSelect(slot)}
-                        style={
-                          active
-                            ? {
-                                borderColor: 'var(--accent)',
-                                backgroundColor: 'rgba(var(--accent-rgb), 0.12)'
-                              }
-                            : undefined
-                        }
                         className={`p-3 rounded-xl border text-left transition-colors cursor-pointer disabled:opacity-45 space-y-1 ${
                           active
-                            ? 'text-[var(--text-primary)]'
+                            ? 'bg-[var(--bg-elevated)] border-[var(--accent)] text-[var(--text-primary)]'
                             : 'bg-[var(--bg-panel)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
                         }`}
                       >
@@ -1020,8 +1000,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     type="button"
                     disabled={!connection.connected || wifiBusy || !wifiSsid.trim()}
                     onClick={handleSaveWifi}
-                    style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                    className="px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+                    className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
                   >
                     {wifiBusy && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
                     <span>{wifiBusy ? 'Connecting…' : 'Connect Wi-Fi'}</span>
@@ -1142,8 +1121,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       type="button"
                       disabled={tvBusy || !tvPin.trim()}
                       onClick={handleSubmitTvPin}
-                      style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                      className="px-3.5 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
+                      className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
                     >
                       Submit PIN
                     </button>
@@ -1309,8 +1287,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   }
                   setStep(s => Math.min(3, s + 1));
                 }}
-                style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
               >
                 <span>Continue</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -1320,8 +1297,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 type="button"
                 disabled={finishing}
                 onClick={handleFinishWizard}
-                style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold hover:opacity-90 disabled:opacity-50 cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 cursor-pointer whitespace-nowrap shrink-0"
               >
                 {finishing ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />

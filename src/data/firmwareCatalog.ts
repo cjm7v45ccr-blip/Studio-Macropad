@@ -7,6 +7,7 @@ import {
   KeyAppearance,
   KeyboardLayoutId,
   MacroStepConfig,
+  SlotRepeatMap,
   TextMacroRepeatConfig,
   defaultProfileAlias
 } from '../types/studio';
@@ -468,11 +469,25 @@ export function normalizeBrowserKeyToFirmware(
   return lower || code.toLowerCase();
 }
 
+const CANONICAL_MOD_ORDER = ['cmd', 'ctrl', 'alt', 'shift', 'win'] as const;
+
+function normalizeModToken(rawMod: string): string {
+  const clean = rawMod.trim().toLowerCase();
+  if (clean === 'gui') return 'cmd';
+  if (clean === 'opt') return 'alt';
+  return clean;
+}
+
 export function buildFirmwareShortcut(mods: string[], key: string): string {
   const cleanKey = (key || 'c').trim().toLowerCase();
-  const cleanMods = mods
-    .map(m => m.trim().toLowerCase())
-    .filter(m => ['cmd', 'gui', 'win', 'ctrl', 'alt', 'opt', 'shift'].includes(m));
+  const normalizedSet = new Set<string>();
+  for (const m of mods) {
+    const norm = normalizeModToken(m);
+    if (['cmd', 'ctrl', 'alt', 'shift', 'win'].includes(norm)) {
+      normalizedSet.add(norm);
+    }
+  }
+  const cleanMods = CANONICAL_MOD_ORDER.filter(m => normalizedSet.has(m));
 
   if (cleanMods.length === 0) {
     const upperKey = cleanKey.toUpperCase();
@@ -1173,3 +1188,665 @@ export function deriveAppearanceForAction(
     customIcon: existing?.customIcon
   };
 }
+
+// ===========================================================================
+// Deterministic Macro Intelligence: Canonical Signatures, Native Equivalence,
+// Smart Auto-Naming, Completeness Validation & Sequence Optimization
+// ===========================================================================
+
+const EQUIVALENT_BUILTIN_SHORTCUT_MAP: Record<string, string> = {
+  'SHORTCUT:cmd:c': 'MACRO:COPY',
+  'SHORTCUT:cmd:v': 'MACRO:PASTE',
+  'SHORTCUT:cmd:x': 'MACRO:CUT',
+  'SHORTCUT:cmd:z': 'MACRO:UNDO',
+  'SHORTCUT:cmd,shift:z': 'MACRO:REDO',
+  'SHORTCUT:cmd:a': 'MACRO:SELECT_ALL',
+  'SHORTCUT:cmd:s': 'MACRO:SAVE',
+  'SHORTCUT:cmd:space': 'MACRO:SPOTLIGHT',
+  'SHORTCUT:cmd,ctrl:q': 'MACRO:LOCK',
+  'SHORTCUT:cmd:t': 'MACRO:NEW_TAB',
+  'SHORTCUT:cmd:w': 'MACRO:CLOSE_TAB',
+  'SHORTCUT:ctrl:c': 'WIN:COPY',
+  'SHORTCUT:ctrl:v': 'WIN:PASTE',
+  'SHORTCUT:ctrl:x': 'WIN:CUT',
+  'SHORTCUT:ctrl:z': 'WIN:UNDO',
+  'SHORTCUT:ctrl:y': 'WIN:REDO',
+  'SHORTCUT:ctrl:a': 'WIN:SELECT_ALL',
+  'SHORTCUT:ctrl:s': 'WIN:SAVE',
+  'SHORTCUT:ctrl:t': 'WIN:NEW_TAB',
+  'SHORTCUT:ctrl:w': 'WIN:CLOSE_TAB',
+  'SHORTCUT::f13': 'KEY:F13',
+  'SHORTCUT::f14': 'KEY:F14',
+  'SHORTCUT::f15': 'KEY:F15',
+  'SHORTCUT::f16': 'KEY:F16',
+  'SHORTCUT:win:l': 'WIN:LOCK',
+  'SHORTCUT:win:s': 'WIN:SEARCH',
+  'SHORTCUT:win:e': 'WIN:EXPLORER',
+  'SHORTCUT:ctrl,shift:esc': 'WIN:TASK_MGR',
+  'SHORTCUT:shift,win:s': 'WIN:SNIP',
+  'SHORTCUT:win:d': 'WIN:DESKTOP',
+  'SHORTCUT:win:r': 'WIN:RUN'
+};
+
+/**
+ * Normalizes a single or compound firmware action string so equivalent modifier orders
+ * (`SHORTCUT:shift,cmd:4` vs `SHORTCUT:cmd,shift:4`) produce an identical wire string.
+ */
+export function canonicalizeFirmwareAction(action: string | undefined | null): string {
+  const raw = action || '';
+  if (!raw) return '';
+  if (raw.startsWith('TEXT:')) {
+    return raw;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (trimmed.includes('||')) {
+    return trimmed
+      .split('||')
+      .map(part => canonicalizeFirmwareAction(part))
+      .filter(Boolean)
+      .join('||');
+  }
+  if (trimmed.startsWith('SHORTCUT:') || trimmed.startsWith('KEY:F')) {
+    const parsed = parseFirmwareShortcut(trimmed);
+    return buildFirmwareShortcut(parsed.mods, parsed.key);
+  }
+  return trimmed;
+}
+
+/**
+ * Checks if a custom `SHORTCUT:...` action is 100% identical to a native firmware built-in
+ * (`MACRO:*`, `WIN:*`, or `KEY:F13..F16`). Returns the built-in spec when matched.
+ */
+export function findEquivalentBuiltInSpec(
+  action: string | undefined | null
+): FirmwareActionSpec | null {
+  const canon = canonicalizeFirmwareAction(action);
+  if (!canon) return null;
+  if (STATIC_MAP.has(canon)) {
+    return STATIC_MAP.get(canon) || null;
+  }
+  const mapped = EQUIVALENT_BUILTIN_SHORTCUT_MAP[canon];
+  if (mapped && STATIC_MAP.has(mapped)) {
+    return STATIC_MAP.get(mapped) || null;
+  }
+  return null;
+}
+
+/**
+ * Computes a deterministic, ID-agnostic canonical signature for any macro action + repeatConfig.
+ * - Ignores ephemeral `step.id` and `step.label`
+ * - Maps equivalent native shortcuts (`SHORTCUT:cmd:c` === `MACRO:COPY`)
+ * - Normalizes 2-step `[text(0ms,1x), enter(1x)]` === `TEXT:...\n`
+ * - Strips no-op trailing wait on final step when running once (`repeatCount === 1` and not looping)
+ */
+export function getMacroCanonicalSignature(
+  action: string | undefined | null,
+  repeatConfig?: TextMacroRepeatConfig
+): string {
+  const rawSteps =
+    repeatConfig?.steps && repeatConfig.steps.length > 0
+      ? repeatConfig.steps
+      : actionToMacroSteps(action || '', repeatConfig);
+
+  const loop = Boolean(repeatConfig?.loopUntilStopped);
+  const cycleCount = loop ? 0 : Math.max(1, repeatConfig?.repeatCount || 1);
+  const cycleDelay = loop || cycleCount > 1 ? Math.max(0, repeatConfig?.repeatDelayMs || 0) : 0;
+
+  if (rawSteps.length === 0) {
+    const canonAct = canonicalizeFirmwareAction(action);
+    if (!canonAct) return '';
+    const eq = findEquivalentBuiltInSpec(canonAct);
+    return `SINGLE:${eq ? eq.action : canonAct}`;
+  }
+
+  // Normalize [text(0ms, 1x), key=enter(1x)] when single-cycle
+  if (
+    !loop &&
+    cycleCount === 1 &&
+    rawSteps.length === 2 &&
+    rawSteps[0].actionType === 'text' &&
+    Math.max(0, rawSteps[0].delayMs || 0) === 0 &&
+    Math.max(1, rawSteps[0].repeatCount || 1) === 1 &&
+    rawSteps[1].actionType === 'key' &&
+    rawSteps[1].value.trim().toLowerCase() === 'enter' &&
+    Math.max(1, rawSteps[1].repeatCount || 1) === 1
+  ) {
+    return `SINGLE:TEXT:${rawSteps[0].value}\n`;
+  }
+
+  // Single step, single cycle, 1x repeat -> pure single action signature
+  if (
+    !loop &&
+    cycleCount === 1 &&
+    rawSteps.length === 1 &&
+    rawSteps[0].actionType !== 'delay' &&
+    Math.max(1, rawSteps[0].repeatCount || 1) === 1
+  ) {
+    const stepAct = canonicalizeFirmwareAction(stepToFirmwareAction(rawSteps[0]));
+    if (!stepAct) return '';
+    const eq = findEquivalentBuiltInSpec(stepAct);
+    return `SINGLE:${eq ? eq.action : stepAct}`;
+  }
+
+  const normalizedPartList = rawSteps.map((st, idx) => {
+    const reps = Math.max(1, st.repeatCount || 1);
+    const isLast = idx === rawSteps.length - 1;
+    const rawDelay = Math.max(0, st.delayMs || 0);
+    // Final action step delay is unused when reps === 1 and macro runs once
+    const effectiveDelay =
+      st.actionType === 'delay'
+        ? rawDelay
+        : isLast && !loop && cycleCount === 1 && reps === 1
+        ? 0
+        : rawDelay;
+
+    if (st.actionType === 'delay') {
+      return `WAIT:${effectiveDelay * reps}`;
+    }
+    const fw = canonicalizeFirmwareAction(stepToFirmwareAction(st));
+    const eq = findEquivalentBuiltInSpec(fw);
+    const token = eq ? eq.action : fw || `${st.actionType}:${st.value}`;
+    return `ACT:${token}@d${effectiveDelay}x${reps}`;
+  });
+
+  return `SEQ:${loop ? 'LOOP' : `R${cycleCount}`}@${cycleDelay}|${normalizedPartList.join('->')}`;
+}
+
+/**
+ * Computes a canonical 11-slot layout signature for a profile so duplicate presets are detected.
+ */
+export function getProfilePresetSignature(
+  slots: Record<HardwareSlotId, string>,
+  repeatConfigs?: SlotRepeatMap,
+  profileId: HardwareProfileId = 'HOST1'
+): string {
+  return HARDWARE_SLOTS.map(slot => {
+    const rc =
+      repeatConfigs?.[`${profileId}:${slot}`] ||
+      (profileId === 'HOST1' ? repeatConfigs?.[`MAC:${slot}`] : undefined);
+    const sig = getMacroCanonicalSignature(slots[slot] || '', rc);
+    return `${slot}=${sig}`;
+  }).join('&');
+}
+
+const GENERIC_NAME_PATTERNS: RegExp[] = [
+  /^untitled(\s+macro)?$/i,
+  /^new\s+macro(\s*\d*)?$/i,
+  /^set\s+macros?$/i,
+  /^custom\s+macro(\s*\d*)?$/i,
+  /^macro(\s*\d+)?$/i,
+  /^my\s+macro(\s*\d*)?$/i,
+  /^(∞\s*|\d+×\s*)?\d+\s+steps?(\b.*)?$/i,
+  /^shortcut:\s*/i,
+  /^text\s+macro$/i,
+  /^slot\s+b\d+/i,
+  /^key\s+\d+\s+macro$/i,
+  /^knob\s+.*\s+macro$/i
+];
+
+/**
+ * Returns true when a macro name is empty or a generic placeholder like "Untitled Macro", "Set Macro", or "3 Steps".
+ */
+export function isGenericMacroName(name: string | undefined | null): boolean {
+  const clean = (name || '').trim();
+  if (!clean) return true;
+  return GENERIC_NAME_PATTERNS.some(re => re.test(clean));
+}
+
+function toTitleWords(raw: string): string {
+  return raw
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+const WELL_KNOWN_SHORTCUT_NAMES: Record<string, string> = {
+  'SHORTCUT:cmd,shift:4': 'Screenshot Region (⌘⇧4)',
+  'SHORTCUT:cmd,shift:3': 'Full Screenshot (⌘⇧3)',
+  'SHORTCUT:cmd,shift:5': 'Screen Capture Bar (⌘⇧5)',
+  'SHORTCUT:cmd,opt:esc': 'Force Quit (⌘⌥Esc)',
+  'SHORTCUT:cmd,alt:esc': 'Force Quit (⌘⌥Esc)',
+  'SHORTCUT:cmd,shift:p': 'Command Palette (⌘⇧P)',
+  'SHORTCUT:ctrl,shift:p': 'Command Palette (⌃⇧P)',
+  'SHORTCUT:cmd,shift:m': 'Toggle Mic Mute (⌘⇧M)',
+  'SHORTCUT:ctrl,shift:m': 'Toggle Mic Mute (⌃⇧M)',
+  'SHORTCUT:cmd,shift:v': 'Toggle Video (⌘⇧V)',
+  'SHORTCUT:cmd:k': 'Quick Switcher (⌘K)',
+  'SHORTCUT:ctrl:k': 'Quick Switcher (⌃K)',
+  'SHORTCUT:cmd:/': 'Toggle Comment (⌘/)',
+  'SHORTCUT:ctrl:/': 'Toggle Comment (⌃/)',
+  'SHORTCUT:cmd:b': 'Toggle Sidebar (⌘B)',
+  'SHORTCUT:ctrl:`': 'Toggle Terminal (⌃`)',
+  'SHORTCUT:cmd,shift:t': 'Reopen Closed Tab (⌘⇧T)',
+  'SHORTCUT:ctrl,shift:t': 'Reopen Closed Tab (⌃⇧T)',
+  'SHORTCUT:cmd:r': 'Reload Page (⌘R)',
+  'SHORTCUT:ctrl:r': 'Reload Page (⌃R)',
+  'SHORTCUT:alt:tab': 'Switch Window (Alt+Tab)',
+  'SHORTCUT:cmd:tab': 'Switch App (⌘Tab)'
+};
+
+/**
+ * Synthesizes a clean, human-readable studio name from the actual steps and cycle behavior.
+ */
+export function suggestSmartMacroName(
+  steps: MacroStepConfig[],
+  repeatConfig?: Partial<TextMacroRepeatConfig>
+): string {
+  const actionSteps = steps.filter(s => s.actionType !== 'delay');
+  if (actionSteps.length === 0) {
+    return 'Timed Wait';
+  }
+
+  const loop = Boolean(repeatConfig?.loopUntilStopped);
+  const cycleCount = Math.max(1, repeatConfig?.repeatCount || 1);
+  const cycleMs = Math.max(25, repeatConfig?.repeatDelayMs || 500);
+
+  // Spotlight / Win Search / Run launcher pattern: [Spotlight/Search -> Text -> Enter]
+  if (actionSteps.length >= 2) {
+    const firstFw = canonicalizeFirmwareAction(stepToFirmwareAction(actionSteps[0]));
+    const second = actionSteps[1];
+    if (
+      (firstFw === 'MACRO:SPOTLIGHT' ||
+        firstFw === 'WIN:SEARCH' ||
+        firstFw === 'WIN:RUN' ||
+        firstFw === 'SHORTCUT:cmd:space' ||
+        firstFw === 'SHORTCUT:win:r') &&
+      second.actionType === 'text' &&
+      second.value.trim()
+    ) {
+      const target = toTitleWords(second.value.trim().slice(0, 20));
+      return `Launch ${target}`;
+    }
+  }
+
+  // Copy -> Paste workflow
+  if (actionSteps.length === 2) {
+    const a0 = canonicalizeFirmwareAction(stepToFirmwareAction(actionSteps[0]));
+    const a1 = canonicalizeFirmwareAction(stepToFirmwareAction(actionSteps[1]));
+    if (
+      (a0 === 'MACRO:PASTE' || a0 === 'WIN:PASTE' || a0 === 'SHORTCUT:cmd:v' || a0 === 'SHORTCUT:ctrl:v') &&
+      actionSteps[1].actionType === 'key' &&
+      actionSteps[1].value.toLowerCase() === 'enter'
+    ) {
+      return 'Paste & Submit';
+    }
+    if (
+      actionSteps[0].actionType === 'text' &&
+      actionSteps[0].value.trim() &&
+      actionSteps[1].actionType === 'key' &&
+      actionSteps[1].value.toLowerCase() === 'enter'
+    ) {
+      const snippet = actionSteps[0].value.trim();
+      if (/^git\s+/i.test(snippet)) {
+        return `Run ${snippet.slice(0, 22)}`;
+      }
+      if (/^npm\s+|^pnpm\s+|^yarn\s+/i.test(snippet)) {
+        return `Run ${snippet.slice(0, 22)}`;
+      }
+      return `Send "${snippet.slice(0, 18)}${snippet.length > 18 ? '…' : ''}"`;
+    }
+  }
+
+  // Single action step
+  if (actionSteps.length === 1) {
+    const only = actionSteps[0];
+    const fw = canonicalizeFirmwareAction(stepToFirmwareAction(only));
+    const stepReps = Math.max(1, only.repeatCount || 1);
+
+    let base = '';
+    if (only.actionType === 'text') {
+      const snippet = only.value.trim();
+      base = snippet
+        ? `Type "${snippet.slice(0, 18)}${snippet.length > 18 ? '…' : ''}"`
+        : 'Type Snippet';
+    } else if (only.actionType === 'key') {
+      base = `Press ${(only.value || 'Enter').toUpperCase()}`;
+    } else if (fw && WELL_KNOWN_SHORTCUT_NAMES[fw]) {
+      base = WELL_KNOWN_SHORTCUT_NAMES[fw];
+    } else if (fw) {
+      const eq = findEquivalentBuiltInSpec(fw);
+      if (eq) {
+        base = eq.label;
+      } else if (fw.startsWith('SHORTCUT:')) {
+        base = `Shortcut ${formatShortcutPretty(fw)}`;
+      } else {
+        base = describeFirmwareAction(fw).fullLabel;
+      }
+    } else {
+      base = describeMacroStep(only).fullLabel;
+    }
+
+    if (loop) {
+      return `Loop ${base.replace(/^Press\s+/i, '')} · ${cycleMs} ms`.slice(0, 40);
+    }
+    if (cycleCount > 1) {
+      return `${base} (${cycleCount}×)`.slice(0, 40);
+    }
+    if (stepReps > 1) {
+      return `${base} (${stepReps}×)`.slice(0, 40);
+    }
+    return base.slice(0, 40);
+  }
+
+  // General multi-step sequence: combine first & last meaningful action labels
+  const firstDesc = describeMacroStep(actionSteps[0]).shortLabel;
+  const lastDesc = describeMacroStep(actionSteps[actionSteps.length - 1]).shortLabel;
+  const chainLabel =
+    actionSteps.length === 2
+      ? `${firstDesc} → ${lastDesc}`
+      : `${firstDesc} → ${lastDesc} (${actionSteps.length} steps)`;
+
+  if (loop) {
+    return `Loop ${firstDesc} → ${lastDesc}`.slice(0, 40);
+  }
+  if (cycleCount > 1) {
+    return `${firstDesc} → ${lastDesc} (${cycleCount}×)`.slice(0, 40);
+  }
+  return chainLabel.slice(0, 40);
+}
+
+export interface MacroSequenceValidationIssue {
+  stepId?: string;
+  stepIndex?: number;
+  message: string;
+}
+
+export interface MacroSequenceValidationResult {
+  valid: boolean;
+  builtAction: string;
+  byteLength: number;
+  maxBytes: number;
+  issues: MacroSequenceValidationIssue[];
+}
+
+/**
+ * Strictly validates every step, delay, text snippet, TV payload, and total 256-byte NVS wire budget
+ * so incomplete or half-configured macros can never be saved or assigned.
+ */
+export function validateMacroSequenceDraft(
+  steps: MacroStepConfig[],
+  repeatConfig?: Partial<TextMacroRepeatConfig>
+): MacroSequenceValidationResult {
+  const MAX_BYTES = 256;
+  const issues: MacroSequenceValidationIssue[] = [];
+
+  if (!steps || steps.length === 0) {
+    issues.push({
+      message: 'Add at least one action step before saving.'
+    });
+    return {
+      valid: false,
+      builtAction: '',
+      byteLength: 0,
+      maxBytes: MAX_BYTES,
+      issues
+    };
+  }
+
+  const nonDelaySteps = steps.filter(s => s.actionType !== 'delay');
+  if (nonDelaySteps.length === 0) {
+    issues.push({
+      message: 'A macro cannot contain only Wait steps — add at least one action step.'
+    });
+  }
+
+  steps.forEach((step, idx) => {
+    const stepNum = idx + 1;
+    if (step.actionType === 'delay') {
+      if ((step.delayMs || 0) < 10) {
+        issues.push({
+          stepId: step.id,
+          stepIndex: idx,
+          message: `Step ${stepNum}: Set wait duration to at least 10 ms (or remove the 0 ms wait step).`
+        });
+      }
+      return;
+    }
+
+    if (step.actionType === 'text') {
+      if (!step.value || step.value.length === 0) {
+        issues.push({
+          stepId: step.id,
+          stepIndex: idx,
+          message: `Step ${stepNum}: Enter text to type.`
+        });
+        return;
+      }
+      const check = validateTextMacroInput(step.value, 123);
+      if (!check.valid) {
+        issues.push({
+          stepId: step.id,
+          stepIndex: idx,
+          message: `Step ${stepNum}: ${check.error || 'Invalid text snippet.'}`
+        });
+      }
+      return;
+    }
+
+    if (step.actionType === 'key') {
+      if (!step.value || !isSupportedFirmwareKey(step.value)) {
+        issues.push({
+          stepId: step.id,
+          stepIndex: idx,
+          message: `Step ${stepNum}: Choose a valid keyboard key.`
+        });
+      }
+      return;
+    }
+
+    if (step.actionType === 'tv') {
+      if (!step.value) {
+        issues.push({
+          stepId: step.id,
+          stepIndex: idx,
+          message: `Step ${stepNum}: Select a Smart TV command or streaming app.`
+        });
+        return;
+      }
+      if (step.value.startsWith('TVAPP:')) {
+        const parts = step.value.split(':');
+        if (parts.length < 3 || !parts[1]?.trim() || !parts[2]?.trim()) {
+          issues.push({
+            stepId: step.id,
+            stepIndex: idx,
+            message: `Step ${stepNum}: Enter both a SmartCast App ID and Namespace.`
+          });
+          return;
+        }
+      }
+      if (step.value.startsWith('TVKEY:')) {
+        const parts = step.value.split(':');
+        const cs = Number(parts[1]);
+        const cd = Number(parts[2]);
+        if (
+          parts.length !== 3 ||
+          parts[1] === '' ||
+          parts[2] === '' ||
+          !Number.isInteger(cs) ||
+          cs < 0 ||
+          !Number.isInteger(cd) ||
+          cd < 0
+        ) {
+          issues.push({
+            stepId: step.id,
+            stepIndex: idx,
+            message: `Step ${stepNum}: Enter valid non-negative SmartCast Codeset and Code integers.`
+          });
+          return;
+        }
+      }
+    }
+
+    const fw = stepToFirmwareAction(step);
+    if (!fw || !isValidFirmwareAction(fw)) {
+      issues.push({
+        stepId: step.id,
+        stepIndex: idx,
+        message: `Step ${stepNum}: Complete the action configuration.`
+      });
+    }
+  });
+
+  const fullCfg: TextMacroRepeatConfig = {
+    text: repeatConfig?.text ?? '',
+    followUpKey: repeatConfig?.followUpKey ?? '',
+    keyDelayMs: repeatConfig?.keyDelayMs ?? 0,
+    repeatCount: Math.max(1, repeatConfig?.repeatCount ?? 1),
+    loopUntilStopped: Boolean(repeatConfig?.loopUntilStopped),
+    repeatDelayMs: Math.max(25, repeatConfig?.repeatDelayMs ?? 500),
+    steps
+  };
+
+  const builtAction =
+    issues.length === 0 ? canonicalizeFirmwareAction(buildFirmwareActionFromTextConfig(fullCfg)) : '';
+  const byteLength = builtAction ? new TextEncoder().encode(builtAction).length : 0;
+
+  if (issues.length === 0 && !builtAction) {
+    issues.push({
+      message: 'Sequence could not compile into a valid firmware command.'
+    });
+  } else if (byteLength > MAX_BYTES) {
+    issues.push({
+      message: `Compiled payload is ${byteLength} bytes, exceeding the ${MAX_BYTES}-byte ESP32 NVS slot limit. Shorten text or reduce steps.`
+    });
+  }
+
+  return {
+    valid: issues.length === 0 && Boolean(builtAction) && byteLength <= MAX_BYTES,
+    builtAction,
+    byteLength,
+    maxBytes: MAX_BYTES,
+    issues
+  };
+}
+
+export interface MacroOptimizationReport {
+  canOptimize: boolean;
+  reasons: string[];
+  optimizedSteps: MacroStepConfig[];
+}
+
+/**
+ * Inspects a step sequence for redundant constructs:
+ * 1. Consecutive Wait steps -> merged into a single Wait step
+ * 2. Adjacent identical action steps with matching delay -> collapsed into `repeatCount`
+ * 3. Canonical shortcut normalization (`SHORTCUT:shift,cmd:4` -> `SHORTCUT:cmd,shift:4`)
+ * 4. Unused trailing post-step wait on the final step when running once (`repeatCount === 1` & not looping)
+ */
+export function analyzeMacroOptimizations(
+  steps: MacroStepConfig[],
+  repeatConfig?: Partial<TextMacroRepeatConfig>
+): MacroOptimizationReport {
+  if (!steps || steps.length === 0) {
+    return { canOptimize: false, reasons: [], optimizedSteps: steps };
+  }
+
+  const reasons: string[] = [];
+  const next: MacroStepConfig[] = [];
+  const loop = Boolean(repeatConfig?.loopUntilStopped);
+  const cycleCount = Math.max(1, repeatConfig?.repeatCount || 1);
+
+  for (const rawStep of steps) {
+    const step: MacroStepConfig = {
+      ...rawStep,
+      value:
+        rawStep.actionType === 'shortcut'
+          ? canonicalizeFirmwareAction(rawStep.value)
+          : rawStep.value,
+      repeatCount: Math.max(1, rawStep.repeatCount || 1),
+      delayMs: Math.max(0, rawStep.delayMs || 0)
+    };
+
+    const prev = next[next.length - 1];
+
+    // 1. Merge consecutive delay steps
+    if (prev && prev.actionType === 'delay' && step.actionType === 'delay') {
+      const mergedMs =
+        prev.delayMs * Math.max(1, prev.repeatCount || 1) +
+        step.delayMs * Math.max(1, step.repeatCount || 1);
+      next[next.length - 1] = {
+        ...prev,
+        delayMs: mergedMs,
+        repeatCount: 1,
+        label: 'Wait / Delay'
+      };
+      if (!reasons.includes('Merge consecutive Wait steps')) {
+        reasons.push('Merge consecutive Wait steps');
+      }
+      continue;
+    }
+
+    // 2. Collapse consecutive identical action steps when transition delays match
+    if (
+      prev &&
+      prev.actionType !== 'delay' &&
+      step.actionType === prev.actionType &&
+      canonicalizeFirmwareAction(stepToFirmwareAction(prev)) !== '' &&
+      canonicalizeFirmwareAction(stepToFirmwareAction(prev)) ===
+        canonicalizeFirmwareAction(stepToFirmwareAction(step)) &&
+      prev.delayMs === step.delayMs
+    ) {
+      next[next.length - 1] = {
+        ...prev,
+        repeatCount: Math.max(1, prev.repeatCount || 1) + Math.max(1, step.repeatCount || 1)
+      };
+      if (!reasons.includes('Collapse repeated identical steps into step repeat count')) {
+        reasons.push('Collapse repeated identical steps into step repeat count');
+      }
+      continue;
+    }
+
+    // 3. Fold standalone Wait step directly into preceding action step's post-step wait when preceding action has 0ms wait and 1x repeat
+    if (
+      prev &&
+      prev.actionType !== 'delay' &&
+      step.actionType === 'delay' &&
+      prev.repeatCount === 1 &&
+      prev.delayMs === 0
+    ) {
+      const waitTotal = step.delayMs * step.repeatCount;
+      if (waitTotal > 0 && waitTotal <= 60000) {
+        next[next.length - 1] = {
+          ...prev,
+          delayMs: waitTotal
+        };
+        if (!reasons.includes('Fold standalone Wait into preceding step transition delay')) {
+          reasons.push('Fold standalone Wait into preceding step transition delay');
+        }
+        continue;
+      }
+    }
+
+    next.push(step);
+  }
+
+  // 4. Strip trailing post-step wait on final action step when macro runs once and final step has 1x repeat
+  if (next.length > 0 && !loop && cycleCount === 1) {
+    const last = next[next.length - 1];
+    if (last.actionType !== 'delay' && last.repeatCount === 1 && last.delayMs > 0) {
+      next[next.length - 1] = {
+        ...last,
+        delayMs: 0
+      };
+      if (!reasons.includes('Clear unused trailing delay after final step')) {
+        reasons.push('Clear unused trailing delay after final step');
+      }
+    }
+  }
+
+  return {
+    canOptimize: reasons.length > 0,
+    reasons,
+    optimizedSteps: next
+  };
+}
+
+export function optimizeMacroSteps(
+  steps: MacroStepConfig[],
+  repeatConfig?: Partial<TextMacroRepeatConfig>
+): MacroStepConfig[] {
+  return analyzeMacroOptimizations(steps, repeatConfig).optimizedSteps;
+}
+

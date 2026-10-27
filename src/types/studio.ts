@@ -229,10 +229,24 @@ export interface SyncConflictState {
 }
 
 export interface HardwareEventPacket {
-  event: 'press' | 'turn' | 'profile' | 'connection' | 'config' | 'ble_host' | 'setup' | 'mode' | string;
+  event:
+    | 'press'
+    | 'turn'
+    | 'profile'
+    | 'connection'
+    | 'config'
+    | 'ble_host'
+    | 'setup'
+    | 'mode'
+    | 'ota'
+    | string;
   mode?: string;
   setup_mode?: boolean;
   setup_done?: boolean;
+  phase?: string;
+  percent?: number;
+  progress?: number;
+  message?: string;
   slot?: string;
   dir?: string;
   action?: string;
@@ -365,6 +379,9 @@ export interface FirmwareReleaseAsset {
   name: string;
   sizeBytes: number;
   downloadUrl: string;
+  corsSafeUrl?: string;
+  sha256?: string;
+  isBinary?: boolean;
 }
 
 export interface FirmwareReleaseInfo {
@@ -377,6 +394,7 @@ export interface FirmwareReleaseInfo {
   source: 'release' | 'tag' | 'branch_source';
   repoSlug: string;
   assets: FirmwareReleaseAsset[];
+  manifestUrl?: string | null;
 }
 
 export type FirmwareUpdateStatus =
@@ -392,9 +410,34 @@ export interface FirmwareUpdateState {
   status: FirmwareUpdateStatus;
   installedVersion: string | null;
   latestRelease: FirmwareReleaseInfo | null;
+  recentReleases?: FirmwareReleaseInfo[];
   checkedAt: string | null;
   repoSlug: string;
   error: string | null;
+}
+
+export type FirmwareInstallMethod = 'wifi_ota' | 'usb_serial' | 'local_bin';
+
+export type FirmwareInstallStage =
+  | 'idle'
+  | 'backing_up'
+  | 'downloading'
+  | 'verifying_hash'
+  | 'flashing'
+  | 'rebooting'
+  | 'complete'
+  | 'error';
+
+export interface FirmwareInstallProgress {
+  stage: FirmwareInstallStage;
+  method: FirmwareInstallMethod;
+  percent: number;
+  message: string;
+  bytesWritten?: number;
+  totalBytes?: number;
+  sha256?: string;
+  targetVersion?: string;
+  corsBlocked?: boolean;
 }
 
 export interface ConflictWarning {
