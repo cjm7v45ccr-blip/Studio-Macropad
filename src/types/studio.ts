@@ -229,7 +229,10 @@ export interface SyncConflictState {
 }
 
 export interface HardwareEventPacket {
-  event: 'press' | 'turn' | 'profile' | 'connection' | 'config' | 'ble_host' | string;
+  event: 'press' | 'turn' | 'profile' | 'connection' | 'config' | 'ble_host' | 'setup' | 'mode' | string;
+  mode?: string;
+  setup_mode?: boolean;
+  setup_done?: boolean;
   slot?: string;
   dir?: string;
   action?: string;
@@ -413,6 +416,7 @@ export type UsbTransport = 'webserial' | 'demo' | 'disconnected';
 
 export interface HardwareTelemetry {
   apiVersion: number;
+  setupMode: boolean;
   activeProfile: HardwareProfileId;
   wifiConnected: boolean;
   ip: string;

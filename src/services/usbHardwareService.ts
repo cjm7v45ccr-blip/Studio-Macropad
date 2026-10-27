@@ -26,11 +26,16 @@ export interface FirmwareStatusPacket {
   ok?: boolean;
   api_version?: number;
   rev?: number;
+  mode?: string;
+  setup_mode?: boolean | number;
+  setup_complete?: boolean | number;
+  setup_done?: boolean | number;
   device: {
     id: string;
     name: string;
     firmware: string;
     connection_type?: string;
+    setup_mode?: boolean;
   };
   connection?: {
     wifi_connected: boolean;
@@ -46,6 +51,7 @@ export interface FirmwareStatusPacket {
     free_heap: number;
     http_api_enabled?: boolean;
     events_enabled?: boolean;
+    setup_mode?: boolean;
   };
   tv?: {
     configured: boolean;
@@ -89,14 +95,43 @@ export interface FirmwareStatusPacket {
   tv_dial?: string;
 }
 
+export interface SetupModeSignal {
+  active: boolean;
+  source: 'status' | 'event' | 'beacon' | 'demo';
+  deviceId: string;
+}
+
 type ConnectionListener = (info: DeviceConnectionInfo) => void;
 type ConnectStatusListener = (status: FirmwareStatusPacket) => void;
 type HardwareEventListener = (event: HardwareEventPacket) => void;
+type SetupModeListener = (signal: SetupModeSignal) => void;
 type DebugLogListener = (logs: DebugLogEntry[]) => void;
+
+function extractSetupModeFlag(pkt: any): boolean {
+  if (!pkt || typeof pkt !== 'object') return false;
+  if (String(pkt.mode || '').trim().toLowerCase() === 'setup') return true;
+  if (pkt.setup_mode === true || pkt.setup_mode === 1) return true;
+  if (pkt.device?.setup_mode === true) return true;
+  if (pkt.diagnostics?.setup_mode === true) return true;
+  if (pkt.setup_complete === false || pkt.setup_complete === 0) return true;
+  if (pkt.setup_done === false || pkt.setup_done === 0) return true;
+  return false;
+}
+
+function extractSetupClearedFlag(pkt: any): boolean {
+  if (!pkt || typeof pkt !== 'object') return false;
+  const modeLower = String(pkt.mode || '').trim().toLowerCase();
+  if (modeLower === 'ready' || modeLower === 'normal') return true;
+  if (pkt.setup_mode === false || pkt.setup_mode === 0) return true;
+  if (pkt.setup_complete === true || pkt.setup_complete === 1) return true;
+  if (pkt.setup_done === true || pkt.setup_done === 1) return true;
+  return false;
+}
 
 interface VirtualDemoPadState {
   rev: number;
   firmware: string;
+  setupMode: boolean;
   mode: 'MAC' | 'TV';
   h1Name: string;
   h2Name: string;
@@ -195,6 +230,7 @@ class PadLinkService {
   private manualDisconnect = false;
   private desiredEventsEnabled = true;
   private rebootResyncTimer: number | null = null;
+  private pendingBootSetupBeacon = false;
 
   private debugLogs: DebugLogEntry[] = [];
 
@@ -209,6 +245,7 @@ class PadLinkService {
   private connListeners = new Set<ConnectionListener>();
   private connectStatusListeners = new Set<ConnectStatusListener>();
   private eventListeners = new Set<HardwareEventListener>();
+  private setupModeListeners = new Set<SetupModeListener>();
   private debugListeners = new Set<DebugLogListener>();
 
   constructor() {
@@ -289,6 +326,19 @@ class PadLinkService {
     return () => {
       this.eventListeners.delete(fn);
     };
+  }
+
+  public onSetupModeDetected(fn: SetupModeListener) {
+    this.setupModeListeners.add(fn);
+    return () => {
+      this.setupModeListeners.delete(fn);
+    };
+  }
+
+  private emitSetupMode(active: boolean, source: SetupModeSignal['source'], deviceId?: string) {
+    const resolvedId = deviceId || this.connectionInfo.deviceId || 'studio-pad';
+    const signal: SetupModeSignal = { active, source, deviceId: resolvedId };
+    this.setupModeListeners.forEach(fn => fn(signal));
   }
 
   private emitConnection() {
@@ -472,7 +522,7 @@ class PadLinkService {
   /**
    * Start full interactive Demo Mode with no physical pad attached
    */
-  public async connectDemoMode(): Promise<FirmwareStatusPacket> {
+  public async connectDemoMode(opts?: { setupMode?: boolean }): Promise<FirmwareStatusPacket> {
     await this.disconnect(false);
     this.manualDisconnect = false;
     this.demoModeActive = true;
@@ -524,6 +574,7 @@ class PadLinkService {
       this.demoPad = {
         rev,
         firmware: '3.2-PRO',
+        setupMode: Boolean(opts?.setupMode),
         mode,
         h1Name,
         h2Name,
@@ -533,30 +584,40 @@ class PadLinkService {
         h2: initialH2,
         h3: initialH3,
         tv: initialTv,
-        bleConnected: true,
+        bleConnected: !opts?.setupMode,
         bleSlot,
-        wifiConnected: true,
-        ip: '192.168.1.42',
-        ssid: 'Studio-WiFi',
-        tvConfigured: true,
-        tvPaired: true,
-        tvHost: '192.168.1.50',
+        wifiConnected: !opts?.setupMode,
+        ip: opts?.setupMode ? '' : '192.168.1.42',
+        ssid: opts?.setupMode ? '' : 'Studio-WiFi',
+        tvConfigured: !opts?.setupMode,
+        tvPaired: !opts?.setupMode,
+        tvHost: opts?.setupMode ? '' : '192.168.1.50',
         tvPort: 7345,
         httpApiEnabled: false,
         eventsEnabled: this.desiredEventsEnabled,
         pairingPendingHost: '',
         pairingPendingPort: 7345
       };
+    } else if (typeof opts?.setupMode === 'boolean') {
+      this.demoPad.setupMode = opts.setupMode;
     }
 
     this.logSerial(
       'info',
-      'Started Demo Mode (virtual Studio Pad · firmware 3.2-PRO · 3 BLE Hosts + TV)'
+      `Started Demo Mode (virtual Studio Pad · firmware 3.2-PRO${
+        this.demoPad.setupMode ? ' · Setup Mode active' : ' · 3 BLE Hosts + TV'
+      })`
     );
+    if (this.demoPad.setupMode) {
+      this.logSerial('rx', JSON.stringify({ event: 'setup', mode: 'setup', setup_mode: true }));
+    }
     await this.call({ path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 });
     const status = await this.call<FirmwareStatusPacket>({ path: '/api/status' });
     this.applyTelemetryFromStatus(status, 'DEMO:3200');
     this.connectStatusListeners.forEach(fn => fn(status));
+    if (this.demoPad.setupMode) {
+      this.emitSetupMode(true, 'demo', 'demo-pad');
+    }
     return status;
   }
 
@@ -565,6 +626,7 @@ class PadLinkService {
     wifiConnected?: boolean;
     tvPaired?: boolean;
     firmwareVersion?: string;
+    setupMode?: boolean;
   }) {
     if (!this.demoModeActive || !this.demoPad) return;
     if (typeof patch.bleConnected === 'boolean') {
@@ -573,8 +635,7 @@ class PadLinkService {
     if (typeof patch.wifiConnected === 'boolean') {
       this.demoPad.wifiConnected = patch.wifiConnected;
       if (!patch.wifiConnected) this.demoPad.ip = '';
-      else if (!patch.wifiConnected && !this.demoPad.ip) this.demoPad.ip = '192.168.1.42';
-      else if (patch.wifiConnected && !this.demoPad.ip) this.demoPad.ip = '192.168.1.42';
+      else if (!this.demoPad.ip) this.demoPad.ip = '192.168.1.42';
     }
     if (typeof patch.tvPaired === 'boolean') {
       this.demoPad.tvPaired = patch.tvPaired;
@@ -583,8 +644,22 @@ class PadLinkService {
     if (typeof patch.firmwareVersion === 'string' && patch.firmwareVersion.trim()) {
       this.demoPad.firmware = patch.firmwareVersion.trim();
     }
+    const prevSetup = this.demoPad.setupMode;
+    if (typeof patch.setupMode === 'boolean') {
+      this.demoPad.setupMode = patch.setupMode;
+    }
     const status = this.buildDemoStatusPacket();
     this.applyTelemetryFromStatus(status, 'DEMO:3200');
+    if (typeof patch.setupMode === 'boolean' && patch.setupMode !== prevSetup) {
+      const setupEvt: HardwareEventPacket = {
+        event: 'setup',
+        mode: patch.setupMode ? 'setup' : 'ready',
+        setup_mode: patch.setupMode
+      };
+      this.logSerial('rx', JSON.stringify(setupEvt));
+      this.handleHardwareEvent(setupEvt);
+      return;
+    }
     if (this.demoPad.eventsEnabled) {
       const evt: HardwareEventPacket = {
         event: 'connection',
@@ -701,15 +776,18 @@ class PadLinkService {
     const activeProf: HardwareProfileId = d.mode === 'TV' ? 'TV' : activeHostProf;
     return {
       ok: true,
-      api_version: 1,
+      api_version: 2,
       rev: d.rev,
+      mode: d.setupMode ? 'setup' : 'ready',
+      setup_mode: d.setupMode,
       ble_slot: d.bleSlot,
       ssid: d.ssid,
       device: {
         id: 'demo-pad',
         name: 'Studio MacroPad',
         firmware: d.firmware || '3.2-PRO',
-        connection_type: 'DEMO'
+        connection_type: 'DEMO',
+        setup_mode: d.setupMode
       },
       connection: {
         wifi_connected: d.wifiConnected,
@@ -724,7 +802,8 @@ class PadLinkService {
       diagnostics: {
         free_heap: 184320,
         http_api_enabled: d.httpApiEnabled,
-        events_enabled: d.eventsEnabled
+        events_enabled: d.eventsEnabled,
+        setup_mode: d.setupMode
       },
       tv: {
         configured: d.tvConfigured,
@@ -1150,6 +1229,37 @@ class PadLinkService {
       });
     }
 
+    if (path === '/api/setup/complete') {
+      d.setupMode = false;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      return reply({
+        ok: true,
+        mode: 'ready',
+        setup_mode: false,
+        message: 'Setup completed and stored in MacroPad NVS.'
+      });
+    }
+
+    if (path === '/api/setup/enter') {
+      d.setupMode = true;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      if (d.eventsEnabled) {
+        const evt: HardwareEventPacket = {
+          event: 'setup',
+          mode: 'setup',
+          setup_mode: true
+        };
+        this.logSerial('rx', JSON.stringify(evt));
+        this.handleHardwareEvent(evt);
+      }
+      return reply({
+        ok: true,
+        mode: 'setup',
+        setup_mode: true,
+        message: 'MacroPad entered Setup Mode.'
+      });
+    }
+
     return reply({ ok: false, message: `Unknown endpoint: ${path}` });
   }
 
@@ -1191,6 +1301,7 @@ class PadLinkService {
 
       this.port = port;
       this.buf = '';
+      this.pendingBootSetupBeacon = false;
       this.writer = port.writable.getWriter();
 
       const decoder = new TextDecoderStream();
@@ -1207,7 +1318,7 @@ class PadLinkService {
       await new Promise(r => setTimeout(r, 2000));
       if (this.port !== port) return null;
 
-      // Enable or sync real-time hardware events (`press`, `turn`, `profile`, `connection`, `config`)
+      // Enable or sync real-time hardware events (`press`, `turn`, `profile`, `connection`, `config`, `setup`)
       const evVal = this.desiredEventsEnabled ? 1 : 0;
       try {
         await this.call({ path: '/api/events/set', enabled: evVal });
@@ -1222,9 +1333,17 @@ class PadLinkService {
         throw new Error('Unexpected status reply from MacroPad.');
       }
       const status = await this.enrichStatusWithAllProfiles(rawStatus, 3000);
+      if (this.pendingBootSetupBeacon && !extractSetupClearedFlag(status)) {
+        status.mode = 'setup';
+        status.setup_mode = true;
+      }
+      this.pendingBootSetupBeacon = false;
 
       this.applyTelemetryFromStatus(status, vendorProduct);
       this.connectStatusListeners.forEach(fn => fn(status));
+      if (extractSetupModeFlag(status)) {
+        this.emitSetupMode(true, 'status', status.device?.id || 'studio-pad');
+      }
       return status;
     } catch (err: any) {
       await this.cleanupPort();
@@ -1370,7 +1489,33 @@ class PadLinkService {
           }
 
           if (msg.event) {
+            if (this.isOpening && extractSetupModeFlag(msg)) {
+              this.pendingBootSetupBeacon = true;
+            }
             this.handleHardwareEvent(msg as HardwareEventPacket);
+          } else if (
+            !this.pending &&
+            !msg.profiles &&
+            (extractSetupModeFlag(msg) || extractSetupClearedFlag(msg))
+          ) {
+            // Unsolicited boot or loop setup beacon such as {"mode":"setup"}
+            const active = extractSetupModeFlag(msg);
+            if (this.isOpening && active) {
+              this.pendingBootSetupBeacon = true;
+            }
+            if (this.connectionInfo.telemetry) {
+              this.connectionInfo = {
+                ...this.connectionInfo,
+                telemetry: {
+                  ...this.connectionInfo.telemetry,
+                  setupMode: active
+                }
+              };
+              this.emitConnection();
+            }
+            if (this.connectionInfo.connected) {
+              this.emitSetupMode(active, 'beacon', this.connectionInfo.deviceId);
+            }
           } else {
             if (msg.profiles && msg.device) {
               this.applyTelemetryFromStatus(
@@ -1405,7 +1550,31 @@ class PadLinkService {
   }
 
   private handleHardwareEvent(e: HardwareEventPacket) {
-    if (e.event === 'connection' && this.connectionInfo.telemetry) {
+    if (
+      e.event === 'setup' ||
+      e.event === 'mode' ||
+      extractSetupModeFlag(e) ||
+      extractSetupClearedFlag(e)
+    ) {
+      const nextSetup = extractSetupModeFlag(e) || (e.event === 'setup' && !extractSetupClearedFlag(e));
+      if (this.connectionInfo.telemetry) {
+        this.connectionInfo = {
+          ...this.connectionInfo,
+          telemetry: {
+            ...this.connectionInfo.telemetry,
+            setupMode: nextSetup
+          }
+        };
+        this.emitConnection();
+      }
+      if (this.connectionInfo.connected) {
+        this.emitSetupMode(
+          nextSetup,
+          this.demoModeActive ? 'demo' : 'event',
+          this.connectionInfo.deviceId
+        );
+      }
+    } else if (e.event === 'connection' && this.connectionInfo.telemetry) {
       this.connectionInfo = {
         ...this.connectionInfo,
         telemetry: {
@@ -1484,8 +1653,15 @@ class PadLinkService {
       activeHost
     );
 
+    const hasExplicitSetupField =
+      extractSetupModeFlag(pkt) || extractSetupClearedFlag(pkt);
+    const setupMode = hasExplicitSetupField
+      ? extractSetupModeFlag(pkt)
+      : Boolean(this.connectionInfo.telemetry?.setupMode);
+
     const telemetry: HardwareTelemetry = {
       apiVersion: Number(pkt.api_version ?? 1),
+      setupMode,
       activeProfile,
       wifiConnected: Boolean(pkt.connection?.wifi_connected ?? pkt.wifi_connected),
       ip: pkt.connection?.ip || pkt.ip || '',
@@ -2056,6 +2232,108 @@ class PadLinkService {
     }
     await this.fetchStatus().catch(() => {});
     return res;
+  }
+
+  /**
+   * Marks hardware Setup Mode complete (`/api/setup/complete`).
+   * Gracefully falls back if connected firmware hasn't implemented `/api/setup/complete` yet.
+   */
+  public async completeSetupMode(): Promise<{ ok: boolean; message: string }> {
+    if (this.connectionInfo.connected) {
+      try {
+        const res = await this.call(
+          {
+            path: '/api/setup/complete',
+            setup_done: 1
+          },
+          2500
+        );
+        if (this.connectionInfo.telemetry) {
+          this.connectionInfo = {
+            ...this.connectionInfo,
+            telemetry: {
+              ...this.connectionInfo.telemetry,
+              setupMode: false
+            }
+          };
+          this.emitConnection();
+        }
+        this.emitSetupMode(false, 'status', this.connectionInfo.deviceId);
+        return {
+          ok: true,
+          message: res?.message || 'Board exited Setup Mode and saved configuration.'
+        };
+      } catch {
+        if (this.connectionInfo.telemetry) {
+          this.connectionInfo = {
+            ...this.connectionInfo,
+            telemetry: {
+              ...this.connectionInfo.telemetry,
+              setupMode: false
+            }
+          };
+          this.emitConnection();
+        }
+        this.emitSetupMode(false, 'status', this.connectionInfo.deviceId);
+        return {
+          ok: true,
+          message: 'Setup completed locally.'
+        };
+      }
+    }
+    return { ok: true, message: 'Setup completed offline.' };
+  }
+
+  /**
+   * Requests the connected MacroPad (or Demo Pad) to enter Setup Mode (`/api/setup/enter`).
+   * If firmware does not yet expose `/api/setup/enter`, still activates Setup Mode in telemetry and opens the wizard.
+   */
+  public async enterSetupMode(): Promise<{ ok: boolean; message: string }> {
+    if (this.connectionInfo.connected) {
+      try {
+        const res = await this.call(
+          {
+            path: '/api/setup/enter',
+            setup_done: 0
+          },
+          2500
+        );
+        if (this.connectionInfo.telemetry) {
+          this.connectionInfo = {
+            ...this.connectionInfo,
+            telemetry: {
+              ...this.connectionInfo.telemetry,
+              setupMode: true
+            }
+          };
+          this.emitConnection();
+        }
+        if (!this.demoModeActive) {
+          this.emitSetupMode(true, 'event', this.connectionInfo.deviceId);
+        }
+        return {
+          ok: true,
+          message: res?.message || 'MacroPad entered Setup Mode.'
+        };
+      } catch {
+        if (this.connectionInfo.telemetry) {
+          this.connectionInfo = {
+            ...this.connectionInfo,
+            telemetry: {
+              ...this.connectionInfo.telemetry,
+              setupMode: true
+            }
+          };
+          this.emitConnection();
+        }
+        this.emitSetupMode(true, 'event', this.connectionInfo.deviceId);
+        return {
+          ok: true,
+          message: 'Opened Setup Mode.'
+        };
+      }
+    }
+    return { ok: false, message: 'Connect MacroPad via USB or start Demo Mode first.' };
   }
 
   private async cleanupPort() {

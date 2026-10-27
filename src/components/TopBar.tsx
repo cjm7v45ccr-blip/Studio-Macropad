@@ -29,7 +29,8 @@ import {
   Loader2,
   Bluetooth,
   Wifi,
-  PlayCircle
+  PlayCircle,
+  SlidersHorizontal
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -53,6 +54,7 @@ interface TopBarProps {
   onRedo: () => void;
   onSaveToDevice: () => void;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
+  onOpenSetupWizard?: () => void;
   searchSlot?: React.ReactNode;
 }
 
@@ -77,6 +79,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onRedo,
   onSaveToDevice,
   onSwitchBleHost,
+  onOpenSetupWizard,
   searchSlot
 }) => {
   const [renamingId, setRenamingId] = useState<HardwareProfileId | null>(null);
@@ -209,6 +212,30 @@ export const TopBar: React.FC<TopBarProps> = ({
             </span>
           )}
         </button>
+
+        {connection.connected && connection.telemetry?.setupMode && onOpenSetupWizard && (
+          <button
+            type="button"
+            onClick={onOpenSetupWizard}
+            title="Board is in Setup Mode — open guided setup wizard"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+            <span>Finish Setup</span>
+          </button>
+        )}
+
+        {connection.connected && connection.telemetry?.setupMode && onOpenSetupWizard && (
+          <button
+            type="button"
+            onClick={onOpenSetupWizard}
+            title="Board is in Setup Mode — open guided setup wizard"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+            <span>Finish Setup</span>
+          </button>
+        )}
 
         {/* Live Multi-Host BLE & Wi-Fi Badges when connected */}
         {connection.connected && connection.telemetry && (

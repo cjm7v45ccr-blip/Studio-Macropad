@@ -13,7 +13,8 @@ import {
   Tv,
   Loader2,
   Info,
-  PlayCircle
+  PlayCircle,
+  SlidersHorizontal
 } from 'lucide-react';
 
 interface UsbConnectModalProps {
@@ -22,6 +23,7 @@ interface UsbConnectModalProps {
   onClose: () => void;
   connection: DeviceConnectionInfo;
   onPullFromUsb: () => Promise<boolean>;
+  onOpenSetupWizard?: () => void;
 }
 
 export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
@@ -29,7 +31,8 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
   initialError,
   onClose,
   connection,
-  onPullFromUsb
+  onPullFromUsb,
+  onOpenSetupWizard
 }) => {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(initialError || null);
@@ -60,11 +63,11 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
     }
   };
 
-  const handleStartDemo = async () => {
+  const handleStartDemo = async (setupMode = false) => {
     setBusy(true);
     setErrorMsg(null);
     try {
-      await usbHardware.connectDemoMode();
+      await usbHardware.connectDemoMode({ setupMode });
       onClose();
     } catch (err: any) {
       setErrorMsg(err?.message || 'Could not start demo mode.');
@@ -204,10 +207,29 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                 </div>
               )}
 
+              {telemetry?.setupMode && onOpenSetupWizard && (
+                <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-amber-300">
+                    Board reported Setup Mode
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenSetupWizard();
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-[11px] font-semibold text-amber-200 cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <SlidersHorizontal className="w-3 h-3" />
+                    <span>Open Setup Wizard</span>
+                  </button>
+                </div>
+              )}
+
               {isDemo && telemetry && (
                 <div className="pt-2 border-t border-emerald-500/20 space-y-1.5">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300/80">
-                    Demo Link Simulator (test link-down states)
+                  <div className="text-[10px] font-semibold text-emerald-300/80">
+                    Demo Link & Setup Simulator
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     <button
@@ -217,7 +239,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                           bleConnected: !telemetry.bleConnected
                         })
                       }
-                      className="px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[10px] font-mono text-[var(--text-primary)] cursor-pointer"
+                      className="px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[10px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
                     >
                       BLE: {telemetry.bleConnected ? 'Connected' : 'Down'}
                     </button>
@@ -228,7 +250,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                           wifiConnected: !telemetry.wifiConnected
                         })
                       }
-                      className="px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[10px] font-mono text-[var(--text-primary)] cursor-pointer"
+                      className="px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[10px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
                     >
                       Wi-Fi: {telemetry.wifiConnected ? 'Connected' : 'Down'}
                     </button>
@@ -239,9 +261,20 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                           tvPaired: !telemetry.tvPaired
                         })
                       }
-                      className="px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[10px] font-mono text-[var(--text-primary)] cursor-pointer"
+                      className="px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[10px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
                     >
                       TV: {telemetry.tvPaired ? 'Paired' : 'Unpaired'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !telemetry.setupMode;
+                        usbHardware.setDemoLinkState({ setupMode: next });
+                        if (next) onClose();
+                      }}
+                      className="px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-amber-500/40 text-[10px] font-mono text-amber-300 cursor-pointer whitespace-nowrap"
+                    >
+                      Setup Mode: {telemetry.setupMode ? 'Active' : 'Trigger'}
                     </button>
                   </div>
                 </div>
@@ -327,15 +360,27 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
             </button>
 
             {(!connection.connected || !isDemo) && (
-              <button
-                type="button"
-                disabled={isConnecting}
-                onClick={handleStartDemo}
-                className="w-full py-2.5 px-4 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <PlayCircle className="w-4 h-4 text-emerald-400" />
-                <span>Try demo mode</span>
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={isConnecting}
+                  onClick={() => handleStartDemo(false)}
+                  className="py-2.5 px-3 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <PlayCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Try demo mode</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isConnecting}
+                  onClick={() => handleStartDemo(true)}
+                  className="py-2.5 px-3 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                  title="Simulate connecting a factory-fresh MacroPad that reports Setup Mode over Web Serial"
+                >
+                  <SlidersHorizontal className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span>Demo setup mode</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
