@@ -262,7 +262,7 @@ export const FirmwareUpdateBanner: React.FC<{
         <span className="font-mono text-[var(--text-primary)]">
           {firmwareUpdate.repoSlug}
         </span>
-        . Flash directly from this app via Wi-Fi Direct OTA or USB Serial below — NVS button profiles, Bluetooth hosts, and Wi-Fi credentials remain intact.
+        . Flash directly from this app via USB Serial below — NVS button profiles, Bluetooth hosts, and Wi-Fi credentials remain intact.
       </p>
 
       {latestRelease.notes && (
@@ -343,7 +343,6 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [showBlueprint, setShowBlueprint] = useState(false);
   const [blueprintTab, setBlueprintTab] = useState<BlueprintTab>('github_actions');
-  const localBinInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setRepoDraft(settings.firmwareRepo || DEFAULT_FIRMWARE_GITHUB_REPO);
@@ -461,71 +460,6 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
     }
   };
 
-  const handleWifiDirectOta = async () => {
-    if (!connection.connected) {
-      onToast('Connect your MacroPad via USB (or start Demo Mode) first', 'error');
-      return;
-    }
-    if (!padWifiOnline) {
-      onToast('Connect the MacroPad to Wi-Fi first, or use Flash via USB Serial', 'error');
-      return;
-    }
-    if (!selectedRelease || !primaryBinAsset) {
-      onToast('Select a GitHub release with an attached .bin firmware image', 'error');
-      return;
-    }
-
-    try {
-      await runOptionalBackupStep('wifi_ota', selectedRelease.version);
-
-      setInstallProgress({
-        stage: 'downloading',
-        method: 'wifi_ota',
-        percent: 8,
-        message: `Sending ${primaryBinAsset.name} URL to ESP32 over USB…`,
-        sha256: primaryBinAsset.sha256,
-        targetVersion: selectedRelease.version
-      });
-
-      const res = await usbHardware.installFirmwareViaWifiOta({
-        url: primaryBinAsset.downloadUrl,
-        version: selectedRelease.version,
-        sha256: primaryBinAsset.sha256,
-        onProgress: (pct, msg, phase) => {
-          setInstallProgress({
-            stage: phase,
-            method: 'wifi_ota',
-            percent: pct,
-            message: msg,
-            sha256: primaryBinAsset.sha256,
-            targetVersion: selectedRelease.version
-          });
-        }
-      });
-
-      setInstallProgress({
-        stage: 'complete',
-        method: 'wifi_ota',
-        percent: 100,
-        message: res.message,
-        sha256: primaryBinAsset.sha256,
-        targetVersion: selectedRelease.version
-      });
-      onToast(res.message, 'success');
-      await onCheckFirmwareUpdate({ force: true, silent: true });
-    } catch (err: any) {
-      const msg = err?.message || 'Wi-Fi Direct OTA failed';
-      setInstallProgress({
-        stage: 'error',
-        method: 'wifi_ota',
-        percent: 0,
-        message: msg,
-        targetVersion: selectedRelease.version
-      });
-      onToast(msg, 'error');
-    }
-  };
-
   const handleUsbSerialOta = async () => {
     if (!connection.connected) {
       onToast('Connect your MacroPad via USB (or start Demo Mode) first', 'error');
@@ -626,80 +560,6 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
     }
   };
 
-  const handleLocalBinFileSelected = async (file: File) => {
-    if (!connection.connected) {
-      onToast('Connect your MacroPad via USB (or start Demo Mode) before flashing', 'error');
-      return;
-    }
-
-    const inferredVerMatch = file.name.match(/v?(\d+\.\d+(?:\.\d+)?(?:-[A-Za-z0-9._-]+)?)/);
-    const inferredVersion =
-      inferredVerMatch?.[1] || selectedRelease?.version || 'custom-local';
-
-    try {
-      await runOptionalBackupStep('local_bin', inferredVersion);
-
-      const ab = await file.arrayBuffer();
-      const bytes = new Uint8Array(ab);
-      if (bytes.byteLength < 1024) {
-        throw new Error(`"${file.name}" is too small (${bytes.byteLength} B) to be an ESP32 image.`);
-      }
-
-      setInstallProgress({
-        stage: 'verifying_hash',
-        method: 'local_bin',
-        percent: 10,
-        bytesWritten: 0,
-        totalBytes: bytes.byteLength,
-        message: `Computing SHA-256 for ${file.name}…`,
-        targetVersion: inferredVersion
-      });
-
-      const sha256 = await computeSha256Hex(bytes);
-
-      const res = await usbHardware.installFirmwareViaUsbSerial({
-        bytes,
-        version: inferredVersion,
-        sha256,
-        onProgress: (pct, sent, total, msg) => {
-          setInstallProgress({
-            stage: pct >= 96 ? 'rebooting' : 'flashing',
-            method: 'local_bin',
-            percent: pct,
-            bytesWritten: sent,
-            totalBytes: total,
-            sha256,
-            message: msg,
-            targetVersion: inferredVersion
-          });
-        }
-      });
-
-      setInstallProgress({
-        stage: 'complete',
-        method: 'local_bin',
-        percent: 100,
-        bytesWritten: bytes.byteLength,
-        totalBytes: bytes.byteLength,
-        sha256,
-        message: `${res.message} (${file.name})`,
-        targetVersion: inferredVersion
-      });
-      onToast(`${res.message} (${file.name})`, 'success');
-      await onCheckFirmwareUpdate({ force: true, silent: true });
-    } catch (err: any) {
-      const msg = err?.message || 'Failed to flash local .bin file';
-      setInstallProgress({
-        stage: 'error',
-        method: 'local_bin',
-        percent: 0,
-        message: msg,
-        targetVersion: inferredVersion
-      });
-      onToast(msg, 'error');
-    }
-  };
-
   const activeSnippet =
     blueprintTab === 'manifest'
       ? BLUEPRINT_MANIFEST_SNIPPET
@@ -735,7 +595,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
             <span>ESP32 Firmware & Separate GitHub Repo Updater</span>
           </div>
           <p className="text-xs text-[var(--text-muted)]">
-            Point at any public GitHub firmware repository to check releases, verify SHA-256 checksums, and flash over Wi-Fi OTA or USB Serial.
+            Point at any public GitHub firmware repository to check releases, verify SHA-256 checksums, and flash over USB Serial.
           </p>
         </div>
 
@@ -981,36 +841,8 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
           </label>
         )}
 
-        {/* Three Flash Action Buttons */}
+        {/* Flash Action Button (USB Serial Only) */}
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
-          <button
-            type="button"
-            disabled={
-              isFlashing ||
-              !connection.connected ||
-              !padWifiOnline ||
-              !primaryBinAsset
-            }
-            onClick={handleWifiDirectOta}
-            title={
-              !connection.connected
-                ? 'Connect MacroPad via USB or Demo Mode first'
-                : !padWifiOnline
-                ? 'MacroPad Wi-Fi is offline — connect Wi-Fi below or use Flash via USB Serial'
-                : !primaryBinAsset
-                ? 'Selected GitHub release does not contain a .bin binary'
-                : 'ESP32 downloads the .bin directly from GitHub over Wi-Fi (bypasses browser CORS)'
-            }
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <Wifi className="w-3.5 h-3.5" />
-            <span>
-              {selectedRelease
-                ? `Install v${selectedRelease.version} via Wi-Fi OTA`
-                : 'Install via Wi-Fi OTA'}
-            </span>
-          </button>
-
           <button
             type="button"
             disabled={isFlashing || !connection.connected || !primaryBinAsset}
@@ -1020,45 +852,20 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
                 ? 'Connect MacroPad via USB or Demo Mode first'
                 : !primaryBinAsset
                 ? 'Selected GitHub release does not contain a .bin binary'
-                : 'Downloads .bin in browser, verifies SHA-256, and streams 512B chunks over USB WebSerial (no Wi-Fi needed)'
+                : 'Downloads .bin in browser, verifies SHA-256, and streams 512B chunks over USB WebSerial'
             }
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
           >
-            <Usb className="w-3.5 h-3.5 text-[var(--accent)]" />
-            <span>Flash via USB Serial</span>
+            <Usb className="w-3.5 h-3.5" />
+            <span>
+              {selectedRelease
+                ? `Flash v${selectedRelease.version} via USB Serial`
+                : 'Flash via USB Serial'}
+            </span>
           </button>
-
-          <button
-            type="button"
-            disabled={isFlashing || !connection.connected}
-            onClick={() => localBinInputRef.current?.click()}
-            title={
-              !connection.connected
-                ? 'Connect MacroPad via USB or Demo Mode first'
-                : 'Select a compiled ESP32 .bin file from disk and stream over USB Serial'
-            }
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <FileUp className="w-3.5 h-3.5 text-[var(--accent)]" />
-            <span>Flash Local .bin File</span>
-          </button>
-
-          <input
-            ref={localBinInputRef}
-            type="file"
-            accept=".bin,application/octet-stream"
-            onChange={e => {
-              const file = e.target.files?.[0];
-              if (file) {
-                handleLocalBinFileSelected(file);
-              }
-              e.target.value = '';
-            }}
-            className="hidden"
-          />
         </div>
 
-        {/* Live Staged Flash Progress & CORS Recovery */}
+        {/* Live Staged Flash Progress */}
         {installProgress && installProgress.stage !== 'idle' && (
           <div
             className={`p-3 rounded-xl border space-y-2 text-xs ${
@@ -1113,36 +920,6 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
                 </span>
               )}
             </div>
-
-            {/* Actionable recovery when GitHub Releases S3 blocks browser fetch() via CORS */}
-            {installProgress.stage === 'error' && installProgress.corsBlocked && primaryBinAsset && (
-              <div className="pt-2 border-t border-rose-500/25 flex items-center gap-2 flex-wrap">
-                {padWifiOnline && (
-                  <button
-                    type="button"
-                    onClick={handleWifiDirectOta}
-                    className="px-2.5 py-1.5 rounded-lg bg-[var(--accent)] text-white text-[11px] font-semibold cursor-pointer whitespace-nowrap"
-                  >
-                    Use Wi-Fi Direct OTA Instead
-                  </button>
-                )}
-                <a
-                  href={primaryBinAsset.downloadUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-strong)] text-[11px] font-semibold text-[var(--text-primary)] whitespace-nowrap"
-                >
-                  1. Download {primaryBinAsset.name}
-                </a>
-                <button
-                  type="button"
-                  onClick={() => localBinInputRef.current?.click()}
-                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-strong)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-                >
-                  2. Flash Downloaded .bin
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>
