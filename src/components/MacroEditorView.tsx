@@ -422,6 +422,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   onJumpToControl
 }) => {
   const [libraryQuery, setLibraryQuery] = useState('');
+  const [libraryTab, setLibraryTab] = useState<'all' | 'saved' | 'templates'>('all');
   const [importDrawerOpen, setImportDrawerOpen] = useState(false);
   const [importProfileId, setImportProfileId] =
     useState<HardwareProfileId>(activeProfileId);
@@ -870,6 +871,16 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   const testAvail = getActionTestAvailability(builtAction, connection);
   const isSimulating = Boolean(activeRepeatJob?.id.startsWith('sim-'));
   const isJobRunning = Boolean(activeRepeatJob);
+
+  const similarMacro = useMemo(() => {
+    const trimmedName = macroName.trim().toLowerCase();
+    if (!trimmedName || trimmedName === 'untitled macro') return null;
+    return customMacros.find(
+      m =>
+        m.id !== selectedMacroId &&
+        (m.name.trim().toLowerCase() === trimmedName || m.action === builtAction)
+    );
+  }, [customMacros, macroName, builtAction, selectedMacroId]);
 
   const handlePreviewSimulation = () => {
     if (!isSequenceValid) return;
@@ -1334,6 +1345,27 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     Edit step
                   </button>
                 )}
+              </div>
+            )}
+
+            {similarMacro && (
+              <div className="px-3 py-2 rounded-lg bg-[rgba(var(--accent-rgb),0.10)] border border-[var(--accent)] flex items-center justify-between gap-3 text-xs text-[var(--text-primary)]">
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertCircle className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                  <span className="truncate">
+                    Similar macro detected: "{similarMacro.name}" has matching actions.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMacroId(similarMacro.id);
+                    loadIntoBuilder(similarMacro.action, similarMacro.name, similarMacro.repeatConfig);
+                  }}
+                  className="font-semibold text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  Load existing
+                </button>
               </div>
             )}
           </header>
