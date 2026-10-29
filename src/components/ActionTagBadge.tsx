@@ -72,6 +72,11 @@ const PREFIX_STYLE_MAP: Record<string, PrefixTagTheme> = {
     text: "text-slate-300 [:root[data-theme='light']_&]:text-slate-700",
     border: 'border-slate-500/35'
   },
+  DELAY: {
+    bg: 'bg-slate-500/15',
+    text: "text-slate-300 [:root[data-theme='light']_&]:text-slate-700",
+    border: 'border-slate-500/35'
+  },
   SEQ: {
     bg: 'bg-fuchsia-500/15',
     text: "text-fuchsia-300 [:root[data-theme='light']_&]:text-fuchsia-700",

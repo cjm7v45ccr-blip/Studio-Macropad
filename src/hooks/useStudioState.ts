@@ -47,11 +47,14 @@ import {
   describeFirmwareAction,
   findEquivalentBuiltInSpec,
   firmwareActionToBinding,
+  firmwareSupports512ByteSlotSave,
+  firmwareSupportsNativeDelay,
   getMacroCanonicalSignature,
   getProfilePresetSignature,
   isGenericMacroName,
   isMultiStepOrTimedMacro,
   isValidFirmwareAction,
+  isValidSlotAssignment,
   requiresUsbSequenceExecution,
   sanitizeFirmwareAlias,
   stepToFirmwareAction,
@@ -416,13 +419,15 @@ function computeProfileDiffs(
     const padSlots = getSerializedProfileSlots(pad, profId);
     const profLabel = defaultProfileAlias(profId);
     for (const slot of HARDWARE_SLOTS) {
-      const wVal = webSlots[slot] || '';
-      const pVal = padSlots[slot] || '';
-      if (wVal && wVal !== pVal) {
+      const wVal = webSlots[slot] ?? '';
+      const pVal = padSlots[slot] ?? '';
+      if (wVal !== pVal) {
         diffs.push({
           id: `${profId}-${slot}`,
           label: `${profLabel} · ${SLOT_LABELS[slot].short}`,
-          websiteValue: `${describeFirmwareAction(wVal).shortLabel} (${wVal.replace(/\n/g, '\\n')})`,
+          websiteValue: wVal
+            ? `${describeFirmwareAction(wVal).shortLabel} (${wVal.replace(/\n/g, '\\n')})`
+            : 'Unassigned',
           padValue: pVal
             ? `${describeFirmwareAction(pVal).shortLabel} (${pVal.replace(/\n/g, '\\n')})`
             : 'Unassigned'
@@ -468,28 +473,28 @@ export function buildBackupFromProfiles(
     h2_name: h2Name,
     h3_name: h3Name,
     ...Object.fromEntries(
-      HARDWARE_SLOTS.map(s => [`h1_${s}`, h1[s] || FACTORY_DEFAULT_SLOTS.HOST1[s]])
+      HARDWARE_SLOTS.map(s => [`h1_${s}`, h1[s] ?? FACTORY_DEFAULT_SLOTS.HOST1[s]])
     ),
     ...Object.fromEntries(
-      HARDWARE_SLOTS.map(s => [`h2_${s}`, h2[s] || FACTORY_DEFAULT_SLOTS.HOST2[s]])
+      HARDWARE_SLOTS.map(s => [`h2_${s}`, h2[s] ?? FACTORY_DEFAULT_SLOTS.HOST2[s]])
     ),
     ...Object.fromEntries(
-      HARDWARE_SLOTS.map(s => [`h3_${s}`, h3[s] || FACTORY_DEFAULT_SLOTS.HOST3[s]])
+      HARDWARE_SLOTS.map(s => [`h3_${s}`, h3[s] ?? FACTORY_DEFAULT_SLOTS.HOST3[s]])
     ),
-    tv_b1: tv.b1 || FACTORY_DEFAULT_SLOTS.TV.b1,
-    tv_b2: tv.b2 || FACTORY_DEFAULT_SLOTS.TV.b2,
-    tv_b3: tv.b3 || FACTORY_DEFAULT_SLOTS.TV.b3,
-    tv_b4: tv.b4 || FACTORY_DEFAULT_SLOTS.TV.b4,
-    tv_b5: tv.b5 || FACTORY_DEFAULT_SLOTS.TV.b5,
-    tv_b6: tv.b6 || FACTORY_DEFAULT_SLOTS.TV.b6,
-    tv_b7: tv.b7 || FACTORY_DEFAULT_SLOTS.TV.b7,
-    tv_b8: tv.b8 || FACTORY_DEFAULT_SLOTS.TV.b8,
-    tv_dial: tv.dial || FACTORY_DEFAULT_SLOTS.TV.dial,
-    tv_enc_cw: tv.enc_cw || FACTORY_DEFAULT_SLOTS.TV.enc_cw,
-    tv_enc_ccw: tv.enc_ccw || FACTORY_DEFAULT_SLOTS.TV.enc_ccw,
+    tv_b1: tv.b1 ?? FACTORY_DEFAULT_SLOTS.TV.b1,
+    tv_b2: tv.b2 ?? FACTORY_DEFAULT_SLOTS.TV.b2,
+    tv_b3: tv.b3 ?? FACTORY_DEFAULT_SLOTS.TV.b3,
+    tv_b4: tv.b4 ?? FACTORY_DEFAULT_SLOTS.TV.b4,
+    tv_b5: tv.b5 ?? FACTORY_DEFAULT_SLOTS.TV.b5,
+    tv_b6: tv.b6 ?? FACTORY_DEFAULT_SLOTS.TV.b6,
+    tv_b7: tv.b7 ?? FACTORY_DEFAULT_SLOTS.TV.b7,
+    tv_b8: tv.b8 ?? FACTORY_DEFAULT_SLOTS.TV.b8,
+    tv_dial: tv.dial ?? FACTORY_DEFAULT_SLOTS.TV.dial,
+    tv_enc_cw: tv.enc_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc_cw,
+    tv_enc_ccw: tv.enc_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc_ccw,
     mac_name: h1Name,
     ...Object.fromEntries(
-      HARDWARE_SLOTS.map(s => [`mac_${s}`, h1[s] || FACTORY_DEFAULT_SLOTS.HOST1[s]])
+      HARDWARE_SLOTS.map(s => [`mac_${s}`, h1[s] ?? FACTORY_DEFAULT_SLOTS.HOST1[s]])
     )
   };
 }
@@ -793,6 +798,19 @@ export function useStudioState(
   useEffect(() => {
     const unsub = usbHardware.onConnectionChange(info => {
       setIsConnected(info.connected);
+      if (
+        info.connected &&
+        info.transport !== 'demo' &&
+        info.firmwareVersion &&
+        info.firmwareVersion !== '—' &&
+        !info.firmwareVersion.toLowerCase().includes('connecting')
+      ) {
+        setSettings(prev =>
+          prev.lastKnownFirmware === info.firmwareVersion
+            ? prev
+            : { ...prev, lastKnownFirmware: info.firmwareVersion }
+        );
+      }
       if (!info.connected) {
         setSavingCount(0);
         setConflictPrompt(null);
@@ -992,6 +1010,7 @@ export function useStudioState(
         if (!repeats || Object.keys(repeats).length === 0) {
           return { nextSerialized: baseProfiles, upgradedProfiles: [] };
         }
+        const nativeDelay = firmwareSupportsNativeDelay(status.device?.firmware);
         const cloned: SerializedPadProfiles = {
           ...baseProfiles,
           h1: { ...baseProfiles.h1 },
@@ -1008,7 +1027,9 @@ export function useStudioState(
             const rc = repeats[`${profId}:${slot}`];
             const currentPadVal = slotMap[slot] || '';
             if (!rc || !currentPadVal) continue;
-            const compiled = canonicalizeFirmwareAction(buildFirmwareActionFromTextConfig(rc));
+            const compiled = canonicalizeFirmwareAction(
+              buildFirmwareActionFromTextConfig(rc, { nativeDelay })
+            );
             const canonPad = canonicalizeFirmwareAction(currentPadVal);
             if (!compiled || !isValidFirmwareAction(compiled) || compiled === canonPad) {
               continue;
@@ -1076,6 +1097,14 @@ export function useStudioState(
   // Live Hardware Events (`profile`, `config`, AND physical `press` / `turn` repeat sequences)
   useEffect(() => {
     const unsubEvents = usbHardware.onHardwareEvent((e: HardwareEventPacket) => {
+      if (e.event === 'macro_cancel') {
+        if (repeatMacroRunner.activeJob) {
+          repeatMacroRunner.stop();
+        }
+        onToast('Macro cancelled on hardware');
+        return;
+      }
+
       if (!settingsRef.current.liveEventsEnabled && e.event !== 'config') {
         return;
       }
@@ -1110,7 +1139,11 @@ export function useStudioState(
             activeProfId,
             hwSlot
           );
-          if (binding?.repeatConfig && requiresUsbSequenceExecution(binding.repeatConfig)) {
+          const nativeDelay = firmwareSupportsNativeDelay(usbHardware.info.firmwareVersion);
+          if (
+            binding?.repeatConfig &&
+            requiresUsbSequenceExecution(binding.repeatConfig, { nativeDelay })
+          ) {
             repeatMacroRunner
               .handleHardwareSlotTrigger(
                 `${activeProfId}:${hwSlot}`,
@@ -1211,7 +1244,7 @@ export function useStudioState(
     ): Record<HardwareSlotId, string> => {
       const out = { ...padMap };
       for (const s of HARDWARE_SLOTS) {
-        if (isValidFirmwareAction(webMap[s])) {
+        if (isValidSlotAssignment(webMap[s])) {
           out[s] = webMap[s];
         }
       }
@@ -1392,7 +1425,13 @@ export function useStudioState(
       actionStr: string,
       targetSnap: WorkspaceSnapshot
     ): Promise<{ ok: boolean; rev?: number; message?: string }> => {
-      if (actionStr.length <= MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES) {
+      const maxSingleSlotBytes = firmwareSupports512ByteSlotSave(
+        usbHardware.info.firmwareVersion
+      )
+        ? MAX_NVS_ACTION_BYTES
+        : MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES;
+
+      if (actionStr.length <= maxSingleSlotBytes) {
         return await usbHardware.saveSlotBinding(profileId, slot, actionStr);
       }
       const prof = targetSnap.profiles.find(p => p.id === profileId);
@@ -1400,7 +1439,7 @@ export function useStudioState(
       const safeSlots: Record<HardwareSlotId, string> = { ...FACTORY_DEFAULT_SLOTS[profileId] };
       for (const s of HARDWARE_SLOTS) {
         const candidate = s === slot ? actionStr : rawSlots[s];
-        if (candidate && isValidFirmwareAction(candidate)) {
+        if (isValidSlotAssignment(candidate)) {
           safeSlots[s] = candidate;
         }
       }
@@ -1427,7 +1466,7 @@ export function useStudioState(
       try {
         for (const prof of targetSnap.profiles) {
           const slots = extractProfileSlots(prof);
-          const allValid = HARDWARE_SLOTS.every(s => isValidFirmwareAction(slots[s]));
+          const allValid = HARDWARE_SLOTS.every(s => isValidSlotAssignment(slots[s]));
           if (allValid) {
             await usbHardware.saveFullProfile(prof.id, slots);
           } else {
@@ -1435,7 +1474,7 @@ export function useStudioState(
               ...FACTORY_DEFAULT_SLOTS[prof.id]
             };
             for (const s of HARDWARE_SLOTS) {
-              if (isValidFirmwareAction(slots[s])) {
+              if (isValidSlotAssignment(slots[s])) {
                 repairedSlots[s] = slots[s];
               }
             }
@@ -1622,17 +1661,20 @@ export function useStudioState(
 
   const assignSlotAction = useCallback(
     (profileId: HardwareProfileId, slot: HardwareSlotId, binding: ActionBinding) => {
-      const rawActionStr = bindingToFirmwareAction(binding);
-      const actionStr = canonicalizeFirmwareAction(rawActionStr);
-      if (!actionStr || !isValidFirmwareAction(actionStr)) {
+      const isClearing = binding.type === 'none' && !binding.value;
+      const rawActionStr = isClearing ? '' : bindingToFirmwareAction(binding);
+      const actionStr = isClearing ? '' : canonicalizeFirmwareAction(rawActionStr);
+      if (!isClearing && (!actionStr || !isValidFirmwareAction(actionStr))) {
         onToast('Rejected unsupported or incomplete firmware action', 'error');
         return;
       }
 
-      const normalizedBinding: ActionBinding = {
-        ...binding,
-        value: actionStr
-      };
+      const normalizedBinding: ActionBinding = isClearing
+        ? { type: 'none', value: '' }
+        : {
+            ...binding,
+            value: actionStr
+          };
 
       const prevSnap = snapshotRef.current;
       const nextProfiles = prevSnap.profiles.map(prof => {
@@ -1689,10 +1731,13 @@ export function useStudioState(
 
       // Only auto-register in customMacros when it's a true multi-step/timed sequence or non-built-in custom command with no canonical match
       let nextMacros = prevSnap.customMacros;
-      const isSequence = isMultiStepOrTimedMacro(actionStr, normalizedBinding.repeatConfig);
-      const hasBuiltInEquivalent = !isSequence && Boolean(findEquivalentBuiltInSpec(actionStr));
+      const isSequence =
+        Boolean(actionStr) &&
+        isMultiStepOrTimedMacro(actionStr, normalizedBinding.repeatConfig);
+      const hasBuiltInEquivalent =
+        Boolean(actionStr) && !isSequence && Boolean(findEquivalentBuiltInSpec(actionStr));
 
-      if ((isSequence || isCustomDynamicAction(actionStr)) && !hasBuiltInEquivalent) {
+      if (actionStr && (isSequence || isCustomDynamicAction(actionStr)) && !hasBuiltInEquivalent) {
         const candidateSig = getMacroCanonicalSignature(
           actionStr,
           normalizedBinding.repeatConfig
@@ -1753,20 +1798,21 @@ export function useStudioState(
 
       const currentSlots = extractProfileSlots(targetProf);
       const mergedSlots: Record<HardwareSlotId, string> = {
-        b1: partialSlots.b1 ?? (currentSlots.b1 || FACTORY_DEFAULT_SLOTS[profileId].b1),
-        b2: partialSlots.b2 ?? (currentSlots.b2 || FACTORY_DEFAULT_SLOTS[profileId].b2),
-        b3: partialSlots.b3 ?? (currentSlots.b3 || FACTORY_DEFAULT_SLOTS[profileId].b3),
-        b4: partialSlots.b4 ?? (currentSlots.b4 || FACTORY_DEFAULT_SLOTS[profileId].b4),
-        b5: partialSlots.b5 ?? (currentSlots.b5 || FACTORY_DEFAULT_SLOTS[profileId].b5),
-        b6: partialSlots.b6 ?? (currentSlots.b6 || FACTORY_DEFAULT_SLOTS[profileId].b6),
-        b7: partialSlots.b7 ?? (currentSlots.b7 || FACTORY_DEFAULT_SLOTS[profileId].b7),
-        b8: partialSlots.b8 ?? (currentSlots.b8 || FACTORY_DEFAULT_SLOTS[profileId].b8),
-        dial: partialSlots.dial ?? (currentSlots.dial || FACTORY_DEFAULT_SLOTS[profileId].dial),
+        b1: partialSlots.b1 ?? currentSlots.b1 ?? FACTORY_DEFAULT_SLOTS[profileId].b1,
+        b2: partialSlots.b2 ?? currentSlots.b2 ?? FACTORY_DEFAULT_SLOTS[profileId].b2,
+        b3: partialSlots.b3 ?? currentSlots.b3 ?? FACTORY_DEFAULT_SLOTS[profileId].b3,
+        b4: partialSlots.b4 ?? currentSlots.b4 ?? FACTORY_DEFAULT_SLOTS[profileId].b4,
+        b5: partialSlots.b5 ?? currentSlots.b5 ?? FACTORY_DEFAULT_SLOTS[profileId].b5,
+        b6: partialSlots.b6 ?? currentSlots.b6 ?? FACTORY_DEFAULT_SLOTS[profileId].b6,
+        b7: partialSlots.b7 ?? currentSlots.b7 ?? FACTORY_DEFAULT_SLOTS[profileId].b7,
+        b8: partialSlots.b8 ?? currentSlots.b8 ?? FACTORY_DEFAULT_SLOTS[profileId].b8,
+        dial: partialSlots.dial ?? currentSlots.dial ?? FACTORY_DEFAULT_SLOTS[profileId].dial,
         enc_cw:
-          partialSlots.enc_cw ?? (currentSlots.enc_cw || FACTORY_DEFAULT_SLOTS[profileId].enc_cw),
+          partialSlots.enc_cw ?? currentSlots.enc_cw ?? FACTORY_DEFAULT_SLOTS[profileId].enc_cw,
         enc_ccw:
           partialSlots.enc_ccw ??
-          (currentSlots.enc_ccw || FACTORY_DEFAULT_SLOTS[profileId].enc_ccw)
+          currentSlots.enc_ccw ??
+          FACTORY_DEFAULT_SLOTS[profileId].enc_ccw
       };
 
       const existingRepeats = extractRepeatMapFromProfiles(prevSnap.profiles);
@@ -1816,6 +1862,14 @@ export function useStudioState(
       onToast(
         `Reset ${SLOT_LABELS[slot].short} to default (${describeFirmwareAction(factoryAction).shortLabel})`
       );
+    },
+    [assignSlotAction, onToast]
+  );
+
+  const clearSlot = useCallback(
+    (profileId: HardwareProfileId, slot: HardwareSlotId) => {
+      assignSlotAction(profileId, slot, { type: 'none', value: '' });
+      onToast(`Cleared ${SLOT_LABELS[slot].short} (Unassigned)`);
     },
     [assignSlotAction, onToast]
   );
@@ -2020,15 +2074,20 @@ export function useStudioState(
           ? item.repeatConfig.steps
           : actionToMacroSteps(item.action, item.repeatConfig);
 
+      const nativeDelay = firmwareSupportsNativeDelay(usbHardware.info.firmwareVersion);
+      let resolvedAction = item.action;
       if (steps.length > 0) {
-        const check = validateMacroSequenceDraft(steps, item.repeatConfig);
+        const check = validateMacroSequenceDraft(steps, item.repeatConfig, { nativeDelay });
         if (!check.valid) {
           onToast(check.issues[0]?.message || 'Complete all macro steps before saving', 'error');
           return { saved: null, updatedSlotCount: 0 };
         }
+        if (item.repeatConfig && check.builtAction) {
+          resolvedAction = check.builtAction;
+        }
       }
 
-      const canonAction = canonicalizeFirmwareAction(item.action);
+      const canonAction = canonicalizeFirmwareAction(resolvedAction);
       if (!canonAction || !isValidFirmwareAction(canonAction)) {
         onToast(
           `Macro sequence is incomplete or exceeds ${MAX_NVS_ACTION_BYTES}-byte NVS limit`,
@@ -2169,8 +2228,13 @@ export function useStudioState(
           async () => {
             let lastRes: { rev?: number } | undefined;
             const pushedFullProfiles = new Set<HardwareProfileId>();
+            const maxSingleBytes = firmwareSupports512ByteSlotSave(
+              usbHardware.info.firmwareVersion
+            )
+              ? MAX_NVS_ACTION_BYTES
+              : MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES;
             for (const target of slotsToPush) {
-              if (canonAction.length > MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES) {
+              if (canonAction.length > maxSingleBytes) {
                 if (pushedFullProfiles.has(target.profileId)) continue;
                 pushedFullProfiles.add(target.profileId);
               }
@@ -2416,12 +2480,12 @@ export function useStudioState(
         for (const s of HARDWARE_SLOTS) {
           const direct = backup[`${prefix}_${s}`];
           const legacy = allowLegacyMacFallback ? backup[`mac_${s}`] : undefined;
-          if (typeof direct === 'string' && direct.length > 0) {
+          if (typeof direct === 'string' && isValidSlotAssignment(direct)) {
             out[s] = direct;
-          } else if (typeof legacy === 'string' && legacy.length > 0) {
+          } else if (typeof legacy === 'string' && isValidSlotAssignment(legacy)) {
             out[s] = legacy;
           } else {
-            out[s] = prevSlots[s] || defaults[s];
+            out[s] = prevSlots[s] ?? defaults[s];
           }
         }
         return out;
@@ -2508,26 +2572,26 @@ export function useStudioState(
       ...Object.fromEntries(
         HARDWARE_SLOTS.map(s => [
           `h1_${s}`,
-          payload[`h1_${s}`] || payload[`mac_${s}`] || fallback[`h1_${s}`]
+          payload[`h1_${s}`] ?? payload[`mac_${s}`] ?? fallback[`h1_${s}`]
         ])
       ),
       ...Object.fromEntries(
-        HARDWARE_SLOTS.map(s => [`h2_${s}`, payload[`h2_${s}`] || fallback[`h2_${s}`]])
+        HARDWARE_SLOTS.map(s => [`h2_${s}`, payload[`h2_${s}`] ?? fallback[`h2_${s}`]])
       ),
       ...Object.fromEntries(
-        HARDWARE_SLOTS.map(s => [`h3_${s}`, payload[`h3_${s}`] || fallback[`h3_${s}`]])
+        HARDWARE_SLOTS.map(s => [`h3_${s}`, payload[`h3_${s}`] ?? fallback[`h3_${s}`]])
       ),
-      tv_b1: payload.tv_b1 || fallback.tv_b1,
-      tv_b2: payload.tv_b2 || fallback.tv_b2,
-      tv_b3: payload.tv_b3 || fallback.tv_b3,
-      tv_b4: payload.tv_b4 || fallback.tv_b4,
-      tv_b5: payload.tv_b5 || fallback.tv_b5,
-      tv_b6: payload.tv_b6 || fallback.tv_b6,
-      tv_b7: payload.tv_b7 || fallback.tv_b7,
-      tv_b8: payload.tv_b8 || fallback.tv_b8,
-      tv_dial: payload.tv_dial || fallback.tv_dial,
-      tv_enc_cw: payload.tv_enc_cw || fallback.tv_enc_cw,
-      tv_enc_ccw: payload.tv_enc_ccw || fallback.tv_enc_ccw
+      tv_b1: payload.tv_b1 ?? fallback.tv_b1,
+      tv_b2: payload.tv_b2 ?? fallback.tv_b2,
+      tv_b3: payload.tv_b3 ?? fallback.tv_b3,
+      tv_b4: payload.tv_b4 ?? fallback.tv_b4,
+      tv_b5: payload.tv_b5 ?? fallback.tv_b5,
+      tv_b6: payload.tv_b6 ?? fallback.tv_b6,
+      tv_b7: payload.tv_b7 ?? fallback.tv_b7,
+      tv_b8: payload.tv_b8 ?? fallback.tv_b8,
+      tv_dial: payload.tv_dial ?? fallback.tv_dial,
+      tv_enc_cw: payload.tv_enc_cw ?? fallback.tv_enc_cw,
+      tv_enc_ccw: payload.tv_enc_ccw ?? fallback.tv_enc_ccw
     };
 
     const blob = new Blob([JSON.stringify(cleanPayload, null, 2)], {
@@ -2643,6 +2707,7 @@ export function useStudioState(
     assignSlotAction,
     assignProfileSlots,
     resetSlotToDefault,
+    clearSlot,
     resetBothProfilesToDefault,
     updateKeyBinding,
     updateKeyAppearance,

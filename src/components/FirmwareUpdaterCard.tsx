@@ -1018,7 +1018,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
             <span>MacroPad Firmware Updates</span>
           </div>
           <p className="text-xs text-[var(--text-muted)]">
-            Flashes updates from the public folder directly via the ESP32 USB bootloader — compatible with Huge APP (3MB No OTA) while keeping saved profiles, Bluetooth hosts, and Wi-Fi intact.
+            Installs firmware updates over USB or Wi-Fi while preserving saved profiles, Bluetooth hosts, and SmartCast pairing.
           </p>
         </div>
 
@@ -1098,12 +1098,16 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
             </span>
           ) : latestRelease && !connection.connected ? (
             <span className="text-[var(--text-secondary)]">
-              Available firmware: v{latestRelease.version} · Connect MacroPad via USB to update
+              {settings.lastKnownFirmware
+                ? `Last synced: v${settings.lastKnownFirmware.replace(/^v/i, '')} · Available: v${latestRelease.version}`
+                : `Available firmware: v${latestRelease.version} · Connect MacroPad via USB to update`}
             </span>
           ) : (
             <span className="text-[var(--text-muted)] font-sans text-xs">
               {connection.connected
                 ? `Installed firmware: ${connection.firmwareVersion} · Up to date`
+                : settings.lastKnownFirmware
+                ? `Last synced firmware: ${settings.lastKnownFirmware} · Connect via USB to check for updates.`
                 : 'Connect your MacroPad via USB to check your firmware version and install updates.'}
             </span>
           )}
@@ -1217,7 +1221,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
                 ? 'Open this site in Chrome or Edge on desktop to flash over USB'
                 : !primaryBinAsset
                 ? 'No firmware update available yet'
-                : 'Flashes firmware directly via the ESP32 USB bootloader (supports Huge APP / No OTA)'
+                : 'Uploads firmware directly over USB while preserving onboard settings'
             }
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
           >

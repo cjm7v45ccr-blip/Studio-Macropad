@@ -37,7 +37,8 @@ import {
   Bluetooth,
   Wifi,
   PlayCircle,
-  Disc
+  Disc,
+  BookOpen
 } from 'lucide-react';
 
 interface MacropadCanvasProps {
@@ -63,6 +64,7 @@ interface MacropadCanvasProps {
   onExecuteHardwareBinding: (binding: ActionBinding) => Promise<boolean>;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   onOpenSetupWizard?: () => void;
+  onOpenCheatSheet?: () => void;
 }
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
@@ -115,11 +117,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   onPullFromUsb,
   onExecuteHardwareBinding,
   onSwitchBleHost,
-  onOpenSetupWizard
+  onOpenSetupWizard,
+  onOpenCheatSheet
 }) => {
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [knobAngle, setKnobAngle] = useState(0);
   const [knobPressed, setKnobPressed] = useState(false);
+  const [knobAccel, setKnobAccel] = useState<1 | 2 | 3>(1);
+  const [oledToast, setOledToast] = useState<{
+    title: string;
+    subtitle?: string;
+  } | null>(null);
   const [flashedSlots, setFlashedSlots] = useState<Set<HardwareFlashSlot>>(new Set());
   const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
   const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
@@ -132,6 +140,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   }, [activeProfileId]);
 
   const flashTimersRef = useRef<Record<string, number>>({});
+  const oledToastTimerRef = useRef<number | null>(null);
+  const lastKnobTurnMsRef = useRef<number>(0);
+  const knobAccelTimerRef = useRef<number | null>(null);
   const pendingAngleDeltaRef = useRef<number>(0);
   const angleRafRef = useRef<number | null>(null);
   const layerRef = useRef(layer);
@@ -140,6 +151,46 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   customMacrosRef.current = customMacros;
   const liveEventsEnabledRef = useRef(liveEventsEnabled);
   liveEventsEnabledRef.current = liveEventsEnabled;
+
+  const triggerOledToast = (title: string, subtitle?: string, durationMs = 950) => {
+    setOledToast({ title, subtitle });
+    if (oledToastTimerRef.current !== null) {
+      window.clearTimeout(oledToastTimerRef.current);
+    }
+    oledToastTimerRef.current = window.setTimeout(() => {
+      oledToastTimerRef.current = null;
+      setOledToast(null);
+    }, durationMs);
+  };
+
+  const recordKnobVelocity = (explicitAccel?: number): 1 | 2 | 3 => {
+    const now = performance.now();
+    const delta = now - lastKnobTurnMsRef.current;
+    lastKnobTurnMsRef.current = now;
+
+    let mult: 1 | 2 | 3 = 1;
+    if (explicitAccel && explicitAccel >= 3) {
+      mult = 3;
+    } else if (explicitAccel === 2) {
+      mult = 2;
+    } else if (delta > 0 && delta < 32) {
+      mult = 3;
+    } else if (delta > 0 && delta < 68) {
+      mult = 2;
+    }
+
+    setKnobAccel(mult);
+    if (knobAccelTimerRef.current !== null) {
+      window.clearTimeout(knobAccelTimerRef.current);
+    }
+    if (mult > 1) {
+      knobAccelTimerRef.current = window.setTimeout(() => {
+        knobAccelTimerRef.current = null;
+        setKnobAccel(1);
+      }, 650);
+    }
+    return mult;
+  };
 
   const queueKnobAngleDelta = (deltaDeg: number) => {
     pendingAngleDeltaRef.current += deltaDeg;
@@ -205,6 +256,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const unsub = usbHardware.onHardwareEvent((e: HardwareEventPacket) => {
       if (!liveEventsEnabledRef.current) return;
 
+      if (e.event === 'macro_cancel') {
+        triggerOledToast('CANCELLED', 'Macro stopped');
+        pushLog('Macro', 'Cancel', 'Cancelled running macro sequence', 'hardware');
+        return;
+      }
+
       if (e.event === 'profile') {
         triggerSlotFlash('mode');
         soundEngine.playKeyClick();
@@ -212,6 +269,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         const nextProf = defaultProfileAlias(
           normalizeHardwareProfileId(e.active || e.profile, currHost)
         );
+        triggerOledToast('PROFILE', nextProf.toUpperCase());
         pushLog('Mode', 'Press', `Switched profile to ${nextProf}`, 'hardware');
         return;
       }
@@ -220,6 +278,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         const hostNum = e.ble_slot === 2 ? 2 : e.ble_slot === 3 ? 3 : 1;
         triggerSlotFlash('mode');
         soundEngine.playDialTick();
+        triggerOledToast(`HOST ${hostNum}`, `Studio Pad ${hostNum}`);
         pushLog(
           'Mode + Dial',
           `[H${hostNum}]`,
@@ -247,8 +306,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         const isCcw =
           rawSlot === 'enc_ccw' || rawSlot === 'ccw' || rawDir === 'ccw';
         const flashId: HardwareFlashSlot = isCcw ? 'enc_ccw' : 'enc_cw';
+        const mult = recordKnobVelocity(e.accel);
 
-        queueKnobAngleDelta(isCcw ? -24 : 24);
+        queueKnobAngleDelta((isCcw ? -24 : 24) * mult);
         soundEngine.playDialTick();
         triggerSlotFlash(flashId);
 
@@ -258,9 +318,16 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           : e.action
           ? describeFirmwareAction(e.action).fullLabel
           : summarizeAction(binding, macros);
+        const shortToast = e.action
+          ? describeFirmwareAction(e.action).shortLabel
+          : describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel;
+        triggerOledToast(
+          `${isCcw ? 'CCW' : 'CW'}${mult > 1 ? ` ${mult}x` : ''}`,
+          shortToast
+        );
         pushLog(
           isCcw ? 'Turn Left' : 'Turn Right',
-          isCcw ? 'CCW' : 'CW',
+          mult > 1 ? `${isCcw ? 'CCW' : 'CW'} ${mult}×` : isCcw ? 'CCW' : 'CW',
           actionDesc,
           'hardware'
         );
@@ -277,6 +344,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           : e.action
           ? describeFirmwareAction(e.action).fullLabel
           : summarizeAction(dialBinding, macros);
+        const shortToast = e.action
+          ? describeFirmwareAction(e.action).shortLabel
+          : describeFirmwareAction(dialBinding.value, dialBinding.repeatConfig).shortLabel;
+        triggerOledToast('DIAL', shortToast);
         pushLog('Knob Press', 'Press', actionDesc, 'hardware');
         return;
       }
@@ -296,6 +367,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           : e.action
           ? describeFirmwareAction(e.action).fullLabel
           : summarizeAction(keyCfg.triggers.tap, macros);
+        triggerOledToast(`KEY ${keyNum}`, keyCfg.appearance.label);
         pushLog(`Key ${keyNum}`, 'Press', actionDesc, 'hardware');
       }
     });
@@ -304,6 +376,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       unsub();
       if (angleRafRef.current !== null) {
         window.cancelAnimationFrame(angleRafRef.current);
+      }
+      if (oledToastTimerRef.current !== null) {
+        window.clearTimeout(oledToastTimerRef.current);
+      }
+      if (knobAccelTimerRef.current !== null) {
+        window.clearTimeout(knobAccelTimerRef.current);
       }
       Object.values(flashTimersRef.current).forEach(id => window.clearTimeout(id));
     };
@@ -343,6 +421,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       const targetLabel =
         activeProfileId === 'TV' ? `Host ${activeBleHost}` : 'TV';
       onToggleHardwareMode();
+      triggerOledToast('PROFILE', targetLabel.toUpperCase());
       pushLog(
         'Mode',
         'Press',
@@ -355,6 +434,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const keyLabel = `Key ${kid.slice(1)}`;
     const tapBinding = cfg.triggers.tap;
     const summary = summarizeAction(tapBinding, customMacros);
+    triggerOledToast(keyLabel.toUpperCase(), cfg.appearance.label);
 
     if (connection.connected && tapBinding.value) {
       const sent = await onExecuteHardwareBinding(tapBinding);
@@ -396,6 +476,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const baseHost = viewedBleHost ?? activeBleHost;
     const nextIdx = (baseHost - 1 + (delta > 0 ? 1 : 2)) % 3;
     const nextSlot = (nextIdx + 1) as BleHostSlot;
+    triggerOledToast(`HOST ${nextSlot}`, `Studio Pad ${nextSlot}`);
 
     if (connection.connected) {
       await onSwitchBleHost(nextSlot);
@@ -424,10 +505,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
 
     const subId: ControlId = dir === 'cw' ? 'enc_cw' : 'enc_ccw';
-    queueKnobAngleDelta(dir === 'cw' ? 24 : -24);
-    soundEngine.playDialTick();
 
     if (viewMode === 'edit') {
+      queueKnobAngleDelta(dir === 'cw' ? 24 : -24);
+      soundEngine.playDialTick();
       onSelectControl(subId);
       return;
     }
@@ -437,15 +518,34 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       return;
     }
 
+    const mult = recordKnobVelocity();
+    queueKnobAngleDelta((dir === 'cw' ? 24 : -24) * mult);
+    soundEngine.playDialTick();
+
     const binding = dir === 'cw' ? layer.encoder.cw : layer.encoder.ccw;
     const summary = summarizeAction(binding, customMacros);
+    const shortToast = describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel;
     const label = dir === 'cw' ? 'Turn Right' : 'Turn Left';
+    triggerOledToast(
+      `${dir.toUpperCase()}${mult > 1 ? ` ${mult}x` : ''}`,
+      shortToast
+    );
 
     if (connection.connected && binding.value) {
       const sent = await onExecuteHardwareBinding(binding);
-      pushLog(label, dir.toUpperCase(), summary, sent ? 'usb-test' : 'sim');
+      pushLog(
+        label,
+        mult > 1 ? `${dir.toUpperCase()} ${mult}×` : dir.toUpperCase(),
+        summary,
+        sent ? 'usb-test' : 'sim'
+      );
     } else {
-      pushLog(label, dir.toUpperCase(), summary, 'sim');
+      pushLog(
+        label,
+        mult > 1 ? `${dir.toUpperCase()} ${mult}×` : dir.toUpperCase(),
+        summary,
+        'sim'
+      );
     }
   };
 
@@ -468,6 +568,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
     const binding = layer.encoder.dial;
     const summary = summarizeAction(binding, customMacros);
+    const shortToast = describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel;
+    triggerOledToast('DIAL', shortToast);
     if (connection.connected && binding.value) {
       const sent = await onExecuteHardwareBinding(binding);
       pushLog('Knob Press', 'Press', summary, sent ? 'usb-test' : 'sim');
@@ -511,6 +613,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     return (
       <div className="flex flex-col items-center justify-center gap-1">
         <div className="relative flex items-center justify-center gap-0.5 sm:gap-1">
+          {knobAccel > 1 && (
+            <span
+              title={`Smart Knob velocity acceleration (${knobAccel}× step)`}
+              className="absolute -top-2 right-5 z-10 px-1.5 py-0.5 rounded-md bg-sky-500/20 border border-sky-400/60 font-mono text-[9px] font-bold text-sky-300 tabular-nums pointer-events-none shadow-sm"
+            >
+              {knobAccel}×
+            </span>
+          )}
           {/* Turn Left (`enc_ccw`) Control */}
           <button
             type="button"
@@ -748,32 +858,46 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
-          <span className="text-[11px] text-[var(--text-muted)] px-1.5 hidden sm:inline whitespace-nowrap">
-            Knob Layout:
-          </span>
-          <button
-            type="button"
-            onClick={() => onChangeEncoderPlacement('grid')}
-            className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-              encoderPlacement === 'grid'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-            }`}
-          >
-            Side Knob
-          </button>
-          <button
-            type="button"
-            onClick={() => onChangeEncoderPlacement('top')}
-            className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-              encoderPlacement === 'top'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-            }`}
-          >
-            Top Crown
-          </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenCheatSheet && (
+            <button
+              type="button"
+              onClick={onOpenCheatSheet}
+              title="Open printable 4-profile Desk Reference Cheat Sheet"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>Cheat Sheet</span>
+            </button>
+          )}
+
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
+            <span className="text-[11px] text-[var(--text-muted)] px-1.5 hidden sm:inline whitespace-nowrap">
+              Knob Layout:
+            </span>
+            <button
+              type="button"
+              onClick={() => onChangeEncoderPlacement('grid')}
+              className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                encoderPlacement === 'grid'
+                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+              }`}
+            >
+              Side Knob
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeEncoderPlacement('top')}
+              className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                encoderPlacement === 'top'
+                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+              }`}
+            >
+              Top Crown
+            </button>
+          </div>
         </div>
       </div>
 
@@ -870,28 +994,43 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           } rounded-[28px] sm:rounded-[34px] p-4 sm:p-6 bg-gradient-to-b from-[#20232C] to-[#14161C] border border-white/10 shadow-[0_28px_60px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.08)]`}
         >
           {/* 128x64 SSD1306 Hardware OLED Strip */}
-          <div className="mb-4 sm:mb-5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-[#090B0E] border border-white/10 shadow-inner flex items-center justify-between gap-2">
+          <div className="mb-4 sm:mb-5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-[#090B0E] border border-white/10 shadow-inner flex items-center justify-between gap-2 min-h-[38px]">
             <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{
-                  backgroundColor:
-                    connection.connected && connection.telemetry?.setupMode
-                      ? '#F59E0B'
-                      : layer.color
-                }}
-              />
-              <span
-                className={`font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-wider truncate tabular-nums ${
-                  connection.connected && connection.telemetry?.setupMode
-                    ? 'text-amber-300'
-                    : 'text-sky-300'
-                }`}
-              >
-                {connection.connected && connection.telemetry?.setupMode
-                  ? `SETUP · ${activeProfileName}`
-                  : activeProfileName}
-              </span>
+              {oledToast ? (
+                <div className="flex items-center gap-1.5 min-w-0 font-mono text-[10px] sm:text-[11px] tabular-nums">
+                  <span className="px-1.5 py-0.5 rounded bg-sky-400 text-black font-bold uppercase tracking-wider leading-none shrink-0">
+                    {oledToast.title}
+                  </span>
+                  {oledToast.subtitle && (
+                    <span className="text-sky-200 font-semibold truncate">
+                      {oledToast.subtitle}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{
+                      backgroundColor:
+                        connection.connected && connection.telemetry?.setupMode
+                          ? '#F59E0B'
+                          : layer.color
+                    }}
+                  />
+                  <span
+                    className={`font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-wider truncate tabular-nums ${
+                      connection.connected && connection.telemetry?.setupMode
+                        ? 'text-amber-300'
+                        : 'text-sky-300'
+                    }`}
+                  >
+                    {connection.connected && connection.telemetry?.setupMode
+                      ? `SETUP · ${activeProfileName}`
+                      : activeProfileName}
+                  </span>
+                </>
+              )}
             </div>
 
             <div className="flex items-center gap-2 font-mono text-[10px] shrink-0">

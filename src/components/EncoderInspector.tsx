@@ -25,7 +25,8 @@ import {
   RotateCcw,
   Disc,
   Undo2,
-  ArrowLeftRight
+  ArrowLeftRight,
+  XCircle
 } from 'lucide-react';
 
 interface EncoderInspectorProps {
@@ -40,6 +41,7 @@ interface EncoderInspectorProps {
   activeRepeatJob?: ActiveRepeatJob | null;
   onUpdateSlot: (slot: EncoderSubControlId, binding: ActionBinding) => void;
   onResetSlotToDefault: (slot: HardwareSlotId) => void;
+  onClearSlot?: (slot: HardwareSlotId) => void;
   onApplyKnobSlots: (
     partialSlots: Partial<Record<HardwareSlotId, string>>,
     successMsg: string,
@@ -65,6 +67,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   activeRepeatJob,
   onUpdateSlot,
   onResetSlotToDefault,
+  onClearSlot,
   onApplyKnobSlots,
   onUpdateColor,
   onTestBinding,
@@ -103,6 +106,8 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
 
   const isAlreadyFactoryDefault =
     activeBinding.value === factoryDefaultAction && !activeBinding.repeatConfig;
+
+  const isAlreadyUnassigned = !activeBinding.value && !activeBinding.repeatConfig;
 
   const handleApplyKnobPreset = (
     presetId: 'volume' | 'track' | 'channel' | 'arrows'
@@ -238,17 +243,32 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
           </div>
         </div>
 
-        {/* Control-Scoped Undo & Reset to Default Bar */}
-        <div className="flex items-center gap-2">
+        {/* Control-Scoped Undo, Clear & Reset to Default Bar */}
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             disabled={!canUndoSelection}
             onClick={() => onUpdateSlot(selectedSubControl, initialBindingOnSelect)}
             title="Restore the value this knob control had when you selected it"
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Undo2 className="w-3.5 h-3.5" />
+            <Undo2 className="w-3.5 h-3.5 shrink-0" />
             <span>Undo</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isAlreadyUnassigned}
+            onClick={() =>
+              onClearSlot
+                ? onClearSlot(selectedSubControl)
+                : onUpdateSlot(selectedSubControl, { type: 'none', value: '' })
+            }
+            title="Clear this knob control so it sends nothing"
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <XCircle className="w-3.5 h-3.5 shrink-0" />
+            <span>Clear</span>
           </button>
 
           <button
@@ -256,10 +276,10 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
             disabled={isAlreadyFactoryDefault}
             onClick={() => onResetSlotToDefault(selectedSubControl)}
             title={`Reset to factory default: ${factoryDesc.fullLabel}`}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset to default</span>
+            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+            <span>Default</span>
           </button>
         </div>
       </div>

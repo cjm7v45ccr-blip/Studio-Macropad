@@ -18,8 +18,10 @@ import {
   HARDWARE_SLOTS,
   MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES,
   STANDALONE_TICK_MS,
+  isTvFirmwareAction,
   isValidFirmwareAction,
   isValidFirmwareAlias,
+  isValidSlotAssignment,
   sanitizeFirmwareAlias,
   sanitizeSerialString
 } from '../data/firmwareCatalog';
@@ -671,7 +673,7 @@ class PadLinkService {
 
       this.demoPad = {
         rev,
-        firmware: '3.2-PRO',
+        firmware: '4.5.0',
         setupMode: Boolean(opts?.setupMode),
         mode,
         h1Name,
@@ -702,7 +704,7 @@ class PadLinkService {
 
     this.logSerial(
       'info',
-      `Started Demo Mode (virtual Studio Pad · firmware 3.2-PRO${
+      `Started Demo Mode (virtual Studio Pad · firmware ${this.demoPad.firmware}${
         this.demoPad.setupMode ? ' · Setup Mode active' : ' · 3 BLE Hosts + TV'
       })`
     );
@@ -883,7 +885,7 @@ class PadLinkService {
       device: {
         id: 'demo-pad',
         name: 'Studio MacroPad',
-        firmware: d.firmware || '3.2-PRO',
+        firmware: d.firmware || '4.5.0',
         connection_type: 'DEMO',
         setup_mode: d.setupMode
       },
@@ -1023,8 +1025,8 @@ class PadLinkService {
     if (path === '/api/customizer/save') {
       const prof = normalizeHardwareProfileId(String(obj.profile || ''), d.bleSlot);
       const slot = obj.slot as HardwareSlotId;
-      const action = String(obj.action || '');
-      if (!HARDWARE_SLOTS.includes(slot) || !isValidFirmwareAction(action)) {
+      const action = String(obj.action ?? '');
+      if (!HARDWARE_SLOTS.includes(slot) || !isValidSlotAssignment(action)) {
         return reply({ ok: false, message: `Pad rejected unsupported action: ${action}` });
       }
       const targetMap = this.getDemoProfileSlots(d, prof);
@@ -1037,7 +1039,7 @@ class PadLinkService {
     if (path === '/api/profile/save') {
       const prof = normalizeHardwareProfileId(String(obj.profile || ''), d.bleSlot);
       for (const s of HARDWARE_SLOTS) {
-        if (!isValidFirmwareAction(String(obj[s] || ''))) {
+        if (!isValidSlotAssignment(String(obj[s] ?? ''))) {
           return reply({
             ok: false,
             message: `Invalid action on ${prof} slot ${s.toUpperCase()}.`
@@ -1045,17 +1047,17 @@ class PadLinkService {
         }
       }
       const nextSlots: Record<HardwareSlotId, string> = {
-        b1: obj.b1,
-        b2: obj.b2,
-        b3: obj.b3,
-        b4: obj.b4,
-        b5: obj.b5,
-        b6: obj.b6,
-        b7: obj.b7,
-        b8: obj.b8,
-        dial: obj.dial,
-        enc_cw: obj.enc_cw,
-        enc_ccw: obj.enc_ccw
+        b1: String(obj.b1 ?? ''),
+        b2: String(obj.b2 ?? ''),
+        b3: String(obj.b3 ?? ''),
+        b4: String(obj.b4 ?? ''),
+        b5: String(obj.b5 ?? ''),
+        b6: String(obj.b6 ?? ''),
+        b7: String(obj.b7 ?? ''),
+        b8: String(obj.b8 ?? ''),
+        dial: String(obj.dial ?? ''),
+        enc_cw: String(obj.enc_cw ?? ''),
+        enc_ccw: String(obj.enc_ccw ?? '')
       };
       this.setDemoProfileSlots(d, prof, nextSlots);
       d.rev += 1;
@@ -1171,22 +1173,43 @@ class PadLinkService {
       d.h3Name = sanitizeFirmwareAlias(String(obj.h3_name || d.h3Name), 'HOST3');
 
       for (const s of HARDWARE_SLOTS) {
-        if (obj[`h1_${s}`]) d.h1[s] = obj[`h1_${s}`];
-        else if (obj[`mac_${s}`]) d.h1[s] = obj[`mac_${s}`];
+        if (typeof obj[`h1_${s}`] === 'string' && isValidSlotAssignment(obj[`h1_${s}`])) {
+          d.h1[s] = obj[`h1_${s}`];
+        } else if (typeof obj[`mac_${s}`] === 'string' && isValidSlotAssignment(obj[`mac_${s}`])) {
+          d.h1[s] = obj[`mac_${s}`];
+        }
 
-        if (obj[`h2_${s}`]) d.h2[s] = obj[`h2_${s}`];
-        if (obj[`h3_${s}`]) d.h3[s] = obj[`h3_${s}`];
-        if (obj[`tv_${s}`]) d.tv[s] = obj[`tv_${s}`];
+        if (typeof obj[`h2_${s}`] === 'string' && isValidSlotAssignment(obj[`h2_${s}`])) {
+          d.h2[s] = obj[`h2_${s}`];
+        }
+        if (typeof obj[`h3_${s}`] === 'string' && isValidSlotAssignment(obj[`h3_${s}`])) {
+          d.h3[s] = obj[`h3_${s}`];
+        }
+        if (typeof obj[`tv_${s}`] === 'string' && isValidSlotAssignment(obj[`tv_${s}`])) {
+          d.tv[s] = obj[`tv_${s}`];
+        }
       }
       d.rev += 1;
       this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       return reply({ ok: true, rev: d.rev });
     }
 
+    if (path === '/api/macro/cancel') {
+      if (d.eventsEnabled) {
+        const evt: HardwareEventPacket = { event: 'macro_cancel' };
+        this.logSerial('rx', JSON.stringify(evt));
+        this.handleHardwareEvent(evt);
+      }
+      return reply({ ok: true, cancelled: true });
+    }
+
     if (path === '/api/test/action') {
       const act = String(obj.action || '');
       if (!isValidFirmwareAction(act)) {
         return reply({ ok: false, message: 'Unsupported action.' });
+      }
+      if (act.startsWith('DELAY:')) {
+        return reply({ ok: true, message: `Demo pad paused (${act})` });
       }
       if (act.startsWith('BLE:')) {
         this.applyDemoBleActionSideEffect(act);
@@ -1195,11 +1218,7 @@ class PadLinkService {
           message: `Switched to Studio Pad ${d.bleSlot} (Host ${d.bleSlot})`
         });
       }
-      const isTv =
-        act.startsWith('TV:') ||
-        act.startsWith('APP:') ||
-        act.startsWith('TVKEY:') ||
-        act.startsWith('TVAPP:');
+      const isTv = isTvFirmwareAction(act);
       if (isTv) {
         if (!d.wifiConnected) return reply({ ok: false, message: 'Pad Wi-Fi is disconnected.' });
         if (!d.tvPaired) return reply({ ok: false, message: 'Vizio TV is not paired.' });
@@ -2127,7 +2146,7 @@ class PadLinkService {
     slot: HardwareSlotId,
     action: string
   ): Promise<{ ok: boolean; rev?: number; message?: string }> {
-    if (!isValidFirmwareAction(action)) {
+    if (!isValidSlotAssignment(action)) {
       throw new Error(`Unsupported firmware action: ${action}`);
     }
     const res = await this.call({
@@ -2147,9 +2166,9 @@ class PadLinkService {
     slots: Record<HardwareSlotId, string>
   ): Promise<{ ok: boolean; rev?: number; message?: string }> {
     for (const slotId of HARDWARE_SLOTS) {
-      if (!isValidFirmwareAction(slots[slotId])) {
+      if (!isValidSlotAssignment(slots[slotId])) {
         throw new Error(
-          `Slot ${slotId.toUpperCase()} on ${profile} is unassigned or invalid.`
+          `Slot ${slotId.toUpperCase()} on ${profile} contains an invalid action.`
         );
       }
     }
@@ -2257,9 +2276,9 @@ class PadLinkService {
       for (const s of HARDWARE_SLOTS) {
         const direct = backup[`${prefix}_${s}`];
         const legacy = allowLegacyMacFallback ? backup[`mac_${s}`] : undefined;
-        if (typeof direct === 'string' && isValidFirmwareAction(direct)) {
+        if (typeof direct === 'string' && isValidSlotAssignment(direct)) {
           slots[s] = direct;
-        } else if (typeof legacy === 'string' && isValidFirmwareAction(legacy)) {
+        } else if (typeof legacy === 'string' && isValidSlotAssignment(legacy)) {
           slots[s] = legacy;
         }
       }
@@ -2387,9 +2406,26 @@ class PadLinkService {
     };
   }
 
+  public async cancelRunningMacro(): Promise<void> {
+    if (!this.connectionInfo.connected) return;
+    try {
+      await this.call({ path: '/api/macro/cancel' }, 1200);
+    } catch {
+      // Firmware < 4.5.0 does not expose /api/macro/cancel; safe to ignore
+    }
+  }
+
   public async testAction(action: string): Promise<{ ok: boolean; message?: string }> {
     if (!isValidFirmwareAction(action)) {
       throw new Error('Assign a valid firmware action first.');
+    }
+
+    if (action.startsWith('DELAY:') && !action.includes('||')) {
+      const ms = Math.min(60000, Math.max(0, parseInt(action.slice(6).trim(), 10) || 0));
+      if (ms > 0) {
+        await new Promise(r => window.setTimeout(r, ms));
+      }
+      return { ok: true, message: `Paused ${ms} ms` };
     }
 
     // Route BLE:* host switch actions through `/api/ble/switch` so the device
@@ -2404,7 +2440,7 @@ class PadLinkService {
       return await this.switchBleHost(nextSlot);
     }
 
-    // Firmware /api/test/action caps its single-command JSON parser at 128 bytes,
+    // Legacy firmware /api/test/action caps its single-command JSON parser at 128 bytes,
     // so execute multi-step || chains segment-by-segment with 50ms hardware-accurate ticks.
     if (
       !this.demoModeActive &&
@@ -2419,6 +2455,16 @@ class PadLinkService {
         const seg = segments[i];
         if (seg === 'NONE') {
           await new Promise(r => window.setTimeout(r, STANDALONE_TICK_MS));
+          continue;
+        }
+        if (seg.startsWith('DELAY:')) {
+          const ms = Math.min(60000, Math.max(0, parseInt(seg.slice(6).trim(), 10) || 0));
+          if (ms > 0) {
+            await new Promise(r => window.setTimeout(r, ms));
+          }
+          if (i < segments.length - 1) {
+            await new Promise(r => window.setTimeout(r, STANDALONE_TICK_MS));
+          }
           continue;
         }
         lastRes = await this.testAction(seg);

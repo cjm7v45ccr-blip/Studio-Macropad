@@ -253,6 +253,47 @@ export const MAX_NVS_ACTION_BYTES = 512;
 export const MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES = 128;
 export const STANDALONE_TICK_MS = 50;
 
+export function parseFirmwareSemver(fw?: string | null): [number, number, number] | null {
+  if (!fw) return null;
+  const m = String(fw)
+    .trim()
+    .match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+  if (!m) return null;
+  return [Number(m[1]) || 0, Number(m[2]) || 0, Number(m[3]) || 0];
+}
+
+export function isFirmwareAtLeast(
+  fw: string | null | undefined,
+  major: number,
+  minor: number,
+  patch = 0
+): boolean {
+  const parsed = parseFirmwareSemver(fw);
+  if (!parsed) return false;
+  const [maj, min, pat] = parsed;
+  if (maj !== major) return maj > major;
+  if (min !== minor) return min > minor;
+  return pat >= patch;
+}
+
+/** True when connected firmware supports native `DELAY:<1..60000>` tokens in NVS (v4.5.0+) */
+export function firmwareSupportsNativeDelay(fw?: string | null): boolean {
+  return isFirmwareAtLeast(fw, 4, 5, 0);
+}
+
+/** True when connected firmware supports 512-byte `/api/customizer/save` single-slot saves (v4.5.0+) */
+export function firmwareSupports512ByteSlotSave(fw?: string | null): boolean {
+  return isFirmwareAtLeast(fw, 4, 5, 0);
+}
+
+export function isValidDelayActionToken(action: string): boolean {
+  if (!action || !action.startsWith('DELAY:') || action.length <= 6) return false;
+  const rawMs = action.slice(6).trim();
+  if (!/^\d+$/.test(rawMs)) return false;
+  const ms = Number(rawMs);
+  return Number.isInteger(ms) && ms >= 1 && ms <= 60000;
+}
+
 export function isValidFirmwareAction(action: string): boolean {
   if (!action || action.length < 3 || action.length > MAX_NVS_ACTION_BYTES) return false;
   if (action.includes('||')) {
@@ -263,12 +304,13 @@ export function isValidFirmwareAction(action: string): boolean {
     if (parts.length === 0) return false;
     let hasRealAction = false;
     for (const p of parts) {
-      if (p === 'NONE') continue;
+      if (p === 'NONE' || isValidDelayActionToken(p)) continue;
       if (p.includes('||') || !isValidFirmwareAction(p)) return false;
       hasRealAction = true;
     }
     return hasRealAction;
   }
+  if (isValidDelayActionToken(action)) return true;
   if (STATIC_MAP.has(action)) return true;
 
   if (action.startsWith('SHORTCUT:')) {
@@ -304,6 +346,16 @@ export function isValidFirmwareAction(action: string): boolean {
     return check.valid;
   }
   return false;
+}
+
+/**
+ * Validates any hardware slot value, allowing unassigned (`""` or `"NONE"`)
+ * in addition to any valid firmware action string.
+ */
+export function isValidSlotAssignment(action: string | undefined | null): boolean {
+  if (action === '' || action === 'NONE') return true;
+  if (!action) return false;
+  return isValidFirmwareAction(action);
 }
 
 export function validateFirmwareAlias(name: string): { valid: boolean; error: string | null } {
@@ -355,7 +407,7 @@ export function isTvFirmwareAction(action: string): boolean {
     return action
       .split('||')
       .map(p => p.trim())
-      .some(p => p && p !== 'NONE' && isTvFirmwareAction(p));
+      .some(p => p && p !== 'NONE' && !p.startsWith('DELAY:') && isTvFirmwareAction(p));
   }
   return (
     action.startsWith('TV:') ||
@@ -387,8 +439,10 @@ export function getActionTestAvailability(
   const realParts = actionStr.includes('||')
     ? actionStr
         .split('||')
-        .map(p => p.trim())
-        .filter(p => p && p !== 'NONE')
+        .map(p => (p.startsWith('TEXT:') ? p : p.trim()))
+        .filter(p => p && p !== 'NONE' && !p.startsWith('DELAY:'))
+    : actionStr.startsWith('DELAY:')
+    ? []
     : [actionStr];
 
   const needsTv = realParts.some(p => isTvFirmwareAction(p));
@@ -690,11 +744,13 @@ export function calculateStepsTiming(steps: MacroStepConfig[]): {
 
 export function stripStandaloneDelayTicks(action: string | undefined | null): string {
   if (!action) return '';
-  if (!action.includes('||')) return canonicalizeFirmwareAction(action);
+  if (!action.includes('||')) {
+    return action.startsWith('DELAY:') ? '' : canonicalizeFirmwareAction(action);
+  }
   return action
     .split('||')
     .map(p => (p.startsWith('TEXT:') ? p : p.trim()))
-    .filter(p => p && p !== 'NONE')
+    .filter(p => p && p !== 'NONE' && !p.startsWith('DELAY:'))
     .map(p => canonicalizeFirmwareAction(p))
     .filter(Boolean)
     .join('||');
@@ -703,7 +759,7 @@ export function stripStandaloneDelayTicks(action: string | undefined | null): st
 /**
  * Converts any stored firmware action + optional repeatConfig into visual MacroStepConfig items
  * so opening any slot or saved macro in MacroEditorView populates the step list cleanly
- * (including reconstructing 50ms hardware NONE delay ticks stored in MacroPad NVS).
+ * (including reconstructing 50ms hardware NONE ticks and v4.5.0 native DELAY:<ms> tokens).
  */
 export function actionToMacroSteps(
   action: string,
@@ -723,13 +779,13 @@ export function actionToMacroSteps(
       .map(a => (a.startsWith('TEXT:') ? a : a.trim()))
       .filter(Boolean);
     const steps: MacroStepConfig[] = [];
-    let leadingNoneTicks = 0;
+    let leadingWaitMs = 0;
 
     for (let i = 0; i < rawParts.length; i++) {
       const part = rawParts[i];
       if (part === 'NONE') {
         if (steps.length === 0) {
-          leadingNoneTicks += 1;
+          leadingWaitMs += STANDALONE_TICK_MS;
         } else {
           const prev = steps[steps.length - 1];
           // First NONE tick after an action adds to the built-in 50ms || gap -> (1 + count) * 50ms
@@ -741,16 +797,32 @@ export function actionToMacroSteps(
         continue;
       }
 
-      if (leadingNoneTicks > 0 && steps.length === 0) {
+      if (part.startsWith('DELAY:')) {
+        const delayVal = Math.max(0, parseInt(part.slice(6).trim(), 10) || 0);
+        const hasMoreAfter = i < rawParts.length - 1;
+        if (steps.length === 0) {
+          leadingWaitMs += delayVal + (hasMoreAfter ? STANDALONE_TICK_MS : 0);
+        } else {
+          const prev = steps[steps.length - 1];
+          const surroundGap = hasMoreAfter ? STANDALONE_TICK_MS * 2 : STANDALONE_TICK_MS;
+          prev.delayMs =
+            prev.delayMs === 0
+              ? delayVal + surroundGap
+              : prev.delayMs + delayVal + (hasMoreAfter ? STANDALONE_TICK_MS : 0);
+        }
+        continue;
+      }
+
+      if (leadingWaitMs > 0 && steps.length === 0) {
         steps.push({
           id: `step-${stamp}-lead`,
           label: 'Wait / Delay',
           actionType: 'delay',
           value: '',
-          delayMs: leadingNoneTicks * STANDALONE_TICK_MS,
+          delayMs: leadingWaitMs,
           repeatCount: 1
         });
-        leadingNoneTicks = 0;
+        leadingWaitMs = 0;
       }
 
       const singleSteps = actionToMacroSteps(part);
@@ -793,6 +865,20 @@ export function actionToMacroSteps(
   }
 
   if (!action || action === 'NONE') return [];
+
+  if (action.startsWith('DELAY:')) {
+    const ms = Math.max(10, parseInt(action.slice(6).trim(), 10) || 500);
+    return [
+      {
+        id: `step-${stamp}-1`,
+        label: 'Wait / Delay',
+        actionType: 'delay',
+        value: '',
+        delayMs: ms,
+        repeatCount: 1
+      }
+    ];
+  }
 
   if (action.startsWith('SHORTCUT:')) {
     const parsed = parseFirmwareShortcut(action);
@@ -891,8 +977,10 @@ export interface CompiledHardwareMacro {
   singleCycleStandalone: boolean;
   /** Human-readable explanation when live USB streaming is required beyond onboard NVS */
   usbRequiredReason: string | null;
-  /** Estimated byte length if all steps + delays were encoded standalone */
+  /** Estimated byte length if all steps + delays were encoded standalone under the active mode */
   fullStandaloneByteEstimate: number;
+  /** Byte length when compiled using Firmware v4.5.0 native `DELAY:<ms>` tokens */
+  nativeDelayByteEstimate: number;
 }
 
 interface FlattenedCycleAction {
@@ -902,11 +990,25 @@ interface FlattenedCycleAction {
   waitAfterMs: number;
 }
 
+function appendNativeDelayChunks(segments: string[], totalDelayTokenMs: number) {
+  let rem = Math.max(1, Math.round(totalDelayTokenMs));
+  while (rem > 0) {
+    const chunk = Math.min(60000, rem);
+    segments.push(`DELAY:${chunk}`);
+    rem -= chunk;
+    if (rem > 0) {
+      // Account for the 50ms inter-segment pause between consecutive DELAY chunks
+      rem = Math.max(0, rem - STANDALONE_TICK_MS);
+    }
+  }
+}
+
 function encodeTimedMacroCycles(
   steps: MacroStepConfig[],
   cycles: number,
   repeatDelayMs: number,
-  mergeTextEnter: boolean
+  mergeTextEnter: boolean,
+  useNativeDelay = false
 ): { serialized: string; byteLength: number; firstAction: string } {
   let leadingWaitMs = 0;
   const rawItems: FlattenedCycleAction[] = [];
@@ -971,8 +1073,13 @@ function encodeTimedMacroCycles(
 
   const segments: string[] = [];
   if (leadingWaitMs >= 25) {
-    const leadTicks = Math.max(1, Math.round(leadingWaitMs / STANDALONE_TICK_MS));
-    for (let t = 0; t < leadTicks; t++) segments.push('NONE');
+    if (useNativeDelay && leadingWaitMs > STANDALONE_TICK_MS * 2) {
+      // Firmware sleeps 50ms after the leading DELAY segment before executing Step 1
+      appendNativeDelayChunks(segments, leadingWaitMs - STANDALONE_TICK_MS);
+    } else {
+      const leadTicks = Math.max(1, Math.round(leadingWaitMs / STANDALONE_TICK_MS));
+      for (let t = 0; t < leadTicks; t++) segments.push('NONE');
+    }
   }
 
   const safeCycles = Math.max(1, cycles);
@@ -987,11 +1094,16 @@ function encodeTimedMacroCycles(
           idx < items.length - 1
             ? items[idx].waitAfterMs
             : interCycleGap + leadingWaitMs;
-        // ESP32 firmware already sleeps 50ms after every || segment
-        const extraWait = Math.max(0, desiredWait - STANDALONE_TICK_MS);
-        const noneTicks = Math.round(extraWait / STANDALONE_TICK_MS);
-        for (let t = 0; t < noneTicks; t++) {
-          segments.push('NONE');
+        if (useNativeDelay && desiredWait > STANDALONE_TICK_MS * 2) {
+          // Firmware sleeps 50ms after action + X ms inside DELAY:X + 50ms after DELAY:X = X + 100ms
+          appendNativeDelayChunks(segments, desiredWait - STANDALONE_TICK_MS * 2);
+        } else {
+          // ESP32 firmware already sleeps 50ms after every || segment
+          const extraWait = Math.max(0, desiredWait - STANDALONE_TICK_MS);
+          const noneTicks = Math.round(extraWait / STANDALONE_TICK_MS);
+          for (let t = 0; t < noneTicks; t++) {
+            segments.push('NONE');
+          }
         }
       }
     }
@@ -1004,14 +1116,16 @@ function encodeTimedMacroCycles(
 
 /**
  * Compiles a TextMacroRepeatConfig into an onboard ESP32 NVS payload (up to 512 bytes):
- * - Encodes all steps, per-step repeats, and Wait / transition delays directly into NVS
- *   using native 50ms hardware NONE ticks so multi-screen login + 2FA macros run 100% standalone.
- * - Automatically falls back to hybrid USB streaming only when `loopUntilStopped` is active
- *   or when total delays/repeats exceed the 512-byte NVS slot limit.
+ * - On Firmware v4.5.0+ (`opts.nativeDelay = true`), compiles waits using compact `DELAY:<ms>`
+ *   tokens so multi-screen login + 2FA macros up to 60s fit in <80 bytes and run 100% unplugged.
+ * - On Firmware < 4.5.0 / offline (`opts.nativeDelay = false`), uses 50ms `NONE` ticks so
+ *   legacy firmware never rejects saves while still running waits up to ~3.5s unplugged.
  */
 export function compileMacroConfigForHardware(
-  cfg: TextMacroRepeatConfig
+  cfg: TextMacroRepeatConfig,
+  opts?: { nativeDelay?: boolean }
 ): CompiledHardwareMacro {
+  const useNativeDelay = Boolean(opts?.nativeDelay);
   let effectiveSteps: MacroStepConfig[] = [];
 
   if (cfg.steps && cfg.steps.length > 0) {
@@ -1025,7 +1139,8 @@ export function compileMacroConfigForHardware(
           standaloneComplete: false,
           singleCycleStandalone: false,
           usbRequiredReason: null,
-          fullStandaloneByteEstimate: 0
+          fullStandaloneByteEstimate: 0,
+          nativeDelayByteEstimate: 0
         };
       }
       effectiveSteps.push({
@@ -1057,7 +1172,8 @@ export function compileMacroConfigForHardware(
       standaloneComplete: false,
       singleCycleStandalone: false,
       usbRequiredReason: null,
-      fullStandaloneByteEstimate: 0
+      fullStandaloneByteEstimate: 0,
+      nativeDelayByteEstimate: 0
     };
   }
 
@@ -1069,7 +1185,8 @@ export function compileMacroConfigForHardware(
         standaloneComplete: false,
         singleCycleStandalone: false,
         usbRequiredReason: null,
-        fullStandaloneByteEstimate: 0
+        fullStandaloneByteEstimate: 0,
+        nativeDelayByteEstimate: 0
       };
     }
   }
@@ -1092,7 +1209,8 @@ export function compileMacroConfigForHardware(
         standaloneComplete: len <= MAX_NVS_ACTION_BYTES,
         singleCycleStandalone: len <= MAX_NVS_ACTION_BYTES,
         usbRequiredReason: null,
-        fullStandaloneByteEstimate: len
+        fullStandaloneByteEstimate: len,
+        nativeDelayByteEstimate: len
       };
     }
 
@@ -1114,22 +1232,34 @@ export function compileMacroConfigForHardware(
         standaloneComplete: true,
         singleCycleStandalone: true,
         usbRequiredReason: null,
-        fullStandaloneByteEstimate: len
+        fullStandaloneByteEstimate: len,
+        nativeDelayByteEstimate: len
       };
     }
   }
 
-  // Try encoding full sequence (all cycles + all delays) within 512 bytes
-  const unmergedFull = encodeTimedMacroCycles(
+  // Always compute Firmware v4.5.0 native DELAY size so UI can show exact compression savings
+  const nativeFullUnmerged = encodeTimedMacroCycles(
     effectiveSteps,
     totalCycles,
     cfg.repeatDelayMs,
-    false
+    false,
+    true
   );
-  const bestFull =
-    unmergedFull.byteLength <= MAX_NVS_ACTION_BYTES
-      ? unmergedFull
-      : encodeTimedMacroCycles(effectiveSteps, totalCycles, cfg.repeatDelayMs, true);
+  const nativeBestFull =
+    nativeFullUnmerged.byteLength <= MAX_NVS_ACTION_BYTES
+      ? nativeFullUnmerged
+      : encodeTimedMacroCycles(effectiveSteps, totalCycles, cfg.repeatDelayMs, true, true);
+
+  // Encode for the target firmware capability
+  const unmergedFull = useNativeDelay
+    ? nativeFullUnmerged
+    : encodeTimedMacroCycles(effectiveSteps, totalCycles, cfg.repeatDelayMs, false, false);
+  const bestFull = useNativeDelay
+    ? nativeBestFull
+    : unmergedFull.byteLength <= MAX_NVS_ACTION_BYTES
+    ? unmergedFull
+    : encodeTimedMacroCycles(effectiveSteps, totalCycles, cfg.repeatDelayMs, true, false);
 
   if (!loop && bestFull.byteLength <= MAX_NVS_ACTION_BYTES) {
     return {
@@ -1138,7 +1268,8 @@ export function compileMacroConfigForHardware(
       standaloneComplete: true,
       singleCycleStandalone: true,
       usbRequiredReason: null,
-      fullStandaloneByteEstimate: bestFull.byteLength
+      fullStandaloneByteEstimate: bestFull.byteLength,
+      nativeDelayByteEstimate: nativeBestFull.byteLength
     };
   }
 
@@ -1146,13 +1277,13 @@ export function compileMacroConfigForHardware(
   const unmergedOne =
     totalCycles === 1
       ? unmergedFull
-      : encodeTimedMacroCycles(effectiveSteps, 1, cfg.repeatDelayMs, false);
+      : encodeTimedMacroCycles(effectiveSteps, 1, cfg.repeatDelayMs, false, useNativeDelay);
   const bestOne =
     unmergedOne.byteLength <= MAX_NVS_ACTION_BYTES
       ? unmergedOne
       : totalCycles === 1
       ? bestFull
-      : encodeTimedMacroCycles(effectiveSteps, 1, cfg.repeatDelayMs, true);
+      : encodeTimedMacroCycles(effectiveSteps, 1, cfg.repeatDelayMs, true, useNativeDelay);
 
   if (bestOne.byteLength <= MAX_NVS_ACTION_BYTES) {
     return {
@@ -1163,29 +1294,37 @@ export function compileMacroConfigForHardware(
       usbRequiredReason: loop
         ? 'Pass 1 runs standalone on the MacroPad; keep Studio MacroPad open over USB for continuous looping.'
         : `Pass 1 runs standalone on the MacroPad; passes 2–${totalCycles} stream over USB (${bestFull.byteLength}/${MAX_NVS_ACTION_BYTES} B).`,
-      fullStandaloneByteEstimate: bestFull.byteLength
+      fullStandaloneByteEstimate: bestFull.byteLength,
+      nativeDelayByteEstimate: nativeBestFull.byteLength
     };
   }
 
-  // Even 1 cycle with full NONE delay ticks exceeds 512B (e.g. a 10s+ wait):
+  // Even 1 cycle exceeds 512B under current encoding:
   // Store Step 01 in NVS so USB streaming runs Step 02..N cleanly without double-typing
   const firstOnly = bestOne.firstAction;
   const firstBytes = new TextEncoder().encode(firstOnly).length;
+  const fitsOnV45 = nativeBestFull.byteLength <= MAX_NVS_ACTION_BYTES;
   return {
     firmwareAction: firstOnly,
     byteLength: firstBytes,
     standaloneComplete: false,
     singleCycleStandalone: false,
-    usbRequiredReason: `Total wait/steps need ${bestOne.byteLength} B (max ${MAX_NVS_ACTION_BYTES} B standalone). Shorten waits to ~3.5s to run unplugged, or keep Studio MacroPad open via USB.`,
-    fullStandaloneByteEstimate: bestFull.byteLength
+    usbRequiredReason: fitsOnV45
+      ? `Total wait needs ${bestOne.byteLength} B on legacy firmware (${nativeBestFull.byteLength} B with Firmware v4.5.0 native DELAY). Flash Firmware v4.5.0 in Settings to run unplugged, or keep USB connected.`
+      : `Total wait/steps need ${bestOne.byteLength} B (max ${MAX_NVS_ACTION_BYTES} B standalone). Shorten text/steps to run unplugged, or keep Studio MacroPad open via USB.`,
+    fullStandaloneByteEstimate: bestFull.byteLength,
+    nativeDelayByteEstimate: nativeBestFull.byteLength
   };
 }
 
 /**
  * Build the ESP32 NVS firmware action for a Text/Button Repeat or Multi-Step configuration.
  */
-export function buildFirmwareActionFromTextConfig(cfg: TextMacroRepeatConfig): string {
-  return compileMacroConfigForHardware(cfg).firmwareAction;
+export function buildFirmwareActionFromTextConfig(
+  cfg: TextMacroRepeatConfig,
+  opts?: { nativeDelay?: boolean }
+): string {
+  return compileMacroConfigForHardware(cfg, opts).firmwareAction;
 }
 
 /**
@@ -1230,9 +1369,12 @@ export function parseTextConfigFromFirmwareAction(
  * (e.g. continuous `loopUntilStopped` or waits/cycles exceeding 512 bytes) and
  * therefore needs `repeatMacroRunner` over USB to complete remaining steps/cycles.
  */
-export function requiresUsbSequenceExecution(cfg?: TextMacroRepeatConfig): boolean {
+export function requiresUsbSequenceExecution(
+  cfg?: TextMacroRepeatConfig,
+  opts?: { nativeDelay?: boolean }
+): boolean {
   if (!cfg) return false;
-  return !compileMacroConfigForHardware(cfg).standaloneComplete;
+  return !compileMacroConfigForHardware(cfg, opts).standaloneComplete;
 }
 
 /**
@@ -1457,13 +1599,25 @@ export function describeFirmwareAction(
 } {
   const raw = actionStr || '';
   const trimmed = raw.startsWith('TEXT:') ? raw : raw.trim();
-  if (!trimmed) {
+  if (!trimmed || trimmed === 'NONE') {
     return {
       shortLabel: 'Unassigned',
-      fullLabel: 'Not Synced / Unassigned',
-      description: 'Connect USB to load from device or choose an action',
+      fullLabel: 'Unassigned',
+      description: 'No action assigned to this control',
       icon: 'none',
       color: '#6B7280'
+    };
+  }
+
+  if (trimmed.startsWith('DELAY:')) {
+    const ms = Math.max(0, parseInt(trimmed.slice(6).trim(), 10) || 0);
+    const label = ms >= 1000 && ms % 1000 === 0 ? `Wait ${ms / 1000}s` : `Wait ${ms} ms`;
+    return {
+      shortLabel: label.slice(0, 12),
+      fullLabel: label,
+      description: `Hardware timed pause (${ms} ms)`,
+      icon: 'clock',
+      color: '#FBBF24'
     };
   }
 
@@ -1972,6 +2126,7 @@ export interface MacroSequenceValidationResult {
   standaloneComplete: boolean;
   usbRequiredReason: string | null;
   fullStandaloneByteEstimate: number;
+  nativeDelayByteEstimate: number;
   issues: MacroSequenceValidationIssue[];
 }
 
@@ -1981,7 +2136,8 @@ export interface MacroSequenceValidationResult {
  */
 export function validateMacroSequenceDraft(
   steps: MacroStepConfig[],
-  repeatConfig?: Partial<TextMacroRepeatConfig>
+  repeatConfig?: Partial<TextMacroRepeatConfig>,
+  opts?: { nativeDelay?: boolean }
 ): MacroSequenceValidationResult {
   const MAX_BYTES = MAX_NVS_ACTION_BYTES;
   const issues: MacroSequenceValidationIssue[] = [];
@@ -1998,6 +2154,7 @@ export function validateMacroSequenceDraft(
       standaloneComplete: false,
       usbRequiredReason: null,
       fullStandaloneByteEstimate: 0,
+      nativeDelayByteEstimate: 0,
       issues
     };
   }
@@ -2118,14 +2275,15 @@ export function validateMacroSequenceDraft(
 
   const compiled =
     issues.length === 0
-      ? compileMacroConfigForHardware(fullCfg)
+      ? compileMacroConfigForHardware(fullCfg, opts)
       : {
           firmwareAction: '',
           byteLength: 0,
           standaloneComplete: false,
           singleCycleStandalone: false,
           usbRequiredReason: null,
-          fullStandaloneByteEstimate: 0
+          fullStandaloneByteEstimate: 0,
+          nativeDelayByteEstimate: 0
         };
 
   const builtAction = compiled.firmwareAction
@@ -2151,6 +2309,7 @@ export function validateMacroSequenceDraft(
     standaloneComplete: compiled.standaloneComplete,
     usbRequiredReason: compiled.usbRequiredReason,
     fullStandaloneByteEstimate: compiled.fullStandaloneByteEstimate,
+    nativeDelayByteEstimate: compiled.nativeDelayByteEstimate,
     issues
   };
 }
@@ -2367,7 +2526,7 @@ export function parseSingleActionKeyValue(rawToken: string): ParsedActionToken {
     };
   }
 
-  if (upperPrefix === 'WAIT') {
+  if (upperPrefix === 'WAIT' || upperPrefix === 'DELAY') {
     const ms = parseInt(rest.trim(), 10);
     const formattedWait = !Number.isNaN(ms)
       ? ms >= 1000 && ms % 1000 === 0
@@ -2375,7 +2534,7 @@ export function parseSingleActionKeyValue(rawToken: string): ParsedActionToken {
         : `${ms}ms`
       : rest.trim();
     return {
-      prefix: 'WAIT',
+      prefix: upperPrefix,
       value: formattedWait,
       prettyValue: `Wait ${formattedWait}`,
       rawAction: trimmed

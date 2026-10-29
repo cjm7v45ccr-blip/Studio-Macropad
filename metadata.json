@@ -1,6 +1,6 @@
 {
   "name": "Studio MacroPad Pro - Flagship Hardware Controller",
-  "description": "Flagship hardware control center and real-time configurator for ESP32 MacroPad devices with custom low-latency key remapping, per-key RGB, and live hardware streaming.",
+  "description": "Configure your ESP32 Studio MacroPad over Web Serial with 3-host Easy-Switch Bluetooth, OLED HUD preview, Smart Actions macros, rotary knob presets, and Smart TV control.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

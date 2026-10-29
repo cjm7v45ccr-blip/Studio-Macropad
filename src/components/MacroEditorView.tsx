@@ -27,6 +27,7 @@ import {
   describeFirmwareAction,
   findEquivalentBuiltInSpec,
   firmwareActionToBinding,
+  firmwareSupportsNativeDelay,
   formatShortcutPretty,
   fwKeyToPrintableAscii,
   getActionTestAvailability,
@@ -1435,9 +1436,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   // Sequence timing, completeness validation, and optimizer analysis
   const timingSummary = useMemo(() => calculateStepsTiming(macroSteps), [macroSteps]);
 
+  const nativeDelaySupported = firmwareSupportsNativeDelay(connection.firmwareVersion);
+
   const draftValidation = useMemo(
-    () => validateMacroSequenceDraft(macroSteps, builtRepeatConfig),
-    [macroSteps, builtRepeatConfig]
+    () =>
+      validateMacroSequenceDraft(macroSteps, builtRepeatConfig, {
+        nativeDelay: nativeDelaySupported
+      }),
+    [macroSteps, builtRepeatConfig, nativeDelaySupported]
   );
 
   const issueStepIds = useMemo(() => {
@@ -1550,7 +1556,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     return null;
   }, [customMacros, selectedMacroId, currentSignature, macroName]);
 
-  const needsLiveRunner = requiresUsbSequenceExecution(effectiveRepeatConfig);
+  const needsLiveRunner = requiresUsbSequenceExecution(effectiveRepeatConfig, {
+    nativeDelay: nativeDelaySupported
+  });
   const testAvail = getActionTestAvailability(builtAction, connection);
   const isSimulating = Boolean(activeRepeatJob?.id.startsWith('sim-'));
   const isJobRunning = Boolean(activeRepeatJob);
@@ -2300,6 +2308,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     <span className="inline-flex items-center gap-1.5 text-[var(--text-secondary)]">
                       <HardDrive className="w-3 h-3 text-[var(--text-muted)]" />
                       <span>Device memory</span>
+                      {nativeDelaySupported && timingSummary.totalDelayMs >= 150 && (
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-500/12 border border-emerald-500/30 text-[10px] text-emerald-400">
+                          v4.5 DELAY
+                        </span>
+                      )}
                     </span>
                     <span
                       className={
@@ -2325,6 +2338,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       style={{ width: `${Math.max(3, memoryRatio)}%` }}
                     />
                   </div>
+                  {!nativeDelaySupported &&
+                    draftValidation.nativeDelayByteEstimate > 0 &&
+                    draftValidation.nativeDelayByteEstimate < draftValidation.byteLength && (
+                      <p className="text-[11px] text-[var(--text-muted)] font-mono tabular-nums">
+                        Firmware v4.5.0 native DELAY shrinks this sequence from{' '}
+                        {draftValidation.byteLength} B → {draftValidation.nativeDelayByteEstimate} B.
+                      </p>
+                    )}
                 </div>
 
                 {/* Bound-Slot Provenance */}

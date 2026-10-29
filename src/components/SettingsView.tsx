@@ -41,7 +41,11 @@ import {
   CheckCircle2,
   AlertCircle,
   KeyRound,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Code2,
+  Download,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -95,6 +99,23 @@ const KEYBOARD_LAYOUTS: { id: KeyboardLayoutId; label: string }[] = [
   { id: 'jp_jis', label: 'Japanese (JIS)' }
 ];
 
+type SettingsSectionTab =
+  | 'all'
+  | 'connection'
+  | 'firmware'
+  | 'wifi_tv'
+  | 'preferences'
+  | 'console';
+
+const SETTINGS_TABS: { id: SettingsSectionTab; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'connection', label: 'Connection & Hosts' },
+  { id: 'firmware', label: 'Firmware' },
+  { id: 'wifi_tv', label: 'Wi-Fi & TV' },
+  { id: 'preferences', label: 'Preferences' },
+  { id: 'console', label: 'Console & Reset' }
+];
+
 export const SettingsView: React.FC<SettingsViewProps> = ({
   profiles,
   settings,
@@ -146,6 +167,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [httpToken, setHttpToken] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [bleBusy, setBleBusy] = useState(false);
+
+  // Sub-navigation, Advanced Disclosures & Firmware v4.5.0 Source Studio
+  const [settingsTab, setSettingsTab] = useState<SettingsSectionTab>('all');
+  const [showAdvancedProtocol, setShowAdvancedProtocol] = useState(false);
+  const [sourceBusy, setSourceBusy] = useState(false);
 
   // Reset Confirmations
   const [resetProfilesModalOpen, setResetProfilesModalOpen] = useState(false);
@@ -373,38 +399,128 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { id: 'light', label: 'Light', icon: Sun }
   ];
 
+  const handleDownloadV45Source = async () => {
+    setSourceBusy(true);
+    try {
+      const res = await fetch('/firmware-source/StudioMacroPad_v4.5.0.ino');
+      if (!res.ok) throw new Error('Could not load firmware source sketch');
+      const code = await res.text();
+      const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'StudioMacroPad_v4.5.0.ino';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      onToast('Downloaded StudioMacroPad_v4.5.0.ino');
+    } catch (err: any) {
+      onToast(err?.message || 'Failed to download C++ sketch', 'error');
+    } finally {
+      setSourceBusy(false);
+    }
+  };
+
+  const handleCopyV45Source = async () => {
+    setSourceBusy(true);
+    try {
+      const res = await fetch('/firmware-source/StudioMacroPad_v4.5.0.ino');
+      if (!res.ok) throw new Error('Could not load firmware source sketch');
+      const code = await res.text();
+      await navigator.clipboard.writeText(code);
+      onToast('Copied StudioMacroPad_v4.5.0.ino to clipboard');
+    } catch (err: any) {
+      onToast(err?.message || 'Could not copy C++ sketch', 'error');
+    } finally {
+      setSourceBusy(false);
+    }
+  };
+
   const handleJumpToUpdater = () => {
+    if (settingsTab !== 'all' && settingsTab !== 'firmware') {
+      setSettingsTab('firmware');
+      window.setTimeout(() => {
+        document
+          .getElementById('firmware-updater-card')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
+      return;
+    }
     const el = document.getElementById('firmware-updater-card');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
+  const showConnection = settingsTab === 'all' || settingsTab === 'connection';
+  const showFirmware = settingsTab === 'all' || settingsTab === 'firmware';
+  const showWifiTv = settingsTab === 'all' || settingsTab === 'wifi_tv';
+  const showPreferences = settingsTab === 'all' || settingsTab === 'preferences';
+  const showConsole = settingsTab === 'all' || settingsTab === 'console';
+
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
       <div className="max-w-3xl mx-auto space-y-6">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="text-lg font-bold text-[var(--text-primary)]">
-              Settings & Diagnostics
-            </h1>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Device diagnostics, firmware updates, Bluetooth, Wi-Fi, SmartCast TV pairing, preferences, and serial debug console.
-            </p>
+        <div className="space-y-3.5">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h1 className="text-lg font-bold text-[var(--text-primary)]">
+                Settings & Diagnostics
+              </h1>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                Device diagnostics, firmware updates, Bluetooth hosts, Wi-Fi, SmartCast TV pairing, preferences, and serial console.
+              </p>
+            </div>
+            {connection.connected && (
+              <button
+                type="button"
+                onClick={onPullFromUsb}
+                className="px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Refresh Status
+              </button>
+            )}
           </div>
-          {connection.connected && (
-            <button
-              type="button"
-              onClick={onPullFromUsb}
-              className="px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
-            >
-              Refresh Status
-            </button>
-          )}
+
+          {/* Segmented Settings Sub-Navigation */}
+          <nav
+            aria-label="Settings sections"
+            className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-x-auto"
+          >
+            {SETTINGS_TABS.map(tab => {
+              const active = settingsTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSettingsTab(tab.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    active
+                      ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
         </div>
 
+        <FirmwareUpdateBanner
+          connection={connection}
+          firmwareUpdate={firmwareUpdate}
+          installProgress={installProgress}
+          isUploadingFirmware={isUploadingFirmware}
+          isFirmwareBannerDismissed={isFirmwareBannerDismissed}
+          onDismissFirmwareBanner={onDismissFirmwareBanner}
+          onUploadToMacropad={() => onUploadFirmwareToMacropad()}
+          onJumpToUpdater={handleJumpToUpdater}
+        />
+
         {/* Guided Setup & Hardware Setup Mode Provisioning */}
-        {onOpenSetupWizard && (
+        {showConnection && onOpenSetupWizard && (
           <section className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-1 min-w-0">
@@ -413,9 +529,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span>Guided Setup & Provisioning</span>
                 </div>
                 <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                  Walk through starter OS layouts, 3 Bluetooth host aliases, optional Wi-Fi & SmartCast TV pairing, and live switch verification. Opens automatically whenever a board reports{' '}
-                  <span className="font-mono text-[var(--text-secondary)]">setup_mode: true</span> or{' '}
-                  <span className="font-mono text-[var(--text-secondary)]">{"{\"mode\":\"setup\"}"}</span>.
+                  Walk through starter OS layouts, 3 Bluetooth host names, optional Wi-Fi & SmartCast TV pairing, and live switch verification. Opens automatically when a fresh or reset board enters Setup Mode.
                 </p>
               </div>
 
@@ -425,9 +539,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="button"
                     onClick={onEnterHardwareSetupMode}
                     className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                    title="Send /api/setup/enter so the connected MacroPad enters Setup Mode"
+                    title="Put the connected MacroPad into on-device Setup Mode"
                   >
-                    Trigger Board Setup Mode
+                    Enter Setup Mode
                   </button>
                 )}
                 <button
@@ -455,133 +569,205 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {telemetry?.setupMode ? 'Setup Mode Active' : 'Provisioned (Normal)'}
                   </span>
                 </span>
-                <span>Clears on finish via /api/setup/complete</span>
               </div>
             )}
           </section>
         )}
 
-        <FirmwareUpdateBanner
-          connection={connection}
-          firmwareUpdate={firmwareUpdate}
-          installProgress={installProgress}
-          isUploadingFirmware={isUploadingFirmware}
-          isFirmwareBannerDismissed={isFirmwareBannerDismissed}
-          onDismissFirmwareBanner={onDismissFirmwareBanner}
-          onUploadToMacropad={() => onUploadFirmwareToMacropad()}
-          onJumpToUpdater={handleJumpToUpdater}
-        />
-
-        {/* 1. Device Diagnostics Card (Device ID, Firmware Version, API Version, Config Revision, Free Memory) */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-              <Cpu className="w-4 h-4 text-[var(--accent)]" />
-              <span>Device Diagnostics</span>
-            </div>
-            <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
-              {syncStatus} · {connection.connected ? connection.deviceName : 'Disconnected'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
-            <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-              <div className="text-[10px] text-[var(--text-muted)]">Device ID</div>
-              <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 truncate">
-                {connection.deviceId || currentDeviceId || '—'}
+        {/* 1. Device Diagnostics Card */}
+        {showConnection && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+                <Cpu className="w-4 h-4 text-[var(--accent)]" />
+                <span>Device Diagnostics</span>
               </div>
-            </div>
-            <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-              <div className="text-[10px] text-[var(--text-muted)]">Firmware version</div>
-              <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
-                {connection.connected ? connection.firmwareVersion : '—'}
-              </div>
-            </div>
-            <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-              <div className="text-[10px] text-[var(--text-muted)]">API version</div>
-              <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
-                {connection.connected && telemetry ? telemetry.apiVersion : '—'}
-              </div>
-            </div>
-            <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-              <div className="text-[10px] text-[var(--text-muted)]">Config revision</div>
-              <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
-                rev {currentRev}
-              </div>
-            </div>
-            <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] col-span-2 sm:col-span-1">
-              <div className="text-[10px] text-[var(--text-muted)]">Free memory</div>
-              <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
-                {connection.connected && telemetry
-                  ? `${Math.round(telemetry.freeHeap / 1024)} KB`
-                  : '—'}
-              </div>
-            </div>
-          </div>
-
-          {isDemo && telemetry && (
-            <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 flex-wrap">
-              <span className="text-[11px] text-[var(--text-muted)]">
-                Demo Mode Link Controls:
+              <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
+                {syncStatus} · {connection.connected ? connection.deviceName : 'Disconnected'}
               </span>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() =>
-                    usbHardware.setDemoLinkState({
-                      bleConnected: !telemetry.bleConnected
-                    })
-                  }
-                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  Toggle BLE ({telemetry.bleConnected ? 'Connected' : 'Disconnected'})
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    usbHardware.setDemoLinkState({
-                      wifiConnected: !telemetry.wifiConnected
-                    })
-                  }
-                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  Toggle Wi-Fi ({telemetry.wifiConnected ? 'Connected' : 'Down'})
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    usbHardware.setDemoLinkState({
-                      firmwareVersion:
-                        connection.firmwareVersion === '1.0.0' ? '3.2-PRO' : '1.0.0'
-                    })
-                  }
-                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
-                  title="Simulate older connected firmware in Demo Mode to test the firmware update notification"
-                >
-                  Simulate FW ({connection.firmwareVersion === '1.0.0' ? 'Restore 3.2-PRO' : 'Set 1.0.0'})
-                </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
+              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <div className="text-[10px] text-[var(--text-muted)]">Device ID</div>
+                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 truncate">
+                  {connection.deviceId || currentDeviceId || '—'}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <div className="text-[10px] text-[var(--text-muted)]">
+                  {connection.connected ? 'Firmware version' : 'Last known FW'}
+                </div>
+                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums truncate">
+                  {connection.connected
+                    ? connection.firmwareVersion
+                    : settings.lastKnownFirmware || '—'}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <div className="text-[10px] text-[var(--text-muted)]">API version</div>
+                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
+                  {connection.connected && telemetry ? telemetry.apiVersion : '—'}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <div className="text-[10px] text-[var(--text-muted)]">Config revision</div>
+                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
+                  rev {currentRev}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] col-span-2 sm:col-span-1">
+                <div className="text-[10px] text-[var(--text-muted)]">Free memory</div>
+                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
+                  {connection.connected && telemetry
+                    ? `${Math.round(telemetry.freeHeap / 1024)} KB`
+                    : '—'}
+                </div>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* 1B. MacroPad Firmware Updates Card */}
-        <FirmwareUpdaterCard
-          settings={settings}
-          connection={connection}
-          firmwareUpdate={firmwareUpdate}
-          installProgress={installProgress}
-          isUploadingFirmware={isUploadingFirmware}
-          isFirmwareBannerDismissed={isFirmwareBannerDismissed}
-          onDismissFirmwareBanner={onDismissFirmwareBanner}
-          onCheckFirmwareUpdate={onCheckFirmwareUpdate}
-          onUploadFirmwareToMacropad={onUploadFirmwareToMacropad}
-          onUpdateSettings={onUpdateSettings}
-          onExportBackupFile={onExportBackupFile}
-          onToast={onToast}
-        />
+            {isDemo && telemetry && (
+              <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-[11px] text-[var(--text-muted)]">
+                  Demo Mode Simulator:
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      usbHardware.setDemoLinkState({
+                        bleConnected: !telemetry.bleConnected
+                      })
+                    }
+                    className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    Toggle BLE ({telemetry.bleConnected ? 'Connected' : 'Disconnected'})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      usbHardware.setDemoLinkState({
+                        wifiConnected: !telemetry.wifiConnected
+                      })
+                    }
+                    className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    Toggle Wi-Fi ({telemetry.wifiConnected ? 'Connected' : 'Down'})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      usbHardware.setDemoLinkState({
+                        firmwareVersion:
+                          connection.firmwareVersion === '1.0.0' ? '4.5.0' : '1.0.0'
+                      })
+                    }
+                    className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
+                    title="Simulate older connected firmware in Demo Mode to test the firmware update flow"
+                  >
+                    Simulate FW ({connection.firmwareVersion === '1.0.0' ? 'Restore 4.5.0' : 'Set 1.0.0'})
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-        {/* 2. Multi-Host Bluetooth Engine (`/api/ble/switch`) */}
+        {/* 1B. MacroPad Firmware Updates + v4.5.0 Source Studio */}
+        {showFirmware && (
+          <>
+            <FirmwareUpdaterCard
+              settings={settings}
+              connection={connection}
+              firmwareUpdate={firmwareUpdate}
+              installProgress={installProgress}
+              isUploadingFirmware={isUploadingFirmware}
+              isFirmwareBannerDismissed={isFirmwareBannerDismissed}
+              onDismissFirmwareBanner={onDismissFirmwareBanner}
+              onCheckFirmwareUpdate={onCheckFirmwareUpdate}
+              onUploadFirmwareToMacropad={onUploadFirmwareToMacropad}
+              onUpdateSettings={onUpdateSettings}
+              onExportBackupFile={onExportBackupFile}
+              onToast={onToast}
+            />
+
+            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
+                    <Code2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                    <span>ESP32 Firmware v4.5.0 Source Studio</span>
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/12 border border-emerald-500/30 font-mono text-[10px] font-semibold text-emerald-400 tabular-nums">
+                      Arduino / PlatformIO
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                    Complete C++ sketch engineered for your 9-button + rotary dial ESP32 MacroPad with standalone multi-screen macro delays and hardware safety upgrades.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={sourceBusy}
+                    onClick={handleCopyV45Source}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                    <span>Copy C++ Sketch</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={sourceBusy}
+                    onClick={handleDownloadV45Source}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download StudioMacroPad_v4.5.0.ino</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[var(--text-secondary)]">
+                <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                  <div className="font-semibold text-[var(--text-primary)]">
+                    Native DELAY:&lt;ms&gt; Engine
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    Runs 1 ms–60 s multi-screen login & 2FA waits completely unplugged in &lt;80 bytes.
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                  <div className="font-semibold text-[var(--text-primary)]">
+                    512-Byte Slot & Whitespace Parity
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    Matches single-slot saves and live tests to 512 B and preserves leading/trailing spaces in TEXT steps.
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                  <div className="font-semibold text-[var(--text-primary)]">
+                    Hardware Panic-Cancel & Velocity Dial
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    Tap any physical key during a wait to abort a running macro; fast knob spins step 2×–3×.
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                  <div className="font-semibold text-[var(--text-primary)]">
+                    Radio-Safe USB OTA + OLED Progress
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    Quiesces BLE/Wi-Fi radios before flash writes and renders a live progress bar on the 128×64 OLED.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* 2. Multi-Host Bluetooth Engine */}
+        {showConnection && (
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
@@ -673,8 +859,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             })}
           </div>
         </div>
+        )}
 
-        {/* 3. Wi-Fi Provisioning Card (saved SSID, never stores password, Connecting… -> IP or error within 20s) */}
+        {/* 3. Wi-Fi Provisioning Card */}
+        {showWifiTv && (
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
@@ -750,8 +938,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
         </div>
+        )}
 
         {/* 4. SmartCast TV Pairing Card */}
+        {showWifiTv && (
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
@@ -907,46 +1097,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
         </div>
+        )}
 
-        {/* 5. Local HTTP API Token (`/api/auth/set` — Pad Only) */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-              <Shield className="w-4 h-4 text-sky-400" />
-              <span>Pad Local HTTP API Token (`/api/auth/set`)</span>
+        {/* 5. Local HTTP API Security (Pad Only) */}
+        {showWifiTv && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+                <Shield className="w-4 h-4 text-sky-400" />
+                <span>Local Network API Access</span>
+              </div>
+              <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                {connection.connected && telemetry
+                  ? telemetry.httpApiEnabled
+                    ? 'HTTP API Enabled'
+                    : 'HTTP API Disabled'
+                  : 'Stored on pad only'}
+              </span>
             </div>
-            <span className="font-mono text-[10px] text-[var(--text-muted)]">
-              {connection.connected && telemetry
-                ? telemetry.httpApiEnabled
-                  ? 'HTTP API Enabled'
-                  : 'HTTP API Disabled'
-                : 'Stored on pad only'}
-            </span>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                maxLength={64}
+                autoComplete="new-password"
+                disabled={!connection.connected || authBusy}
+                value={httpToken}
+                onChange={e => setHttpToken(e.target.value)}
+                placeholder="8–64 char bearer token (leave empty to disable)"
+                aria-label="HTTP API Token"
+                className="flex-1 px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
+              />
+              <button
+                type="button"
+                disabled={!connection.connected || authBusy}
+                onClick={handleSaveHttpAuth}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
+              >
+                Save Token
+              </button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              maxLength={64}
-              autoComplete="new-password"
-              disabled={!connection.connected || authBusy}
-              value={httpToken}
-              onChange={e => setHttpToken(e.target.value)}
-              placeholder="8–64 char token (leave empty to disable)"
-              aria-label="HTTP API Token"
-              className="flex-1 px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
-            />
-            <button
-              type="button"
-              disabled={!connection.connected || authBusy}
-              onClick={handleSaveHttpAuth}
-              className="px-4 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
-            >
-              Save Token
-            </button>
-          </div>
-        </div>
+        )}
 
-        {/* 6. Theme (System, Dark, Light), Live Events Toggle, Audio & Keyboard Layout */}
+        {/* 6. Theme, Live Events Toggle, Audio & Keyboard Layout */}
+        {showPreferences && (
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-5">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
@@ -1016,7 +1210,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {/* Live Events Toggle */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-[var(--text-secondary)]">
-                Live events (`/api/events/set`)
+                Live Pad Feedback
               </label>
               <button
                 type="button"
@@ -1091,8 +1285,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
         </div>
+        )}
 
         {/* 7. Debug Console (Redacted Serial Traffic + Copy & Clear) */}
+        {showConsole && (
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
@@ -1154,14 +1350,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               ))
             )}
           </div>
+
+          {/* Collapsible Advanced Developer Protocol Reference */}
+          <div className="pt-2 border-t border-[var(--border-subtle)]">
+            <button
+              type="button"
+              onClick={() => setShowAdvancedProtocol(v => !v)}
+              className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] cursor-pointer"
+            >
+              {showAdvancedProtocol ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5" />
+              )}
+              <span>Advanced serial & HTTP protocol details</span>
+            </button>
+            {showAdvancedProtocol && (
+              <div className="mt-2.5 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-[11px] text-[var(--text-muted)] space-y-1 leading-relaxed">
+                <div>
+                  USB Serial: 115200 baud NDJSON ·{' '}
+                  <span className="text-[var(--text-secondary)]">/api/status</span>,{' '}
+                  <span className="text-[var(--text-secondary)]">/api/profiles</span>,{' '}
+                  <span className="text-[var(--text-secondary)]">/api/customizer/save</span>,{' '}
+                  <span className="text-[var(--text-secondary)]">/api/macro/test</span>,{' '}
+                  <span className="text-[var(--text-secondary)]">/api/macro/cancel</span>
+                </div>
+                <div>
+                  Provisioning:{' '}
+                  <span className="text-[var(--text-secondary)]">{"{\"mode\":\"setup\"}"}</span>{' '}
+                  · <span className="text-[var(--text-secondary)]">/api/setup/complete</span> ·{' '}
+                  <span className="text-[var(--text-secondary)]">/api/auth/set</span> ·{' '}
+                  <span className="text-[var(--text-secondary)]">/api/events/set</span>
+                </div>
+                <div>
+                  ESP32 Flash Layout: Compatible with Standard Dual-OTA and Huge APP (3MB No OTA) via WebSerial bootloader or{' '}
+                  <span className="text-[var(--text-secondary)]">/api/ota/begin</span>.
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+        )}
 
         {/* 8. Reset All 4 Profiles & Clear Browser Cache */}
+        {showConsole && (
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                Reset all 4 profiles (`/api/device/reset-settings`)
+                Reset all 4 profiles to factory defaults
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
                 Asks you to type <span className="font-mono font-semibold">RESET</span> and restores universal defaults across Host 1, Host 2, Host 3, and TV while keeping Wi-Fi & TV pairing intact.
@@ -1184,7 +1421,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Clear Browser Local Cache
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Clears saved `localStorage["pad:" + id]` records, offline drafts, and My presets.
+                Clears saved offline device drafts, custom macros, and profile snapshots stored in this browser.
               </p>
             </div>
 
@@ -1220,6 +1457,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Forget TV Modal (requires typing FORGET) */}
