@@ -79,11 +79,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       mac_b2: status.mac_b2,
       mac_b3: status.mac_b3,
       mac_b4: status.mac_b4,
+      mac_b5: status.mac_b5,
+      mac_b6: status.mac_b6,
+      mac_b7: status.mac_b7,
+      mac_b8: status.mac_b8,
       mac_dial: status.mac_dial,
       tv_b1: status.tv_b1,
       tv_b2: status.tv_b2,
       tv_b3: status.tv_b3,
       tv_b4: status.tv_b4,
+      tv_b5: status.tv_b5,
+      tv_b6: status.tv_b6,
+      tv_b7: status.tv_b7,
+      tv_b8: status.tv_b8,
       tv_dial: status.tv_dial
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -98,7 +106,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const isTvPaired = status.has_auth || status.tv?.paired;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="w-full max-w-lg rounded-2xl bg-[#0d1017] border border-slate-800 shadow-2xl p-6 space-y-4">
         
         {/* Header */}

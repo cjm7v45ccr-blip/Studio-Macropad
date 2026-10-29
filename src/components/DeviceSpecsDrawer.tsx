@@ -1,13 +1,13 @@
 import React from 'react';
-import { FirmwareStatus } from '../types/macropod';
-import { Cpu, Wifi, Bluetooth, Zap, X, ShieldCheck, HardDrive } from 'lucide-react';
+import { ConnectionMode, FirmwareStatus } from '../types/macropod';
+import { Cpu, X } from 'lucide-react';
 
 interface DeviceSpecsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   status: FirmwareStatus;
   isConnected: boolean;
-  connectionMode: 'usb' | 'wifi' | 'disconnected';
+  connectionMode: ConnectionMode;
 }
 
 export const DeviceSpecsDrawer: React.FC<DeviceSpecsDrawerProps> = ({

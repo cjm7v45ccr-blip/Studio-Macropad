@@ -3,8 +3,9 @@
  * Matched 1:1 with ESP32 Firmware (v3.2-PRO)
  */
 
-export type SlotId = 'b1' | 'b2' | 'b3' | 'b4' | 'dial';
+export type SlotId = 'b1' | 'b2' | 'b3' | 'b4' | 'b5' | 'b6' | 'b7' | 'b8' | 'dial';
 export type ProfileMode = 'MAC' | 'TV';
+export type ConnectionMode = 'usb' | 'disconnected';
 
 export interface MacropodProfile {
   id: ProfileMode;
@@ -14,6 +15,10 @@ export interface MacropodProfile {
     b2: string;
     b3: string;
     b4: string;
+    b5: string;
+    b6: string;
+    b7: string;
+    b8: string;
     dial: string;
   };
 }
@@ -56,11 +61,19 @@ export interface FirmwareStatus {
   mac_b2: string;
   mac_b3: string;
   mac_b4: string;
+  mac_b5: string;
+  mac_b6: string;
+  mac_b7: string;
+  mac_b8: string;
   mac_dial: string;
   tv_b1: string;
   tv_b2: string;
   tv_b3: string;
   tv_b4: string;
+  tv_b5: string;
+  tv_b6: string;
+  tv_b7: string;
+  tv_b8: string;
   tv_dial: string;
 }
 

@@ -78,11 +78,15 @@ export const KeyRemapper: React.FC<KeyRemapperProps> = ({
   const currentDetails = getActionDetails(currentActionId);
 
   const slotLabels: Record<SlotId, string> = {
-    b1: 'Key 1 (GPIO 4)',
-    b2: 'Key 2 (GPIO 5)',
-    b3: 'Key 3 (GPIO 6)',
-    b4: 'Key 4 (GPIO 7)',
-    dial: 'Rotary Push Dial'
+    b1: 'Key 1',
+    b2: 'Key 2',
+    b3: 'Key 3',
+    b4: 'Key 4',
+    b5: 'Key 5',
+    b6: 'Key 6',
+    b7: 'Key 7',
+    b8: 'Key 8',
+    dial: 'Knob Press'
   };
 
   useEffect(() => {
@@ -246,17 +250,17 @@ export const KeyRemapper: React.FC<KeyRemapperProps> = ({
         <div className="flex items-center justify-between sm:justify-start gap-2">
           <span className="text-xs font-semibold text-slate-400">Target Button:</span>
           <div className="flex items-center p-0.5 rounded-lg bg-slate-950 border border-slate-800 overflow-x-auto">
-            {(['b1', 'b2', 'b3', 'b4', 'dial'] as SlotId[]).map(s => (
+            {(['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'dial'] as SlotId[]).map(s => (
               <button
                 key={s}
                 onClick={() => onSelectSlot(s)}
-                className={`px-2.5 sm:px-3 py-1 text-xs font-mono font-bold rounded-md transition-all cursor-pointer ${
+                className={`px-2 sm:px-2.5 py-1 text-xs font-mono font-bold rounded-md transition-all cursor-pointer whitespace-nowrap ${
                   selectedSlot === s
                     ? 'bg-sky-400 text-slate-950 shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                {s.toUpperCase()}
+                {s === 'dial' ? 'Knob' : `Key ${s.slice(1)}`}
               </button>
             ))}
           </div>

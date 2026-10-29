@@ -1,91 +1,161 @@
-/**
- * Flagship Curated Profile Packs for Commercial MacroPad Buyers
- */
+import { HardwareProfileId, HardwareSlotId } from '../types/studio';
 
 export interface ProfilePreset {
   id: string;
   title: string;
   subtitle: string;
-  mode: 'MAC' | 'TV';
+  mode: HardwareProfileId;
   description: string;
-  bindings: {
-    b1: string;
-    b2: string;
-    b3: string;
-    b4: string;
-    dial: string;
-  };
+  bindings: Record<HardwareSlotId, string>;
 }
 
 export const CURATED_PRESETS: ProfilePreset[] = [
   {
-    id: 'mac-pro-editor',
-    title: 'Video Editor & Premiere',
-    subtitle: 'macOS Cut & Scrubbing',
-    mode: 'MAC',
-    description: 'Razor cut tool, ripple delete, play/pause, and fast timeline scrubbing on the rotary dial.',
+    id: 'universal-multi-host',
+    title: 'Universal Multi-Device',
+    subtitle: 'OS-Neutral Media & Host Cycle',
+    mode: 'HOST1',
+    description:
+      'OS-neutral consumer media transport, F13–F15 macro triggers, 1-tap Next BLE Host switching on Button 8, and rotary volume.',
     bindings: {
-      b1: 'MACRO:CUT',
-      b2: 'KEY:F13',
-      b3: 'MACRO:SAVE',
-      b4: 'MEDIA:PLAY_PAUSE',
-      dial: 'MEDIA:MUTE'
+      b1: 'MEDIA:PLAY_PAUSE',
+      b2: 'MEDIA:NEXT',
+      b3: 'MEDIA:PREV',
+      b4: 'MEDIA:MUTE',
+      b5: 'KEY:F13',
+      b6: 'KEY:F14',
+      b7: 'KEY:F15',
+      b8: 'BLE:NEXT_HOST',
+      dial: 'MEDIA:MUTE',
+      enc_cw: 'MEDIA:VOL_UP',
+      enc_ccw: 'MEDIA:VOL_DOWN'
     }
   },
   {
-    id: 'mac-dev-terminal',
-    title: 'Developer & Terminal',
-    subtitle: 'Code Navigation & Git',
-    mode: 'MAC',
-    description: 'Instant clipboard pipeline, tab switching, and code save with quick access to spotlight.',
+    id: 'mac-everyday-media',
+    title: 'Everyday Mac & Audio',
+    subtitle: 'Media, Clipboard & Spotlight',
+    mode: 'HOST1',
+    description:
+      'Play/pause, track transport, Spotlight search, copy/paste/undo, Mac lock, and smooth speaker volume on the knob.',
+    bindings: {
+      b1: 'MEDIA:PLAY_PAUSE',
+      b2: 'MEDIA:PREV',
+      b3: 'MEDIA:NEXT',
+      b4: 'MACRO:SPOTLIGHT',
+      b5: 'MACRO:COPY',
+      b6: 'MACRO:PASTE',
+      b7: 'MACRO:UNDO',
+      b8: 'MACRO:LOCK',
+      dial: 'MEDIA:MUTE',
+      enc_cw: 'MEDIA:VOL_UP',
+      enc_ccw: 'MEDIA:VOL_DOWN'
+    }
+  },
+  {
+    id: 'win-creator-desk',
+    title: 'Windows Creator Desk',
+    subtitle: 'Snip, Explorer & Track Skip',
+    mode: 'HOST2',
+    description:
+      'Screen snip, File Explorer, Task Manager, desktop toggle, Windows copy/paste/undo, PC lock, and media track skipping.',
+    bindings: {
+      b1: 'WIN:SNIP',
+      b2: 'WIN:EXPLORER',
+      b3: 'WIN:TASK_MGR',
+      b4: 'WIN:DESKTOP',
+      b5: 'WIN:COPY',
+      b6: 'WIN:PASTE',
+      b7: 'WIN:UNDO',
+      b8: 'WIN:LOCK',
+      dial: 'MEDIA:PLAY_PAUSE',
+      enc_cw: 'MEDIA:NEXT',
+      enc_ccw: 'MEDIA:PREV'
+    }
+  },
+  {
+    id: 'mac-pro-editor',
+    title: 'Video & Timeline Editor',
+    subtitle: 'Cut, Edit & Frame Scrubbing',
+    mode: 'HOST1',
+    description:
+      'Cut, copy, paste, select all, undo/redo, marker F13, quick save, and left/right arrow frame stepping on the rotary knob.',
+    bindings: {
+      b1: 'MACRO:CUT',
+      b2: 'MACRO:COPY',
+      b3: 'MACRO:PASTE',
+      b4: 'MACRO:SELECT_ALL',
+      b5: 'MACRO:UNDO',
+      b6: 'MACRO:REDO',
+      b7: 'KEY:F13',
+      b8: 'MACRO:SAVE',
+      dial: 'MEDIA:PLAY_PAUSE',
+      enc_cw: 'SHORTCUT::right',
+      enc_ccw: 'SHORTCUT::left'
+    }
+  },
+  {
+    id: 'mac-dev-browser',
+    title: 'Developer & Browser Tabs',
+    subtitle: 'Code, Snip & Tab Cycling',
+    mode: 'HOST3',
+    description:
+      'Copy/paste, open/close tabs, undo/redo, Spotlight, screenshot snip, save on knob press, and tab cycling on knob turns.',
     bindings: {
       b1: 'MACRO:COPY',
       b2: 'MACRO:PASTE',
-      b3: 'MACRO:SAVE',
-      b4: 'MACRO:SPOTLIGHT',
-      dial: 'MEDIA:MUTE'
-    }
-  },
-  {
-    id: 'win-stream-gaming',
-    title: 'Windows Stream & Discord',
-    subtitle: 'Content Creator Setup',
-    mode: 'MAC',
-    description: 'Snipping tool, screen lock, task manager, and master audio control at your fingertips.',
-    bindings: {
-      b1: 'WIN:SNIP',
-      b2: 'WIN:TASK_MGR',
-      b3: 'WIN:DESKTOP',
-      b4: 'MEDIA:PLAY_PAUSE',
-      dial: 'MEDIA:MUTE'
+      b3: 'MACRO:NEW_TAB',
+      b4: 'MACRO:CLOSE_TAB',
+      b5: 'MACRO:UNDO',
+      b6: 'MACRO:REDO',
+      b7: 'MACRO:SPOTLIGHT',
+      b8: 'SHORTCUT:cmd,shift:4',
+      dial: 'MACRO:SAVE',
+      enc_cw: 'SHORTCUT:cmd,shift:]',
+      enc_ccw: 'SHORTCUT:cmd,shift:['
     }
   },
   {
     id: 'tv-cinema-lounge',
-    title: 'Living Room SmartCast',
-    subtitle: 'Streaming & Home Theater',
+    title: 'SmartCast Streaming Lounge',
+    subtitle: '6 Apps, Navigation & Volume',
     mode: 'TV',
-    description: 'Instant power on, YouTube, Netflix, Disney+ app switching with TV mute dial.',
+    description:
+      'TV power toggle, YouTube, Netflix, Disney+, Prime Video, Apple TV+, Home, and Back with TV mute and volume knob.',
     bindings: {
       b1: 'TV:POWER',
       b2: 'APP:YOUTUBE',
       b3: 'APP:NETFLIX',
       b4: 'APP:DISNEY',
-      dial: 'TV:MUTE'
+      b5: 'APP:PRIME',
+      b6: 'APP:APPLETV',
+      b7: 'TV:HOME',
+      b8: 'TV:BACK',
+      dial: 'TV:MUTE',
+      enc_cw: 'TV:VOL_UP',
+      enc_ccw: 'TV:VOL_DOWN'
     }
   },
   {
     id: 'tv-sports-cable',
-    title: 'Cable & Sports Fan',
-    subtitle: 'Guide & Channel Surfer',
+    title: 'Live TV & Channel Surfer',
+    subtitle: 'Guide, Captions & Channels',
     mode: 'TV',
-    description: 'Channel surfing, sports info banner, program guide, and closed caption toggle.',
+    description:
+      'Power, program guide, HDMI input cycle, last channel, closed captions, info banner, OK, Exit, and rotary channel surfing.',
     bindings: {
-      b1: 'TV:GUIDE',
-      b2: 'TV:CH_UP',
-      b3: 'TV:CH_DOWN',
+      b1: 'TV:POWER',
+      b2: 'TV:GUIDE',
+      b3: 'TV:INPUT',
       b4: 'TV:PREV_CH',
-      dial: 'TV:MUTE'
+      b5: 'TV:CC',
+      b6: 'TV:INFO',
+      b7: 'TV:OK',
+      b8: 'TV:EXIT',
+      dial: 'TV:MUTE',
+      enc_cw: 'TV:CH_UP',
+      enc_ccw: 'TV:CH_DOWN'
     }
   }
 ];
+

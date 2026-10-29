@@ -6,6 +6,7 @@
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private enabled = true;
+  private lastDialTickMs = 0;
 
   constructor() {
     // Lazy audio context initialization on first interaction
@@ -65,6 +66,10 @@ class SoundEngine {
 
   public playDialTick() {
     if (!this.enabled) return;
+    const nowWall = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (nowWall - this.lastDialTickMs < 42) return;
+    this.lastDialTickMs = nowWall;
+
     try {
       this.initCtx();
       if (!this.ctx) return;

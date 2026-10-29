@@ -1,10 +1,9 @@
 import React from 'react';
 import { FirmwareStatus, ProfileMode } from '../types/macropod';
-import { Usb, Wifi, Settings, Unplug } from 'lucide-react';
+import { Usb, Settings, Unplug } from 'lucide-react';
 
 interface HeaderProps {
   status: FirmwareStatus;
-  connectionMode: 'usb' | 'wifi' | 'disconnected';
   isConnected: boolean;
   onToggleMode: () => void;
   onOpenConnectModal: () => void;
@@ -14,7 +13,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   status,
-  connectionMode,
   isConnected,
   onToggleMode,
   onOpenConnectModal,
@@ -81,28 +79,22 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Connection Status Button */}
           <button
             onClick={onOpenConnectModal}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer border ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer border whitespace-nowrap shrink-0 ${
               isConnected
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:border-emerald-400'
                 : 'bg-slate-900 border-slate-800 hover:border-sky-400/60 text-slate-300'
             }`}
           >
-            {connectionMode === 'usb' ? (
+            {isConnected ? (
               <>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
                 <Usb className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="font-mono text-emerald-200">USB Connected</span>
-              </>
-            ) : connectionMode === 'wifi' ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="font-mono text-emerald-200">{status.ip || 'Wi-Fi'}</span>
               </>
             ) : (
               <>
                 <Unplug className="w-3.5 h-3.5 text-slate-400" />
-                <span className="font-mono text-slate-300">Connect Device</span>
+                <span className="font-mono text-slate-300">Connect USB</span>
               </>
             )}
           </button>
