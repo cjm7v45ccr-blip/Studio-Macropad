@@ -141,13 +141,12 @@ export function selectPrimaryOtaBinaryAsset(
   if (binAssets.length === 0) return null;
 
   const appBins = binAssets.filter(a => !isAuxiliaryBootloaderAsset(a.name));
-  if (appBins.length > 0) {
-    const preferred = appBins.find(a =>
-      /(?:firmware|studio|macropad|pad|ota|app)/i.test(a.name)
-    );
-    return preferred || appBins[0];
-  }
-  return binAssets[0];
+  if (appBins.length === 0) return null;
+
+  const preferred = appBins.find(a =>
+    /(?:firmware|studio|macropad|pad|ota|app)/i.test(a.name)
+  );
+  return preferred || appBins[0];
 }
 
 function isHtmlSpaFallbackBytes(bytes: Uint8Array): boolean {

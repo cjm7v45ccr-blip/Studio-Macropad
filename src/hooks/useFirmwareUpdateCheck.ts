@@ -347,9 +347,13 @@ export function useFirmwareUpdateCheck({
           percent: 14,
           totalBytes: bytes.byteLength,
           sha256,
-          message: 'SHA-256 checksum verified · Preparing MacroPad flash partition…',
+          message: sha256
+            ? `Verifying SHA-256 checksum (${sha256.slice(0, 12)}…)…`
+            : 'Verifying firmware binary integrity…',
           targetVersion: targetRelease.version
         });
+
+        await new Promise(resolve => window.setTimeout(resolve, 420));
 
         setInstallProgress({
           stage: 'flashing',

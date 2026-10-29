@@ -243,6 +243,8 @@ class PadLinkService {
   private desiredEventsEnabled = true;
   private rebootResyncTimer: number | null = null;
   private pendingBootSetupBeacon = false;
+  private rxCharsSinceOpen = 0;
+  private sawRomDownloadBoot = false;
 
   private debugLogs: DebugLogEntry[] = [];
 
@@ -1394,6 +1396,13 @@ class PadLinkService {
     return reply({ ok: false, message: `Unknown endpoint: ${path}` });
   }
 
+  private async sendLineSyncBreak(): Promise<void> {
+    if (this.demoModeActive || !this.writer) return;
+    try {
+      await this.writer.write(new TextEncoder().encode('\n'));
+    } catch {}
+  }
+
   private async openAuthorizedPort(
     port: any,
     throwOnError = false
@@ -1416,23 +1425,33 @@ class PadLinkService {
       connecting: true,
       transport: 'disconnected',
       deviceName: 'Studio MacroPad',
-      firmwareVersion: 'Rebooting…',
+      firmwareVersion: 'Connecting…',
       vendorProduct
     };
     this.emitConnection();
 
     try {
       try {
-        await port.open({ baudRate: 115200 });
+        await port.open({ baudRate: 115200, bufferSize: 16384 });
       } catch (openErr: any) {
         const translated = translateSerialOpenError(openErr);
         this.logSerial('error', translated.message);
         throw translated;
       }
 
+      // Release DTR & RTS so CP2102/CH340/CH9102 auto-reset circuits never hold EN or GPIO0 low
+      try {
+        await port.setSignals?.({
+          dataTerminalReady: false,
+          requestToSend: false
+        });
+      } catch {}
+
       this.port = port;
       this.buf = '';
       this.pendingBootSetupBeacon = false;
+      this.rxCharsSinceOpen = 0;
+      this.sawRomDownloadBoot = false;
       this.writer = port.writable.getWriter();
 
       const decoder = new TextDecoderStream();
@@ -1441,28 +1460,75 @@ class PadLinkService {
 
       this.logSerial(
         'info',
-        `Opened USB serial port (${vendorProduct || '115200 baud'}) — waiting 2s for board boot`
+        `Opened USB serial port (${vendorProduct || '115200 baud'}) — waiting for MacroPad boot & handshake`
       );
       this.readLoop(port);
 
-      // ESP32 boards often pulse EN/RTS when the port opens; wait 2000ms for setup()
-      await new Promise(r => setTimeout(r, 2000));
+      // ESP32 boards often pulse EN on port open and spend ~2–4s initializing NimBLE, Wi-Fi, and OLED
+      await new Promise(r => setTimeout(r, 1600));
       if (this.port !== port) return null;
 
-      // Enable or sync real-time hardware events (`press`, `turn`, `profile`, `connection`, `config`, `setup`)
-      const evVal = this.desiredEventsEnabled ? 1 : 0;
-      try {
-        await this.call({ path: '/api/events/set', enabled: evVal });
-      } catch (_) {
-        if (this.port === port) {
-          await this.call({ path: '/api/events/set', enabled: evVal }).catch(() => {});
+      let rawStatus: FirmwareStatusPacket | null = null;
+      let lastProbeErr: any = null;
+
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        if (this.port !== port) return null;
+        if (this.sawRomDownloadBoot) {
+          throw new Error(
+            'MacroPad is in ESP32 ROM Download Mode — unplug and reconnect the USB cable without holding any buttons, then connect again.'
+          );
+        }
+
+        // Flush any partial boot ROM output so the JSON line starts cleanly with '{'
+        await this.sendLineSyncBreak();
+        await new Promise(r => setTimeout(r, 100));
+
+        try {
+          const candidate = await this.call<FirmwareStatusPacket>(
+            { path: '/api/status' },
+            2500
+          );
+          if (candidate && candidate.profiles) {
+            rawStatus = candidate;
+            break;
+          }
+        } catch (probeErr: any) {
+          lastProbeErr = probeErr;
+          if (attempt < 4 && this.port === port) {
+            this.logSerial(
+              'info',
+              `Handshake attempt ${attempt}/4 timed out — retrying status probe…`
+            );
+            await new Promise(r => setTimeout(r, 400));
+          }
         }
       }
 
-      const rawStatus = await this.call<FirmwareStatusPacket>({ path: '/api/status' });
       if (!rawStatus || !rawStatus.profiles) {
-        throw new Error('Unexpected status reply from MacroPad.');
+        if (this.sawRomDownloadBoot) {
+          throw new Error(
+            'MacroPad is in ESP32 ROM Download Mode — unplug and reconnect the USB cable without holding any buttons.'
+          );
+        }
+        if (!vendorProduct && this.rxCharsSinceOpen === 0) {
+          throw new Error(
+            'No reply from that serial port — select your MacroPad USB port (such as CP2102, CH340, or usbserial) rather than Bluetooth-Incoming-Port, and close Arduino Serial Monitor.'
+          );
+        }
+        throw (
+          lastProbeErr ||
+          new Error(
+            `Timed out waiting for MacroPad reply over USB${
+              vendorProduct ? ` (${vendorProduct})` : ''
+            } — close Arduino Serial Monitor if open, unplug/replug USB, and try again.`
+          )
+        );
       }
+
+      // Enable or sync real-time hardware events (`press`, `turn`, `profile`, `connection`, `config`, `setup`)
+      const evVal = this.desiredEventsEnabled ? 1 : 0;
+      await this.call({ path: '/api/events/set', enabled: evVal }, 2500).catch(() => {});
+
       const status = await this.enrichStatusWithAllProfiles(rawStatus, 3000);
       if (this.pendingBootSetupBeacon && !extractSetupClearedFlag(status)) {
         status.mode = 'setup';
@@ -1588,6 +1654,7 @@ class PadLinkService {
         if (done) break;
         if (!value) continue;
 
+        this.rxCharsSinceOpen += value.length;
         this.buf += value;
         if (this.buf.length > 32768) {
           this.buf = this.buf.slice(-8192);
@@ -1598,6 +1665,12 @@ class PadLinkService {
           const line = this.buf.slice(0, i).trim();
           this.buf = this.buf.slice(i + 1);
           if (!line.startsWith('{')) {
+            if (line.includes('DOWNLOAD_BOOT') || line.includes('boot:0x0')) {
+              this.sawRomDownloadBoot = true;
+            }
+            if (this.isOpening && line.length > 0) {
+              this.logSerial('info', `[BOOT] ${line.slice(0, 140)}`);
+            }
             // Detect physical ESP32 reboot (e.g. Mode+Dial BLE host switch) over UART bridge
             if (
               !this.isOpening &&
@@ -2582,8 +2655,8 @@ class PadLinkService {
 
   /**
    * Direct USB Serial Chunked OTA Update (`/api/ota/begin` -> `/api/ota/chunk` -> `/api/ota/end`):
-   * Streams raw `.bin` firmware bytes directly over WebSerial in 512-byte base64 packets (~735-byte JSON lines,
-   * safely under the 1536-byte serial buffer) so boards can be flashed even with zero Wi-Fi!
+   * Streams raw `.bin` firmware bytes directly over WebSerial in 144-byte base64 packets (~239-byte JSON lines,
+   * safely under Arduino-ESP32's default 256-byte HardwareSerial RX buffer even during SPI flash sector erases).
    */
   public async installFirmwareViaUsbSerial(params: {
     bytes: Uint8Array;
@@ -2602,36 +2675,76 @@ class PadLinkService {
     }
 
     const totalBytes = params.bytes.byteLength;
-    if (totalBytes < 1024) {
-      throw new Error('Firmware binary is too small to be a valid ESP32 application image.');
-    }
-
-    const cleanVersion = (params.version || 'custom').replace(/^[vV]/, '').trim();
-    const CHUNK_BYTES = 512; // 512 raw bytes = 684 base64 chars -> ~735 byte JSON line (< 1536 limit)
-
-    this.logSerial(
-      'info',
-      `Starting USB Serial OTA stream (${totalBytes} bytes · target v${cleanVersion})`
-    );
-
-    const beginRes = await this.call(
-      {
-        path: '/api/ota/begin',
-        size: totalBytes,
-        version: cleanVersion,
-        ...(params.sha256 ? { sha256: params.sha256.slice(0, 64) } : {})
-      },
-      10000
-    );
-
-    if (!beginRes?.ok) {
+    if (totalBytes < 32768) {
       throw new Error(
-        beginRes?.message ||
-          'Connected firmware does not expose /api/ota/begin yet — see the ESP32 OTA Firmware Blueprint below to enable in-app flashing.'
+        'Selected .bin file is too small to be a compiled ESP32 firmware image (make sure you uploaded the main .ino.bin file, not .partitions.bin or .bootloader.bin).'
       );
     }
 
-    // In Demo Mode, cap simulated loop iterations so a real 1.2 MB .bin file tests briskly in ~1.2s
+    const cleanVersion = (params.version || 'custom').replace(/^[vV]/, '').trim();
+    // 144 raw bytes = 192 base64 chars -> ~239-byte JSON line (< 256-byte default ESP32 HardwareSerial RX buffer!)
+    const CHUNK_BYTES = this.demoModeActive ? 512 : 144;
+
+    this.logSerial(
+      'info',
+      `Starting USB Serial OTA stream (${totalBytes} bytes · ${CHUNK_BYTES} B chunks · target v${cleanVersion})`
+    );
+
+    // Pause unsolicited button/encoder event packets while streaming OTA chunks over UART0
+    if (!this.demoModeActive) {
+      await this.sendLineSyncBreak();
+      await this.call(
+        { path: '/api/events/set', enabled: 0 },
+        2500,
+        { silentLog: true }
+      ).catch(() => {});
+      await this.sendLineSyncBreak();
+      await new Promise(r => setTimeout(r, 60));
+    }
+
+    let beginRes: any;
+    try {
+      beginRes = await this.call(
+        {
+          path: '/api/ota/begin',
+          size: totalBytes,
+          version: cleanVersion,
+          ...(params.sha256 ? { sha256: params.sha256.slice(0, 64) } : {})
+        },
+        25000
+      );
+    } catch (beginErr: any) {
+      if (!this.demoModeActive && this.desiredEventsEnabled) {
+        await this.call({ path: '/api/events/set', enabled: 1 }, 2000, {
+          silentLog: true
+        }).catch(() => {});
+      }
+      throw new Error(
+        beginErr?.message?.includes('Timed out')
+          ? 'MacroPad timed out starting OTA (/api/ota/begin) — ensure your board is running firmware with USB OTA support and an OTA partition scheme (e.g. Minimal SPIFFS 1.9MB APP with OTA).'
+          : beginErr?.message || 'Failed to start USB OTA update.'
+      );
+    }
+
+    if (!beginRes?.ok) {
+      if (!this.demoModeActive && this.desiredEventsEnabled) {
+        await this.call({ path: '/api/events/set', enabled: 1 }, 2000, {
+          silentLog: true
+        }).catch(() => {});
+      }
+      const rawMsg = String(beginRes?.message || '');
+      if (rawMsg.toLowerCase().includes('update.begin failed')) {
+        throw new Error(
+          'MacroPad reported "Update.begin failed" — in Arduino IDE, set Tools → Partition Scheme to "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)" and flash once via Arduino IDE so the ESP32 has an OTA partition.'
+        );
+      }
+      throw new Error(
+        rawMsg ||
+          'Connected MacroPad firmware does not support /api/ota/begin yet — flash the latest OTA-enabled sketch once from Arduino IDE first.'
+      );
+    }
+
+    // In Demo Mode, cap simulated loop iterations so a 1.2 MB .bin file tests briskly in ~1.2s
     const stepStride = this.demoModeActive
       ? Math.max(CHUNK_BYTES, Math.ceil(totalBytes / 40))
       : CHUNK_BYTES;
@@ -2639,64 +2752,74 @@ class PadLinkService {
     let seq = 0;
     let lastLoggedDecile = 0;
 
-    for (let offset = 0; offset < totalBytes; offset += stepStride) {
-      if (params.signal?.aborted) {
-        throw new Error('Firmware flash cancelled.');
+    try {
+      for (let offset = 0; offset < totalBytes; offset += stepStride) {
+        if (params.signal?.aborted) {
+          throw new Error('Firmware flash cancelled.');
+        }
+
+        const sliceEnd = Math.min(totalBytes, offset + CHUNK_BYTES);
+        const chunk = params.bytes.subarray(offset, sliceEnd);
+        const b64 = uint8ToBase64(chunk);
+
+        const chunkRes = await this.call(
+          {
+            path: '/api/ota/chunk',
+            seq,
+            data: b64
+          },
+          15000,
+          { silentLog: true }
+        );
+
+        if (!chunkRes?.ok) {
+          throw new Error(
+            chunkRes?.message || `MacroPad rejected OTA chunk #${seq} at byte ${offset}.`
+          );
+        }
+
+        seq += 1;
+        const bytesDone = Math.min(totalBytes, offset + stepStride);
+        const pct = Math.min(95, Math.max(1, Math.round((bytesDone / totalBytes) * 92) + 3));
+        const decile = Math.floor((bytesDone / totalBytes) * 10);
+        if (decile > lastLoggedDecile) {
+          lastLoggedDecile = decile;
+          this.logSerial(
+            'info',
+            `USB OTA progress: ${decile * 10}% (${bytesDone}/${totalBytes} bytes)`
+          );
+        }
+
+        params.onProgress?.(
+          pct,
+          bytesDone,
+          totalBytes,
+          `Writing firmware binary to MacroPad over USB Serial (chunk ${seq})…`
+        );
       }
 
-      const sliceEnd = Math.min(totalBytes, offset + CHUNK_BYTES);
-      const chunk = params.bytes.subarray(offset, sliceEnd);
-      const b64 = uint8ToBase64(chunk);
-
-      const chunkRes = await this.call(
+      const endRes = await this.call(
         {
-          path: '/api/ota/chunk',
-          seq,
-          data: b64
+          path: '/api/ota/end',
+          size: totalBytes,
+          chunks: seq,
+          version: cleanVersion,
+          ...(params.sha256 ? { sha256: params.sha256.slice(0, 64) } : {})
         },
-        5000,
-        { silentLog: true }
+        20000
       );
 
-      if (!chunkRes?.ok) {
-        throw new Error(
-          chunkRes?.message || `MacroPad rejected OTA chunk #${seq} at byte ${offset}.`
-        );
+      if (!endRes?.ok) {
+        throw new Error(endRes?.message || 'ESP32 checksum or OTA finalization failed.');
       }
-
-      seq += 1;
-      const bytesDone = Math.min(totalBytes, offset + stepStride);
-      const pct = Math.min(95, Math.max(1, Math.round((bytesDone / totalBytes) * 92) + 3));
-      const decile = Math.floor((bytesDone / totalBytes) * 10);
-      if (decile > lastLoggedDecile) {
-        lastLoggedDecile = decile;
-        this.logSerial(
-          'info',
-          `USB OTA progress: ${ decile * 10 }% (${bytesDone}/${totalBytes} bytes)`
-        );
+    } catch (otaErr: any) {
+      if (!this.demoModeActive && this.desiredEventsEnabled) {
+        await this.sendLineSyncBreak();
+        await this.call({ path: '/api/events/set', enabled: 1 }, 2000, {
+          silentLog: true
+        }).catch(() => {});
       }
-
-      params.onProgress?.(
-        pct,
-        bytesDone,
-        totalBytes,
-        `Writing firmware binary to MacroPad over USB Serial (chunk ${seq})…`
-      );
-    }
-
-    const endRes = await this.call(
-      {
-        path: '/api/ota/end',
-        size: totalBytes,
-        chunks: seq,
-        version: cleanVersion,
-        ...(params.sha256 ? { sha256: params.sha256.slice(0, 64) } : {})
-      },
-      12000
-    );
-
-    if (!endRes?.ok) {
-      throw new Error(endRes?.message || 'ESP32 checksum or OTA finalization failed.');
+      throw otaErr;
     }
 
     if (!this.demoModeActive) {
@@ -2706,12 +2829,21 @@ class PadLinkService {
         totalBytes,
         'ESP32 rebooting into updated partition…'
       );
-      await new Promise(r => setTimeout(r, 2600));
+      await new Promise(r => setTimeout(r, 3800));
+      for (let retry = 0; retry < 3; retry++) {
+        await this.sendLineSyncBreak();
+        await new Promise(r => setTimeout(r, 120));
+        try {
+          await this.fetchStatus(3500);
+          break;
+        } catch {
+          await new Promise(r => setTimeout(r, 600));
+        }
+      }
       await this.call(
         { path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 },
-        3000
+        2500
       ).catch(() => {});
-      await this.fetchStatus(4000).catch(() => {});
     }
 
     const activeFw = this.connectionInfo.firmwareVersion || `v${cleanVersion}`;

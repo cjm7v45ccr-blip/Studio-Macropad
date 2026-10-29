@@ -108,8 +108,15 @@ function buildPublicFirmwareCatalogJson(publicDir: string): string {
   }
 
   const allRelBins = collectBinFilesRecursive(publicDir, publicDir);
-  const appRelBins = allRelBins.filter(rel => !isAuxBootloaderBin(path.basename(rel)));
-  const targetBins = appRelBins.length > 0 ? appRelBins : allRelBins;
+  const targetBins = allRelBins.filter(rel => {
+    if (isAuxBootloaderBin(path.basename(rel))) return false;
+    try {
+      const st = fs.statSync(path.join(publicDir, rel));
+      return st.size >= 32768;
+    } catch {
+      return false;
+    }
+  });
 
   const releases = targetBins
     .map(relPath => {
