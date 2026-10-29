@@ -655,9 +655,21 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                       style={{ color: spec.color }}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs truncate">{spec.label}</div>
-                      <div className="font-mono text-[9px] text-[var(--text-muted)] truncate">
-                        {spec.action}
+                      <div className="text-xs font-medium text-[var(--text-primary)] truncate">{spec.label}</div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span
+                          className="px-1.5 py-0.2 rounded text-[8px] font-mono font-semibold uppercase tracking-wider"
+                          style={{
+                            backgroundColor: `${spec.color}1c`,
+                            color: spec.color,
+                            border: `1px solid ${spec.color}40`
+                          }}
+                        >
+                          {spec.category.replace('_', ' ')}
+                        </span>
+                        <span className="font-mono text-[9px] text-[var(--text-muted)] truncate">
+                          {spec.action}
+                        </span>
                       </div>
                     </div>
                   </button>
