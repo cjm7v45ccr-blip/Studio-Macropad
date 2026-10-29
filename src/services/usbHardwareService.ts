@@ -2848,7 +2848,7 @@ class PadLinkService {
       }
     }
 
-    // Physical ESP32 Hardware Flash via ROM Bootloader (esptool-js)
+    // Physical ESP32 Hardware Flash via ROM Bootloader (esptool-js) with Retry & Exponential Backoff & Resume
     const { address: defaultFlashOffset, isMerged } = resolveEsp32FlashTarget(
       params.bytes,
       params.fileName
@@ -2914,66 +2914,70 @@ class PadLinkService {
       }
     };
 
-    try {
-      this.logSerial(
-        'info',
-        `Starting direct ESP32 bootloader USB flash (${formatBytesCompact(
-          totalBytes
-        )} · target v${cleanVersion} · default offset 0x${defaultFlashOffset.toString(16)})`
-      );
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastSuccessfulWrittenBytes = 0;
+    let lastErr: any = null;
 
-      params.onProgress?.(
-        10,
-        0,
-        totalBytes,
-        'Releasing live serial stream & entering ESP32 bootloader…'
-      );
-
-      // Cleanly close our JSON stream on flashPort so esptool-js Transport can open it
-      await this.cleanupPort();
-      await new Promise(r => setTimeout(r, 120));
-
-      params.onProgress?.(
-        12,
-        0,
-        totalBytes,
-        'Syncing with ESP32 ROM bootloader over USB…'
-      );
-
-      let espLoader: ESPLoader;
-      let chipDescription = 'ESP32';
-
-      try {
-        activeTransport = new Transport(flashPort, false);
-        espLoader = new ESPLoader({
-          transport: activeTransport,
-          baudrate: 115200,
-          romBaudrate: 115200,
-          terminal: loaderTerminal
-        });
-        chipDescription = await espLoader.main('default_reset');
-      } catch (firstSyncErr: any) {
-        const firstMsg = String(firstSyncErr?.message || firstSyncErr || '').toLowerCase();
-        if (
-          firstSyncErr?.name === 'NetworkError' ||
-          firstSyncErr?.name === 'InvalidStateError' ||
-          firstMsg.includes('failed to open') ||
-          firstMsg.includes('in use') ||
-          firstMsg.includes('busy')
-        ) {
-          throw translateSerialOpenError(firstSyncErr);
-        }
-
-        // Fallback: if the MacroPad was already in ROM Download Mode (e.g. user holding BOOT), try no_reset
+    while (attempt < maxRetries) {
+      attempt++;
+      if (attempt > 1) {
+        const backoffMs = Math.min(10000, 1000 * Math.pow(2, attempt - 2));
         this.logSerial(
           'info',
-          '[BOOTLOADER] Auto-reset sync did not reply — retrying with no_reset…'
+          `[BOOTLOADER] Connection interrupted — retrying flash attempt ${attempt}/${maxRetries} after ${backoffMs}ms (resuming from offset 0x${(
+            defaultFlashOffset + lastSuccessfulWrittenBytes
+          ).toString(16)} · ${lastSuccessfulWrittenBytes} bytes written)`
         );
-        if (activeTransport) {
-          await activeTransport.disconnect().catch(() => {});
-          activeTransport = null;
-        }
+        params.onProgress?.(
+          Math.min(
+            95,
+            Math.max(
+              15,
+              Math.round(15 + (lastSuccessfulWrittenBytes / totalBytes) * 80)
+            )
+          ),
+          lastSuccessfulWrittenBytes,
+          totalBytes,
+          `Connection interrupted — retrying upload (attempt ${attempt}/${maxRetries}) from ${Math.round(
+            (lastSuccessfulWrittenBytes / totalBytes) * 100
+          )}%…`
+        );
+        await new Promise(r => setTimeout(r, backoffMs));
+      }
+
+      try {
+        this.logSerial(
+          'info',
+          `Starting direct ESP32 bootloader USB flash (${formatBytesCompact(
+            totalBytes
+          )} · target v${cleanVersion} · default offset 0x${defaultFlashOffset.toString(
+            16
+          )} · attempt ${attempt}/${maxRetries} · offset ${lastSuccessfulWrittenBytes}b)`
+        );
+
+        params.onProgress?.(
+          10,
+          lastSuccessfulWrittenBytes,
+          totalBytes,
+          attempt > 1
+            ? `Reconnecting & entering ESP32 bootloader for retry ${attempt}/${maxRetries}…`
+            : 'Releasing live serial stream & entering ESP32 bootloader…'
+        );
+
+        // Cleanly close our JSON stream on flashPort so esptool-js Transport can open it
+        await this.cleanupPort();
         await new Promise(r => setTimeout(r, 120));
+
+        params.onProgress?.(
+          12,
+          lastSuccessfulWrittenBytes,
+          totalBytes,
+          'Syncing with ESP32 ROM bootloader over USB…'
+        );
+
+        let espLoader: ESPLoader;
+        let chipDescription = 'ESP32';
 
         try {
           activeTransport = new Transport(flashPort, false);
@@ -2983,208 +2987,260 @@ class PadLinkService {
             romBaudrate: 115200,
             terminal: loaderTerminal
           });
-          chipDescription = await espLoader.main('no_reset');
-        } catch {
-          throw new Error(
-            'Could not enter ESP32 bootloader mode — hold down the BOOT button on your MacroPad while clicking Upload (release BOOT once Writing starts), and make sure Arduino Serial Monitor is closed.'
-          );
-        }
-      }
-
-      if (params.signal?.aborted) {
-        throw new Error('Firmware upload cancelled.');
-      }
-
-      let targetAddress = defaultFlashOffset;
-      const fileArray: { data: Uint8Array; address: number }[] = [];
-
-      // Inspect live partition table at 0x8000 when flashing standalone .ino.bin (e.g. Huge APP 3MB No OTA)
-      if (!isMerged && espLoader.IS_STUB && activeTransport) {
-        try {
-          const ptBytes = await espLoader.readFlash(0x8000, 256).catch(() => null);
-          if (ptBytes && ptBytes.byteLength >= 32) {
-            await activeTransport.drainInput(60, 250).catch(() => {});
-            const { primaryApp, otaData, hasOta1 } = inspectBoardPartitionTable(ptBytes);
-
-            if (primaryApp && primaryApp.size > 0) {
-              targetAddress = primaryApp.offset;
-              this.logSerial(
-                'info',
-                `[BOOTLOADER] Detected partition "${primaryApp.label || 'app0'}" at 0x${targetAddress.toString(
-                  16
-                )} (${formatBytesCompact(primaryApp.size)} capacity${
-                  !hasOta1 ? ' · No-OTA / Huge APP layout' : ''
-                })`
-              );
-
-              if (totalBytes > primaryApp.size) {
-                throw new Error(
-                  `Firmware binary (${formatBytesCompact(
-                    totalBytes
-                  )}) exceeds this MacroPad's current "${
-                    primaryApp.label || 'app0'
-                  }" partition (${formatBytesCompact(
-                    primaryApp.size
-                  )}) — flash once from Arduino IDE with Partition Scheme set to "Huge APP (3MB No OTA/1MB SPIFFS)" to expand the partition table.`
-                );
-              }
-
-              // If the board has dual OTA slots (ota_1 present), reset otadata so app0 at 0x10000 is guaranteed active
-              if (hasOta1 && otaData && otaData.size > 0 && otaData.size <= 0x4000) {
-                fileArray.push({
-                  data: new Uint8Array(otaData.size).fill(0xff),
-                  address: otaData.offset
-                });
-              }
-            }
+          chipDescription = await espLoader.main('default_reset');
+        } catch (firstSyncErr: any) {
+          const firstMsg = String(firstSyncErr?.message || firstSyncErr || '').toLowerCase();
+          if (
+            firstSyncErr?.name === 'NetworkError' ||
+            firstSyncErr?.name === 'InvalidStateError' ||
+            firstMsg.includes('failed to open') ||
+            firstMsg.includes('in use') ||
+            firstMsg.includes('busy')
+          ) {
+            throw translateSerialOpenError(firstSyncErr);
           }
-        } catch (ptErr: any) {
-          await activeTransport.drainInput(60, 250).catch(() => {});
-          if (String(ptErr?.message || '').includes('exceeds this MacroPad')) {
-            throw ptErr;
-          }
-        }
-      }
 
-      fileArray.push({
-        data: params.bytes,
-        address: targetAddress
-      });
-      const appFileIndex = fileArray.length - 1;
-
-      params.onProgress?.(
-        15,
-        0,
-        totalBytes,
-        `Connected to ${chipDescription} — erasing & writing flash at 0x${targetAddress.toString(
-          16
-        )}…`
-      );
-
-      let lastLoggedDecile = 0;
-
-      await espLoader.writeFlash({
-        fileArray,
-        flashSize: 'keep',
-        flashMode: 'keep',
-        flashFreq: 'keep',
-        eraseAll: false,
-        compress: true,
-        reportProgress: (fileIndex: number, written: number, totalCompressed: number) => {
-          if (fileIndex !== appFileIndex) return;
-          const ratio =
-            totalCompressed > 0
-              ? Math.min(1, Math.max(0, written / totalCompressed))
-              : 0;
-          const approxBytesWritten = Math.min(
-            totalBytes,
-            Math.round(ratio * totalBytes)
+          // Fallback: if the MacroPad was already in ROM Download Mode (e.g. user holding BOOT), try no_reset
+          this.logSerial(
+            'info',
+            '[BOOTLOADER] Auto-reset sync did not reply — retrying with no_reset…'
           );
-          const pct = Math.min(95, Math.max(15, Math.round(15 + ratio * 80)));
+          if (activeTransport) {
+            await activeTransport.disconnect().catch(() => {});
+            activeTransport = null;
+          }
+          await new Promise(r => setTimeout(r, 120));
 
-          const decile = Math.floor(ratio * 10);
-          if (decile > lastLoggedDecile) {
-            lastLoggedDecile = decile;
-            this.logSerial(
-              'info',
-              `[BOOTLOADER] Flash write ${decile * 10}% (${formatBytesCompact(
-                approxBytesWritten
-              )} / ${formatBytesCompact(totalBytes)})`
+          try {
+            activeTransport = new Transport(flashPort, false);
+            espLoader = new ESPLoader({
+              transport: activeTransport,
+              baudrate: 115200,
+              romBaudrate: 115200,
+              terminal: loaderTerminal
+            });
+            chipDescription = await espLoader.main('no_reset');
+          } catch {
+            throw new Error(
+              'Could not enter ESP32 bootloader mode — hold down the BOOT button on your MacroPad while clicking Upload (release BOOT once Writing starts), and make sure Arduino Serial Monitor is closed.'
             );
           }
-
-          params.onProgress?.(
-            pct,
-            approxBytesWritten,
-            totalBytes,
-            `Writing firmware to MacroPad flash (${Math.round(ratio * 100)}%)…`
-          );
         }
-      });
 
-      if (termLineBuf) {
-        flushTermLine(termLineBuf);
-        termLineBuf = '';
-      }
+        if (params.signal?.aborted) {
+          throw new Error('Firmware upload cancelled.');
+        }
 
-      flashCompleted = true;
+        let targetAddress = defaultFlashOffset;
+        const fileArray: { data: Uint8Array; address: number }[] = [];
 
-      params.onProgress?.(
-        97,
-        totalBytes,
-        totalBytes,
-        'Restarting MacroPad & reconnecting over USB…'
-      );
+        // Inspect live partition table at 0x8000 when flashing standalone .ino.bin (e.g. Huge APP 3MB No OTA)
+        if (!isMerged && espLoader.IS_STUB && activeTransport) {
+          try {
+            const ptBytes = await espLoader.readFlash(0x8000, 256).catch(() => null);
+            if (ptBytes && ptBytes.byteLength >= 32) {
+              await activeTransport.drainInput(60, 250).catch(() => {});
+              const { primaryApp, otaData, hasOta1 } = inspectBoardPartitionTable(ptBytes);
 
-      // Hardware reset pulse (EN=LOW with IO0=HIGH for 120ms, then EN=HIGH) to exit bootloader cleanly
-      if (activeTransport) {
-        try {
-          await activeTransport.setDTR(false);
-          await activeTransport.setRTS(true);
-          await new Promise(r => setTimeout(r, 120));
-          await activeTransport.setRTS(false);
-          await activeTransport.setDTR(false);
-          await new Promise(r => setTimeout(r, 80));
-        } catch {}
-        await activeTransport.disconnect().catch(() => {});
-        activeTransport = null;
-      }
+              if (primaryApp && primaryApp.size > 0) {
+                targetAddress = primaryApp.offset;
+                this.logSerial(
+                  'info',
+                  `[BOOTLOADER] Detected partition "${primaryApp.label || 'app0'}" at 0x${targetAddress.toString(
+                    16
+                  )} (${formatBytesCompact(primaryApp.size)} capacity${
+                    !hasOta1 ? ' · No-OTA / Huge APP layout' : ''
+                  })`
+                );
 
-      // Re-open live MacroPad PadLink serial session on the same authorized USB port
-      this.isFlashingOta = false;
-      await new Promise(r => setTimeout(r, 650));
-      await this.openAuthorizedPort(flashPort, false).catch(() => null);
+                if (totalBytes > primaryApp.size) {
+                  throw new Error(
+                    `Firmware binary (${formatBytesCompact(
+                      totalBytes
+                    )}) exceeds this MacroPad's current "${
+                      primaryApp.label || 'app0'
+                    }" partition (${formatBytesCompact(
+                      primaryApp.size
+                    )}) — flash once from Arduino IDE with Partition Scheme set to "Huge APP (3MB No OTA/1MB SPIFFS)" to expand the partition table.`
+                  );
+                }
 
-      const reportedFw =
-        this.connectionInfo.connected &&
-        this.connectionInfo.firmwareVersion &&
-        this.connectionInfo.firmwareVersion !== '—' &&
-        this.connectionInfo.firmwareVersion !== 'Connecting…'
-          ? this.connectionInfo.firmwareVersion
-          : `v${cleanVersion}`;
+                // If the board has dual OTA slots (ota_1 present) and we are starting from 0, reset otadata so app0 is active
+                if (hasOta1 && otaData && otaData.size > 0 && otaData.size <= 0x4000 && lastSuccessfulWrittenBytes === 0) {
+                  fileArray.push({
+                    data: new Uint8Array(otaData.size).fill(0xff),
+                    address: otaData.offset
+                  });
+                }
+              }
+            }
+          } catch (ptErr: any) {
+            await activeTransport.drainInput(60, 250).catch(() => {});
+            if (String(ptErr?.message || '').includes('exceeds this MacroPad')) {
+              throw ptErr;
+            }
+          }
+        }
 
-      const finalLabel = `v${cleanVersion}`;
-      params.onProgress?.(
-        100,
-        totalBytes,
-        totalBytes,
-        `Installed ${finalLabel} on MacroPad`
-      );
+        const remainingData = params.bytes.subarray(lastSuccessfulWrittenBytes);
+        const resumeAddress = targetAddress + lastSuccessfulWrittenBytes;
 
-      return {
-        ok: true,
-        firmwareVersion: reportedFw,
-        message: `Installed firmware ${finalLabel} on MacroPad over USB`
-      };
-    } catch (err: any) {
-      if (activeTransport) {
-        if (!flashCompleted) {
+        fileArray.push({
+          data: remainingData,
+          address: resumeAddress
+        });
+        const appFileIndex = fileArray.length - 1;
+
+        params.onProgress?.(
+          15,
+          lastSuccessfulWrittenBytes,
+          totalBytes,
+          `Connected to ${chipDescription} — writing flash at 0x${resumeAddress.toString(
+            16
+          )} (${formatBytesCompact(lastSuccessfulWrittenBytes)} / ${formatBytesCompact(
+            totalBytes
+          )})…`
+        );
+
+        let lastLoggedDecile = Math.floor((lastSuccessfulWrittenBytes / totalBytes) * 10);
+
+        await espLoader.writeFlash({
+          fileArray,
+          flashSize: 'keep',
+          flashMode: 'keep',
+          flashFreq: 'keep',
+          eraseAll: false,
+          compress: true,
+          reportProgress: (fileIndex: number, written: number, totalCompressed: number) => {
+            if (fileIndex !== appFileIndex) return;
+            const remainingTotal = totalBytes - lastSuccessfulWrittenBytes;
+            const ratio =
+              totalCompressed > 0
+                ? Math.min(1, Math.max(0, written / totalCompressed))
+                : 0;
+            const chunkBytesWritten = Math.min(
+              remainingTotal,
+              Math.round(ratio * remainingTotal)
+            );
+            const absoluteBytesWritten = Math.min(
+              totalBytes,
+              lastSuccessfulWrittenBytes + chunkBytesWritten
+            );
+            const overallRatio = absoluteBytesWritten / totalBytes;
+            const pct = Math.min(95, Math.max(15, Math.round(15 + overallRatio * 80)));
+
+            const decile = Math.floor(overallRatio * 10);
+            if (decile > lastLoggedDecile) {
+              lastLoggedDecile = decile;
+              this.logSerial(
+                'info',
+                `[BOOTLOADER] Flash write ${decile * 10}% (${formatBytesCompact(
+                  absoluteBytesWritten
+                )} / ${formatBytesCompact(totalBytes)})`
+              );
+            }
+
+            params.onProgress?.(
+              pct,
+              absoluteBytesWritten,
+              totalBytes,
+              `Writing firmware to MacroPad flash (${Math.round(overallRatio * 100)}%)…`
+            );
+          }
+        });
+
+        // Update lastSuccessfulWrittenBytes to totalBytes upon successful completion of writeFlash
+        lastSuccessfulWrittenBytes = totalBytes;
+
+        if (termLineBuf) {
+          flushTermLine(termLineBuf);
+          termLineBuf = '';
+        }
+
+        flashCompleted = true;
+
+        params.onProgress?.(
+          97,
+          totalBytes,
+          totalBytes,
+          'Restarting MacroPad & reconnecting over USB…'
+        );
+
+        // Hardware reset pulse (EN=LOW with IO0=HIGH for 120ms, then EN=HIGH) to exit bootloader cleanly
+        if (activeTransport) {
           try {
             await activeTransport.setDTR(false);
             await activeTransport.setRTS(true);
-            await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 120));
             await activeTransport.setRTS(false);
             await activeTransport.setDTR(false);
+            await new Promise(r => setTimeout(r, 80));
           } catch {}
+          await activeTransport.disconnect().catch(() => {});
+          activeTransport = null;
         }
-        await activeTransport.disconnect().catch(() => {});
-        activeTransport = null;
-      }
 
-      this.isFlashingOta = false;
-
-      if (wasConnectedBeforeFlash && flashPort) {
-        await new Promise(r => setTimeout(r, 450));
+        // Re-open live MacroPad PadLink serial session on the same authorized USB port
+        this.isFlashingOta = false;
+        await new Promise(r => setTimeout(r, 650));
         await this.openAuthorizedPort(flashPort, false).catch(() => null);
-      }
 
-      throw err instanceof Error
-        ? err
-        : new Error('Failed to flash firmware over USB.');
-    } finally {
-      this.isFlashingOta = false;
-      this.otaRebootExpected = false;
+        const reportedFw =
+          this.connectionInfo.connected &&
+          this.connectionInfo.firmwareVersion &&
+          this.connectionInfo.firmwareVersion !== '—' &&
+          this.connectionInfo.firmwareVersion !== 'Connecting…'
+            ? this.connectionInfo.firmwareVersion
+            : `v${cleanVersion}`;
+
+        const finalLabel = `v${cleanVersion}`;
+        params.onProgress?.(
+          100,
+          totalBytes,
+          totalBytes,
+          `Installed ${finalLabel} on MacroPad`
+        );
+
+        return {
+          ok: true,
+          firmwareVersion: reportedFw,
+          message: `Installed firmware ${finalLabel} on MacroPad over USB`
+        };
+      } catch (err: any) {
+        lastErr = err;
+        if (activeTransport) {
+          if (!flashCompleted) {
+            try {
+              await activeTransport.setDTR(false);
+              await activeTransport.setRTS(true);
+              await new Promise(r => setTimeout(r, 100));
+              await activeTransport.setRTS(false);
+              await activeTransport.setDTR(false);
+            } catch {}
+          }
+          await activeTransport.disconnect().catch(() => {});
+          activeTransport = null;
+        }
+
+        if (params.signal?.aborted || attempt >= maxRetries) {
+          this.isFlashingOta = false;
+          if (wasConnectedBeforeFlash && flashPort) {
+            await new Promise(r => setTimeout(r, 450));
+            await this.openAuthorizedPort(flashPort, false).catch(() => null);
+          }
+          throw err instanceof Error ? err : new Error('Failed to flash firmware over USB.');
+        }
+
+        // Loop continues for next retry attempt with exponential backoff
+      }
     }
+
+    this.isFlashingOta = false;
+    if (wasConnectedBeforeFlash && flashPort) {
+      await new Promise(r => setTimeout(r, 450));
+      await this.openAuthorizedPort(flashPort, false).catch(() => null);
+    }
+    throw lastErr instanceof Error ? lastErr : new Error('Failed to flash firmware over USB.');
   }
 
   private async cleanupPort() {
