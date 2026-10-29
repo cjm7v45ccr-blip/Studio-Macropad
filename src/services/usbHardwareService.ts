@@ -2947,7 +2947,7 @@ class PadLinkService {
         activeTransport = new Transport(flashPort, false);
         espLoader = new ESPLoader({
           transport: activeTransport,
-          baudrate: 460800,
+          baudrate: 115200,
           romBaudrate: 115200,
           terminal: loaderTerminal
         });
@@ -2979,7 +2979,7 @@ class PadLinkService {
           activeTransport = new Transport(flashPort, false);
           espLoader = new ESPLoader({
             transport: activeTransport,
-            baudrate: 460800,
+            baudrate: 115200,
             romBaudrate: 115200,
             terminal: loaderTerminal
           });
@@ -3001,39 +3001,41 @@ class PadLinkService {
       // Inspect live partition table at 0x8000 when flashing standalone .ino.bin (e.g. Huge APP 3MB No OTA)
       if (!isMerged && espLoader.IS_STUB && activeTransport) {
         try {
-          const ptBytes = await espLoader.readFlash(0x8000, 256);
-          await activeTransport.drainInput(60, 250);
-          const { primaryApp, otaData, hasOta1 } = inspectBoardPartitionTable(ptBytes);
+          const ptBytes = await espLoader.readFlash(0x8000, 256).catch(() => null);
+          if (ptBytes && ptBytes.byteLength >= 32) {
+            await activeTransport.drainInput(60, 250).catch(() => {});
+            const { primaryApp, otaData, hasOta1 } = inspectBoardPartitionTable(ptBytes);
 
-          if (primaryApp && primaryApp.size > 0) {
-            targetAddress = primaryApp.offset;
-            this.logSerial(
-              'info',
-              `[BOOTLOADER] Detected partition "${primaryApp.label || 'app0'}" at 0x${targetAddress.toString(
-                16
-              )} (${formatBytesCompact(primaryApp.size)} capacity${
-                !hasOta1 ? ' · No-OTA / Huge APP layout' : ''
-              })`
-            );
-
-            if (totalBytes > primaryApp.size) {
-              throw new Error(
-                `Firmware binary (${formatBytesCompact(
-                  totalBytes
-                )}) exceeds this MacroPad's current "${
-                  primaryApp.label || 'app0'
-                }" partition (${formatBytesCompact(
-                  primaryApp.size
-                )}) — flash once from Arduino IDE with Partition Scheme set to "Huge APP (3MB No OTA/1MB SPIFFS)" to expand the partition table.`
+            if (primaryApp && primaryApp.size > 0) {
+              targetAddress = primaryApp.offset;
+              this.logSerial(
+                'info',
+                `[BOOTLOADER] Detected partition "${primaryApp.label || 'app0'}" at 0x${targetAddress.toString(
+                  16
+                )} (${formatBytesCompact(primaryApp.size)} capacity${
+                  !hasOta1 ? ' · No-OTA / Huge APP layout' : ''
+                })`
               );
-            }
 
-            // If the board has dual OTA slots (ota_1 present), reset otadata so app0 at 0x10000 is guaranteed active
-            if (hasOta1 && otaData && otaData.size > 0 && otaData.size <= 0x4000) {
-              fileArray.push({
-                data: new Uint8Array(otaData.size).fill(0xff),
-                address: otaData.offset
-              });
+              if (totalBytes > primaryApp.size) {
+                throw new Error(
+                  `Firmware binary (${formatBytesCompact(
+                    totalBytes
+                  )}) exceeds this MacroPad's current "${
+                    primaryApp.label || 'app0'
+                  }" partition (${formatBytesCompact(
+                    primaryApp.size
+                  )}) — flash once from Arduino IDE with Partition Scheme set to "Huge APP (3MB No OTA/1MB SPIFFS)" to expand the partition table.`
+                );
+              }
+
+              // If the board has dual OTA slots (ota_1 present), reset otadata so app0 at 0x10000 is guaranteed active
+              if (hasOta1 && otaData && otaData.size > 0 && otaData.size <= 0x4000) {
+                fileArray.push({
+                  data: new Uint8Array(otaData.size).fill(0xff),
+                  address: otaData.offset
+                });
+              }
             }
           }
         } catch (ptErr: any) {

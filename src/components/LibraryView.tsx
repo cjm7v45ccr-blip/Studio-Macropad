@@ -469,9 +469,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               type="button"
               onClick={onExportBackupFile}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              title="Export current hardware configuration profile JSON for sharing or backups"
             >
               <Download className="w-3.5 h-3.5 text-[var(--accent)]" />
-              <span>Download backup</span>
+              <span>Download Profile JSON</span>
             </button>
 
             <button
