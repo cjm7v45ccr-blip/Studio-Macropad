@@ -1066,6 +1066,42 @@ export function bindingToFirmwareAction(binding: ActionBinding | undefined | nul
   return binding.value.trim();
 }
 
+export function formatFriendlyActionLabel(action: string): string {
+  const upper = (action || '').trim().toUpperCase();
+  const spec = STATIC_MAP.get(upper);
+  if (spec) return spec.label;
+
+  if (upper.startsWith('MEDIA:')) {
+    const sub = upper.slice(6).replace(/_/g, ' ');
+    if (sub === 'PLAY PAUSE') return 'Play / Pause';
+    return sub.charAt(0) + sub.slice(1).toLowerCase();
+  }
+  if (upper.startsWith('TV:')) {
+    const sub = upper.slice(3).replace(/_/g, ' ');
+    return `TV ${sub.charAt(0) + sub.slice(1).toLowerCase()}`;
+  }
+  if (upper.startsWith('APP:')) {
+    const sub = upper.slice(4).replace(/_/g, ' ');
+    return sub.charAt(0) + sub.slice(1).toLowerCase();
+  }
+  if (upper.startsWith('MACRO:')) {
+    const sub = upper.slice(6).replace(/_/g, ' ');
+    return sub.charAt(0) + sub.slice(1).toLowerCase();
+  }
+  if (upper.startsWith('WIN:')) {
+    const sub = upper.slice(4).replace(/_/g, ' ');
+    return `Win ${sub.charAt(0) + sub.slice(1).toLowerCase()}`;
+  }
+  if (upper.startsWith('BLE:')) {
+    const sub = upper.slice(4).replace(/_/g, ' ');
+    return sub.charAt(0) + sub.slice(1).toLowerCase();
+  }
+  if (upper.startsWith('KEY:')) {
+    return upper.slice(4);
+  }
+  return action;
+}
+
 export function describeFirmwareAction(
   actionStr: string | undefined | null,
   repeatConfig?: TextMacroRepeatConfig
@@ -1109,7 +1145,7 @@ export function describeFirmwareAction(
     };
   }
 
-  const staticSpec = STATIC_MAP.get(trimmed);
+  const staticSpec = STATIC_MAP.get(trimmed) || STATIC_MAP.get(trimmed.toUpperCase());
   if (staticSpec) {
     return {
       shortLabel: staticSpec.shortLabel,
@@ -1117,6 +1153,17 @@ export function describeFirmwareAction(
       description: `${staticSpec.description} (${staticSpec.action})`,
       icon: staticSpec.icon,
       color: staticSpec.color
+    };
+  }
+
+  const friendly = formatFriendlyActionLabel(trimmed);
+  if (friendly !== trimmed) {
+    return {
+      shortLabel: friendly.slice(0, 12),
+      fullLabel: friendly,
+      description: trimmed,
+      icon: 'zap',
+      color: '#38BDF8'
     };
   }
 
