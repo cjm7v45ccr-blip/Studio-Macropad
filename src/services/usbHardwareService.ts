@@ -21,6 +21,11 @@ import {
   sanitizeFirmwareAlias,
   sanitizeSerialString
 } from '../data/firmwareCatalog';
+import { ESPLoader, Transport, type IEspLoaderTerminal } from 'esptool-js';
+import {
+  formatBytesCompact,
+  resolveEsp32FlashTarget
+} from './firmwareUpdateService';
 
 export interface FirmwareStatusPacket {
   ok?: boolean;
@@ -215,6 +220,65 @@ function translateSerialOpenError(err: any): Error {
     : new Error('Failed to open the USB Serial port.');
 }
 
+interface ParsedEspPartitionEntry {
+  type: number;
+  subtype: number;
+  offset: number;
+  size: number;
+  label: string;
+}
+
+function inspectBoardPartitionTable(ptBytes: Uint8Array): {
+  primaryApp: ParsedEspPartitionEntry | null;
+  otaData: ParsedEspPartitionEntry | null;
+  hasOta1: boolean;
+} {
+  const entries: ParsedEspPartitionEntry[] = [];
+  const maxEntries = Math.floor(ptBytes.byteLength / 32);
+
+  for (let i = 0; i < maxEntries; i++) {
+    const base = i * 32;
+    const m0 = ptBytes[base];
+    const m1 = ptBytes[base + 1];
+    if (m0 === 0xeb && m1 === 0xeb) break;
+    if (m0 !== 0xaa || m1 !== 0x50) break;
+
+    const type = ptBytes[base + 2];
+    const subtype = ptBytes[base + 3];
+    const offset =
+      (ptBytes[base + 4] |
+        (ptBytes[base + 5] << 8) |
+        (ptBytes[base + 6] << 16) |
+        (ptBytes[base + 7] << 24)) >>>
+      0;
+    const size =
+      (ptBytes[base + 8] |
+        (ptBytes[base + 9] << 8) |
+        (ptBytes[base + 10] << 16) |
+        (ptBytes[base + 11] << 24)) >>>
+      0;
+
+    const rawLabel = ptBytes.subarray(base + 12, base + 28);
+    const nulIdx = rawLabel.indexOf(0);
+    const label = new TextDecoder('utf-8', { fatal: false })
+      .decode(nulIdx >= 0 ? rawLabel.subarray(0, nulIdx) : rawLabel)
+      .trim();
+
+    entries.push({ type, subtype, offset, size, label });
+  }
+
+  const primaryApp =
+    entries.find(e => e.type === 0x00 && e.subtype === 0x10) ||
+    entries.find(e => e.type === 0x00 && e.subtype === 0x00) ||
+    entries.find(e => e.type === 0x00) ||
+    null;
+
+  const otaData = entries.find(e => e.type === 0x01 && e.subtype === 0x00) || null;
+  const hasOta1 = entries.some(e => e.type === 0x00 && e.subtype === 0x11);
+
+  return { primaryApp, otaData, hasOta1 };
+}
+
 /**
  * PadLink WebSerial + Demo Mode Transport
  * - Sends strictly one request at a time via a Promise queue
@@ -239,6 +303,8 @@ class PadLinkService {
   private buf = '';
 
   private isOpening = false;
+  private isFlashingOta = false;
+  private otaRebootExpected = false;
   private manualDisconnect = false;
   private desiredEventsEnabled = true;
   private rebootResyncTimer: number | null = null;
@@ -379,7 +445,7 @@ class PadLinkService {
 
     navSerial.addEventListener('connect', async (e: any) => {
       this.manualDisconnect = false;
-      if (this.port || this.isOpening || this.demoModeActive) return;
+      if (this.port || this.isOpening || this.isFlashingOta || this.demoModeActive) return;
       const targetPort = e?.target;
       if (targetPort) {
         await this.openAuthorizedPort(targetPort).catch(() => {});
@@ -389,6 +455,7 @@ class PadLinkService {
     });
 
     navSerial.addEventListener('disconnect', async (e: any) => {
+      if (this.isFlashingOta) return;
       if (this.port && (!e?.target || e.target === this.port)) {
         this.logSerial('info', 'USB serial cable unplugged');
         await this.cleanupPort();
@@ -398,14 +465,20 @@ class PadLinkService {
 
     // Auto-connect on window focus or visibility change
     window.addEventListener('focus', () => {
-      if (!this.port && !this.isOpening && !this.demoModeActive) {
+      if (!this.port && !this.isOpening && !this.isFlashingOta && !this.demoModeActive) {
         this.manualDisconnect = false;
         this.tryAutoConnectSerial();
       }
     });
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && !this.port && !this.isOpening && !this.demoModeActive) {
+      if (
+        document.visibilityState === 'visible' &&
+        !this.port &&
+        !this.isOpening &&
+        !this.isFlashingOta &&
+        !this.demoModeActive
+      ) {
         this.manualDisconnect = false;
         this.tryAutoConnectSerial();
       }
@@ -413,7 +486,7 @@ class PadLinkService {
 
     // Global user interaction listener to trigger auto-connect if port is authorized
     const handleUserGesture = () => {
-      if (!this.port && !this.isOpening && !this.demoModeActive) {
+      if (!this.port && !this.isOpening && !this.isFlashingOta && !this.demoModeActive) {
         this.manualDisconnect = false;
         this.tryAutoConnectSerial();
       }
@@ -453,6 +526,7 @@ class PadLinkService {
       !this.browserSupportsWebSerial ||
       this.port ||
       this.isOpening ||
+      this.isFlashingOta ||
       this.manualDisconnect ||
       this.demoModeActive
     ) {
@@ -1671,9 +1745,31 @@ class PadLinkService {
             if (this.isOpening && line.length > 0) {
               this.logSerial('info', `[BOOT] ${line.slice(0, 140)}`);
             }
+            if (
+              this.isFlashingOta &&
+              !this.otaRebootExpected &&
+              (line.includes('rst:0x') ||
+                line.includes('boot:0x') ||
+                line.includes('Brownout') ||
+                line.includes('Guru Meditation'))
+            ) {
+              const isBrownout = line.includes('Brownout');
+              const resetMsg = isBrownout
+                ? 'MacroPad reset due to USB power brownout during flash — plug directly into a computer USB port with a data/power cable and retry.'
+                : 'MacroPad unexpectedly rebooted during USB firmware write — reconnect and retry.';
+              this.logSerial('error', `${resetMsg} (${line.slice(0, 100)})`);
+              if (this.pendingReject) {
+                const rej = this.pendingReject;
+                this.pending = null;
+                this.pendingReject = null;
+                rej(new Error(resetMsg));
+              }
+              continue;
+            }
             // Detect physical ESP32 reboot (e.g. Mode+Dial BLE host switch) over UART bridge
             if (
               !this.isOpening &&
+              !this.isFlashingOta &&
               this.connectionInfo.connected &&
               (line.includes('rst:0x') || line.includes('boot:0x'))
             ) {
@@ -1746,7 +1842,7 @@ class PadLinkService {
       }
     } catch (_) {
     } finally {
-      if (this.port === port) {
+      if (this.port === port && !this.isFlashingOta) {
         await this.cleanupPort();
         this.markDisconnected();
       }
@@ -1906,9 +2002,17 @@ class PadLinkService {
   public call<T = any>(
     obj: Record<string, any>,
     timeoutMs = 3000,
-    opts?: { silentLog?: boolean }
+    opts?: { silentLog?: boolean; allowDuringOta?: boolean }
   ): Promise<T> {
     const silentLog = Boolean(opts?.silentLog);
+    const reqPath = String(obj.path || '');
+    const isOtaRoute = reqPath.startsWith('/api/ota/');
+    if (this.isFlashingOta && !isOtaRoute && !opts?.allowDuringOta) {
+      return Promise.reject(
+        new Error('MacroPad is currently writing a firmware update — wait for flashing to finish.')
+      );
+    }
+
     const run = () => {
       if (this.demoModeActive) {
         return this.handleDemoCall(obj, silentLog) as Promise<T>;
@@ -2616,9 +2720,15 @@ class PadLinkService {
       );
 
       if (!startRes?.ok) {
+        const rawWifiMsg = String(startRes?.message || '');
+        if (rawWifiMsg.toLowerCase().includes('update.begin')) {
+          throw new Error(
+            'This MacroPad uses a No-OTA partition layout (such as Huge APP) — click "Upload to MacroPad" over USB instead, which flashes Huge APP directly.'
+          );
+        }
         throw new Error(
-          startRes?.message ||
-            'Firmware did not accept /api/ota/start — check Wi-Fi connection or use USB Serial Stream.'
+          rawWifiMsg ||
+            'Firmware did not accept /api/ota/start — use "Upload to MacroPad" over USB instead.'
         );
       }
 
@@ -2654,12 +2764,16 @@ class PadLinkService {
   }
 
   /**
-   * Direct USB Serial Chunked OTA Update (`/api/ota/begin` -> `/api/ota/chunk` -> `/api/ota/end`):
-   * Streams raw `.bin` firmware bytes directly over WebSerial in 144-byte base64 packets (~239-byte JSON lines,
-   * safely under Arduino-ESP32's default 256-byte HardwareSerial RX buffer even during SPI flash sector erases).
+   * Direct USB Hardware Bootloader Flash (`esptool-js`):
+   * Flashes compiled `.ino.bin` / `.bin` firmware directly via the ESP32 silicon ROM bootloader
+   * at `0x10000` (or `0x0` for `.merged.bin`), just like Arduino IDE over USB.
+   * - Supports `Huge APP (3MB No OTA/1MB SPIFFS)`, `Default`, and `Minimal SPIFFS` with zero OTA partition needed!
+   * - Preserves NVS (`0x9000`) so saved profiles, Bluetooth hosts, Wi-Fi, and TV pairing stay intact.
+   * - Preserves virtual Demo Mode simulation when running in Demo Mode.
    */
   public async installFirmwareViaUsbSerial(params: {
     bytes: Uint8Array;
+    fileName?: string;
     version: string;
     sha256?: string;
     onProgress?: (
@@ -2670,194 +2784,412 @@ class PadLinkService {
     ) => void;
     signal?: AbortSignal;
   }): Promise<{ ok: boolean; firmwareVersion: string; message: string }> {
-    if (!this.connectionInfo.connected) {
-      throw new Error('Connect your MacroPad via USB (or start Demo Mode) before flashing.');
-    }
-
     const totalBytes = params.bytes.byteLength;
     if (totalBytes < 32768) {
       throw new Error(
-        'Selected .bin file is too small to be a compiled ESP32 firmware image (make sure you uploaded the main .ino.bin file, not .partitions.bin or .bootloader.bin).'
+        'Selected .bin file is too small to be a compiled ESP32 firmware image (upload the main .ino.bin file, not .partitions.bin or .bootloader.bin).'
       );
     }
 
     const cleanVersion = (params.version || 'custom').replace(/^[vV]/, '').trim();
-    // 144 raw bytes = 192 base64 chars -> ~239-byte JSON line (< 256-byte default ESP32 HardwareSerial RX buffer!)
-    const CHUNK_BYTES = this.demoModeActive ? 512 : 144;
 
-    this.logSerial(
-      'info',
-      `Starting USB Serial OTA stream (${totalBytes} bytes · ${CHUNK_BYTES} B chunks · target v${cleanVersion})`
+    if (this.rebootResyncTimer !== null) {
+      window.clearTimeout(this.rebootResyncTimer);
+      this.rebootResyncTimer = null;
+    }
+
+    // Virtual Demo Mode fast simulation
+    if (this.demoModeActive) {
+      this.isFlashingOta = true;
+      try {
+        await this.call(
+          { path: '/api/ota/begin', size: totalBytes },
+          5000,
+          { allowDuringOta: true }
+        );
+        const stepStride = Math.max(512, Math.ceil(totalBytes / 40));
+        let seq = 0;
+        for (let offset = 0; offset < totalBytes; offset += stepStride) {
+          if (params.signal?.aborted) {
+            throw new Error('Firmware flash cancelled.');
+          }
+          const sliceEnd = Math.min(totalBytes, offset + 512);
+          const b64 = uint8ToBase64(params.bytes.subarray(offset, sliceEnd));
+          await this.call(
+            { path: '/api/ota/chunk', seq, data: b64 },
+            5000,
+            { silentLog: true, allowDuringOta: true }
+          );
+          seq += 1;
+          const bytesDone = Math.min(totalBytes, offset + stepStride);
+          const ratio = bytesDone / totalBytes;
+          const pct = Math.min(95, Math.max(15, Math.round(15 + ratio * 80)));
+          params.onProgress?.(
+            pct,
+            bytesDone,
+            totalBytes,
+            `Writing firmware binary to Demo MacroPad (${Math.round(ratio * 100)}%)…`
+          );
+        }
+        await this.call(
+          { path: '/api/ota/end', version: cleanVersion },
+          5000,
+          { allowDuringOta: true }
+        );
+        const activeFw = this.connectionInfo.firmwareVersion || `v${cleanVersion}`;
+        params.onProgress?.(100, totalBytes, totalBytes, `Flashed & verified ${activeFw}`);
+        return {
+          ok: true,
+          firmwareVersion: activeFw,
+          message: `Updated Demo MacroPad to ${activeFw}`
+        };
+      } finally {
+        this.isFlashingOta = false;
+      }
+    }
+
+    // Physical ESP32 Hardware Flash via ROM Bootloader (esptool-js)
+    const { address: defaultFlashOffset, isMerged } = resolveEsp32FlashTarget(
+      params.bytes,
+      params.fileName
     );
 
-    // Pause unsolicited button/encoder event packets while streaming OTA chunks over UART0
-    if (!this.demoModeActive) {
-      await this.sendLineSyncBreak();
-      await this.call(
-        { path: '/api/events/set', enabled: 0 },
-        2500,
-        { silentLog: true }
-      ).catch(() => {});
-      await this.sendLineSyncBreak();
-      await new Promise(r => setTimeout(r, 60));
-    }
+    let flashPort = this.port;
+    const wasConnectedBeforeFlash = Boolean(flashPort && this.connectionInfo.connected);
 
-    let beginRes: any;
-    try {
-      beginRes = await this.call(
-        {
-          path: '/api/ota/begin',
-          size: totalBytes,
-          version: cleanVersion,
-          ...(params.sha256 ? { sha256: params.sha256.slice(0, 64) } : {})
-        },
-        25000
-      );
-    } catch (beginErr: any) {
-      if (!this.demoModeActive && this.desiredEventsEnabled) {
-        await this.call({ path: '/api/events/set', enabled: 1 }, 2000, {
-          silentLog: true
-        }).catch(() => {});
-      }
-      throw new Error(
-        beginErr?.message?.includes('Timed out')
-          ? 'MacroPad timed out starting OTA (/api/ota/begin) — ensure your board is running firmware with USB OTA support and an OTA partition scheme (e.g. Minimal SPIFFS 1.9MB APP with OTA).'
-          : beginErr?.message || 'Failed to start USB OTA update.'
-      );
-    }
-
-    if (!beginRes?.ok) {
-      if (!this.demoModeActive && this.desiredEventsEnabled) {
-        await this.call({ path: '/api/events/set', enabled: 1 }, 2000, {
-          silentLog: true
-        }).catch(() => {});
-      }
-      const rawMsg = String(beginRes?.message || '');
-      if (rawMsg.toLowerCase().includes('update.begin failed')) {
+    if (!flashPort) {
+      if (!this.browserSupportsWebSerial) {
         throw new Error(
-          'MacroPad reported "Update.begin failed" — in Arduino IDE, set Tools → Partition Scheme to "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)" and flash once via Arduino IDE so the ESP32 has an OTA partition.'
+          'Web Serial is not supported in this browser — open this site in Chrome or Edge on desktop over HTTPS.'
         );
       }
-      throw new Error(
-        rawMsg ||
-          'Connected MacroPad firmware does not support /api/ota/begin yet — flash the latest OTA-enabled sketch once from Arduino IDE first.'
-      );
+      try {
+        flashPort = await (navigator as any).serial.requestPort();
+      } catch (pickErr: any) {
+        if (pickErr?.name === 'NotFoundError' || pickErr?.name === 'AbortError') {
+          throw new Error('USB port selection was cancelled.');
+        }
+        throw translateSerialOpenError(pickErr);
+      }
+      if (!flashPort) {
+        throw new Error('Select your MacroPad USB port to upload firmware.');
+      }
     }
 
-    // In Demo Mode, cap simulated loop iterations so a 1.2 MB .bin file tests briskly in ~1.2s
-    const stepStride = this.demoModeActive
-      ? Math.max(CHUNK_BYTES, Math.ceil(totalBytes / 40))
-      : CHUNK_BYTES;
+    this.isFlashingOta = true;
+    this.otaRebootExpected = false;
+    this.manualDisconnect = false;
 
-    let seq = 0;
-    let lastLoggedDecile = 0;
+    let activeTransport: Transport | null = null;
+    let flashCompleted = false;
+
+    let termLineBuf = '';
+    const flushTermLine = (line: string) => {
+      const trimmed = line.replace(/\r/g, '').trim();
+      if (!trimmed) return;
+      if (trimmed.startsWith('Writing at 0x')) return;
+      this.logSerial('info', `[BOOTLOADER] ${trimmed}`);
+    };
+
+    const loaderTerminal: IEspLoaderTerminal = {
+      clean: () => {
+        termLineBuf = '';
+      },
+      writeLine: (data: string) => {
+        if (termLineBuf) {
+          flushTermLine(termLineBuf + data);
+          termLineBuf = '';
+        } else {
+          flushTermLine(data);
+        }
+      },
+      write: (data: string) => {
+        termLineBuf += data;
+        let nlIdx: number;
+        while ((nlIdx = termLineBuf.indexOf('\n')) >= 0) {
+          const line = termLineBuf.slice(0, nlIdx);
+          termLineBuf = termLineBuf.slice(nlIdx + 1);
+          flushTermLine(line);
+        }
+      }
+    };
 
     try {
-      for (let offset = 0; offset < totalBytes; offset += stepStride) {
-        if (params.signal?.aborted) {
-          throw new Error('Firmware flash cancelled.');
-        }
-
-        const sliceEnd = Math.min(totalBytes, offset + CHUNK_BYTES);
-        const chunk = params.bytes.subarray(offset, sliceEnd);
-        const b64 = uint8ToBase64(chunk);
-
-        const chunkRes = await this.call(
-          {
-            path: '/api/ota/chunk',
-            seq,
-            data: b64
-          },
-          15000,
-          { silentLog: true }
-        );
-
-        if (!chunkRes?.ok) {
-          throw new Error(
-            chunkRes?.message || `MacroPad rejected OTA chunk #${seq} at byte ${offset}.`
-          );
-        }
-
-        seq += 1;
-        const bytesDone = Math.min(totalBytes, offset + stepStride);
-        const pct = Math.min(95, Math.max(1, Math.round((bytesDone / totalBytes) * 92) + 3));
-        const decile = Math.floor((bytesDone / totalBytes) * 10);
-        if (decile > lastLoggedDecile) {
-          lastLoggedDecile = decile;
-          this.logSerial(
-            'info',
-            `USB OTA progress: ${decile * 10}% (${bytesDone}/${totalBytes} bytes)`
-          );
-        }
-
-        params.onProgress?.(
-          pct,
-          bytesDone,
-          totalBytes,
-          `Writing firmware binary to MacroPad over USB Serial (chunk ${seq})…`
-        );
-      }
-
-      const endRes = await this.call(
-        {
-          path: '/api/ota/end',
-          size: totalBytes,
-          chunks: seq,
-          version: cleanVersion,
-          ...(params.sha256 ? { sha256: params.sha256.slice(0, 64) } : {})
-        },
-        20000
+      this.logSerial(
+        'info',
+        `Starting direct ESP32 bootloader USB flash (${formatBytesCompact(
+          totalBytes
+        )} · target v${cleanVersion} · default offset 0x${defaultFlashOffset.toString(16)})`
       );
 
-      if (!endRes?.ok) {
-        throw new Error(endRes?.message || 'ESP32 checksum or OTA finalization failed.');
-      }
-    } catch (otaErr: any) {
-      if (!this.demoModeActive && this.desiredEventsEnabled) {
-        await this.sendLineSyncBreak();
-        await this.call({ path: '/api/events/set', enabled: 1 }, 2000, {
-          silentLog: true
-        }).catch(() => {});
-      }
-      throw otaErr;
-    }
+      params.onProgress?.(
+        10,
+        0,
+        totalBytes,
+        'Releasing live serial stream & entering ESP32 bootloader…'
+      );
 
-    if (!this.demoModeActive) {
+      // Cleanly close our JSON stream on flashPort so esptool-js Transport can open it
+      await this.cleanupPort();
+      await new Promise(r => setTimeout(r, 120));
+
+      params.onProgress?.(
+        12,
+        0,
+        totalBytes,
+        'Syncing with ESP32 ROM bootloader over USB…'
+      );
+
+      let espLoader: ESPLoader;
+      let chipDescription = 'ESP32';
+
+      try {
+        activeTransport = new Transport(flashPort, false);
+        espLoader = new ESPLoader({
+          transport: activeTransport,
+          baudrate: 460800,
+          romBaudrate: 115200,
+          terminal: loaderTerminal
+        });
+        chipDescription = await espLoader.main('default_reset');
+      } catch (firstSyncErr: any) {
+        const firstMsg = String(firstSyncErr?.message || firstSyncErr || '').toLowerCase();
+        if (
+          firstSyncErr?.name === 'NetworkError' ||
+          firstSyncErr?.name === 'InvalidStateError' ||
+          firstMsg.includes('failed to open') ||
+          firstMsg.includes('in use') ||
+          firstMsg.includes('busy')
+        ) {
+          throw translateSerialOpenError(firstSyncErr);
+        }
+
+        // Fallback: if the MacroPad was already in ROM Download Mode (e.g. user holding BOOT), try no_reset
+        this.logSerial(
+          'info',
+          '[BOOTLOADER] Auto-reset sync did not reply — retrying with no_reset…'
+        );
+        if (activeTransport) {
+          await activeTransport.disconnect().catch(() => {});
+          activeTransport = null;
+        }
+        await new Promise(r => setTimeout(r, 120));
+
+        try {
+          activeTransport = new Transport(flashPort, false);
+          espLoader = new ESPLoader({
+            transport: activeTransport,
+            baudrate: 460800,
+            romBaudrate: 115200,
+            terminal: loaderTerminal
+          });
+          chipDescription = await espLoader.main('no_reset');
+        } catch {
+          throw new Error(
+            'Could not enter ESP32 bootloader mode — hold down the BOOT button on your MacroPad while clicking Upload (release BOOT once Writing starts), and make sure Arduino Serial Monitor is closed.'
+          );
+        }
+      }
+
+      if (params.signal?.aborted) {
+        throw new Error('Firmware upload cancelled.');
+      }
+
+      let targetAddress = defaultFlashOffset;
+      const fileArray: { data: Uint8Array; address: number }[] = [];
+
+      // Inspect live partition table at 0x8000 when flashing standalone .ino.bin (e.g. Huge APP 3MB No OTA)
+      if (!isMerged && espLoader.IS_STUB && activeTransport) {
+        try {
+          const ptBytes = await espLoader.readFlash(0x8000, 256);
+          await activeTransport.drainInput(60, 250);
+          const { primaryApp, otaData, hasOta1 } = inspectBoardPartitionTable(ptBytes);
+
+          if (primaryApp && primaryApp.size > 0) {
+            targetAddress = primaryApp.offset;
+            this.logSerial(
+              'info',
+              `[BOOTLOADER] Detected partition "${primaryApp.label || 'app0'}" at 0x${targetAddress.toString(
+                16
+              )} (${formatBytesCompact(primaryApp.size)} capacity${
+                !hasOta1 ? ' · No-OTA / Huge APP layout' : ''
+              })`
+            );
+
+            if (totalBytes > primaryApp.size) {
+              throw new Error(
+                `Firmware binary (${formatBytesCompact(
+                  totalBytes
+                )}) exceeds this MacroPad's current "${
+                  primaryApp.label || 'app0'
+                }" partition (${formatBytesCompact(
+                  primaryApp.size
+                )}) — flash once from Arduino IDE with Partition Scheme set to "Huge APP (3MB No OTA/1MB SPIFFS)" to expand the partition table.`
+              );
+            }
+
+            // If the board has dual OTA slots (ota_1 present), reset otadata so app0 at 0x10000 is guaranteed active
+            if (hasOta1 && otaData && otaData.size > 0 && otaData.size <= 0x4000) {
+              fileArray.push({
+                data: new Uint8Array(otaData.size).fill(0xff),
+                address: otaData.offset
+              });
+            }
+          }
+        } catch (ptErr: any) {
+          await activeTransport.drainInput(60, 250).catch(() => {});
+          if (String(ptErr?.message || '').includes('exceeds this MacroPad')) {
+            throw ptErr;
+          }
+        }
+      }
+
+      fileArray.push({
+        data: params.bytes,
+        address: targetAddress
+      });
+      const appFileIndex = fileArray.length - 1;
+
+      params.onProgress?.(
+        15,
+        0,
+        totalBytes,
+        `Connected to ${chipDescription} — erasing & writing flash at 0x${targetAddress.toString(
+          16
+        )}…`
+      );
+
+      let lastLoggedDecile = 0;
+
+      await espLoader.writeFlash({
+        fileArray,
+        flashSize: 'keep',
+        flashMode: 'keep',
+        flashFreq: 'keep',
+        eraseAll: false,
+        compress: true,
+        reportProgress: (fileIndex: number, written: number, totalCompressed: number) => {
+          if (fileIndex !== appFileIndex) return;
+          const ratio =
+            totalCompressed > 0
+              ? Math.min(1, Math.max(0, written / totalCompressed))
+              : 0;
+          const approxBytesWritten = Math.min(
+            totalBytes,
+            Math.round(ratio * totalBytes)
+          );
+          const pct = Math.min(95, Math.max(15, Math.round(15 + ratio * 80)));
+
+          const decile = Math.floor(ratio * 10);
+          if (decile > lastLoggedDecile) {
+            lastLoggedDecile = decile;
+            this.logSerial(
+              'info',
+              `[BOOTLOADER] Flash write ${decile * 10}% (${formatBytesCompact(
+                approxBytesWritten
+              )} / ${formatBytesCompact(totalBytes)})`
+            );
+          }
+
+          params.onProgress?.(
+            pct,
+            approxBytesWritten,
+            totalBytes,
+            `Writing firmware to MacroPad flash (${Math.round(ratio * 100)}%)…`
+          );
+        }
+      });
+
+      if (termLineBuf) {
+        flushTermLine(termLineBuf);
+        termLineBuf = '';
+      }
+
+      flashCompleted = true;
+
       params.onProgress?.(
         97,
         totalBytes,
         totalBytes,
-        'ESP32 rebooting into updated partition…'
+        'Restarting MacroPad & reconnecting over USB…'
       );
-      await new Promise(r => setTimeout(r, 3800));
-      for (let retry = 0; retry < 3; retry++) {
-        await this.sendLineSyncBreak();
-        await new Promise(r => setTimeout(r, 120));
+
+      // Hardware reset pulse (EN=LOW with IO0=HIGH for 120ms, then EN=HIGH) to exit bootloader cleanly
+      if (activeTransport) {
         try {
-          await this.fetchStatus(3500);
-          break;
-        } catch {
-          await new Promise(r => setTimeout(r, 600));
-        }
+          await activeTransport.setDTR(false);
+          await activeTransport.setRTS(true);
+          await new Promise(r => setTimeout(r, 120));
+          await activeTransport.setRTS(false);
+          await activeTransport.setDTR(false);
+          await new Promise(r => setTimeout(r, 80));
+        } catch {}
+        await activeTransport.disconnect().catch(() => {});
+        activeTransport = null;
       }
-      await this.call(
-        { path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 },
-        2500
-      ).catch(() => {});
+
+      // Re-open live MacroPad PadLink serial session on the same authorized USB port
+      this.isFlashingOta = false;
+      await new Promise(r => setTimeout(r, 650));
+      await this.openAuthorizedPort(flashPort, false).catch(() => null);
+
+      const reportedFw =
+        this.connectionInfo.connected &&
+        this.connectionInfo.firmwareVersion &&
+        this.connectionInfo.firmwareVersion !== '—' &&
+        this.connectionInfo.firmwareVersion !== 'Connecting…'
+          ? this.connectionInfo.firmwareVersion
+          : `v${cleanVersion}`;
+
+      const finalLabel = `v${cleanVersion}`;
+      params.onProgress?.(
+        100,
+        totalBytes,
+        totalBytes,
+        `Installed ${finalLabel} on MacroPad`
+      );
+
+      return {
+        ok: true,
+        firmwareVersion: reportedFw,
+        message: `Installed firmware ${finalLabel} on MacroPad over USB`
+      };
+    } catch (err: any) {
+      if (activeTransport) {
+        if (!flashCompleted) {
+          try {
+            await activeTransport.setDTR(false);
+            await activeTransport.setRTS(true);
+            await new Promise(r => setTimeout(r, 100));
+            await activeTransport.setRTS(false);
+            await activeTransport.setDTR(false);
+          } catch {}
+        }
+        await activeTransport.disconnect().catch(() => {});
+        activeTransport = null;
+      }
+
+      this.isFlashingOta = false;
+
+      if (wasConnectedBeforeFlash && flashPort) {
+        await new Promise(r => setTimeout(r, 450));
+        await this.openAuthorizedPort(flashPort, false).catch(() => null);
+      }
+
+      throw err instanceof Error
+        ? err
+        : new Error('Failed to flash firmware over USB.');
+    } finally {
+      this.isFlashingOta = false;
+      this.otaRebootExpected = false;
     }
-
-    const activeFw = this.connectionInfo.firmwareVersion || `v${cleanVersion}`;
-    params.onProgress?.(100, totalBytes, totalBytes, `Flashed & verified ${activeFw}`);
-
-    return {
-      ok: true,
-      firmwareVersion: activeFw,
-      message: `Flashed ${activeFw} over USB Serial`
-    };
   }
 
   private async cleanupPort() {
     try {
+      const portToClose = this.port;
+      this.port = null;
+
       if (this.reader) {
         await this.reader.cancel().catch(() => {});
         try {
@@ -2875,9 +3207,15 @@ class PadLinkService {
         } catch (_) {}
         this.writer = null;
       }
-      if (this.port) {
-        await this.port.close().catch(() => {});
-        this.port = null;
+      if (portToClose) {
+        const unlockDeadline = Date.now() + 450;
+        while (
+          Date.now() < unlockDeadline &&
+          (portToClose.readable?.locked || portToClose.writable?.locked)
+        ) {
+          await new Promise(r => setTimeout(r, 25));
+        }
+        await portToClose.close().catch(() => {});
       }
     } catch (_) {}
   }

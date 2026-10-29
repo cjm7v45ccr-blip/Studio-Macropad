@@ -11,6 +11,7 @@ import {
   formatBytesCompact,
   selectPrimaryOtaBinaryAsset
 } from '../services/firmwareUpdateService';
+import { usbHardware } from '../services/usbHardwareService';
 import {
   AlertCircle,
   Archive,
@@ -216,7 +217,7 @@ const FirmwareRadialProgress: React.FC<{
   size?: 'sm' | 'md';
 }> = ({ percent, stage, size = 'md' }) => {
   const clamped = clampProgressPercent(percent);
-  const arcPercent = stage === 'error' ? 100 : Math.max(4, clamped);
+  const arcPercent = Math.max(4, clamped);
   const visual = getBannerVisualConfig(stage, 'idle');
   const StageIcon = visual.Icon;
 
@@ -280,7 +281,7 @@ const FirmwareLinearProgress: React.FC<{
   thick?: boolean;
 }> = ({ percent, stage, ariaLabel, thick = false }) => {
   const clamped = clampProgressPercent(percent);
-  const fillWidth = stage === 'error' ? 100 : Math.max(2, clamped);
+  const fillWidth = Math.max(3, clamped);
   const visual = getBannerVisualConfig(stage, 'idle');
 
   return (
@@ -417,7 +418,11 @@ const FirmwareProgressBox: React.FC<{
           <span>{STAGE_LABELS[installProgress.stage]}</span>
         </span>
         <span>
-          {installProgress.stage !== 'error' && `${clamped}%`}
+          {installProgress.stage === 'error'
+            ? clamped > 0
+              ? `Stopped at ${clamped}%`
+              : ''
+            : `${clamped}%`}
           {installProgress.bytesWritten !== undefined &&
             installProgress.totalBytes !== undefined &&
             installProgress.totalBytes > 0 &&
@@ -427,13 +432,11 @@ const FirmwareProgressBox: React.FC<{
         </span>
       </div>
 
-      {installProgress.stage !== 'error' && (
-        <FirmwareLinearProgress
-          percent={clamped}
-          stage={installProgress.stage}
-          ariaLabel="MacroPad firmware write progress"
-        />
-      )}
+      <FirmwareLinearProgress
+        percent={clamped}
+        stage={installProgress.stage}
+        ariaLabel="MacroPad firmware write progress"
+      />
 
       <div className="text-[11px] leading-relaxed opacity-90">
         {installProgress.message}
@@ -771,11 +774,11 @@ export const FirmwareUpdateBanner: React.FC<{
             <div className="flex items-center gap-2 flex-wrap font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
               {activeStage ? (
                 <>
-                  {!isError && (
-                    <span className="text-[var(--text-primary)] font-semibold">
-                      {clampedPercent}%
-                    </span>
-                  )}
+                  <span className="text-[var(--text-primary)] font-semibold">
+                    {isError && clampedPercent > 0
+                      ? `Stopped at ${clampedPercent}%`
+                      : `${clampedPercent}%`}
+                  </span>
                   {isVerifying && installProgress?.sha256 && (
                     <>
                       <span aria-hidden="true">·</span>
@@ -838,14 +841,12 @@ export const FirmwareUpdateBanner: React.FC<{
         <div className={`space-y-2.5 border-t ${visual.dividerBorderClass} pt-3`}>
           <FirmwareStageTrail stage={activeStage} />
 
-          {!isError && (
-            <FirmwareLinearProgress
-              thick
-              percent={clampedPercent}
-              stage={activeStage}
-              ariaLabel="MacroPad firmware binary write progress"
-            />
-          )}
+          <FirmwareLinearProgress
+            thick
+            percent={clampedPercent}
+            stage={activeStage}
+            ariaLabel="MacroPad firmware binary write progress"
+          />
 
           <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
             <span
@@ -973,6 +974,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
   );
 
   const padWifiOnline = Boolean(connection.connected && connection.telemetry?.wifiConnected);
+  const canFlashUsb = connection.connected || usbHardware.browserSupportsWebSerial;
   const latestRelease = firmwareUpdate.latestRelease;
 
   const handleManualFirmwareCheck = async () => {
@@ -992,7 +994,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
       onToast(`MacroPad firmware (${result.installedVersion}) is up to date`);
     } else if (result.latestRelease) {
       onToast(
-        `Firmware v${result.latestRelease.version} is ready — connect your MacroPad to update`
+        `Firmware v${result.latestRelease.version} is ready to upload over USB`
       );
     } else {
       onToast('Your MacroPad firmware is up to date — no new update posted yet');
@@ -1016,7 +1018,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
             <span>MacroPad Firmware Updates</span>
           </div>
           <p className="text-xs text-[var(--text-muted)]">
-            Notifies you automatically when a new firmware update is available and uploads it directly to your MacroPad.
+            Flashes updates from the public folder directly via the ESP32 USB bootloader — compatible with Huge APP (3MB No OTA) while keeping saved profiles, Bluetooth hosts, and Wi-Fi intact.
           </p>
         </div>
 
@@ -1186,7 +1188,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
           </pre>
         )}
 
-        {onExportBackupFile && primaryBinAsset && (
+        {onExportBackupFile && primaryBinAsset && connection.connected && (
           <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer select-none">
             <input
               type="checkbox"
@@ -1202,7 +1204,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
           <button
             type="button"
-            disabled={isUploadingFirmware || !connection.connected || !primaryBinAsset}
+            disabled={isUploadingFirmware || !canFlashUsb || !primaryBinAsset}
             onClick={() =>
               onUploadFirmwareToMacropad({
                 releaseOverride: selectedRelease,
@@ -1211,11 +1213,11 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
               })
             }
             title={
-              !connection.connected
-                ? 'Connect your MacroPad via USB first'
+              !canFlashUsb
+                ? 'Open this site in Chrome or Edge on desktop to flash over USB'
                 : !primaryBinAsset
                 ? 'No firmware update available yet'
-                : 'Uploads firmware directly to your connected MacroPad over USB'
+                : 'Flashes firmware directly via the ESP32 USB bootloader (supports Huge APP / No OTA)'
             }
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
           >
@@ -1228,7 +1230,9 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
               {isUploadingFirmware && installProgress?.method === 'usb_serial'
                 ? 'Uploading to MacroPad…'
                 : selectedRelease && primaryBinAsset
-                ? firmwareUpdate.status === 'update_available'
+                ? !connection.connected
+                  ? `Select USB Port & Upload (v${selectedRelease.version})`
+                  : firmwareUpdate.status === 'update_available'
                   ? `Upload Update to MacroPad (v${selectedRelease.version})`
                   : `Upload v${selectedRelease.version} to MacroPad`
                 : 'Upload to MacroPad'}

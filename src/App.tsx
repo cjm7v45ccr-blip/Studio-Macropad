@@ -67,7 +67,8 @@ export default function App() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3400);
+    const duration = toast.variant === 'error' ? 8500 : 3600;
+    const t = setTimeout(() => setToast(null), duration);
     return () => clearTimeout(t);
   }, [toast]);
 
