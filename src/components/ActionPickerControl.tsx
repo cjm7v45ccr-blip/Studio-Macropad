@@ -459,8 +459,8 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                   type="button"
                   disabled={!mainTestAvail.canTest}
                   onClick={() => onTestBinding(binding)}
-                  title={mainTestAvail.reason || 'Fire this action live on the MacroPad'}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:border-[var(--accent)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+                  title={mainTestAvail.reason || 'Connect MacroPad via USB to test actions on hardware'}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:border-[var(--accent)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <Play className="w-3 h-3 text-emerald-400" />
                   <span>Test</span>
@@ -469,13 +469,6 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             )}
           </div>
         </div>
-
-        {binding.value && !mainTestAvail.canTest && mainTestAvail.reason && (
-          <div className="flex items-start gap-1.5 text-[11px] text-amber-300 pt-1.5 border-t border-[var(--border-subtle)]">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-            <span>{mainTestAvail.reason}</span>
-          </div>
-        )}
       </div>
 
       {/* Search Bar + Platform Shortcut Toggle */}

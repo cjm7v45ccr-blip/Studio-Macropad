@@ -820,42 +820,40 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
       )}
 
-      {/* Connect / Demo Prompt Banner when disconnected on supported browsers */}
-      {usbHardware.browserSupportsWebSerial && !connection.connected && !isSyncedWithHardware && (
-        <div className="w-full max-w-2xl mt-3 px-3.5 py-3 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <Usb className="w-4 h-4 text-[var(--accent)] shrink-0" />
-            <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              <strong className="text-[var(--text-primary)]">No pad connected.</strong> Plug in
-              your Studio Pad over USB to load its real profiles, or run demo mode with no pad
-              attached.
+      {/* Offline State: Prominent Demo Mode & Connection Card */}
+      {!connection.connected && !isSyncedWithHardware && (
+        <div className="w-full max-w-2xl mt-3 p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
+              <PlayCircle className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div className="space-y-0.5 min-w-0">
+              <div className="text-sm font-semibold text-[var(--text-primary)]">
+                Explore in Demo Mode
+              </div>
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                No physical MacroPad detected over USB. Test all 11 controls, customize layers, and preview macros instantly in virtual simulator mode.
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap shrink-0">
             <button
               type="button"
-              onClick={onConnectUsbPad}
-              className="px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap flex items-center gap-1.5"
-            >
-              <Usb className="w-3.5 h-3.5" />
-              <span>Connect USB pad</span>
-            </button>
-            <button
-              type="button"
               onClick={onStartDemoMode}
-              className="px-3 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+              style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold hover:opacity-95 transition-opacity cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
             >
-              <PlayCircle className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Try demo mode</span>
+              <PlayCircle className="w-4 h-4" />
+              <span>Start Demo Mode</span>
             </button>
-            {onOpenSetupWizard && (
+            {usbHardware.browserSupportsWebSerial && (
               <button
                 type="button"
-                onClick={onOpenSetupWizard}
-                className="px-3 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                onClick={onConnectUsbPad}
+                className="px-3.5 py-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
               >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span>Guided Setup</span>
+                <Usb className="w-4 h-4 text-[var(--accent)]" />
+                <span>Connect USB Pad</span>
               </button>
             )}
           </div>
