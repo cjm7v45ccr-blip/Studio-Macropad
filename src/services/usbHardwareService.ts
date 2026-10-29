@@ -1368,6 +1368,7 @@ class PadLinkService {
     }
 
     if (path === '/api/ota/chunk') {
+      await new Promise(r => setTimeout(r, 28));
       return reply({ ok: true, seq: Number(obj.seq || 0) });
     }
 
@@ -2679,7 +2680,7 @@ class PadLinkService {
         pct,
         bytesDone,
         totalBytes,
-        `Streaming firmware over USB Serial (${Math.round((bytesDone / totalBytes) * 100)}%)…`
+        `Writing firmware binary to MacroPad over USB Serial (chunk ${seq})…`
       );
     }
 

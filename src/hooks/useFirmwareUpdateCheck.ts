@@ -319,7 +319,7 @@ export function useFirmwareUpdateCheck({
         setInstallProgress({
           stage: 'downloading',
           method: 'usb_serial',
-          percent: 6,
+          percent: 4,
           message: `Loading ${primaryAsset.name}…`,
           totalBytes: primaryAsset.sizeBytes || undefined,
           targetVersion: targetRelease.version
@@ -329,12 +329,11 @@ export function useFirmwareUpdateCheck({
           primaryAsset,
           (loaded, total) => {
             const dlPct =
-              total > 0 ? Math.min(35, Math.round((loaded / total) * 30) + 5) : 20;
+              total > 0 ? Math.min(12, Math.round((loaded / total) * 8) + 4) : 8;
             setInstallProgress({
               stage: 'downloading',
               method: 'usb_serial',
               percent: dlPct,
-              bytesWritten: loaded,
               totalBytes: total || undefined,
               message: `Loading ${primaryAsset.name} (${formatBytesCompact(loaded)})…`,
               targetVersion: targetRelease.version
@@ -345,11 +344,21 @@ export function useFirmwareUpdateCheck({
         setInstallProgress({
           stage: 'verifying_hash',
           method: 'usb_serial',
-          percent: 38,
-          bytesWritten: bytes.byteLength,
+          percent: 14,
           totalBytes: bytes.byteLength,
           sha256,
-          message: `Verified firmware · Uploading to MacroPad…`,
+          message: 'SHA-256 checksum verified · Preparing MacroPad flash partition…',
+          targetVersion: targetRelease.version
+        });
+
+        setInstallProgress({
+          stage: 'flashing',
+          method: 'usb_serial',
+          percent: 15,
+          bytesWritten: 0,
+          totalBytes: bytes.byteLength,
+          sha256,
+          message: 'Erasing OTA partition & starting binary write…',
           targetVersion: targetRelease.version
         });
 
@@ -358,9 +367,13 @@ export function useFirmwareUpdateCheck({
           version: targetRelease.version,
           sha256,
           onProgress: (pct, sent, total, msg) => {
-            const scaledPct = Math.min(99, Math.round(38 + (pct / 100) * 61));
+            const isRebootPhase = pct >= 96;
+            const writeRatio = total > 0 ? Math.min(1, Math.max(0, sent / total)) : 0;
+            const scaledPct = isRebootPhase
+              ? 98
+              : Math.min(96, Math.round(15 + writeRatio * 81));
             setInstallProgress({
-              stage: pct >= 96 ? 'rebooting' : 'flashing',
+              stage: isRebootPhase ? 'rebooting' : 'flashing',
               method: 'usb_serial',
               percent: scaledPct,
               bytesWritten: sent,
@@ -414,6 +427,9 @@ export function useFirmwareUpdateCheck({
     if (currentBannerKey) {
       setDismissedBannerKey(currentBannerKey);
     }
+    setInstallProgress(prev =>
+      prev && (prev.stage === 'complete' || prev.stage === 'error') ? null : prev
+    );
   }, [currentBannerKey]);
 
   return {
