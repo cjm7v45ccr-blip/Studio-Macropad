@@ -97,10 +97,10 @@ export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   { action: 'MEDIA:PREV', label: 'Previous Track', shortLabel: 'Prev', description: 'BLE Return to previous track', category: 'media', icon: 'skip-back', color: '#A78BFA' },
 
   // KEY:F13..F16 (4)
-  { action: 'KEY:F13', label: 'F13 Function Key', shortLabel: 'F13', description: 'BLE Aux function key F13', category: 'media', icon: 'command', color: '#F3F4F6' },
-  { action: 'KEY:F14', label: 'F14 Function Key', shortLabel: 'F14', description: 'BLE Aux function key F14', category: 'media', icon: 'command', color: '#F3F4F6' },
-  { action: 'KEY:F15', label: 'F15 Function Key', shortLabel: 'F15', description: 'BLE Aux function key F15', category: 'media', icon: 'command', color: '#F3F4F6' },
-  { action: 'KEY:F16', label: 'F16 Function Key', shortLabel: 'F16', description: 'BLE Aux function key F16', category: 'media', icon: 'command', color: '#F3F4F6' },
+  { action: 'KEY:F13', label: 'F13 Function Key', shortLabel: 'F13', description: 'BLE Aux function key F13', category: 'media', icon: 'zap', color: '#A78BFA' },
+  { action: 'KEY:F14', label: 'F14 Function Key', shortLabel: 'F14', description: 'BLE Aux function key F14', category: 'media', icon: 'sparkles', color: '#38BDF8' },
+  { action: 'KEY:F15', label: 'F15 Function Key', shortLabel: 'F15', description: 'BLE Aux function key F15', category: 'media', icon: 'sliders', color: '#34D399' },
+  { action: 'KEY:F16', label: 'F16 Function Key', shortLabel: 'F16', description: 'BLE Aux function key F16', category: 'media', icon: 'layers', color: '#FBBF24' },
 
   // MACRO:* macOS Built-ins (11)
   { action: 'MACRO:COPY', label: 'Copy (⌘C)', shortLabel: 'Copy', description: 'macOS Command + C', category: 'mac_macro', icon: 'copy', color: '#60A5FA' },
@@ -1510,7 +1510,7 @@ export function describeFirmwareAction(
     return {
       shortLabel: staticSpec.shortLabel,
       fullLabel: staticSpec.label,
-      description: `${staticSpec.description} (${staticSpec.action})`,
+      description: staticSpec.description,
       icon: staticSpec.icon,
       color: staticSpec.color
     };
@@ -1521,7 +1521,7 @@ export function describeFirmwareAction(
     return {
       shortLabel: friendly.slice(0, 12),
       fullLabel: friendly,
-      description: trimmed,
+      description: friendly,
       icon: 'zap',
       color: '#38BDF8'
     };
@@ -1531,8 +1531,8 @@ export function describeFirmwareAction(
     const pretty = formatShortcutPretty(trimmed);
     return {
       shortLabel: pretty.slice(0, 12),
-      fullLabel: `Shortcut: ${pretty}`,
-      description: trimmed,
+      fullLabel: pretty,
+      description: `BLE Keyboard Shortcut (${pretty})`,
       icon: 'command',
       color: '#38BDF8'
     };
@@ -1553,9 +1553,9 @@ export function describeFirmwareAction(
   if (trimmed.startsWith('TVKEY:')) {
     const parts = trimmed.split(':');
     return {
-      shortLabel: `TV ${parts[1]}:${parts[2]}`,
+      shortLabel: `${parts[1]}:${parts[2]}`,
       fullLabel: `SmartCast Key (${parts[1]}, ${parts[2]})`,
-      description: trimmed,
+      description: `SmartCast Remote Codeset ${parts[1]}, Code ${parts[2]}`,
       icon: 'tv',
       color: '#A78BFA'
     };
@@ -1566,16 +1566,20 @@ export function describeFirmwareAction(
     return {
       shortLabel: `App #${parts[1]}`,
       fullLabel: `SmartCast App ID ${parts[1]}`,
-      description: trimmed,
+      description: `SmartCast App ID ${parts[1]} (Namespace ${parts[2] || '4'})`,
       icon: 'clapperboard',
       color: '#FBBF24'
     };
   }
 
+  const fallbackIdx = trimmed.indexOf(':');
+  const strippedFallback =
+    fallbackIdx > 0 ? trimmed.slice(fallbackIdx + 1) : trimmed;
+
   return {
-    shortLabel: trimmed.slice(0, 12),
-    fullLabel: trimmed,
-    description: trimmed,
+    shortLabel: strippedFallback.slice(0, 12),
+    fullLabel: strippedFallback,
+    description: strippedFallback,
     icon: 'zap',
     color: '#F3F4F6'
   };
@@ -2278,4 +2282,314 @@ export function optimizeMacroSteps(
 ): MacroStepConfig[] {
   return analyzeMacroOptimizations(steps, repeatConfig).optimizedSteps;
 }
+
+// ===========================================================================
+// Universal 'KEY:VALUE' Display Parser & Smart Keystroke Coalescing Helpers
+// ===========================================================================
+
+export interface ParsedActionToken {
+  prefix: string | null;
+  value: string;
+  prettyValue: string;
+  rawAction: string;
+}
+
+export interface ParsedActionDisplay {
+  isUnassigned: boolean;
+  isMultiStep: boolean;
+  prefix: string | null;
+  value: string;
+  prettyLabel: string;
+  tokens: ParsedActionToken[];
+  repeatBadge: string | null;
+}
+
+const KEY_VALUE_PREFIX_RE = /^([A-Za-z][A-Za-z0-9_]*):([\s\S]*)$/;
+
+/**
+ * Parses a single 'KEY:VALUE' firmware action token (e.g. 'MEDIA:PLAY_PAUSE', 'KEY:F15',
+ * 'WIN:SNIP', 'SHORTCUT:cmd,shift:4', 'TEXT:hello').
+ * Strips the 'KEY:' prefix completely from `value` and extracts `KEY` as `prefix`.
+ */
+export function parseSingleActionKeyValue(rawToken: string): ParsedActionToken {
+  const raw = rawToken ?? '';
+  const trimmed = raw.startsWith('TEXT:') || raw.startsWith('text:') ? raw : raw.trim();
+  if (!trimmed) {
+    return {
+      prefix: null,
+      value: 'Unassigned',
+      prettyValue: 'Unassigned',
+      rawAction: ''
+    };
+  }
+
+  const match = KEY_VALUE_PREFIX_RE.exec(trimmed);
+  if (!match) {
+    return {
+      prefix: null,
+      value: trimmed,
+      prettyValue: trimmed,
+      rawAction: trimmed
+    };
+  }
+
+  const upperPrefix = match[1].toUpperCase();
+  const rest = match[2];
+
+  // Single key encoded via SHORTCUT::<key> (empty modifiers) -> treat prefix as KEY
+  if (upperPrefix === 'SHORTCUT') {
+    if (rest.startsWith(':')) {
+      const singleKey = rest.slice(1).trim().toUpperCase() || 'KEY';
+      return {
+        prefix: 'KEY',
+        value: singleKey,
+        prettyValue: singleKey,
+        rawAction: trimmed
+      };
+    }
+    const prettyCombo = formatShortcutPretty(trimmed);
+    const strippedShortcut = rest.replace(/^:+/, '');
+    return {
+      prefix: 'SHORTCUT',
+      value: prettyCombo || strippedShortcut,
+      prettyValue: prettyCombo || strippedShortcut,
+      rawAction: trimmed
+    };
+  }
+
+  if (upperPrefix === 'TEXT') {
+    const cleanText = rest.replace(/\r?\n/g, ' ↵');
+    return {
+      prefix: 'TEXT',
+      value: cleanText || '…',
+      prettyValue: cleanText ? `"${cleanText}"` : 'Empty text',
+      rawAction: trimmed
+    };
+  }
+
+  if (upperPrefix === 'WAIT') {
+    const ms = parseInt(rest.trim(), 10);
+    const formattedWait = !Number.isNaN(ms)
+      ? ms >= 1000 && ms % 1000 === 0
+        ? `${ms / 1000}s`
+        : `${ms}ms`
+      : rest.trim();
+    return {
+      prefix: 'WAIT',
+      value: formattedWait,
+      prettyValue: `Wait ${formattedWait}`,
+      rawAction: trimmed
+    };
+  }
+
+  const staticSpec = STATIC_MAP.get(trimmed) || STATIC_MAP.get(trimmed.toUpperCase());
+  const strippedOriginalValue = rest.trim();
+  const friendly = staticSpec ? staticSpec.label : formatFriendlyActionLabel(trimmed);
+
+  return {
+    prefix: upperPrefix,
+    value: strippedOriginalValue,
+    prettyValue: friendly !== trimmed ? friendly : strippedOriginalValue,
+    rawAction: trimmed
+  };
+}
+
+/**
+ * Converts a MacroStepConfig directly into a ParsedActionToken so every step row
+ * displays a stylized colored [PREFIX] tag alongside a clean stripped value.
+ */
+export function parseMacroStepTag(step: MacroStepConfig): ParsedActionToken {
+  switch (step.actionType) {
+    case 'delay': {
+      const totalMs = Math.max(0, step.delayMs || 0) * Math.max(1, step.repeatCount || 1);
+      const val =
+        totalMs >= 1000 && totalMs % 1000 === 0 ? `${totalMs / 1000}s` : `${totalMs} ms`;
+      return {
+        prefix: 'WAIT',
+        value: val,
+        prettyValue: `Wait ${val}`,
+        rawAction: `WAIT:${totalMs}`
+      };
+    }
+    case 'key': {
+      const k = (step.value || '').trim().toUpperCase();
+      return {
+        prefix: 'KEY',
+        value: k || 'KEY',
+        prettyValue: k || 'Choose key',
+        rawAction: k ? `SHORTCUT::${k.toLowerCase()}` : ''
+      };
+    }
+    case 'text': {
+      const txt = step.value || '';
+      return {
+        prefix: 'TEXT',
+        value: txt || '…',
+        prettyValue: txt ? `"${txt}"` : 'Enter text…',
+        rawAction: `TEXT:${txt}`
+      };
+    }
+    case 'shortcut': {
+      const parsed = parseSingleActionKeyValue(step.value || 'SHORTCUT:cmd:c');
+      return {
+        ...parsed,
+        prefix: 'SHORTCUT'
+      };
+    }
+    default: {
+      return parseSingleActionKeyValue(step.value);
+    }
+  }
+}
+
+/**
+ * Parses any firmware action string (single 'KEY:VALUE', '||' sequence, or TextMacroRepeatConfig)
+ * into structured colored-tag tokens with all raw 'PREFIX:' substrings removed from display labels.
+ */
+export function parseActionKeyValue(
+  actionStr: string | undefined | null,
+  repeatConfig?: TextMacroRepeatConfig
+): ParsedActionDisplay {
+  const raw = actionStr ?? '';
+  const trimmed = raw.startsWith('TEXT:') ? raw : raw.trim();
+
+  const repeatBadge = repeatConfig?.loopUntilStopped
+    ? '∞ Loop'
+    : repeatConfig && repeatConfig.repeatCount > 1
+    ? `${repeatConfig.repeatCount}×`
+    : null;
+
+  if (repeatConfig?.steps && repeatConfig.steps.length > 0) {
+    const tokens = repeatConfig.steps.map(parseMacroStepTag);
+    if (tokens.length === 1) {
+      return {
+        isUnassigned: false,
+        isMultiStep: false,
+        prefix: tokens[0].prefix,
+        value: tokens[0].value,
+        prettyLabel: tokens[0].prettyValue,
+        tokens,
+        repeatBadge
+      };
+    }
+    return {
+      isUnassigned: false,
+      isMultiStep: true,
+      prefix: 'SEQ',
+      value: tokens.map(t => t.value).join(' → '),
+      prettyLabel: describeFirmwareAction(trimmed, repeatConfig).fullLabel,
+      tokens,
+      repeatBadge
+    };
+  }
+
+  if (
+    repeatConfig &&
+    (repeatConfig.text || repeatConfig.followUpKey)
+  ) {
+    const steps = actionToMacroSteps(trimmed, repeatConfig);
+    if (steps.length > 0) {
+      const tokens = steps.map(parseMacroStepTag);
+      return {
+        isUnassigned: false,
+        isMultiStep: tokens.length > 1,
+        prefix: tokens.length > 1 ? 'SEQ' : tokens[0].prefix,
+        value: tokens.map(t => t.value).join(' → '),
+        prettyLabel: describeFirmwareAction(trimmed, repeatConfig).fullLabel,
+        tokens,
+        repeatBadge
+      };
+    }
+  }
+
+  if (!trimmed || trimmed === '—' || trimmed.toUpperCase().includes('UNASSIGNED')) {
+    return {
+      isUnassigned: true,
+      isMultiStep: false,
+      prefix: null,
+      value: 'Unassigned',
+      prettyLabel: 'Unassigned',
+      tokens: [],
+      repeatBadge: null
+    };
+  }
+
+  if (trimmed.includes('||')) {
+    const parts = trimmed
+      .split('||')
+      .map(p => p.trim())
+      .filter(Boolean);
+    const tokens = parts.map(parseSingleActionKeyValue);
+    return {
+      isUnassigned: false,
+      isMultiStep: tokens.length > 1,
+      prefix: tokens.length > 1 ? 'SEQ' : tokens[0]?.prefix ?? null,
+      value: tokens.map(t => t.value).join(' → '),
+      prettyLabel: describeFirmwareAction(trimmed).fullLabel,
+      tokens,
+      repeatBadge
+    };
+  }
+
+  const single = parseSingleActionKeyValue(trimmed);
+  return {
+    isUnassigned: false,
+    isMultiStep: false,
+    prefix: single.prefix,
+    value: single.value,
+    prettyLabel: single.prettyValue,
+    tokens: [single],
+    repeatBadge
+  };
+}
+
+const SHIFTED_PUNCTUATION_MAP: Record<string, string> = {
+  '1': '!',
+  '2': '@',
+  '3': '#',
+  '4': '$',
+  '5': '%',
+  '6': '^',
+  '7': '&',
+  '8': '*',
+  '9': '(',
+  '0': ')',
+  '-': '_',
+  '=': '+',
+  '[': '{',
+  ']': '}',
+  ';': ':',
+  ',': '<',
+  '.': '>',
+  '/': '?',
+  '`': '~'
+};
+
+/**
+ * Converts a normalized firmware key into a printable ASCII character suitable for a `TEXT:` step
+ * when no Ctrl/Cmd/Alt/Win modifiers are held. Excludes `"` and `\` (disallowed by firmware JSON).
+ */
+export function fwKeyToPrintableAscii(
+  fwKey: string,
+  shiftHeld: boolean
+): string | null {
+  const k = (fwKey || '').toLowerCase();
+  if (k === 'space') return ' ';
+  if (/^[a-z]$/.test(k)) {
+    return shiftHeld ? k.toUpperCase() : k;
+  }
+  if (/^[0-9]$/.test(k)) {
+    return shiftHeld ? SHIFTED_PUNCTUATION_MAP[k] ?? null : k;
+  }
+  if (['-', '=', '[', ']', ';', "'", ',', '.', '/', '`'].includes(k)) {
+    if (shiftHeld) {
+      // Shift + ' produces " which firmware text macro rejects
+      if (k === "'") return null;
+      return SHIFTED_PUNCTUATION_MAP[k] ?? null;
+    }
+    return k;
+  }
+  return null;
+}
+
 

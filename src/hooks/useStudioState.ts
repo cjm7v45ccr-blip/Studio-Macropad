@@ -2011,7 +2011,10 @@ export function useStudioState(
   }, [pushBothProfilesSnapshot, onToast]);
 
   const saveCustomMacro = useCallback(
-    (item: CustomMacroItem): { saved: CustomMacroItem | null; updatedSlotCount: number } => {
+    (
+      item: CustomMacroItem,
+      options?: { forceNew?: boolean }
+    ): { saved: CustomMacroItem | null; updatedSlotCount: number } => {
       const steps =
         item.repeatConfig?.steps && item.repeatConfig.steps.length > 0
           ? item.repeatConfig.steps
@@ -2037,23 +2040,32 @@ export function useStudioState(
       const smartName = suggestSmartMacroName(steps, item.repeatConfig);
       const finalName = isGenericMacroName(item.name) ? smartName : item.name.trim();
       const newSig = getMacroCanonicalSignature(canonAction, item.repeatConfig);
+      const forceNew = Boolean(options?.forceNew);
 
       const prevSnap = snapshotRef.current;
-      const existingById = prevSnap.customMacros.find(m => m.id === item.id);
+      const existingById = forceNew
+        ? undefined
+        : prevSnap.customMacros.find(m => m.id === item.id);
       const oldSig = existingById
         ? getMacroCanonicalSignature(existingById.action, existingById.repeatConfig)
         : null;
 
       // Check if another saved macro already has this exact canonical signature
-      const duplicateMatch = prevSnap.customMacros.find(
-        m =>
-          m.id !== item.id &&
-          getMacroCanonicalSignature(m.action, m.repeatConfig) === newSig
-      );
+      const duplicateMatch = forceNew
+        ? undefined
+        : prevSnap.customMacros.find(
+            m =>
+              m.id !== item.id &&
+              getMacroCanonicalSignature(m.action, m.repeatConfig) === newSig
+          );
 
       const finalMacro: CustomMacroItem = {
         ...item,
-        id: duplicateMatch && !existingById ? duplicateMatch.id : item.id,
+        id: forceNew
+          ? `macro-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+          : duplicateMatch && !existingById
+          ? duplicateMatch.id
+          : item.id,
         name: finalName,
         action: canonAction,
         source: 'user'

@@ -30,6 +30,7 @@ import {
   getBindingForProfileSlot
 } from '../hooks/useStudioState';
 import { DiffConfirmModal, DiffPreviewRow } from './DiffConfirmModal';
+import { ParsedActionBadge } from './ActionTagBadge';
 import {
   Download,
   Upload,
@@ -715,8 +716,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         </div>
                       </div>
 
-                      <div className="font-mono text-[11px] text-[var(--text-secondary)] truncate">
-                        {describeFirmwareAction(macro.action, macro.repeatConfig).fullLabel}
+                      <div className="pt-0.5 min-w-0">
+                        <ParsedActionBadge
+                          action={macro.action}
+                          repeatConfig={macro.repeatConfig}
+                          maxSteps={3}
+                        />
                       </div>
                     </div>
 
@@ -797,14 +802,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         {HARDWARE_SLOTS.map(slot => (
                           <div
                             key={slot}
-                            className="px-2 py-1 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] truncate"
+                            className="px-2 py-1 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center gap-1.5 min-w-0"
                           >
-                            <span className="text-[var(--text-muted)]">
-                              {SLOT_LABELS[slot].short}:{' '}
+                            <span className="text-[var(--text-muted)] shrink-0">
+                              {SLOT_LABELS[slot].short}
                             </span>
-                            <span className="text-[var(--text-primary)]">
-                              {describeFirmwareAction(preset.bindings[slot]).shortLabel}
-                            </span>
+                            <ParsedActionBadge
+                              action={preset.bindings[slot]}
+                              maxSteps={1}
+                              className="min-w-0 flex-1"
+                            />
                           </div>
                         ))}
                       </div>
@@ -954,21 +961,23 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           {HARDWARE_SLOTS.map(s => (
                             <div
                               key={s}
-                              className="px-2 py-1 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] truncate"
+                              className="px-2 py-1 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center gap-1.5 min-w-0"
                             >
-                              <span className="text-[var(--text-muted)]">
-                                {SLOT_LABELS[s].short}:{' '}
+                              <span className="text-[var(--text-muted)] shrink-0">
+                                {SLOT_LABELS[s].short}
                               </span>
-                              <span className="text-[var(--text-primary)]">
-                                {
-                                  describeFirmwareAction(
-                                    snap.profileSlots![s] ||
-                                      FACTORY_DEFAULT_SLOTS[defaultTarget][s],
-                                    snap.repeatConfigs?.[`${defaultTarget}:${s}`] ||
-                                      snap.repeatConfigs?.[`MAC:${s}`]
-                                  ).shortLabel
+                              <ParsedActionBadge
+                                action={
+                                  snap.profileSlots![s] ||
+                                  FACTORY_DEFAULT_SLOTS[defaultTarget][s]
                                 }
-                              </span>
+                                repeatConfig={
+                                  snap.repeatConfigs?.[`${defaultTarget}:${s}`] ||
+                                  snap.repeatConfigs?.[`MAC:${s}`]
+                                }
+                                maxSteps={1}
+                                className="min-w-0 flex-1"
+                              />
                             </div>
                           ))}
                         </div>

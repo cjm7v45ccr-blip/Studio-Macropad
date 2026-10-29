@@ -343,7 +343,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             type="button"
             disabled={isAlreadyFactoryDefault}
             onClick={() => onResetSlotToDefault(slotId)}
-            title={`Reset to factory default: ${factoryDesc.fullLabel} (${factoryDefaultAction})`}
+            title={`Reset to factory default: ${factoryDesc.fullLabel}`}
             className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
           >
             <RotateCcw className="w-3.5 h-3.5" />

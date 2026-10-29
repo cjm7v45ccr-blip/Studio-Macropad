@@ -1,6 +1,8 @@
 import React from 'react';
 import { SyncConflictState } from '../types/studio';
 import { GitCompareArrows, Laptop, Cpu, ArrowRight } from 'lucide-react';
+import { parseSingleActionKeyValue } from '../data/firmwareCatalog';
+import { ParsedActionBadge } from './ActionTagBadge';
 
 interface SyncConflictModalProps {
   conflict: SyncConflictState | null;
@@ -45,25 +47,43 @@ export const SyncConflictModal: React.FC<SyncConflictModalProps> = ({
                 Differences ({conflict.diffs.length})
               </div>
               <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
-                {conflict.diffs.map(item => (
-                  <div
-                    key={item.id}
-                    className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs space-y-1"
-                  >
-                    <div className="font-mono text-[11px] font-bold text-[var(--text-primary)]">
-                      {item.label}
+                {conflict.diffs.map(item => {
+                  const webHasPrefix = Boolean(
+                    parseSingleActionKeyValue(item.websiteValue).prefix
+                  );
+                  const padHasPrefix = Boolean(
+                    parseSingleActionKeyValue(item.padValue).prefix
+                  );
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs space-y-1.5"
+                    >
+                      <div className="font-mono text-[11px] font-bold text-[var(--text-primary)]">
+                        {item.label}
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] flex-wrap">
+                        <span className="px-2 py-1 rounded bg-sky-500/10 text-sky-300 border border-sky-500/25 font-mono inline-flex items-center gap-1.5 max-w-full">
+                          <span className="text-[10px] opacity-80">Web:</span>
+                          {webHasPrefix ? (
+                            <ParsedActionBadge action={item.websiteValue} maxSteps={2} />
+                          ) : (
+                            <span>{item.websiteValue}</span>
+                          )}
+                        </span>
+                        <ArrowRight className="w-3 h-3 text-[var(--text-muted)]" />
+                        <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 font-mono inline-flex items-center gap-1.5 max-w-full">
+                          <span className="text-[10px] opacity-80">Pad:</span>
+                          {padHasPrefix ? (
+                            <ParsedActionBadge action={item.padValue} maxSteps={2} />
+                          ) : (
+                            <span>{item.padValue}</span>
+                          )}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-[11px] flex-wrap">
-                      <span className="px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/25 font-mono">
-                        Website: {item.websiteValue}
-                      </span>
-                      <ArrowRight className="w-3 h-3 text-[var(--text-muted)]" />
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 font-mono">
-                        Pad: {item.padValue}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ) : (

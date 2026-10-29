@@ -35,6 +35,7 @@ import {
 import { CURATED_PRESETS } from '../data/presetProfiles';
 import { KeycapIcon } from '../data/iconRegistry';
 import { STARTER_TEMPLATES } from './MacroEditorView';
+import { ParsedActionBadge } from './ActionTagBadge';
 import {
   Search,
   X,
@@ -532,7 +533,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         kind: 'catalog',
         filterGroup: 'catalog',
         title: spec.label,
-        metaParts: [catLabel, spec.description, spec.action],
+        metaParts: [catLabel, spec.description],
         searchBlob: `${spec.label} ${spec.shortLabel} ${spec.description} ${spec.action} ${catLabel}`.toLowerCase(),
         icon: spec.icon,
         iconColor: spec.color,
@@ -548,7 +549,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         kind: 'catalog',
         filterGroup: 'catalog',
         title: extra.label,
-        metaParts: [extra.categoryLabel, extra.description, extra.action],
+        metaParts: [extra.categoryLabel, extra.description],
         searchBlob: `${extra.label} ${extra.description} ${extra.action} ${extra.categoryLabel} shortcut macro`.toLowerCase(),
         icon: extra.icon,
         iconColor: extra.color,
@@ -1028,23 +1029,24 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                            {entry.title}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                              {entry.title}
+                            </span>
+                            {entry.action && (
+                              <ParsedActionBadge
+                                action={entry.action}
+                                repeatConfig={entry.binding?.repeatConfig}
+                                maxSteps={2}
+                                className="shrink-0"
+                              />
+                            )}
                           </div>
                           <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] truncate mt-0.5">
                             {entry.metaParts.map((part, pIdx) => (
                               <React.Fragment key={pIdx}>
                                 {pIdx > 0 && <span aria-hidden="true">·</span>}
-                                <span
-                                  className={
-                                    pIdx === entry.metaParts.length - 1 &&
-                                    entry.kind === 'catalog'
-                                      ? 'font-mono text-[10px] opacity-80 truncate'
-                                      : 'truncate'
-                                  }
-                                >
-                                  {part}
-                                </span>
+                                <span className="truncate">{part}</span>
                               </React.Fragment>
                             ))}
                           </div>

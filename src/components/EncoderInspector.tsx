@@ -19,6 +19,7 @@ import {
   describeFirmwareAction
 } from '../data/firmwareCatalog';
 import { ActionPickerControl } from './ActionPickerControl';
+import { ParsedActionBadge } from './ActionTagBadge';
 import {
   RotateCw,
   RotateCcw,
@@ -254,7 +255,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
             type="button"
             disabled={isAlreadyFactoryDefault}
             onClick={() => onResetSlotToDefault(selectedSubControl)}
-            title={`Reset to factory default: ${factoryDesc.fullLabel} (${factoryDefaultAction})`}
+            title={`Reset to factory default: ${factoryDesc.fullLabel}`}
             className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -274,10 +275,6 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
             {slotCards.map(card => {
               const Icon = card.icon;
               const active = selectedSubControl === card.id;
-              const summary = describeFirmwareAction(
-                card.binding.value,
-                card.binding.repeatConfig
-              );
               return (
                 <button
                   key={card.id}
@@ -291,7 +288,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                         }
                       : undefined
                   }
-                  className={`flex flex-col items-start gap-1 p-2.5 rounded-xl border text-left transition-all cursor-pointer min-w-0 ${
+                  className={`flex flex-col items-start gap-1.5 p-2.5 rounded-xl border text-left transition-all cursor-pointer min-w-0 ${
                     active
                       ? 'text-[var(--text-primary)] shadow-sm'
                       : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
@@ -299,13 +296,17 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                 >
                   <div className="flex items-center justify-between w-full gap-1">
                     <Icon className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                      {card.title}
+                    </span>
                   </div>
-                  <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate w-full">
-                    {card.title}
-                  </span>
-                  <span className="text-[10px] truncate w-full text-[var(--text-secondary)]">
-                    {summary.shortLabel}
-                  </span>
+                  <div className="w-full min-w-0 truncate">
+                    <ParsedActionBadge
+                      action={card.binding.value}
+                      repeatConfig={card.binding.repeatConfig}
+                      maxSteps={1}
+                    />
+                  </div>
                 </button>
               );
             })}

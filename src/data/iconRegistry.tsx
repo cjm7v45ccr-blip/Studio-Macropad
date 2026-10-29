@@ -198,8 +198,8 @@ export function summarizeAction(binding: ActionBinding, customMacros: CustomMacr
   }
   const matchedMacro = customMacros.find(m => m.action === raw);
   if (matchedMacro) {
-    return `${matchedMacro.name} (${raw.replace(/\n/g, '\\n')})`;
+    return matchedMacro.name;
   }
   const info = describeFirmwareAction(raw);
-  return `${info.fullLabel}`;
+  return info.fullLabel;
 }
