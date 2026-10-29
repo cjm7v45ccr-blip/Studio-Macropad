@@ -29,7 +29,7 @@ import {
   describeFirmwareAction,
   getActionTestAvailability,
   getMacroCanonicalSignature,
-  requiresUsbSequenceExecution,
+  isMultiStepOrTimedMacro,
   suggestSmartMacroName
 } from './data/firmwareCatalog';
 import {
@@ -274,7 +274,7 @@ export default function App() {
         return false;
       }
 
-      if (binding.repeatConfig && requiresUsbSequenceExecution(binding.repeatConfig)) {
+      if (binding.repeatConfig && isMultiStepOrTimedMacro(binding.value, binding.repeatConfig)) {
         repeatMacroRunner
           .runFromUiTest(binding.repeatConfig)
           .catch((err: any) => {

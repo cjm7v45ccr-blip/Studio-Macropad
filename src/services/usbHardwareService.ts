@@ -16,6 +16,8 @@ import {
 import {
   FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
+  MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES,
+  STANDALONE_TICK_MS,
   isValidFirmwareAction,
   isValidFirmwareAlias,
   sanitizeFirmwareAlias,
@@ -2167,7 +2169,18 @@ class PadLinkService {
       enc_ccw: slots.enc_ccw
     };
 
-    if (!this.demoModeActive && JSON.stringify(reqObj).length + 1 > 1536) {
+    // ESP32 Serial RX line buffer accepts up to 4096 bytes, and /api/profile/save allows
+    // up to 512 bytes per slot (whereas /api/customizer/save caps single-slot saves at 128 bytes).
+    const serializedLen = JSON.stringify(reqObj).length + 1;
+    if (!this.demoModeActive && serializedLen > 3900) {
+      const hasLongSlot = HARDWARE_SLOTS.some(
+        slotId => slots[slotId].length > MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES
+      );
+      if (hasLongSlot) {
+        throw new Error(
+          `Profile ${profile} payload (${serializedLen} B) exceeds the 4 KB USB serial line buffer. Shorten one or more multi-step macros on this host.`
+        );
+      }
       let lastRes: { ok: boolean; rev?: number; message?: string } = { ok: true };
       for (const slotId of HARDWARE_SLOTS) {
         lastRes = await this.saveSlotBinding(profile, slotId, slots[slotId]);
@@ -2389,6 +2402,31 @@ class PadLinkService {
       const current = this.connectionInfo.telemetry?.bleActiveHost ?? 1;
       const nextSlot = (((current % 3) + 1) as BleHostSlot);
       return await this.switchBleHost(nextSlot);
+    }
+
+    // Firmware /api/test/action caps its single-command JSON parser at 128 bytes,
+    // so execute multi-step || chains segment-by-segment with 50ms hardware-accurate ticks.
+    if (
+      !this.demoModeActive &&
+      (action.includes('||') || action.length > MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES)
+    ) {
+      const segments = action
+        .split('||')
+        .map(p => (p.startsWith('TEXT:') ? p : p.trim()))
+        .filter(Boolean);
+      let lastRes: { ok: boolean; message?: string } = { ok: true };
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        if (seg === 'NONE') {
+          await new Promise(r => window.setTimeout(r, STANDALONE_TICK_MS));
+          continue;
+        }
+        lastRes = await this.testAction(seg);
+        if (i < segments.length - 1) {
+          await new Promise(r => window.setTimeout(r, STANDALONE_TICK_MS));
+        }
+      }
+      return lastRes;
     }
 
     const res = await this.call({

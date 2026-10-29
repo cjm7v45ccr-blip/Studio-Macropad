@@ -13,8 +13,11 @@ import {
 } from '../types/studio';
 import {
   buildFirmwareActionFromTextConfig,
+  canonicalizeFirmwareAction,
   deriveAppearanceForAction,
-  firmwareActionToBinding
+  firmwareActionToBinding,
+  stepToFirmwareAction,
+  stripStandaloneDelayTicks
 } from './firmwareCatalog';
 
 export const ALL_KEY_IDS: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
@@ -72,7 +75,37 @@ function resolveMatchingRepeatConfig(
 ): TextMacroRepeatConfig | undefined {
   if (!candidate || !actionStr) return undefined;
   const expectedBase = buildFirmwareActionFromTextConfig(candidate);
-  return expectedBase === actionStr ? candidate : undefined;
+  if (!expectedBase) return undefined;
+  const canonExpected = canonicalizeFirmwareAction(expectedBase);
+  const canonActual = canonicalizeFirmwareAction(actionStr);
+  if (canonExpected === canonActual) return candidate;
+
+  // Match legacy delay-stripped NVS strings (from before standalone ||NONE encoding)
+  if (
+    stripStandaloneDelayTicks(canonExpected) &&
+    stripStandaloneDelayTicks(canonExpected) === stripStandaloneDelayTicks(canonActual)
+  ) {
+    return candidate;
+  }
+
+  // Match legacy Step-01 NVS fallback strings
+  const firstRealStep = candidate.steps?.find(s => s.actionType !== 'delay');
+  if (firstRealStep) {
+    const firstFw = canonicalizeFirmwareAction(stepToFirmwareAction(firstRealStep));
+    if (firstFw && firstFw === canonActual) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function resolveUpgradedActionStr(
+  actionStr: string,
+  matchedRepeat?: TextMacroRepeatConfig
+): string {
+  if (!matchedRepeat) return actionStr;
+  const compiled = buildFirmwareActionFromTextConfig(matchedRepeat);
+  return compiled || actionStr;
 }
 
 export function makeHardwareKey(
@@ -96,8 +129,9 @@ export function makeHardwareKey(
 
   const slot = KEY_TO_SLOT[id];
   const matchedRepeat = resolveMatchingRepeatConfig(actionStr, repeatConfig);
-  const binding = firmwareActionToBinding(actionStr, matchedRepeat);
-  const appearance = deriveAppearanceForAction(actionStr, existingAppearance, matchedRepeat);
+  const upgradedAction = resolveUpgradedActionStr(actionStr, matchedRepeat);
+  const binding = firmwareActionToBinding(upgradedAction, matchedRepeat);
+  const appearance = deriveAppearanceForAction(upgradedAction, existingAppearance, matchedRepeat);
 
   return {
     id,
@@ -118,18 +152,21 @@ export function buildHardwareEncoder(
   cwRepeat?: TextMacroRepeatConfig,
   ccwRepeat?: TextMacroRepeatConfig
 ): EncoderControlConfig {
+  const matchedDial = resolveMatchingRepeatConfig(dialAction, dialRepeat);
+  const matchedCw = resolveMatchingRepeatConfig(cwAction, cwRepeat);
+  const matchedCcw = resolveMatchingRepeatConfig(ccwAction, ccwRepeat);
   return {
     dial: firmwareActionToBinding(
-      dialAction,
-      resolveMatchingRepeatConfig(dialAction, dialRepeat)
+      resolveUpgradedActionStr(dialAction, matchedDial),
+      matchedDial
     ),
     cw: firmwareActionToBinding(
-      cwAction,
-      resolveMatchingRepeatConfig(cwAction, cwRepeat)
+      resolveUpgradedActionStr(cwAction, matchedCw),
+      matchedCw
     ),
     ccw: firmwareActionToBinding(
-      ccwAction,
-      resolveMatchingRepeatConfig(ccwAction, ccwRepeat)
+      resolveUpgradedActionStr(ccwAction, matchedCcw),
+      matchedCcw
     ),
     color
   };

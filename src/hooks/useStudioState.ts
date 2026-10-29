@@ -36,9 +36,12 @@ import {
 import {
   FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
+  MAX_NVS_ACTION_BYTES,
+  MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES,
   SLOT_LABELS,
   actionToMacroSteps,
   bindingToFirmwareAction,
+  buildFirmwareActionFromTextConfig,
   canonicalizeFirmwareAction,
   deriveAppearanceForAction,
   describeFirmwareAction,
@@ -47,9 +50,12 @@ import {
   getMacroCanonicalSignature,
   getProfilePresetSignature,
   isGenericMacroName,
+  isMultiStepOrTimedMacro,
   isValidFirmwareAction,
   requiresUsbSequenceExecution,
   sanitizeFirmwareAlias,
+  stepToFirmwareAction,
+  stripStandaloneDelayTicks,
   suggestSmartMacroName,
   validateFirmwareAlias,
   validateMacroSequenceDraft
@@ -507,11 +513,14 @@ export function deduplicateCustomMacros(items: CustomMacroItem[]): CustomMacroIt
 
   for (const raw of items) {
     if (!raw || !raw.action) continue;
-    const canonAction = canonicalizeFirmwareAction(raw.action);
+    const upgradedAction = raw.repeatConfig
+      ? buildFirmwareActionFromTextConfig(raw.repeatConfig) || raw.action
+      : raw.action;
+    const canonAction = canonicalizeFirmwareAction(upgradedAction);
     if (!canonAction || !isValidFirmwareAction(canonAction)) continue;
 
     // Skip single-step custom entries that merely duplicate a native firmware built-in unless user explicitly added repeat timing
-    const hasSequence = requiresUsbSequenceExecution(raw.repeatConfig);
+    const hasSequence = isMultiStepOrTimedMacro(canonAction, raw.repeatConfig);
     if (!hasSequence && raw.source === 'device' && findEquivalentBuiltInSpec(canonAction)) {
       continue;
     }
@@ -567,7 +576,7 @@ function mergeDiscoveredCustomMacros(
     if (!entry.act) continue;
     const canonAct = canonicalizeFirmwareAction(entry.act);
     const slotRc = repeatConfigs?.[`${entry.profile}:${entry.slot}`];
-    const isSequence = requiresUsbSequenceExecution(slotRc);
+    const isSequence = isMultiStepOrTimedMacro(canonAct, slotRc);
 
     if (!isSequence && !isCustomDynamicAction(canonAct)) continue;
     if (!isSequence && findEquivalentBuiltInSpec(canonAct)) continue;
@@ -973,6 +982,84 @@ export function useStudioState(
         return;
       }
 
+      const upgradeLegacyPadDelaysIfNeeded = (
+        baseProfiles: SerializedPadProfiles,
+        repeats?: SlotRepeatMap
+      ): {
+        nextSerialized: SerializedPadProfiles;
+        upgradedProfiles: HardwareProfileId[];
+      } => {
+        if (!repeats || Object.keys(repeats).length === 0) {
+          return { nextSerialized: baseProfiles, upgradedProfiles: [] };
+        }
+        const cloned: SerializedPadProfiles = {
+          ...baseProfiles,
+          h1: { ...baseProfiles.h1 },
+          h2: { ...baseProfiles.h2 },
+          h3: { ...baseProfiles.h3 },
+          tv: { ...baseProfiles.tv }
+        };
+        const upgradedProfiles: HardwareProfileId[] = [];
+
+        for (const profId of HARDWARE_PROFILE_IDS) {
+          const slotMap = getSerializedProfileSlots(cloned, profId);
+          let changed = false;
+          for (const slot of HARDWARE_SLOTS) {
+            const rc = repeats[`${profId}:${slot}`];
+            const currentPadVal = slotMap[slot] || '';
+            if (!rc || !currentPadVal) continue;
+            const compiled = canonicalizeFirmwareAction(buildFirmwareActionFromTextConfig(rc));
+            const canonPad = canonicalizeFirmwareAction(currentPadVal);
+            if (!compiled || !isValidFirmwareAction(compiled) || compiled === canonPad) {
+              continue;
+            }
+            const firstStep = rc.steps?.find(s => s.actionType !== 'delay');
+            const firstFw = firstStep
+              ? canonicalizeFirmwareAction(stepToFirmwareAction(firstStep))
+              : '';
+            const matchesLegacy =
+              (stripStandaloneDelayTicks(compiled) &&
+                stripStandaloneDelayTicks(compiled) === stripStandaloneDelayTicks(canonPad)) ||
+              (Boolean(firstFw) && firstFw === canonPad);
+            if (matchesLegacy) {
+              slotMap[slot] = compiled;
+              changed = true;
+            }
+          }
+          if (changed) {
+            upgradedProfiles.push(profId);
+          }
+        }
+        return { nextSerialized: cloned, upgradedProfiles };
+      };
+
+      const { nextSerialized, upgradedProfiles } = upgradeLegacyPadDelaysIfNeeded(
+        padProfiles,
+        effectiveRecord.repeatConfigs
+      );
+
+      if (upgradedProfiles.length > 0) {
+        adoptPadState(id, padRev, nextSerialized, effectiveRecord.repeatConfigs);
+        setSavingCount(c => c + 1);
+        (async () => {
+          try {
+            let latestRev = padRev;
+            for (const profId of upgradedProfiles) {
+              const slots = getSerializedProfileSlots(nextSerialized, profId);
+              const res = await usbHardware.saveFullProfile(profId, slots);
+              if (typeof res.rev === 'number') latestRev = res.rev;
+            }
+            adoptPadState(id, latestRev, nextSerialized, effectiveRecord.repeatConfigs);
+            onToast('Synced standalone macro delays to MacroPad — works unplugged');
+          } catch {
+            // Keep upgraded macro state in workspace if cable disconnected mid-sync
+          } finally {
+            setSavingCount(c => Math.max(0, c - 1));
+          }
+        })();
+        return;
+      }
+
       if (effectiveRecord.rev === padRev) {
         adoptPadState(id, padRev, padProfiles, effectiveRecord.repeatConfigs);
         onToast('MacroPad connected — already in sync');
@@ -1298,6 +1385,30 @@ export function useStudioState(
     [conflictPrompt, finalizeConnectedSave, onToast, saveOfflineDraft]
   );
 
+  const persistSlotOrProfileOnHardware = useCallback(
+    async (
+      profileId: HardwareProfileId,
+      slot: HardwareSlotId,
+      actionStr: string,
+      targetSnap: WorkspaceSnapshot
+    ): Promise<{ ok: boolean; rev?: number; message?: string }> => {
+      if (actionStr.length <= MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES) {
+        return await usbHardware.saveSlotBinding(profileId, slot, actionStr);
+      }
+      const prof = targetSnap.profiles.find(p => p.id === profileId);
+      const rawSlots = prof ? extractProfileSlots(prof) : { ...FACTORY_DEFAULT_SLOTS[profileId] };
+      const safeSlots: Record<HardwareSlotId, string> = { ...FACTORY_DEFAULT_SLOTS[profileId] };
+      for (const s of HARDWARE_SLOTS) {
+        const candidate = s === slot ? actionStr : rawSlots[s];
+        if (candidate && isValidFirmwareAction(candidate)) {
+          safeSlots[s] = candidate;
+        }
+      }
+      return await usbHardware.saveFullProfile(profileId, safeSlots);
+    },
+    []
+  );
+
   const pushBothProfilesSnapshot = useCallback(
     async (
       prevSnap: WorkspaceSnapshot,
@@ -1320,11 +1431,15 @@ export function useStudioState(
           if (allValid) {
             await usbHardware.saveFullProfile(prof.id, slots);
           } else {
+            const repairedSlots: Record<HardwareSlotId, string> = {
+              ...FACTORY_DEFAULT_SLOTS[prof.id]
+            };
             for (const s of HARDWARE_SLOTS) {
               if (isValidFirmwareAction(slots[s])) {
-                await usbHardware.saveSlotBinding(prof.id, s, slots[s]);
+                repairedSlots[s] = slots[s];
               }
             }
+            await usbHardware.saveFullProfile(prof.id, repairedSlots);
           }
           await usbHardware.renameProfile(prof.id, prof.name);
         }
@@ -1574,7 +1689,7 @@ export function useStudioState(
 
       // Only auto-register in customMacros when it's a true multi-step/timed sequence or non-built-in custom command with no canonical match
       let nextMacros = prevSnap.customMacros;
-      const isSequence = requiresUsbSequenceExecution(normalizedBinding.repeatConfig);
+      const isSequence = isMultiStepOrTimedMacro(actionStr, normalizedBinding.repeatConfig);
       const hasBuiltInEquivalent = !isSequence && Boolean(findEquivalentBuiltInSpec(actionStr));
 
       if ((isSequence || isCustomDynamicAction(actionStr)) && !hasBuiltInEquivalent) {
@@ -1616,10 +1731,10 @@ export function useStudioState(
       setSnapshot(nextSnap);
 
       runConnectedWrite(prevSnap, nextSnap, () =>
-        usbHardware.saveSlotBinding(profileId, slot, actionStr)
+        persistSlotOrProfileOnHardware(profileId, slot, actionStr, nextSnap)
       );
     },
-    [onToast, runConnectedWrite]
+    [onToast, persistSlotOrProfileOnHardware, runConnectedWrite]
   );
 
   /**
@@ -1912,7 +2027,10 @@ export function useStudioState(
 
       const canonAction = canonicalizeFirmwareAction(item.action);
       if (!canonAction || !isValidFirmwareAction(canonAction)) {
-        onToast('Macro sequence is incomplete or exceeds 256-byte NVS limit', 'error');
+        onToast(
+          `Macro sequence is incomplete or exceeds ${MAX_NVS_ACTION_BYTES}-byte NVS limit`,
+          'error'
+        );
         return { saved: null, updatedSlotCount: 0 };
       }
 
@@ -2038,11 +2156,17 @@ export function useStudioState(
           nextSnap,
           async () => {
             let lastRes: { rev?: number } | undefined;
+            const pushedFullProfiles = new Set<HardwareProfileId>();
             for (const target of slotsToPush) {
-              lastRes = await usbHardware.saveSlotBinding(
+              if (canonAction.length > MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES) {
+                if (pushedFullProfiles.has(target.profileId)) continue;
+                pushedFullProfiles.add(target.profileId);
+              }
+              lastRes = await persistSlotOrProfileOnHardware(
                 target.profileId,
                 target.slot,
-                canonAction
+                canonAction,
+                nextSnap
               );
             }
             return lastRes;
@@ -2055,7 +2179,7 @@ export function useStudioState(
 
       return { saved: finalMacro, updatedSlotCount };
     },
-    [onToast, runConnectedWrite]
+    [onToast, persistSlotOrProfileOnHardware, runConnectedWrite]
   );
 
   const deleteCustomMacro = useCallback((id: string) => {

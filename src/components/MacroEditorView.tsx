@@ -1790,11 +1790,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     className={
                       draftValidation.byteLength > draftValidation.maxBytes
                         ? 'text-rose-400 font-semibold'
-                        : draftValidation.byteLength > 210
+                        : draftValidation.byteLength > 420
                         ? 'text-amber-300'
                         : 'text-[var(--text-muted)]'
                     }
-                    title="Compiled ESP32 NVS slot payload size (256 bytes max)"
+                    title={`Compiled ESP32 NVS slot payload size (${draftValidation.maxBytes} bytes max)`}
                   >
                     {draftValidation.byteLength}/{draftValidation.maxBytes} B
                   </span>
@@ -3173,10 +3173,18 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 </div>
               )}
 
-              {needsLiveRunner && (
-                <p className="text-[11px] text-[var(--text-muted)]">
-                  Step 01 stores in MacroPad NVS; subsequent timed steps stream automatically while connected via USB.
+              {needsLiveRunner ? (
+                <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                  {draftValidation.usbRequiredReason ||
+                    'Keep Studio MacroPad open over USB to stream remaining steps or repeats.'}
                 </p>
+              ) : (
+                isSequenceValid &&
+                (macroSteps.length > 1 || timingSummary.totalDelayMs > 0) && (
+                  <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                    Runs standalone on MacroPad over Bluetooth — all steps and wait timings save directly to onboard NVS.
+                  </p>
+                )
               )}
             </div>
 

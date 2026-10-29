@@ -6,6 +6,7 @@ import {
   HardwareSlotId,
   KeyAppearance,
   KeyboardLayoutId,
+  MacroStepActionType,
   MacroStepConfig,
   SlotRepeatMap,
   TextMacroRepeatConfig,
@@ -248,12 +249,25 @@ export function validateTextMacroInput(
   return { valid: true, error: null };
 }
 
+export const MAX_NVS_ACTION_BYTES = 512;
+export const MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES = 128;
+export const STANDALONE_TICK_MS = 50;
+
 export function isValidFirmwareAction(action: string): boolean {
-  if (!action || action.length < 3 || action.length > 256) return false;
+  if (!action || action.length < 3 || action.length > MAX_NVS_ACTION_BYTES) return false;
   if (action.includes('||')) {
-    const parts = action.split('||').map(p => p.trim()).filter(Boolean);
+    const parts = action
+      .split('||')
+      .map(p => (p.startsWith('TEXT:') ? p : p.trim()))
+      .filter(Boolean);
     if (parts.length === 0) return false;
-    return parts.every(p => isValidFirmwareAction(p));
+    let hasRealAction = false;
+    for (const p of parts) {
+      if (p === 'NONE') continue;
+      if (p.includes('||') || !isValidFirmwareAction(p)) return false;
+      hasRealAction = true;
+    }
+    return hasRealAction;
   }
   if (STATIC_MAP.has(action)) return true;
 
@@ -337,6 +351,12 @@ export function sanitizeSerialString(str: string, maxLen = 123): string {
 }
 
 export function isTvFirmwareAction(action: string): boolean {
+  if (action.includes('||')) {
+    return action
+      .split('||')
+      .map(p => p.trim())
+      .some(p => p && p !== 'NONE' && isTvFirmwareAction(p));
+  }
   return (
     action.startsWith('TV:') ||
     action.startsWith('APP:') ||
@@ -364,7 +384,17 @@ export function getActionTestAvailability(
     return { canTest: true, reason: null };
   }
 
-  if (isTvFirmwareAction(actionStr)) {
+  const realParts = actionStr.includes('||')
+    ? actionStr
+        .split('||')
+        .map(p => p.trim())
+        .filter(p => p && p !== 'NONE')
+    : [actionStr];
+
+  const needsTv = realParts.some(p => isTvFirmwareAction(p));
+  const needsBleHid = realParts.some(p => !isTvFirmwareAction(p) && !p.startsWith('BLE:'));
+
+  if (needsTv) {
     if (!tel.wifiConnected) {
       return {
         canTest: false,
@@ -383,22 +413,16 @@ export function getActionTestAvailability(
         reason: 'TV link down: Vizio TV pairing is incomplete in Settings.'
       };
     }
-    return { canTest: true, reason: null };
   }
 
-  // Direct Multi-Host BLE switching executes regardless of current BLE connection state
-  if (actionStr.startsWith('BLE:')) {
-    return { canTest: true, reason: null };
-  }
-
-  // Otherwise BLE HID action (MEDIA:, KEY:, MACRO:, WIN:, SHORTCUT:, TEXT:)
-  if (!tel.bleConnected) {
+  if (needsBleHid && !tel.bleConnected) {
     const hostName = tel.bleDeviceName || `Studio Pad ${tel.bleActiveHost || 1}`;
     return {
       canTest: false,
       reason: `Bluetooth is disconnected — pair your computer with "${hostName}" (Host ${tel.bleActiveHost || 1}).`
     };
   }
+
   return { canTest: true, reason: null };
 }
 
@@ -664,9 +688,22 @@ export function calculateStepsTiming(steps: MacroStepConfig[]): {
   return { totalDelayMs, actionStepCount };
 }
 
+export function stripStandaloneDelayTicks(action: string | undefined | null): string {
+  if (!action) return '';
+  if (!action.includes('||')) return canonicalizeFirmwareAction(action);
+  return action
+    .split('||')
+    .map(p => (p.startsWith('TEXT:') ? p : p.trim()))
+    .filter(p => p && p !== 'NONE')
+    .map(p => canonicalizeFirmwareAction(p))
+    .filter(Boolean)
+    .join('||');
+}
+
 /**
  * Converts any stored firmware action + optional repeatConfig into visual MacroStepConfig items
- * so opening any slot or saved macro in MacroEditorView populates the step list cleanly.
+ * so opening any slot or saved macro in MacroEditorView populates the step list cleanly
+ * (including reconstructing 50ms hardware NONE delay ticks stored in MacroPad NVS).
  */
 export function actionToMacroSteps(
   action: string,
@@ -681,17 +718,51 @@ export function actionToMacroSteps(
 
   const stamp = Date.now();
   if (action && action.includes('||')) {
-    const subActions = action.split('||').map(a => a.trim()).filter(Boolean);
+    const rawParts = action
+      .split('||')
+      .map(a => (a.startsWith('TEXT:') ? a : a.trim()))
+      .filter(Boolean);
     const steps: MacroStepConfig[] = [];
-    subActions.forEach((sub, idx) => {
-      const singleSteps = actionToMacroSteps(sub);
-      if (singleSteps.length > 0) {
-        steps.push({
-          ...singleSteps[0],
-          id: `step-${stamp}-${idx + 1}`
-        });
+    let leadingNoneTicks = 0;
+
+    for (let i = 0; i < rawParts.length; i++) {
+      const part = rawParts[i];
+      if (part === 'NONE') {
+        if (steps.length === 0) {
+          leadingNoneTicks += 1;
+        } else {
+          const prev = steps[steps.length - 1];
+          // First NONE tick after an action adds to the built-in 50ms || gap -> (1 + count) * 50ms
+          prev.delayMs =
+            prev.delayMs === 0
+              ? STANDALONE_TICK_MS * 2
+              : prev.delayMs + STANDALONE_TICK_MS;
+        }
+        continue;
       }
-    });
+
+      if (leadingNoneTicks > 0 && steps.length === 0) {
+        steps.push({
+          id: `step-${stamp}-lead`,
+          label: 'Wait / Delay',
+          actionType: 'delay',
+          value: '',
+          delayMs: leadingNoneTicks * STANDALONE_TICK_MS,
+          repeatCount: 1
+        });
+        leadingNoneTicks = 0;
+      }
+
+      const singleSteps = actionToMacroSteps(part);
+      singleSteps.forEach((st, sIdx) => {
+        steps.push({
+          ...st,
+          id: `step-${stamp}-${steps.length + sIdx + 1}`,
+          delayMs: 0
+        });
+      });
+    }
+
     if (steps.length > 0) return steps;
   }
 
@@ -721,7 +792,7 @@ export function actionToMacroSteps(
     if (built.length > 0) return built;
   }
 
-  if (!action) return [];
+  if (!action || action === 'NONE') return [];
 
   if (action.startsWith('SHORTCUT:')) {
     const parsed = parseFirmwareShortcut(action);
@@ -809,56 +880,312 @@ export function actionToMacroSteps(
   return [];
 }
 
+export interface CompiledHardwareMacro {
+  /** Action string stored in MacroPad NVS (always <= 512 bytes when valid) */
+  firmwareAction: string;
+  /** UTF-8 byte length of firmwareAction */
+  byteLength: number;
+  /** True when 100% of steps, delays, and repeat cycles run standalone on the MacroPad without USB */
+  standaloneComplete: boolean;
+  /** True when 1 full cycle is stored in NVS (used when repeatCount > 1 or loopUntilStopped streams remaining cycles over USB) */
+  singleCycleStandalone: boolean;
+  /** Human-readable explanation when live USB streaming is required beyond onboard NVS */
+  usbRequiredReason: string | null;
+  /** Estimated byte length if all steps + delays were encoded standalone */
+  fullStandaloneByteEstimate: number;
+}
+
+interface FlattenedCycleAction {
+  stepType: MacroStepActionType;
+  rawText?: string;
+  action: string;
+  waitAfterMs: number;
+}
+
+function encodeTimedMacroCycles(
+  steps: MacroStepConfig[],
+  cycles: number,
+  repeatDelayMs: number,
+  mergeTextEnter: boolean
+): { serialized: string; byteLength: number; firstAction: string } {
+  let leadingWaitMs = 0;
+  const rawItems: FlattenedCycleAction[] = [];
+
+  for (let i = 0; i < steps.length; i++) {
+    const st = steps[i];
+    const reps = Math.max(1, st.repeatCount || 1);
+    const delay = Math.max(0, st.delayMs || 0);
+
+    if (st.actionType === 'delay') {
+      const waitTotal = delay * reps;
+      if (rawItems.length === 0) {
+        leadingWaitMs += waitTotal;
+      } else {
+        rawItems[rawItems.length - 1].waitAfterMs += waitTotal;
+      }
+      continue;
+    }
+
+    const fw = canonicalizeFirmwareAction(stepToFirmwareAction(st));
+    for (let r = 0; r < reps; r++) {
+      rawItems.push({
+        stepType: st.actionType,
+        rawText: st.actionType === 'text' ? st.value : undefined,
+        action: fw,
+        waitAfterMs: delay
+      });
+    }
+  }
+
+  if (rawItems.length === 0) {
+    return { serialized: '', byteLength: 0, firstAction: '' };
+  }
+
+  // Optional compaction: merge [TEXT:<t> (wait <= 50ms), SHORTCUT::enter] -> TEXT:<t>\n (saves 16 bytes)
+  const items: FlattenedCycleAction[] = [];
+  if (mergeTextEnter) {
+    for (let i = 0; i < rawItems.length; i++) {
+      const cur = rawItems[i];
+      const nxt = rawItems[i + 1];
+      if (
+        cur.stepType === 'text' &&
+        cur.rawText !== undefined &&
+        cur.waitAfterMs <= STANDALONE_TICK_MS &&
+        nxt &&
+        nxt.action === 'SHORTCUT::enter' &&
+        validateTextMacroInput(cur.rawText, 122).valid
+      ) {
+        items.push({
+          stepType: 'text',
+          action: `TEXT:${cur.rawText}\n`,
+          waitAfterMs: nxt.waitAfterMs
+        });
+        i += 1;
+      } else {
+        items.push(cur);
+      }
+    }
+  } else {
+    items.push(...rawItems);
+  }
+
+  const segments: string[] = [];
+  if (leadingWaitMs >= 25) {
+    const leadTicks = Math.max(1, Math.round(leadingWaitMs / STANDALONE_TICK_MS));
+    for (let t = 0; t < leadTicks; t++) segments.push('NONE');
+  }
+
+  const safeCycles = Math.max(1, cycles);
+  const interCycleGap = Math.max(0, repeatDelayMs || 0);
+
+  for (let c = 0; c < safeCycles; c++) {
+    for (let idx = 0; idx < items.length; idx++) {
+      segments.push(items[idx].action);
+      const isVeryLast = c === safeCycles - 1 && idx === items.length - 1;
+      if (!isVeryLast) {
+        const desiredWait =
+          idx < items.length - 1
+            ? items[idx].waitAfterMs
+            : interCycleGap + leadingWaitMs;
+        // ESP32 firmware already sleeps 50ms after every || segment
+        const extraWait = Math.max(0, desiredWait - STANDALONE_TICK_MS);
+        const noneTicks = Math.round(extraWait / STANDALONE_TICK_MS);
+        for (let t = 0; t < noneTicks; t++) {
+          segments.push('NONE');
+        }
+      }
+    }
+  }
+
+  const serialized = segments.length === 1 ? segments[0] : segments.join('||');
+  const byteLength = new TextEncoder().encode(serialized).length;
+  return { serialized, byteLength, firstAction: items[0].action };
+}
+
 /**
- * Build the base single-step ESP32 firmware action for a Text/Button Repeat or Multi-Step configuration.
- * - If steps are present:
- *   - Special native optimization: 2 steps [text (0ms, 1x), key=enter (1x)] -> `TEXT:<text>\n`
- *   - Otherwise serializes all valid non-delay steps joined by `||` so macros execute standalone on the pad.
- * - Legacy fallback when steps is empty: uses `text` / `followUpKey`
+ * Compiles a TextMacroRepeatConfig into an onboard ESP32 NVS payload (up to 512 bytes):
+ * - Encodes all steps, per-step repeats, and Wait / transition delays directly into NVS
+ *   using native 50ms hardware NONE ticks so multi-screen login + 2FA macros run 100% standalone.
+ * - Automatically falls back to hybrid USB streaming only when `loopUntilStopped` is active
+ *   or when total delays/repeats exceed the 512-byte NVS slot limit.
+ */
+export function compileMacroConfigForHardware(
+  cfg: TextMacroRepeatConfig
+): CompiledHardwareMacro {
+  let effectiveSteps: MacroStepConfig[] = [];
+
+  if (cfg.steps && cfg.steps.length > 0) {
+    effectiveSteps = cfg.steps;
+  } else {
+    if (cfg.text.length > 0) {
+      if (!validateTextMacroInput(cfg.text, 123).valid) {
+        return {
+          firmwareAction: '',
+          byteLength: 0,
+          standaloneComplete: false,
+          singleCycleStandalone: false,
+          usbRequiredReason: null,
+          fullStandaloneByteEstimate: 0
+        };
+      }
+      effectiveSteps.push({
+        id: 'legacy-1',
+        label: 'Type Text',
+        actionType: 'text',
+        value: cfg.text,
+        delayMs: cfg.followUpKey ? Math.max(0, cfg.keyDelayMs || 0) : 0,
+        repeatCount: 1
+      });
+    }
+    if (cfg.followUpKey && isSupportedFirmwareKey(cfg.followUpKey)) {
+      effectiveSteps.push({
+        id: 'legacy-2',
+        label: 'Press Key',
+        actionType: 'key',
+        value: cfg.followUpKey,
+        delayMs: 0,
+        repeatCount: 1
+      });
+    }
+  }
+
+  const nonDelaySteps = effectiveSteps.filter(s => s.actionType !== 'delay');
+  if (nonDelaySteps.length === 0) {
+    return {
+      firmwareAction: '',
+      byteLength: 0,
+      standaloneComplete: false,
+      singleCycleStandalone: false,
+      usbRequiredReason: null,
+      fullStandaloneByteEstimate: 0
+    };
+  }
+
+  for (const st of nonDelaySteps) {
+    if (!stepToFirmwareAction(st)) {
+      return {
+        firmwareAction: '',
+        byteLength: 0,
+        standaloneComplete: false,
+        singleCycleStandalone: false,
+        usbRequiredReason: null,
+        fullStandaloneByteEstimate: 0
+      };
+    }
+  }
+
+  const loop = Boolean(cfg.loopUntilStopped);
+  const totalCycles = loop ? 1 : Math.max(1, cfg.repeatCount || 1);
+
+  // Native single-cycle optimizations
+  if (!loop && totalCycles === 1) {
+    if (
+      effectiveSteps.length === 1 &&
+      effectiveSteps[0].actionType !== 'delay' &&
+      Math.max(1, effectiveSteps[0].repeatCount || 1) === 1
+    ) {
+      const single = canonicalizeFirmwareAction(stepToFirmwareAction(effectiveSteps[0]));
+      const len = new TextEncoder().encode(single).length;
+      return {
+        firmwareAction: single,
+        byteLength: len,
+        standaloneComplete: len <= MAX_NVS_ACTION_BYTES,
+        singleCycleStandalone: len <= MAX_NVS_ACTION_BYTES,
+        usbRequiredReason: null,
+        fullStandaloneByteEstimate: len
+      };
+    }
+
+    if (
+      effectiveSteps.length === 2 &&
+      effectiveSteps[0].actionType === 'text' &&
+      Math.max(0, effectiveSteps[0].delayMs || 0) <= 0 &&
+      Math.max(1, effectiveSteps[0].repeatCount || 1) === 1 &&
+      effectiveSteps[1].actionType === 'key' &&
+      effectiveSteps[1].value.trim().toLowerCase() === 'enter' &&
+      Math.max(1, effectiveSteps[1].repeatCount || 1) === 1 &&
+      validateTextMacroInput(effectiveSteps[0].value, 122).valid
+    ) {
+      const nativeTextEnter = `TEXT:${effectiveSteps[0].value}\n`;
+      const len = new TextEncoder().encode(nativeTextEnter).length;
+      return {
+        firmwareAction: nativeTextEnter,
+        byteLength: len,
+        standaloneComplete: true,
+        singleCycleStandalone: true,
+        usbRequiredReason: null,
+        fullStandaloneByteEstimate: len
+      };
+    }
+  }
+
+  // Try encoding full sequence (all cycles + all delays) within 512 bytes
+  const unmergedFull = encodeTimedMacroCycles(
+    effectiveSteps,
+    totalCycles,
+    cfg.repeatDelayMs,
+    false
+  );
+  const bestFull =
+    unmergedFull.byteLength <= MAX_NVS_ACTION_BYTES
+      ? unmergedFull
+      : encodeTimedMacroCycles(effectiveSteps, totalCycles, cfg.repeatDelayMs, true);
+
+  if (!loop && bestFull.byteLength <= MAX_NVS_ACTION_BYTES) {
+    return {
+      firmwareAction: bestFull.serialized,
+      byteLength: bestFull.byteLength,
+      standaloneComplete: true,
+      singleCycleStandalone: true,
+      usbRequiredReason: null,
+      fullStandaloneByteEstimate: bestFull.byteLength
+    };
+  }
+
+  // Check if 1 single timed cycle fits in 512 bytes (for loopUntilStopped or multi-cycle repeats)
+  const unmergedOne =
+    totalCycles === 1
+      ? unmergedFull
+      : encodeTimedMacroCycles(effectiveSteps, 1, cfg.repeatDelayMs, false);
+  const bestOne =
+    unmergedOne.byteLength <= MAX_NVS_ACTION_BYTES
+      ? unmergedOne
+      : totalCycles === 1
+      ? bestFull
+      : encodeTimedMacroCycles(effectiveSteps, 1, cfg.repeatDelayMs, true);
+
+  if (bestOne.byteLength <= MAX_NVS_ACTION_BYTES) {
+    return {
+      firmwareAction: bestOne.serialized,
+      byteLength: bestOne.byteLength,
+      standaloneComplete: false,
+      singleCycleStandalone: true,
+      usbRequiredReason: loop
+        ? 'Pass 1 runs standalone on the MacroPad; keep Studio MacroPad open over USB for continuous looping.'
+        : `Pass 1 runs standalone on the MacroPad; passes 2–${totalCycles} stream over USB (${bestFull.byteLength}/${MAX_NVS_ACTION_BYTES} B).`,
+      fullStandaloneByteEstimate: bestFull.byteLength
+    };
+  }
+
+  // Even 1 cycle with full NONE delay ticks exceeds 512B (e.g. a 10s+ wait):
+  // Store Step 01 in NVS so USB streaming runs Step 02..N cleanly without double-typing
+  const firstOnly = bestOne.firstAction;
+  const firstBytes = new TextEncoder().encode(firstOnly).length;
+  return {
+    firmwareAction: firstOnly,
+    byteLength: firstBytes,
+    standaloneComplete: false,
+    singleCycleStandalone: false,
+    usbRequiredReason: `Total wait/steps need ${bestOne.byteLength} B (max ${MAX_NVS_ACTION_BYTES} B standalone). Shorten waits to ~3.5s to run unplugged, or keep Studio MacroPad open via USB.`,
+    fullStandaloneByteEstimate: bestFull.byteLength
+  };
+}
+
+/**
+ * Build the ESP32 NVS firmware action for a Text/Button Repeat or Multi-Step configuration.
  */
 export function buildFirmwareActionFromTextConfig(cfg: TextMacroRepeatConfig): string {
-  if (cfg.steps && cfg.steps.length > 0) {
-    // Check if every non-delay step is valid first
-    const nonDelaySteps = cfg.steps.filter(s => s.actionType !== 'delay');
-    if (nonDelaySteps.length === 0) return '';
-    for (const st of nonDelaySteps) {
-      if (!stepToFirmwareAction(st)) return '';
-    }
-
-    // Native optimization for [Text -> Enter with 0ms delay]
-    if (
-      cfg.steps.length === 2 &&
-      cfg.steps[0].actionType === 'text' &&
-      cfg.steps[0].delayMs <= 0 &&
-      (cfg.steps[0].repeatCount || 1) === 1 &&
-      cfg.steps[1].actionType === 'key' &&
-      cfg.steps[1].value === 'enter' &&
-      (cfg.steps[1].repeatCount || 1) === 1 &&
-      validateTextMacroInput(cfg.steps[0].value, 122).valid
-    ) {
-      return `TEXT:${cfg.steps[0].value}\n`;
-    }
-
-    const actions = nonDelaySteps.map(s => stepToFirmwareAction(s)).filter(Boolean);
-    if (actions.length === 1) return actions[0];
-    return actions.join('||');
-  }
-
-  const hasNativeTrailingNewline =
-    cfg.text.length > 0 && cfg.followUpKey === 'enter' && cfg.keyDelayMs <= 0;
-  const maxTextChars = hasNativeTrailingNewline ? 122 : 123;
-  const check = validateTextMacroInput(cfg.text, maxTextChars);
-  if (!check.valid) return '';
-
-  if (cfg.text.length > 0) {
-    return hasNativeTrailingNewline ? `TEXT:${cfg.text}\n` : `TEXT:${cfg.text}`;
-  }
-
-  if (cfg.followUpKey && isSupportedFirmwareKey(cfg.followUpKey)) {
-    return buildFirmwareShortcut([], cfg.followUpKey);
-  }
-
-  return '';
+  return compileMacroConfigForHardware(cfg).firmwareAction;
 }
 
 /**
@@ -899,30 +1226,34 @@ export function parseTextConfigFromFirmwareAction(
 }
 
 /**
- * Returns true if the config requires multi-step / timed USB execution beyond a single native action
+ * Returns true ONLY when the macro cannot run 100% standalone on the MacroPad
+ * (e.g. continuous `loopUntilStopped` or waits/cycles exceeding 512 bytes) and
+ * therefore needs `repeatMacroRunner` over USB to complete remaining steps/cycles.
  */
 export function requiresUsbSequenceExecution(cfg?: TextMacroRepeatConfig): boolean {
   if (!cfg) return false;
-  if (cfg.loopUntilStopped || cfg.repeatCount > 1) return true;
+  return !compileMacroConfigForHardware(cfg).standaloneComplete;
+}
+
+/**
+ * Returns true when an action/config represents a multi-step, delayed, or repeated macro
+ * (whether it runs standalone on NVS or via USB), used for library discovery and UI badges.
+ */
+export function isMultiStepOrTimedMacro(
+  action?: string | null,
+  cfg?: TextMacroRepeatConfig
+): boolean {
+  if (action && action.includes('||')) return true;
+  if (!cfg) return false;
+  if (cfg.loopUntilStopped || (cfg.repeatCount || 1) > 1) return true;
   if (cfg.steps && cfg.steps.length > 0) {
-    const isNativeTwoStepTextEnter =
-      cfg.steps.length === 2 &&
-      cfg.steps[0].actionType === 'text' &&
-      cfg.steps[0].delayMs <= 0 &&
-      (cfg.steps[0].repeatCount || 1) === 1 &&
-      cfg.steps[1].actionType === 'key' &&
-      cfg.steps[1].value === 'enter' &&
-      (cfg.steps[1].repeatCount || 1) === 1;
-    if (isNativeTwoStepTextEnter) return false;
     if (cfg.steps.length > 1) return true;
     const only = cfg.steps[0];
-    if ((only.repeatCount || 1) > 1) return true;
+    if ((only.repeatCount || 1) > 1 || only.actionType === 'delay') return true;
     return false;
   }
   if (cfg.text.length > 0 && cfg.followUpKey) {
-    if (cfg.followUpKey !== 'enter' || cfg.keyDelayMs > 0) {
-      return true;
-    }
+    return cfg.followUpKey !== 'enter' || (cfg.keyDelayMs || 0) > 0;
   }
   return false;
 }
@@ -1012,6 +1343,18 @@ export function firmwareActionToBinding(
       type: 'text',
       value: trimmed,
       repeatConfig
+    };
+  }
+
+  if (trimmed.includes('||')) {
+    const reconstructedSteps = actionToMacroSteps(trimmed);
+    return {
+      type: 'text',
+      value: trimmed,
+      repeatConfig:
+        reconstructedSteps.length > 0
+          ? { ...DEFAULT_TEXT_REPEAT_CONFIG, steps: reconstructedSteps }
+          : undefined
     };
   }
 
@@ -1143,6 +1486,23 @@ export function describeFirmwareAction(
           : 'file-text',
       color: '#34D399'
     };
+  }
+
+  if (trimmed.includes('||')) {
+    const reconstructedSteps = actionToMacroSteps(trimmed);
+    if (reconstructedSteps.length > 0) {
+      const summary = formatTextRepeatSummary({
+        ...DEFAULT_TEXT_REPEAT_CONFIG,
+        steps: reconstructedSteps
+      });
+      return {
+        shortLabel: summary.shortLabel,
+        fullLabel: summary.fullLabel,
+        description: summary.fullLabel,
+        icon: 'repeat',
+        color: '#34D399'
+      };
+    }
   }
 
   const staticSpec = STATIC_MAP.get(trimmed) || STATIC_MAP.get(trimmed.toUpperCase());
@@ -1605,18 +1965,21 @@ export interface MacroSequenceValidationResult {
   builtAction: string;
   byteLength: number;
   maxBytes: number;
+  standaloneComplete: boolean;
+  usbRequiredReason: string | null;
+  fullStandaloneByteEstimate: number;
   issues: MacroSequenceValidationIssue[];
 }
 
 /**
- * Strictly validates every step, delay, text snippet, TV payload, and total 256-byte NVS wire budget
+ * Strictly validates every step, delay, text snippet, TV payload, and total 512-byte NVS wire budget
  * so incomplete or half-configured macros can never be saved or assigned.
  */
 export function validateMacroSequenceDraft(
   steps: MacroStepConfig[],
   repeatConfig?: Partial<TextMacroRepeatConfig>
 ): MacroSequenceValidationResult {
-  const MAX_BYTES = 256;
+  const MAX_BYTES = MAX_NVS_ACTION_BYTES;
   const issues: MacroSequenceValidationIssue[] = [];
 
   if (!steps || steps.length === 0) {
@@ -1628,6 +1991,9 @@ export function validateMacroSequenceDraft(
       builtAction: '',
       byteLength: 0,
       maxBytes: MAX_BYTES,
+      standaloneComplete: false,
+      usbRequiredReason: null,
+      fullStandaloneByteEstimate: 0,
       issues
     };
   }
@@ -1746,8 +2112,21 @@ export function validateMacroSequenceDraft(
     steps
   };
 
-  const builtAction =
-    issues.length === 0 ? canonicalizeFirmwareAction(buildFirmwareActionFromTextConfig(fullCfg)) : '';
+  const compiled =
+    issues.length === 0
+      ? compileMacroConfigForHardware(fullCfg)
+      : {
+          firmwareAction: '',
+          byteLength: 0,
+          standaloneComplete: false,
+          singleCycleStandalone: false,
+          usbRequiredReason: null,
+          fullStandaloneByteEstimate: 0
+        };
+
+  const builtAction = compiled.firmwareAction
+    ? canonicalizeFirmwareAction(compiled.firmwareAction)
+    : '';
   const byteLength = builtAction ? new TextEncoder().encode(builtAction).length : 0;
 
   if (issues.length === 0 && !builtAction) {
@@ -1765,6 +2144,9 @@ export function validateMacroSequenceDraft(
     builtAction,
     byteLength,
     maxBytes: MAX_BYTES,
+    standaloneComplete: compiled.standaloneComplete,
+    usbRequiredReason: compiled.usbRequiredReason,
+    fullStandaloneByteEstimate: compiled.fullStandaloneByteEstimate,
     issues
   };
 }
