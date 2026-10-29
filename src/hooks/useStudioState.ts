@@ -55,7 +55,7 @@ import {
   validateMacroSequenceDraft
 } from '../data/firmwareCatalog';
 import { FirmwareStatusPacket, usbHardware } from '../services/usbHardwareService';
-import { DEFAULT_FIRMWARE_GITHUB_REPO } from '../services/firmwareUpdateService';
+import { PUBLIC_FIRMWARE_SOURCE_SLUG } from '../services/firmwareUpdateService';
 import { repeatMacroRunner } from '../services/repeatMacroRunner';
 import { soundEngine } from '../services/soundEffects';
 
@@ -86,8 +86,8 @@ const DEFAULT_SETTINGS: StudioSettings = {
   encoderPlacement: 'grid',
   soundEnabled: true,
   liveEventsEnabled: true,
-  autoCheckFirmwareUpdates: false,
-  firmwareRepo: DEFAULT_FIRMWARE_GITHUB_REPO
+  autoCheckFirmwareUpdates: true,
+  firmwareRepo: PUBLIC_FIRMWARE_SOURCE_SLUG
 };
 
 function hexToRgbString(hex: string): string {
@@ -598,8 +598,18 @@ export function useStudioState(
       const raw = localStorage.getItem(UI_PREFS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
+        const rawSettings = parsed.settings || {};
+        const migratedFromLegacyRepo =
+          rawSettings.firmwareRepo !== PUBLIC_FIRMWARE_SOURCE_SLUG;
         return {
-          settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+          settings: {
+            ...DEFAULT_SETTINGS,
+            ...rawSettings,
+            firmwareRepo: PUBLIC_FIRMWARE_SOURCE_SLUG,
+            autoCheckFirmwareUpdates: migratedFromLegacyRepo
+              ? true
+              : Boolean(rawSettings.autoCheckFirmwareUpdates ?? true)
+          },
           userPresets: Array.isArray(parsed.userPresets) ? parsed.userPresets : [],
           customMacros: Array.isArray(parsed.customMacros)
             ? deduplicateCustomMacros(parsed.customMacros)

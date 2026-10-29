@@ -1302,7 +1302,7 @@ class PadLinkService {
           {
             phase: 'downloading',
             percent: 18,
-            message: 'ESP32 connected to GitHub CDN over Wi-Fi…',
+            message: 'Downloading firmware update over Wi-Fi…',
             delay: 180
           },
           {
@@ -2530,7 +2530,7 @@ class PadLinkService {
     });
 
     try {
-      params.onProgress?.(6, 'Sending GitHub OTA manifest to MacroPad…', 'downloading');
+      params.onProgress?.(6, 'Sending firmware update URL to MacroPad…', 'downloading');
       const startRes = await this.call(
         {
           path: '/api/ota/start',

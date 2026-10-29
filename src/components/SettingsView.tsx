@@ -3,6 +3,8 @@ import {
   BleHostSlot,
   DebugLogEntry,
   DeviceConnectionInfo,
+  FirmwareInstallProgress,
+  FirmwareReleaseInfo,
   FirmwareUpdateState,
   KeyboardLayoutId,
   StudioProfile,
@@ -50,13 +52,19 @@ interface SettingsViewProps {
   currentRev: number;
   currentDeviceId: string | null;
   firmwareUpdate: FirmwareUpdateState;
+  installProgress: FirmwareInstallProgress | null;
+  isUploadingFirmware: boolean;
   isFirmwareBannerDismissed: boolean;
   onDismissFirmwareBanner: () => void;
   onCheckFirmwareUpdate: (opts?: {
     force?: boolean;
-    repoOverride?: string;
     silent?: boolean;
   }) => Promise<FirmwareUpdateState>;
+  onUploadFirmwareToMacropad: (opts?: {
+    releaseOverride?: FirmwareReleaseInfo | null;
+    method?: 'usb_serial' | 'wifi_ota';
+    autoBackupBeforeFlash?: boolean;
+  }) => Promise<boolean>;
   onUpdateSettings: (patch: Partial<StudioSettings>) => void;
   onPullFromUsb: () => Promise<boolean>;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
@@ -95,9 +103,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   currentRev,
   currentDeviceId,
   firmwareUpdate,
+  installProgress,
+  isUploadingFirmware,
   isFirmwareBannerDismissed,
   onDismissFirmwareBanner,
   onCheckFirmwareUpdate,
+  onUploadFirmwareToMacropad,
   onUpdateSettings,
   onPullFromUsb,
   onSwitchBleHost,
@@ -453,8 +464,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <FirmwareUpdateBanner
           connection={connection}
           firmwareUpdate={firmwareUpdate}
+          installProgress={installProgress}
+          isUploadingFirmware={isUploadingFirmware}
           isFirmwareBannerDismissed={isFirmwareBannerDismissed}
           onDismissFirmwareBanner={onDismissFirmwareBanner}
+          onUploadToMacropad={() => onUploadFirmwareToMacropad()}
           onJumpToUpdater={handleJumpToUpdater}
         />
 
@@ -542,7 +556,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     })
                   }
                   className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
-                  title="Simulate older connected firmware in Demo Mode to test the GitHub update notification"
+                  title="Simulate older connected firmware in Demo Mode to test the firmware update notification"
                 >
                   Simulate FW ({connection.firmwareVersion === '1.0.0' ? 'Restore 3.2-PRO' : 'Set 1.0.0'})
                 </button>
@@ -551,14 +565,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           )}
         </div>
 
-        {/* 1B. ESP32 Firmware & Direct GitHub Flash Card */}
+        {/* 1B. MacroPad Firmware Updates Card */}
         <FirmwareUpdaterCard
           settings={settings}
           connection={connection}
           firmwareUpdate={firmwareUpdate}
+          installProgress={installProgress}
+          isUploadingFirmware={isUploadingFirmware}
           isFirmwareBannerDismissed={isFirmwareBannerDismissed}
           onDismissFirmwareBanner={onDismissFirmwareBanner}
           onCheckFirmwareUpdate={onCheckFirmwareUpdate}
+          onUploadFirmwareToMacropad={onUploadFirmwareToMacropad}
           onUpdateSettings={onUpdateSettings}
           onExportBackupFile={onExportBackupFile}
           onToast={onToast}

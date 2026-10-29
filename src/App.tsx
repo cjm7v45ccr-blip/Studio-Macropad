@@ -47,6 +47,7 @@ import { MacroEditorExternalTarget, MacroEditorView } from './components/MacroEd
 import { GlobalMacroSearch } from './components/GlobalMacroSearch';
 import { LibraryView } from './components/LibraryView';
 import { SettingsView } from './components/SettingsView';
+import { FirmwareUpdateBanner } from './components/FirmwareUpdaterCard';
 import { UsbConnectModal } from './components/UsbConnectModal';
 import { SetupWizardModal, WizardCompletionPayload } from './components/SetupWizardModal';
 import { SyncConflictModal } from './components/SyncConflictModal';
@@ -122,13 +123,19 @@ export default function App() {
     connected: connection.connected,
     installedVersion: connection.firmwareVersion,
     autoCheckEnabled: studio.settings.autoCheckFirmwareUpdates,
-    firmwareRepo: studio.settings.firmwareRepo,
+    onExportBackupFile: studio.exportHardwareBackupFile,
+    onToast: showToast,
     onUpdateAvailableToast: (release, installed) => {
       showToast(
-        `Firmware ${release.version} is available on GitHub (installed: ${installed}) — view in Settings`
+        `New MacroPad update v${release.version} available (installed: ${installed})`
       );
     }
   });
+
+  const hasFirmwareUpdateNotification =
+    connection.connected &&
+    firmwareUpdater.updateState.status === 'update_available' &&
+    Boolean(firmwareUpdater.updateState.latestRelease);
 
   const handleStopRepeat = useCallback(() => {
     if (repeatMacroRunner.stop()) {
@@ -486,6 +493,30 @@ export default function App() {
         }
       />
 
+      {/* Global Firmware Update Notification Bar with Direct One-Click Upload */}
+      {activeSection !== 'settings' && (
+        <FirmwareUpdateBanner
+          compact
+          connection={connection}
+          firmwareUpdate={firmwareUpdater.updateState}
+          installProgress={firmwareUpdater.installProgress}
+          isUploadingFirmware={firmwareUpdater.isUploadingFirmware}
+          isFirmwareBannerDismissed={firmwareUpdater.isBannerDismissed}
+          onDismissFirmwareBanner={firmwareUpdater.dismissUpdateBanner}
+          onUploadToMacropad={() => {
+            firmwareUpdater.uploadFirmwareToMacropad();
+          }}
+          onJumpToUpdater={() => {
+            setActiveSection('settings');
+            setTimeout(() => {
+              document
+                .getElementById('firmware-updater-card')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 60);
+          }}
+        />
+      )}
+
       {/* Main Workspace Area: Desktop Left Rail + Active Section */}
       <div className="flex-1 flex overflow-hidden min-w-0">
         <LeftSidebar
@@ -497,6 +528,7 @@ export default function App() {
             studio.updateSettings({ soundEnabled: !studio.settings.soundEnabled })
           }
           macroCount={studio.customMacros.length}
+          hasFirmwareUpdate={hasFirmwareUpdateNotification}
         />
 
         {activeSection === 'device' && (
@@ -676,9 +708,12 @@ export default function App() {
             currentRev={studio.currentRev}
             currentDeviceId={studio.currentDeviceId}
             firmwareUpdate={firmwareUpdater.updateState}
+            installProgress={firmwareUpdater.installProgress}
+            isUploadingFirmware={firmwareUpdater.isUploadingFirmware}
             isFirmwareBannerDismissed={firmwareUpdater.isBannerDismissed}
             onDismissFirmwareBanner={firmwareUpdater.dismissUpdateBanner}
             onCheckFirmwareUpdate={firmwareUpdater.checkForUpdates}
+            onUploadFirmwareToMacropad={firmwareUpdater.uploadFirmwareToMacropad}
             onUpdateSettings={studio.updateSettings}
             onPullFromUsb={handlePullFromUsb}
             onSwitchBleHost={handleSwitchBleHost}
@@ -702,6 +737,7 @@ export default function App() {
           studio.updateSettings({ soundEnabled: !studio.settings.soundEnabled })
         }
         macroCount={studio.customMacros.length}
+        hasFirmwareUpdate={hasFirmwareUpdateNotification}
       />
 
       {/* USB WebSerial & Demo Mode Connection Modal */}

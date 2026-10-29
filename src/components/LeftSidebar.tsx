@@ -15,6 +15,7 @@ interface LeftSidebarProps {
   soundEnabled: boolean;
   onToggleSound: () => void;
   macroCount: number;
+  hasFirmwareUpdate?: boolean;
   variant?: 'rail' | 'bottom';
 }
 
@@ -34,7 +35,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onSelectSection,
   soundEnabled,
   onToggleSound,
-  macroCount,
+  hasFirmwareUpdate = false,
   variant = 'rail'
 }) => {
   if (variant === 'bottom') {
@@ -46,6 +47,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {NAV_ITEMS.map(item => {
           const Icon = item.icon;
           const active = activeSection === item.id;
+          const showDot = item.id === 'settings' && hasFirmwareUpdate;
           return (
             <button
               key={item.id}
@@ -60,17 +62,25 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     }
                   : undefined
               }
-              className={`flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 rounded-xl text-[10px] border transition-all cursor-pointer whitespace-nowrap ${
+              className={`relative flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 rounded-xl text-[10px] border transition-all cursor-pointer whitespace-nowrap ${
                 active
                   ? 'font-semibold'
                   : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
-              <Icon
-                className={`w-4 h-4 shrink-0 ${
-                  active ? 'text-[var(--accent)]' : ''
-                }`}
-              />
+              <span className="relative">
+                <Icon
+                  className={`w-4 h-4 shrink-0 ${
+                    active ? 'text-[var(--accent)]' : ''
+                  }`}
+                />
+                {showDot && (
+                  <span
+                    aria-label="Firmware update available"
+                    className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-amber-400"
+                  />
+                )}
+              </span>
               <span>{item.label}</span>
             </button>
           );
@@ -85,6 +95,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {NAV_ITEMS.map(item => {
           const Icon = item.icon;
           const active = activeSection === item.id;
+          const showDot = item.id === 'settings' && hasFirmwareUpdate;
           return (
             <button
               key={item.id}
@@ -104,17 +115,22 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   ? 'font-semibold shadow-sm'
                   : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)]'
               }`}
-              title={item.label}
+              title={showDot ? `${item.label} (Firmware update available)` : item.label}
             >
-              <span className="flex items-center gap-2.5">
+              <span className="relative flex items-center gap-2.5">
                 <Icon
                   className={`w-4 h-4 shrink-0 ${
                     active ? 'text-[var(--accent)]' : ''
                   }`}
                 />
+                {showDot && (
+                  <span className="md:hidden absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-amber-400" />
+                )}
                 <span className="hidden md:inline">{item.label}</span>
               </span>
-
+              {showDot && (
+                <span className="hidden md:inline-block w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+              )}
             </button>
           );
         })}
