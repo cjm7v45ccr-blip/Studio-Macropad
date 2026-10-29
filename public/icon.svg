@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="112" fill="#08090D"/>
+  <rect x="44" y="44" width="424" height="424" rx="84" fill="#11141D" stroke="#1E293B" stroke-width="8"/>
+  <!-- Rotary Encoder Knob -->
+  <circle cx="364" cy="148" r="54" fill="#0B0E14" stroke="#38BDF8" stroke-width="10"/>
+  <circle cx="364" cy="148" r="20" fill="#38BDF8"/>
+  <!-- OLED Display Bar -->
+  <rect x="92" y="106" width="184" height="84" rx="18" fill="#05070B" stroke="#334155" stroke-width="6"/>
+  <rect x="116" y="132" width="96" height="12" rx="6" fill="#38BDF8"/>
+  <rect x="116" y="156" width="136" height="10" rx="5" fill="#64748B"/>
+  <!-- 2x3 Mechanical Key Grid -->
+  <rect x="92" y="232" width="96" height="82" rx="18" fill="#181E2C" stroke="#38BDF8" stroke-width="6"/>
+  <rect x="208" y="232" width="96" height="82" rx="18" fill="#181E2C" stroke="#475569" stroke-width="6"/>
+  <rect x="324" y="232" width="96" height="82" rx="18" fill="#181E2C" stroke="#475569" stroke-width="6"/>
+  <rect x="92" y="334" width="96" height="82" rx="18" fill="#181E2C" stroke="#475569" stroke-width="6"/>
+  <rect x="208" y="334" width="96" height="82" rx="18" fill="#181E2C" stroke="#475569" stroke-width="6"/>
+  <rect x="324" y="334" width="96" height="82" rx="18" fill="#181E2C" stroke="#475569" stroke-width="6"/>
+</svg>
