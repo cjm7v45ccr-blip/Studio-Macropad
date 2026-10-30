@@ -1,9 +1,11 @@
 import {
   ActionBinding,
   ActionType,
+  CustomMacroItem,
   DeviceConnectionInfo,
   HardwareProfileId,
   HardwareSlotId,
+  HostOsType,
   KeyAppearance,
   KeyboardLayoutId,
   MacroStepActionType,
@@ -113,31 +115,31 @@ export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   { action: 'MACRO:SPOTLIGHT', label: 'Spotlight (⌘Space)', shortLabel: 'Spotlight', description: 'macOS Command + Space search', category: 'mac_macro', icon: 'search', color: '#38BDF8' },
   { action: 'MACRO:LOCK', label: 'Lock Mac (⌃⌘Q)', shortLabel: 'Lock Mac', description: 'macOS Control + Command + Q', category: 'mac_macro', icon: 'lock', color: '#F87171' },
   { action: 'MACRO:NEW_TAB', label: 'New Tab (⌘T)', shortLabel: 'New Tab', description: 'macOS Command + T', category: 'mac_macro', icon: 'globe', color: '#34D399' },
-  { action: 'MACRO:CLOSE_TAB', label: 'Close Tab (⌘W)', shortLabel: 'Close Tab', description: 'macOS Command + W', category: 'mac_macro', icon: 'phone-off', color: '#F87171' },
+  { action: 'MACRO:CLOSE_TAB', label: 'Close Tab (⌘W)', shortLabel: 'Close Tab', description: 'macOS Command + W', category: 'mac_macro', icon: 'x', color: '#F87171' },
 
   // WIN:* Windows Built-ins (16)
-  { action: 'WIN:COPY', label: 'Copy (Ctrl+C)', shortLabel: 'Win Copy', description: 'Windows Ctrl + C', category: 'win_macro', icon: 'copy', color: '#38BDF8' },
-  { action: 'WIN:PASTE', label: 'Paste (Ctrl+V)', shortLabel: 'Win Paste', description: 'Windows Ctrl + V', category: 'win_macro', icon: 'paste', color: '#38BDF8' },
-  { action: 'WIN:CUT', label: 'Cut (Ctrl+X)', shortLabel: 'Win Cut', description: 'Windows Ctrl + X', category: 'win_macro', icon: 'scissors', color: '#F472B6' },
-  { action: 'WIN:UNDO', label: 'Undo (Ctrl+Z)', shortLabel: 'Win Undo', description: 'Windows Ctrl + Z', category: 'win_macro', icon: 'undo', color: '#FBBF24' },
-  { action: 'WIN:REDO', label: 'Redo (Ctrl+Y)', shortLabel: 'Win Redo', description: 'Windows Ctrl + Y', category: 'win_macro', icon: 'redo', color: '#FBBF24' },
+  { action: 'WIN:COPY', label: 'Copy (Ctrl+C)', shortLabel: 'Copy', description: 'Windows Ctrl + C', category: 'win_macro', icon: 'copy', color: '#38BDF8' },
+  { action: 'WIN:PASTE', label: 'Paste (Ctrl+V)', shortLabel: 'Paste', description: 'Windows Ctrl + V', category: 'win_macro', icon: 'paste', color: '#38BDF8' },
+  { action: 'WIN:CUT', label: 'Cut (Ctrl+X)', shortLabel: 'Cut', description: 'Windows Ctrl + X', category: 'win_macro', icon: 'scissors', color: '#F472B6' },
+  { action: 'WIN:UNDO', label: 'Undo (Ctrl+Z)', shortLabel: 'Undo', description: 'Windows Ctrl + Z', category: 'win_macro', icon: 'undo', color: '#FBBF24' },
+  { action: 'WIN:REDO', label: 'Redo (Ctrl+Y)', shortLabel: 'Redo', description: 'Windows Ctrl + Y', category: 'win_macro', icon: 'redo', color: '#FBBF24' },
   { action: 'WIN:SELECT_ALL', label: 'Select All (Ctrl+A)', shortLabel: 'Select All', description: 'Windows Ctrl + A', category: 'win_macro', icon: 'check-square', color: '#A78BFA' },
-  { action: 'WIN:SAVE', label: 'Save (Ctrl+S)', shortLabel: 'Win Save', description: 'Windows Ctrl + S', category: 'win_macro', icon: 'save', color: '#34D399' },
+  { action: 'WIN:SAVE', label: 'Save (Ctrl+S)', shortLabel: 'Save', description: 'Windows Ctrl + S', category: 'win_macro', icon: 'save', color: '#34D399' },
   { action: 'WIN:NEW_TAB', label: 'New Tab (Ctrl+T)', shortLabel: 'New Tab', description: 'Windows Ctrl + T', category: 'win_macro', icon: 'globe', color: '#34D399' },
-  { action: 'WIN:CLOSE_TAB', label: 'Close Tab (Ctrl+W)', shortLabel: 'Close Tab', description: 'Windows Ctrl + W', category: 'win_macro', icon: 'phone-off', color: '#F87171' },
-  { action: 'WIN:LOCK', label: 'Lock PC (Win+L)', shortLabel: 'Lock PC', description: 'Windows + L lock screen', category: 'win_macro', icon: 'lock', color: '#F87171' },
-  { action: 'WIN:SEARCH', label: 'Win Search (Win+S)', shortLabel: 'Win Search', description: 'Windows + S search bar', category: 'win_macro', icon: 'search', color: '#38BDF8' },
+  { action: 'WIN:CLOSE_TAB', label: 'Close Tab (Ctrl+W)', shortLabel: 'Close Tab', description: 'Windows Ctrl + W', category: 'win_macro', icon: 'x', color: '#F87171' },
+  { action: 'WIN:LOCK', label: 'Lock Screen (Win+L)', shortLabel: 'Lock', description: 'Windows + L lock screen', category: 'win_macro', icon: 'lock', color: '#F87171' },
+  { action: 'WIN:SEARCH', label: 'Search (Win+S)', shortLabel: 'Search', description: 'Windows + S search bar', category: 'win_macro', icon: 'search', color: '#38BDF8' },
   { action: 'WIN:EXPLORER', label: 'File Explorer (Win+E)', shortLabel: 'Explorer', description: 'Windows + E File Explorer', category: 'win_macro', icon: 'folder', color: '#FBBF24' },
   { action: 'WIN:TASK_MGR', label: 'Task Manager', shortLabel: 'Task Mgr', description: 'Ctrl + Shift + Esc', category: 'win_macro', icon: 'terminal', color: '#A78BFA' },
-  { action: 'WIN:SNIP', label: 'Snipping Tool', shortLabel: 'Snip', description: 'Win + Shift + S screen snip', category: 'win_macro', icon: 'camera', color: '#34D399' },
+  { action: 'WIN:SNIP', label: 'Screenshot Snip', shortLabel: 'Snip', description: 'Win + Shift + S screen snip', category: 'win_macro', icon: 'camera', color: '#34D399' },
   { action: 'WIN:DESKTOP', label: 'Show Desktop (Win+D)', shortLabel: 'Desktop', description: 'Windows + D toggle desktop', category: 'win_macro', icon: 'monitor', color: '#60A5FA' },
   { action: 'WIN:RUN', label: 'Run Dialog (Win+R)', shortLabel: 'Run', description: 'Windows + R command prompt', category: 'win_macro', icon: 'play-circle', color: '#38BDF8' },
 
   // BLE:* Multi-Host Bluetooth Engine (4)
-  { action: 'BLE:HOST1', label: 'Host 1 (Studio Pad 1)', shortLabel: 'Host 1', description: 'Switch to Host 1 virtual MAC (Studio Pad 1)', category: 'ble', icon: 'bluetooth', color: '#38BDF8' },
-  { action: 'BLE:HOST2', label: 'Host 2 (Studio Pad 2)', shortLabel: 'Host 2', description: 'Switch to Host 2 virtual MAC (Studio Pad 2)', category: 'ble', icon: 'bluetooth', color: '#60A5FA' },
-  { action: 'BLE:HOST3', label: 'Host 3 (Studio Pad 3)', shortLabel: 'Host 3', description: 'Switch to Host 3 virtual MAC (Studio Pad 3)', category: 'ble', icon: 'bluetooth', color: '#818CF8' },
-  { action: 'BLE:NEXT_HOST', label: 'Next BLE Host (Cycle 1–3)', shortLabel: 'Next Host', description: 'Cycle active Bluetooth host (Studio Pad 1 → 2 → 3)', category: 'ble', icon: 'bluetooth', color: '#34D399' },
+  { action: 'BLE:HOST1', label: 'Device 1 (Studio Pad 1)', shortLabel: 'Device 1', description: 'Switch to Device 1 virtual MAC (Studio Pad 1)', category: 'ble', icon: 'bluetooth', color: '#38BDF8' },
+  { action: 'BLE:HOST2', label: 'Device 2 (Studio Pad 2)', shortLabel: 'Device 2', description: 'Switch to Device 2 virtual MAC (Studio Pad 2)', category: 'ble', icon: 'bluetooth', color: '#60A5FA' },
+  { action: 'BLE:HOST3', label: 'Device 3 (Studio Pad 3)', shortLabel: 'Device 3', description: 'Switch to Device 3 virtual MAC (Studio Pad 3)', category: 'ble', icon: 'bluetooth', color: '#818CF8' },
+  { action: 'BLE:NEXT_HOST', label: 'Next BLE Device (Cycle 1–3)', shortLabel: 'Next Host', description: 'Cycle active Bluetooth device (Studio Pad 1 → 2 → 3)', category: 'ble', icon: 'bluetooth', color: '#34D399' },
 
   // TV:* SmartCast Remote (25)
   { action: 'TV:POWER', label: 'TV Power', shortLabel: 'TV Power', description: 'SmartCast power toggle (11, 2)', category: 'tv', icon: 'power', color: '#F87171' },
@@ -148,7 +150,7 @@ export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   { action: 'TV:INPUT', label: 'TV Input', shortLabel: 'Input', description: 'Cycle HDMI / Input source (7, 1)', category: 'tv', icon: 'monitor-up', color: '#A78BFA' },
   { action: 'TV:OK', label: 'TV OK / Select', shortLabel: 'TV OK', description: 'Confirm selection (3, 2)', category: 'tv', icon: 'check-square', color: '#34D399' },
   { action: 'TV:BACK', label: 'TV Back', shortLabel: 'TV Back', description: 'Navigate back (4, 0)', category: 'tv', icon: 'undo', color: '#F3F4F6' },
-  { action: 'TV:EXIT', label: 'TV Exit', shortLabel: 'TV Exit', description: 'Close TV overlay (9, 0)', category: 'tv', icon: 'phone-off', color: '#F87171' },
+  { action: 'TV:EXIT', label: 'TV Exit', shortLabel: 'TV Exit', description: 'Close TV overlay (9, 0)', category: 'tv', icon: 'x', color: '#F87171' },
   { action: 'TV:UP', label: 'D-Pad Up', shortLabel: 'TV Up', description: 'Navigate up (3, 8)', category: 'tv', icon: 'arrow-up', color: '#F3F4F6' },
   { action: 'TV:DOWN', label: 'D-Pad Down', shortLabel: 'TV Down', description: 'Navigate down (3, 0)', category: 'tv', icon: 'arrow-down', color: '#F3F4F6' },
   { action: 'TV:LEFT', label: 'D-Pad Left', shortLabel: 'TV Left', description: 'Navigate left (3, 1)', category: 'tv', icon: 'arrow-left', color: '#F3F4F6' },
@@ -162,7 +164,7 @@ export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   { action: 'TV:PREV_CH', label: 'Last Channel', shortLabel: 'Prev Ch', description: 'Return to previous channel (8, 2)', category: 'tv', icon: 'repeat', color: '#A78BFA' },
   { action: 'TV:PLAY', label: 'TV Play', shortLabel: 'TV Play', description: 'Resume TV playback (2, 3)', category: 'tv', icon: 'play', color: '#34D399' },
   { action: 'TV:PAUSE', label: 'TV Pause', shortLabel: 'TV Pause', description: 'Pause TV playback (2, 2)', category: 'tv', icon: 'pause', color: '#FBBF24' },
-  { action: 'TV:STOP', label: 'TV Stop', shortLabel: 'TV Stop', description: 'Stop TV stream (2, 9)', category: 'tv', icon: 'phone-off', color: '#F87171' },
+  { action: 'TV:STOP', label: 'TV Stop', shortLabel: 'TV Stop', description: 'Stop TV stream (2, 9)', category: 'tv', icon: 'square', color: '#F87171' },
   { action: 'TV:REWIND', label: 'TV Rewind', shortLabel: 'Rewind', description: 'Rewind media (2, 1)', category: 'tv', icon: 'skip-back', color: '#60A5FA' },
   { action: 'TV:FFWD', label: 'TV Fast Forward', shortLabel: 'Fast Fwd', description: 'Fast forward media (2, 0)', category: 'tv', icon: 'skip-forward', color: '#60A5FA' },
 
@@ -178,6 +180,113 @@ export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
 const STATIC_MAP = new Map<string, FirmwareActionSpec>(
   FIRMWARE_STATIC_CATALOG.map(spec => [spec.action, spec])
 );
+
+export interface UnifiedShortcutSpec {
+  id: string;
+  label: string;
+  shortcutHint: string;
+  action: string;
+  icon: string;
+  color: string;
+  description: string;
+}
+
+const MAC_TO_WIN_ACTION_MAP: Record<string, string> = {
+  'MACRO:COPY': 'WIN:COPY',
+  'MACRO:PASTE': 'WIN:PASTE',
+  'MACRO:CUT': 'WIN:CUT',
+  'MACRO:UNDO': 'WIN:UNDO',
+  'MACRO:REDO': 'WIN:REDO',
+  'MACRO:SELECT_ALL': 'WIN:SELECT_ALL',
+  'MACRO:SAVE': 'WIN:SAVE',
+  'MACRO:NEW_TAB': 'WIN:NEW_TAB',
+  'MACRO:CLOSE_TAB': 'WIN:CLOSE_TAB',
+  'MACRO:SPOTLIGHT': 'WIN:SEARCH',
+  'MACRO:LOCK': 'WIN:LOCK',
+  'SHORTCUT:cmd,shift:4': 'WIN:SNIP',
+  'SHORTCUT:cmd,shift:p': 'SHORTCUT:ctrl,shift:p',
+  'SHORTCUT:cmd:r': 'SHORTCUT:ctrl:r',
+  'SHORTCUT:cmd,shift:t': 'SHORTCUT:ctrl,shift:t',
+  'SHORTCUT:cmd:tab': 'SHORTCUT:alt:tab'
+};
+
+const WIN_TO_MAC_ACTION_MAP: Record<string, string> = Object.fromEntries(
+  Object.entries(MAC_TO_WIN_ACTION_MAP).map(([m, w]) => [w, m])
+);
+
+export function getShortcutsForHostOs(os: HostOsType): UnifiedShortcutSpec[] {
+  if (os === 'mac') {
+    return [
+      { id: 'copy', label: 'Copy', shortcutHint: '⌘C', action: 'MACRO:COPY', icon: 'copy', color: '#60A5FA', description: 'Copy selection to clipboard' },
+      { id: 'paste', label: 'Paste', shortcutHint: '⌘V', action: 'MACRO:PASTE', icon: 'paste', color: '#60A5FA', description: 'Paste from clipboard' },
+      { id: 'cut', label: 'Cut', shortcutHint: '⌘X', action: 'MACRO:CUT', icon: 'scissors', color: '#F472B6', description: 'Cut selection' },
+      { id: 'undo', label: 'Undo', shortcutHint: '⌘Z', action: 'MACRO:UNDO', icon: 'undo', color: '#FBBF24', description: 'Undo last change' },
+      { id: 'redo', label: 'Redo', shortcutHint: '⌘⇧Z', action: 'MACRO:REDO', icon: 'redo', color: '#FBBF24', description: 'Redo last change' },
+      { id: 'select_all', label: 'Select All', shortcutHint: '⌘A', action: 'MACRO:SELECT_ALL', icon: 'check-square', color: '#A78BFA', description: 'Select all content' },
+      { id: 'save', label: 'Save', shortcutHint: '⌘S', action: 'MACRO:SAVE', icon: 'save', color: '#34D399', description: 'Save current file' },
+      { id: 'new_tab', label: 'New Tab', shortcutHint: '⌘T', action: 'MACRO:NEW_TAB', icon: 'globe', color: '#34D399', description: 'Open new browser or editor tab' },
+      { id: 'close_tab', label: 'Close Tab', shortcutHint: '⌘W', action: 'MACRO:CLOSE_TAB', icon: 'x', color: '#F87171', description: 'Close active tab or window' },
+      { id: 'search', label: 'Spotlight Search', shortcutHint: '⌘Space', action: 'MACRO:SPOTLIGHT', icon: 'search', color: '#38BDF8', description: 'Open macOS Spotlight search' },
+      { id: 'screenshot', label: 'Screenshot', shortcutHint: '⌘⇧4', action: 'SHORTCUT:cmd,shift:4', icon: 'camera', color: '#34D399', description: 'Capture screen region' },
+      { id: 'lock', label: 'Lock Screen', shortcutHint: '⌃⌘Q', action: 'MACRO:LOCK', icon: 'lock', color: '#F87171', description: 'Lock Mac immediately' },
+      { id: 'cmd_palette', label: 'Command Palette', shortcutHint: '⌘⇧P', action: 'SHORTCUT:cmd,shift:p', icon: 'code', color: '#A78BFA', description: 'Open IDE command palette' },
+      { id: 'switch_app', label: 'Switch App', shortcutHint: '⌘Tab', action: 'SHORTCUT:cmd:tab', icon: 'layers', color: '#60A5FA', description: 'Switch to previous application' },
+      { id: 'reopen_tab', label: 'Reopen Closed Tab', shortcutHint: '⌘⇧T', action: 'SHORTCUT:cmd,shift:t', icon: 'redo', color: '#34D399', description: 'Restore closed browser tab' },
+      { id: 'reload', label: 'Reload Page', shortcutHint: '⌘R', action: 'SHORTCUT:cmd:r', icon: 'repeat', color: '#38BDF8', description: 'Refresh active page' }
+    ];
+  }
+
+  const superLabel = os === 'linux' ? 'Super' : 'Win';
+  return [
+    { id: 'copy', label: 'Copy', shortcutHint: 'Ctrl+C', action: 'WIN:COPY', icon: 'copy', color: '#38BDF8', description: 'Copy selection to clipboard' },
+    { id: 'paste', label: 'Paste', shortcutHint: 'Ctrl+V', action: 'WIN:PASTE', icon: 'paste', color: '#38BDF8', description: 'Paste from clipboard' },
+    { id: 'cut', label: 'Cut', shortcutHint: 'Ctrl+X', action: 'WIN:CUT', icon: 'scissors', color: '#F472B6', description: 'Cut selection' },
+    { id: 'undo', label: 'Undo', shortcutHint: 'Ctrl+Z', action: 'WIN:UNDO', icon: 'undo', color: '#FBBF24', description: 'Undo last change' },
+    { id: 'redo', label: 'Redo', shortcutHint: 'Ctrl+Y', action: 'WIN:REDO', icon: 'redo', color: '#FBBF24', description: 'Redo last change' },
+    { id: 'select_all', label: 'Select All', shortcutHint: 'Ctrl+A', action: 'WIN:SELECT_ALL', icon: 'check-square', color: '#A78BFA', description: 'Select all content' },
+    { id: 'save', label: 'Save', shortcutHint: 'Ctrl+S', action: 'WIN:SAVE', icon: 'save', color: '#34D399', description: 'Save current file' },
+    { id: 'new_tab', label: 'New Tab', shortcutHint: 'Ctrl+T', action: 'WIN:NEW_TAB', icon: 'globe', color: '#34D399', description: 'Open new browser or editor tab' },
+    { id: 'close_tab', label: 'Close Tab', shortcutHint: 'Ctrl+W', action: 'WIN:CLOSE_TAB', icon: 'x', color: '#F87171', description: 'Close active tab' },
+    { id: 'search', label: 'Search', shortcutHint: `${superLabel}+S`, action: 'WIN:SEARCH', icon: 'search', color: '#38BDF8', description: 'Open system search' },
+    { id: 'screenshot', label: 'Screenshot Snip', shortcutHint: `${superLabel}+Shift+S`, action: 'WIN:SNIP', icon: 'camera', color: '#34D399', description: 'Capture screen region' },
+    { id: 'lock', label: 'Lock Screen', shortcutHint: `${superLabel}+L`, action: 'WIN:LOCK', icon: 'lock', color: '#F87171', description: 'Lock workstation immediately' },
+    { id: 'explorer', label: 'File Explorer', shortcutHint: `${superLabel}+E`, action: 'WIN:EXPLORER', icon: 'folder', color: '#FBBF24', description: 'Open File Explorer' },
+    { id: 'task_mgr', label: 'Task Manager', shortcutHint: 'Ctrl+Shift+Esc', action: 'WIN:TASK_MGR', icon: 'terminal', color: '#A78BFA', description: 'Open Task Manager' },
+    { id: 'desktop', label: 'Show Desktop', shortcutHint: `${superLabel}+D`, action: 'WIN:DESKTOP', icon: 'monitor', color: '#60A5FA', description: 'Minimize all windows' },
+    { id: 'run', label: 'Run Dialog', shortcutHint: `${superLabel}+R`, action: 'WIN:RUN', icon: 'play-circle', color: '#38BDF8', description: 'Open Run command prompt' }
+  ];
+}
+
+export function remapActionForHostOs(action: string, targetOs: HostOsType): string {
+  if (!action) return action;
+  if (action.includes('||')) {
+    return action
+      .split('||')
+      .map(part => (part.startsWith('TEXT:') ? part : remapActionForHostOs(part.trim(), targetOs)))
+      .join('||');
+  }
+  const canon = canonicalizeFirmwareAction(action);
+  if (targetOs === 'mac') {
+    return WIN_TO_MAC_ACTION_MAP[canon] || action;
+  }
+  return MAC_TO_WIN_ACTION_MAP[canon] || action;
+}
+
+export function inferHostOsFromSlots(
+  slots: Partial<Record<HardwareSlotId, string>>,
+  fallback: HostOsType
+): HostOsType {
+  let macCount = 0;
+  let winCount = 0;
+  for (const val of Object.values(slots)) {
+    if (!val) continue;
+    if (val.includes('MACRO:') || val.includes('SHORTCUT:cmd')) macCount += 1;
+    if (val.includes('WIN:') || val.includes('SHORTCUT:win')) winCount += 1;
+  }
+  if (winCount > macCount) return 'windows';
+  if (macCount > winCount) return 'mac';
+  return fallback;
+}
 
 export const FIRMWARE_SUPPORTED_KEYS = [
   'enter', 'tab', 'space', 'esc', 'backspace', 'delete',
@@ -252,6 +361,7 @@ export function validateTextMacroInput(
 export const MAX_NVS_ACTION_BYTES = 512;
 export const MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES = 128;
 export const STANDALONE_TICK_MS = 50;
+export const MAX_FIRMWARE_DELAY_STEP_MS = 10000;
 
 export function parseFirmwareSemver(fw?: string | null): [number, number, number] | null {
   if (!fw) return null;
@@ -276,7 +386,7 @@ export function isFirmwareAtLeast(
   return pat >= patch;
 }
 
-/** True when connected firmware supports native `DELAY:<1..60000>` tokens in NVS (v4.5.0+ C++ engine) */
+/** True when connected firmware supports native `DELAY:<1..10000>` tokens in NVS (v4.5.0+ C++ engine) */
 export function firmwareSupportsNativeDelay(
   fwOrConn?: string | DeviceConnectionInfo | null
 ): boolean {
@@ -311,7 +421,7 @@ export function isValidDelayActionToken(action: string): boolean {
   const rawMs = action.slice(6).trim();
   if (!/^\d+$/.test(rawMs)) return false;
   const ms = Number(rawMs);
-  return Number.isInteger(ms) && ms >= 1 && ms <= 60000;
+  return Number.isInteger(ms) && ms >= 1 && ms <= MAX_FIRMWARE_DELAY_STEP_MS;
 }
 
 export function isValidFirmwareAction(action: string): boolean {
@@ -728,18 +838,28 @@ export function describeMacroStep(step: MacroStepConfig): {
   };
 }
 
+export function formatDurationCompact(ms: number): string {
+  const safe = Math.max(0, Math.round(ms));
+  if (safe < 1000) return `${safe} ms`;
+  const sec = safe / 1000;
+  return Number.isInteger(sec) ? `${sec} s` : `${sec.toFixed(sec < 10 ? 2 : 1).replace(/\.?0+$/, '')} s`;
+}
+
 /**
- * Calculates total sequential delay (in ms) across all steps in a single cycle:
- * - For 'delay' steps: delayMs * repeatCount
- * - For action steps: intra-step repeat delays `(repeatCount - 1) * delayMs`
- *   plus post-step transition delay `delayMs` if followed by another step.
+ * Calculates sequential delay AND estimated hardware run time across all steps in a single cycle.
+ * Firmware adds a 50ms (`STANDALONE_TICK_MS`) pause after every executed step, so
+ * "350 ms total wait" across 3 steps runs in ~500 ms (`350 + 3 * 50`).
  */
 export function calculateStepsTiming(steps: MacroStepConfig[]): {
   totalDelayMs: number;
   actionStepCount: number;
+  stepPauseCount: number;
+  firmwareOverheadMs: number;
+  estimatedRunMs: number;
 } {
   let totalDelayMs = 0;
   let actionStepCount = 0;
+  let stepPauseCount = 0;
 
   steps.forEach((step, idx) => {
     const repeats = Math.max(1, step.repeatCount || 1);
@@ -747,9 +867,13 @@ export function calculateStepsTiming(steps: MacroStepConfig[]): {
     const isLast = idx === steps.length - 1;
 
     if (step.actionType === 'delay') {
-      totalDelayMs += delay * repeats;
+      const waitSum = delay * repeats;
+      totalDelayMs += waitSum;
+      const chainedChunks = Math.max(1, Math.ceil(waitSum / MAX_FIRMWARE_DELAY_STEP_MS));
+      stepPauseCount += chainedChunks;
     } else {
       actionStepCount += 1;
+      stepPauseCount += repeats;
       if (repeats > 1) {
         totalDelayMs += (repeats - 1) * delay;
       }
@@ -759,7 +883,16 @@ export function calculateStepsTiming(steps: MacroStepConfig[]): {
     }
   });
 
-  return { totalDelayMs, actionStepCount };
+  const firmwareOverheadMs = stepPauseCount * STANDALONE_TICK_MS;
+  const estimatedRunMs = totalDelayMs + firmwareOverheadMs;
+
+  return {
+    totalDelayMs,
+    actionStepCount,
+    stepPauseCount,
+    firmwareOverheadMs,
+    estimatedRunMs
+  };
 }
 
 export function stripStandaloneDelayTicks(action: string | undefined | null): string {
@@ -1013,7 +1146,8 @@ interface FlattenedCycleAction {
 function appendNativeDelayChunks(segments: string[], totalDelayTokenMs: number) {
   let rem = Math.max(1, Math.round(totalDelayTokenMs));
   while (rem > 0) {
-    const chunk = Math.min(60000, rem);
+    // Firmware v4.5.0 caps each DELAY:<ms> token at 10000 ms (422 if > 10000); chain multiple DELAY tokens seamlessly
+    const chunk = Math.min(MAX_FIRMWARE_DELAY_STEP_MS, rem);
     segments.push(`DELAY:${chunk}`);
     rem -= chunk;
     if (rem > 0) {
@@ -1420,33 +1554,44 @@ export function isMultiStepOrTimedMacro(
   return false;
 }
 
-export function formatTextRepeatSummary(cfg: TextMacroRepeatConfig): {
+export function formatTextRepeatSummary(
+  cfg: TextMacroRepeatConfig,
+  customName?: string
+): {
   shortLabel: string;
   fullLabel: string;
 } {
   if (cfg.steps && cfg.steps.length > 0) {
-    const { totalDelayMs } = calculateStepsTiming(cfg.steps);
+    const { estimatedRunMs } = calculateStepsTiming(cfg.steps);
     const stepCount = cfg.steps.length;
     const firstNonDelay = cfg.steps.find(s => s.actionType !== 'delay') || cfg.steps[0];
     const firstDesc = describeMacroStep(firstNonDelay);
 
-    if (stepCount === 1 && !cfg.loopUntilStopped && (cfg.repeatCount || 1) <= 1 && (firstNonDelay.repeatCount || 1) <= 1) {
+    if (
+      !customName &&
+      stepCount === 1 &&
+      !cfg.loopUntilStopped &&
+      (cfg.repeatCount || 1) <= 1 &&
+      (firstNonDelay.repeatCount || 1) <= 1
+    ) {
       return firstDesc;
     }
 
-    const prefix = cfg.loopUntilStopped
-      ? '∞ '
-      : (cfg.repeatCount || 1) > 1
-      ? `${cfg.repeatCount}× `
-      : '';
-    const shortLabel = `${prefix}${stepCount} Steps`.slice(0, 12);
-    const delayPart = totalDelayMs > 0 ? ` · ${totalDelayMs} ms delay` : '';
+    const baseName = (customName || '').trim() || suggestSmartMacroName(cfg.steps, cfg);
+    const prefix =
+      cfg.loopUntilStopped && !baseName.startsWith('∞') && !/^loop\b/i.test(baseName)
+        ? '∞ '
+        : (cfg.repeatCount || 1) > 1 && !baseName.includes('×')
+        ? `${cfg.repeatCount}× `
+        : '';
+    const shortLabel = `${prefix}${baseName}`.slice(0, 14);
+    const estPart = estimatedRunMs > 0 ? ` · ~${formatDurationCompact(estimatedRunMs)}` : '';
     const cyclePart = cfg.loopUntilStopped
-      ? ` · Loop @ ${cfg.repeatDelayMs} ms`
+      ? ` · Loop`
       : (cfg.repeatCount || 1) > 1
-      ? ` · ${cfg.repeatCount}× @ ${cfg.repeatDelayMs} ms`
+      ? ` · ${cfg.repeatCount}×`
       : '';
-    const fullLabel = `${stepCount} steps (${firstDesc.shortLabel}${stepCount > 1 ? '…' : ''})${delayPart}${cyclePart}`;
+    const fullLabel = `${baseName} (${stepCount} ${stepCount === 1 ? 'step' : 'steps'}${estPart}${cyclePart})`;
     return { shortLabel, fullLabel };
   }
 
@@ -1609,7 +1754,8 @@ export function formatFriendlyActionLabel(action: string): string {
 
 export function describeFirmwareAction(
   actionStr: string | undefined | null,
-  repeatConfig?: TextMacroRepeatConfig
+  repeatConfig?: TextMacroRepeatConfig,
+  customMacros?: CustomMacroItem[]
 ): {
   shortLabel: string;
   fullLabel: string;
@@ -1629,6 +1775,20 @@ export function describeFirmwareAction(
     };
   }
 
+  let matchedCustomName: string | undefined;
+  if (customMacros && customMacros.length > 0) {
+    const sig = getMacroCanonicalSignature(trimmed, repeatConfig);
+    const canon = canonicalizeFirmwareAction(trimmed);
+    const found = customMacros.find(
+      m =>
+        (sig && getMacroCanonicalSignature(m.action, m.repeatConfig) === sig) ||
+        canonicalizeFirmwareAction(m.action) === canon
+    );
+    if (found) {
+      matchedCustomName = found.name;
+    }
+  }
+
   if (trimmed.startsWith('DELAY:')) {
     const ms = Math.max(0, parseInt(trimmed.slice(6).trim(), 10) || 0);
     const label = ms >= 1000 && ms % 1000 === 0 ? `Wait ${ms / 1000}s` : `Wait ${ms} ms`;
@@ -1636,7 +1796,7 @@ export function describeFirmwareAction(
       shortLabel: label.slice(0, 12),
       fullLabel: label,
       description: `Hardware timed pause (${ms} ms)`,
-      icon: 'clock',
+      icon: 'pause',
       color: '#FBBF24'
     };
   }
@@ -1647,16 +1807,16 @@ export function describeFirmwareAction(
       repeatConfig.followUpKey ||
       (repeatConfig.steps && repeatConfig.steps.length > 0))
   ) {
-    const summary = formatTextRepeatSummary(repeatConfig);
+    const summary = formatTextRepeatSummary(repeatConfig, matchedCustomName);
     return {
       shortLabel: summary.shortLabel,
-      fullLabel: summary.fullLabel,
+      fullLabel: matchedCustomName || summary.fullLabel,
       description: summary.fullLabel,
       icon:
         repeatConfig.loopUntilStopped ||
         repeatConfig.repeatCount > 1 ||
         (repeatConfig.steps && repeatConfig.steps.length > 1)
-          ? 'repeat'
+          ? 'zap'
           : 'file-text',
       color: '#34D399'
     };
@@ -1665,15 +1825,18 @@ export function describeFirmwareAction(
   if (trimmed.includes('||')) {
     const reconstructedSteps = actionToMacroSteps(trimmed);
     if (reconstructedSteps.length > 0) {
-      const summary = formatTextRepeatSummary({
-        ...DEFAULT_TEXT_REPEAT_CONFIG,
-        steps: reconstructedSteps
-      });
+      const summary = formatTextRepeatSummary(
+        {
+          ...DEFAULT_TEXT_REPEAT_CONFIG,
+          steps: reconstructedSteps
+        },
+        matchedCustomName
+      );
       return {
         shortLabel: summary.shortLabel,
-        fullLabel: summary.fullLabel,
+        fullLabel: matchedCustomName || summary.fullLabel,
         description: summary.fullLabel,
-        icon: 'repeat',
+        icon: 'zap',
         color: '#34D399'
       };
     }
@@ -1762,11 +1925,25 @@ export function describeFirmwareAction(
 export function deriveAppearanceForAction(
   actionStr: string,
   existing?: KeyAppearance,
-  repeatConfig?: TextMacroRepeatConfig
+  repeatConfig?: TextMacroRepeatConfig,
+  customMacros?: CustomMacroItem[]
 ): KeyAppearance {
-  const info = describeFirmwareAction(actionStr, repeatConfig);
+  const info = describeFirmwareAction(actionStr, repeatConfig, customMacros);
+  let matchedMacroName: string | undefined;
+  if (customMacros && customMacros.length > 0 && actionStr) {
+    const sig = getMacroCanonicalSignature(actionStr, repeatConfig);
+    const canon = canonicalizeFirmwareAction(actionStr);
+    const found = customMacros.find(
+      m =>
+        (sig && getMacroCanonicalSignature(m.action, m.repeatConfig) === sig) ||
+        canonicalizeFirmwareAction(m.action) === canon
+    );
+    if (found && (isMultiStepOrTimedMacro(actionStr, repeatConfig) || actionStr.startsWith('TEXT:') || actionStr.startsWith('SHORTCUT:'))) {
+      matchedMacroName = found.name.slice(0, 14);
+    }
+  }
   return {
-    label: existing?.customLabel ? existing.label : info.shortLabel,
+    label: existing?.customLabel ? existing.label : matchedMacroName || info.shortLabel,
     icon: existing?.customIcon ? existing.icon : info.icon,
     labelColor: existing?.customIcon || existing?.customLabel ? existing.labelColor : info.color,
     customLabel: existing?.customLabel,
@@ -2373,21 +2550,23 @@ export function analyzeMacroOptimizations(
 
     const prev = next[next.length - 1];
 
-    // 1. Merge consecutive delay steps
+    // 1. Merge consecutive delay steps (up to 10,000ms firmware per-step cap)
     if (prev && prev.actionType === 'delay' && step.actionType === 'delay') {
       const mergedMs =
         prev.delayMs * Math.max(1, prev.repeatCount || 1) +
         step.delayMs * Math.max(1, step.repeatCount || 1);
-      next[next.length - 1] = {
-        ...prev,
-        delayMs: mergedMs,
-        repeatCount: 1,
-        label: 'Wait / Delay'
-      };
-      if (!reasons.includes('Merge consecutive Wait steps')) {
-        reasons.push('Merge consecutive Wait steps');
+      if (mergedMs <= MAX_FIRMWARE_DELAY_STEP_MS) {
+        next[next.length - 1] = {
+          ...prev,
+          delayMs: mergedMs,
+          repeatCount: 1,
+          label: 'Wait / Delay'
+        };
+        if (!reasons.includes('Merge consecutive Wait steps')) {
+          reasons.push('Merge consecutive Wait steps');
+        }
+        continue;
       }
-      continue;
     }
 
     // 2. Collapse consecutive identical action steps when transition delays match
@@ -2419,7 +2598,7 @@ export function analyzeMacroOptimizations(
       prev.delayMs === 0
     ) {
       const waitTotal = step.delayMs * step.repeatCount;
-      if (waitTotal > 0 && waitTotal <= 60000) {
+      if (waitTotal > 0 && waitTotal <= MAX_FIRMWARE_DELAY_STEP_MS) {
         next[next.length - 1] = {
           ...prev,
           delayMs: waitTotal

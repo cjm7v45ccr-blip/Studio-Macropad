@@ -6,9 +6,11 @@ import {
   DeviceConnectionInfo,
   HardwareProfileId,
   HardwareSlotId,
+  HostOsType,
   MacroStepConfig,
   StudioProfile,
   TextMacroRepeatConfig,
+  hostOsFullLabel,
   isBleHostProfile,
   profileShortTag
 } from '../types/studio';
@@ -22,8 +24,10 @@ import {
   deriveAppearanceForAction,
   describeFirmwareAction,
   firmwareActionToBinding,
+  formatDurationCompact,
   getActionTestAvailability,
-  getMacroCanonicalSignature
+  getMacroCanonicalSignature,
+  getShortcutsForHostOs
 } from '../data/firmwareCatalog';
 import { extractProfileSlots, getBindingForProfileSlot } from '../hooks/useStudioState';
 import {
@@ -42,7 +46,6 @@ import {
   Sliders,
   Play,
   ArrowUpRight,
-  Laptop,
   Tv,
   CornerDownLeft,
   Layers,
@@ -60,6 +63,8 @@ export interface GlobalMacroSearchOpenBuilderPayload {
 interface GlobalMacroSearchProps {
   profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
+  activeHostOs?: HostOsType;
+  showAdvancedIds?: boolean;
   selectedControl: ControlId;
   customMacros: CustomMacroItem[];
   connection: DeviceConnectionInfo;
@@ -100,96 +105,11 @@ interface SearchResultEntry {
   presetBindings?: Record<HardwareSlotId, string>;
 }
 
-const EXTRA_CURATED_SHORTCUTS: {
-  id: string;
-  label: string;
-  description: string;
-  action: string;
-  categoryLabel: string;
-  icon: string;
-  color: string;
-}[] = [
-  {
-    id: 'extra-mac-region',
-    label: 'Capture Region (⌘⇧4)',
-    description: 'macOS interactive area screenshot',
-    action: 'SHORTCUT:cmd,shift:4',
-    categoryLabel: 'macOS Shortcut',
-    icon: 'camera',
-    color: '#34D399'
-  },
-  {
-    id: 'extra-mac-screen',
-    label: 'Capture Full Screen (⌘⇧3)',
-    description: 'macOS full display screenshot',
-    action: 'SHORTCUT:cmd,shift:3',
-    categoryLabel: 'macOS Shortcut',
-    icon: 'camera',
-    color: '#60A5FA'
-  },
-  {
-    id: 'extra-mac-record',
-    label: 'Screen Recording Bar (⌘⇧5)',
-    description: 'macOS capture & screen recorder toolbar',
-    action: 'SHORTCUT:cmd,shift:5',
-    categoryLabel: 'macOS Shortcut',
-    icon: 'video',
-    color: '#F87171'
-  },
-  {
-    id: 'extra-mac-force-quit',
-    label: 'Force Quit Applications (⌘⌥Esc)',
-    description: 'macOS Force Quit window',
-    action: 'SHORTCUT:cmd,alt:esc',
-    categoryLabel: 'macOS Shortcut',
-    icon: 'power',
-    color: '#F87171'
-  },
-  {
-    id: 'extra-mac-reopen-tab',
-    label: 'Reopen Closed Tab (⌘⇧T)',
-    description: 'macOS restore last closed browser tab',
-    action: 'SHORTCUT:cmd,shift:t',
-    categoryLabel: 'macOS Shortcut',
-    icon: 'globe',
-    color: '#38BDF8'
-  },
-  {
-    id: 'extra-mac-fullscreen',
-    label: 'Toggle Full Screen (⌃⌘F)',
-    description: 'macOS native full-screen window toggle',
-    action: 'SHORTCUT:cmd,ctrl:f',
-    categoryLabel: 'macOS Shortcut',
-    icon: 'maximize',
-    color: '#A78BFA'
-  },
-  {
-    id: 'extra-win-reopen-tab',
-    label: 'Reopen Closed Tab (Ctrl+Shift+T)',
-    description: 'Windows restore last closed browser tab',
-    action: 'SHORTCUT:ctrl,shift:t',
-    categoryLabel: 'Windows Shortcut',
-    icon: 'globe',
-    color: '#38BDF8'
-  },
-  {
-    id: 'extra-win-gpu-reset',
-    label: 'Reset Graphics Driver (Win+Ctrl+Shift+B)',
-    description: 'Windows instant display driver refresh',
-    action: 'SHORTCUT:win,ctrl,shift:b',
-    categoryLabel: 'Windows Shortcut',
-    icon: 'monitor',
-    color: '#FBBF24'
-  }
-];
-
 const CATALOG_CATEGORY_LABELS: Record<string, string> = {
-  media: 'Media & Function',
-  mac_macro: 'macOS Macro',
-  win_macro: 'Windows Macro',
-  ble: 'Multi-Host BLE',
-  tv: 'Smart TV',
-  tv_app: 'Streaming App'
+  media: 'Media & Keys',
+  ble: 'BLE Host',
+  tv: 'TV Remote',
+  tv_app: 'TV App'
 };
 
 function controlToHardwareSlot(control: ControlId): HardwareSlotId {
@@ -259,6 +179,8 @@ function buildStarterTemplateBinding(
 export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
   profiles,
   activeProfileId,
+  activeHostOs = 'mac',
+  showAdvancedIds = false,
   selectedControl,
   customMacros,
   connection,
@@ -288,7 +210,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
   }, []);
 
-  // Keep target profile & slot synced with workspace selection
   useEffect(() => {
     setAssignProfile(activeProfileId);
   }, [activeProfileId]);
@@ -297,7 +218,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     setAssignSlot(controlToHardwareSlot(selectedControl));
   }, [selectedControl]);
 
-  // Close when clicking outside the search input and results panel
   useEffect(() => {
     if (!isOpen) return;
     const onPointerDown = (e: MouseEvent) => {
@@ -311,7 +231,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [isOpen]);
 
-  // Global keyboard shortcut: Cmd/Ctrl + K or "/" (when not typing in another field or recording a shortcut)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -364,23 +283,24 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
   const allEntries = useMemo<SearchResultEntry[]>(() => {
     const results: SearchResultEntry[] = [];
 
-    // 1. User's Saved Custom Macros
+    // 1. User's Single Macro Library
     customMacros.forEach(macro => {
       const steps = actionToMacroSteps(macro.action, macro.repeatConfig);
-      const { totalDelayMs } = calculateStepsTiming(steps);
+      const timing = calculateStepsTiming(steps);
       const appearance = deriveAppearanceForAction(
         macro.action,
         undefined,
-        macro.repeatConfig
+        macro.repeatConfig,
+        customMacros
       );
       const binding = firmwareActionToBinding(macro.action, macro.repeatConfig);
       const stepSummary = steps.map(s => `${s.label} ${s.value}`).join(' ');
 
       const metaParts: string[] = [
-        'Saved Macro',
-        `${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`
+        'My Macro',
+        `${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`,
+        `~${formatDurationCompact(timing.estimatedRunMs)}`
       ];
-      if (totalDelayMs > 0) metaParts.push(`${totalDelayMs} ms`);
       if (macro.repeatConfig?.loopUntilStopped) {
         metaParts.push('Loop');
       } else if (macro.repeatConfig && macro.repeatConfig.repeatCount > 1) {
@@ -402,7 +322,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       });
     });
 
-    // 2. Currently Assigned Controls across MAC & TV Profiles
+    // 2. Currently Assigned Controls across Host 1–3 & TV Profiles
     const sortedProfiles = [...profiles].sort((a, b) =>
       a.id === activeProfileId ? -1 : b.id === activeProfileId ? 1 : 0
     );
@@ -425,7 +345,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           : '';
         const matchedCustom = slotSig ? customMacroBySignature.get(slotSig) : undefined;
         const desc = rawAction
-          ? describeFirmwareAction(rawAction, binding?.repeatConfig)
+          ? describeFirmwareAction(rawAction, binding?.repeatConfig, customMacros)
           : null;
 
         const displayTitle = matchedCustom
@@ -438,12 +358,16 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
         const appearance = keyCfg
           ? keyCfg.appearance
-          : deriveAppearanceForAction(rawAction, undefined, binding?.repeatConfig);
+          : deriveAppearanceForAction(
+              rawAction,
+              undefined,
+              binding?.repeatConfig,
+              customMacros
+            );
 
         const metaParts = [
           `${prof.name} (${profileShortTag(prof.id)})`,
-          slotLabel,
-          rawAction ? desc?.shortLabel || rawAction : 'Empty'
+          slotLabel
         ];
 
         results.push({
@@ -463,17 +387,12 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         });
       });
 
-      // Also index Key 9 (Hardware Mode Switch) so searching "Key 9" or "Mode" locates it on the canvas
       results.push({
         id: `assigned-${prof.id}-k9`,
         kind: 'assigned',
         filterGroup: 'assigned',
-        title: 'Hardware Mode Switch',
-        metaParts: [
-          `${prof.name} (${profileShortTag(prof.id)})`,
-          'Key 9',
-          'BLE Host / TV · Hold+Dial: Host 1–3'
-        ],
+        title: 'Mode Key',
+        metaParts: [`${prof.name} (${profileShortTag(prof.id)})`, 'Key 9'],
         searchBlob: `hardware mode switch key 9 k9 9th button profile toggle bluetooth ble host 1 2 3 dial setup oled ${prof.name} ${prof.id} ${profileShortTag(prof.id)}`.toLowerCase(),
         icon: 'layers',
         iconColor: '#38BDF8',
@@ -512,8 +431,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         filterGroup: 'templates',
         title: preset.title,
         metaParts: [
-          'Full Pad Preset',
-          `${profileShortTag(preset.mode)} Mode`,
+          'Pad Preset',
+          `${profileShortTag(preset.mode)}`,
           preset.subtitle
         ],
         searchBlob: `${preset.title} ${preset.subtitle} ${preset.description} ${preset.mode} ${profileShortTag(preset.mode)} preset layout profile`.toLowerCase(),
@@ -524,9 +443,28 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       });
     });
 
-    // 4. Built-in Firmware Macro & Action Catalog + Curated Multi-Key Shortcuts
-    FIRMWARE_STATIC_CATALOG.forEach(spec => {
-      const catLabel = CATALOG_CATEGORY_LABELS[spec.category] || 'Built-in Action';
+    // 4. Per-Device OS Mapped Shortcuts + Non-OS Static Actions (no duplicate Mac + PC rows!)
+    const mappedShortcuts = getShortcutsForHostOs(activeHostOs);
+    mappedShortcuts.forEach(spec => {
+      const binding = firmwareActionToBinding(spec.action);
+      results.push({
+        id: `catalog-os-${spec.id}`,
+        kind: 'catalog',
+        filterGroup: 'catalog',
+        title: spec.label,
+        metaParts: [`Shortcut (${hostOsFullLabel(activeHostOs)})`, spec.shortcutHint],
+        searchBlob: `${spec.label} ${spec.shortcutHint} ${spec.description} ${spec.action} shortcut`.toLowerCase(),
+        icon: spec.icon,
+        iconColor: spec.color,
+        action: spec.action,
+        binding
+      });
+    });
+
+    FIRMWARE_STATIC_CATALOG.filter(
+      spec => spec.category !== 'mac_macro' && spec.category !== 'win_macro'
+    ).forEach(spec => {
+      const catLabel = CATALOG_CATEGORY_LABELS[spec.category] || 'Action';
       const binding = firmwareActionToBinding(spec.action);
       results.push({
         id: `catalog-${spec.action}`,
@@ -542,26 +480,9 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       });
     });
 
-    EXTRA_CURATED_SHORTCUTS.forEach(extra => {
-      const binding = firmwareActionToBinding(extra.action);
-      results.push({
-        id: `catalog-${extra.id}`,
-        kind: 'catalog',
-        filterGroup: 'catalog',
-        title: extra.label,
-        metaParts: [extra.categoryLabel, extra.description],
-        searchBlob: `${extra.label} ${extra.description} ${extra.action} ${extra.categoryLabel} shortcut macro`.toLowerCase(),
-        icon: extra.icon,
-        iconColor: extra.color,
-        action: extra.action,
-        binding
-      });
-    });
-
     return results;
-  }, [profiles, activeProfileId, customMacros, customMacroBySignature]);
+  }, [profiles, activeProfileId, activeHostOs, customMacros, customMacroBySignature]);
 
-  // Compute matching entries + per-tab counts for the current query
   const { filteredEntries, tabCounts } = useMemo(() => {
     const tokens = query
       .trim()
@@ -573,7 +494,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
     allEntries.forEach(entry => {
       if (tokens.length === 0) {
-        // When browsing with empty query, hide unassigned pad slots & Key 9 unless on 'assigned' tab
         if (
           entry.kind === 'assigned' &&
           (!entry.action || entry.assignedControlId === 'k9') &&
@@ -581,7 +501,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         ) {
           return;
         }
-        // Keep 'All' overview crisp when query is empty
         let defaultScore = 10;
         if (entry.kind === 'custom') defaultScore = 100;
         else if (entry.kind === 'sequence_template') defaultScore = 80;
@@ -638,10 +557,10 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       .filter(({ entry }) => activeTab === 'all' || entry.filterGroup === activeTab)
       .map(({ entry }) => entry);
 
-    // Cap rendered rows to keep keyboard & DOM performance instant
-    const capped = tokens.length === 0 && activeTab === 'all'
-      ? tabFiltered.slice(0, 32)
-      : tabFiltered.slice(0, 60);
+    const capped =
+      tokens.length === 0 && activeTab === 'all'
+        ? tabFiltered.slice(0, 32)
+        : tabFiltered.slice(0, 60);
 
     return { filteredEntries: capped, tabCounts: counts };
   }, [allEntries, query, activeTab, activeProfileId]);
@@ -661,15 +580,17 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
   const currentTargetSlotSummary = useMemo(() => {
     const currentBinding = getBindingForProfileSlot(profiles, assignProfile, assignSlot);
     if (!currentBinding?.value) return 'Empty';
-    return describeFirmwareAction(currentBinding.value, currentBinding.repeatConfig)
-      .shortLabel;
-  }, [profiles, assignProfile, assignSlot]);
+    return describeFirmwareAction(
+      currentBinding.value,
+      currentBinding.repeatConfig,
+      customMacros
+    ).shortLabel;
+  }, [profiles, assignProfile, assignSlot, customMacros]);
 
   const handleAssignEntry = useCallback(
     (entry: SearchResultEntry) => {
       if (!entry.binding || !entry.action) return;
 
-      // Save multi-step starter recipe to My Macros only if an equivalent macro isn't already saved
       if (entry.kind === 'sequence_template') {
         const sig = getMacroCanonicalSignature(entry.action, entry.binding.repeatConfig);
         if (!sig || !customMacroBySignature.has(sig)) {
@@ -787,18 +708,18 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     { id: 'all', label: 'All', count: tabCounts.all },
     { id: 'custom', label: 'My Macros', count: tabCounts.custom },
     { id: 'assigned', label: 'On Pad', count: tabCounts.assigned },
-    { id: 'catalog', label: 'Built-in', count: tabCounts.catalog },
+    { id: 'catalog', label: 'Actions', count: tabCounts.catalog },
     { id: 'templates', label: 'Templates', count: tabCounts.templates }
   ];
 
   return (
-    <div ref={wrapperRef} className="relative flex-1 lg:flex-initial min-w-0 w-full lg:w-auto">
-      {/* Persistent Site-Wide Search Input */}
+    <div ref={wrapperRef} className="relative w-full min-w-0">
+      {/* Widened Site-Wide Search Input */}
       <div
-        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-input)] border transition-colors w-full lg:w-60 xl:w-80 ${
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border transition-colors w-full ${
           isOpen
-            ? 'border-[var(--accent)] shadow-sm'
-            : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+            ? 'border-[var(--accent)] shadow-xs'
+            : 'border-transparent hover:border-[var(--border-subtle)]'
         }`}
       >
         <Search className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
@@ -817,8 +738,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           aria-expanded={isOpen}
           aria-controls="global-macro-search-listbox"
           aria-autocomplete="list"
-          aria-label="Search macros, shortcuts, and pad controls across workspace"
-          placeholder="Search macros, shortcuts, keys…"
+          aria-label="Search actions and macros across workspace"
+          placeholder="Search actions & macros…"
           className="flex-1 min-w-0 bg-transparent text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none select-text"
         />
         {query ? (
@@ -828,13 +749,13 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
               setQuery('');
               inputRef.current?.focus();
             }}
-            aria-label="Clear macro search"
+            aria-label="Clear search"
             className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0"
           >
             <X className="w-3.5 h-3.5" />
           </button>
         ) : (
-          <kbd className="hidden md:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[10px] text-[var(--text-muted)] shrink-0">
+          <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-[var(--bg-elevated)] font-mono text-[10px] text-[var(--text-muted)] shrink-0">
             {isMacPlatform ? '⌘K' : 'Ctrl K'}
           </kbd>
         )}
@@ -851,15 +772,15 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
           <div
             ref={panelRef}
-            className="fixed top-14 left-1/2 -translate-x-1/2 w-[min(96vw,700px)] max-h-[calc(100dvh-76px)] z-50 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl flex flex-col overflow-hidden"
+            className="fixed top-14 left-1/2 -translate-x-1/2 w-[min(96vw,700px)] max-h-[calc(100dvh-76px)] z-50 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] shadow-2xl flex flex-col overflow-hidden animate-popover-in"
           >
             {/* Filter Tabs + Quick Target Slot Assignment Bar */}
-            <div className="px-3.5 pt-3 pb-2.5 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)]/40 space-y-2.5 shrink-0">
+            <div className="px-3.5 pt-3 pb-2.5 border-b border-[var(--border-subtle)] space-y-2.5 shrink-0">
               <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
                 <div
                   role="tablist"
-                  aria-label="Filter macro search results"
-                  className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]"
+                  aria-label="Filter search results"
+                  className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-input)]"
                 >
                   {filterTabs.map(tab => {
                     const selected = activeTab === tab.id;
@@ -873,9 +794,9 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           setActiveTab(tab.id);
                           inputRef.current?.focus();
                         }}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
                           selected
-                            ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                            ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
                             : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                         }`}
                       >
@@ -891,22 +812,22 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
-                  className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer shrink-0"
+                  className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer shrink-0"
                   title="Close search (Esc)"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Target Slot Selector so any macro can be assigned from any page */}
+              {/* Target Slot Selector */}
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
                 <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
                   <Layers className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                  <span className="font-medium">Quick assign target:</span>
+                  <span className="font-medium">Assign to:</span>
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <div className="inline-flex items-center p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                  <div className="inline-flex items-center p-0.5 rounded-lg bg-[var(--bg-input)]">
                     {profiles.map(prof => {
                       const active = assignProfile === prof.id;
                       const ProfIcon = isBleHostProfile(prof.id) ? Bluetooth : Tv;
@@ -921,7 +842,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           title={`${prof.name} (${profileShortTag(prof.id)})`}
                           className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                             active
-                              ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                              ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
                               : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                           }`}
                         >
@@ -939,7 +860,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                       setAssignSlot(e.target.value as HardwareSlotId);
                       inputRef.current?.focus();
                     }}
-                    className="px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
+                    className="px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
                   >
                     {HARDWARE_SLOTS.map(slot => (
                       <option key={slot} value={slot}>
@@ -948,8 +869,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                     ))}
                   </select>
 
-                  <span className="text-[var(--text-muted)] font-mono text-[10px] hidden sm:inline truncate max-w-[140px]">
-                    now: {currentTargetSlotSummary}
+                  <span className="text-[var(--text-muted)] text-[11px] hidden sm:inline truncate max-w-[140px]">
+                    ({currentTargetSlotSummary})
                   </span>
                 </div>
               </div>
@@ -965,10 +886,10 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
               {filteredEntries.length === 0 ? (
                 <div className="px-6 py-10 text-center space-y-2">
                   <div className="text-xs font-semibold text-[var(--text-primary)]">
-                    No macros or controls match “{query}”
+                    No actions or macros match “{query}”
                   </div>
                   <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
-                    Try searching by shortcut (Copy, ⌘⇧4, F13), streaming app (Netflix, YouTube), pad slot (Key 5, Knob), or create a custom sequence in the Macro Builder.
+                    Search by shortcut (Copy, Close Tab, F13), streaming app (Netflix, YouTube), pad slot (Key 5, Knob), or build a custom macro.
                   </p>
                   {query.trim() && (
                     <div className="pt-2 flex items-center justify-center gap-2">
@@ -985,7 +906,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
                       >
                         <Sliders className="w-3.5 h-3.5" />
-                        <span>Build “{query.trim().slice(0, 28)}” in Macro Editor</span>
+                        <span>Build “{query.trim().slice(0, 28)}” in Macro Builder</span>
                       </button>
                     </div>
                   )}
@@ -1012,19 +933,22 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                       }}
                       role="option"
                       aria-selected={isHighlighted}
+                      title={entry.action ? `${entry.title} — ${entry.action}` : entry.title}
                       onMouseEnter={() => setHighlightedIndex(idx)}
                       onClick={() => handlePrimaryAction(entry)}
                       className={`px-3.5 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
                         isHighlighted ? 'bg-[rgba(var(--accent-rgb),0.09)]' : ''
                       }`}
                     >
-                      {/* Icon + Title + Unboxed Dot-Separated Metadata */}
                       <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-8 h-8 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-[var(--bg-input)] flex items-center justify-center shrink-0">
                           <KeycapIcon
                             icon={entry.icon}
-                            className="w-4 h-4"
-                            style={{ color: entry.iconColor }}
+                            className={`w-4 h-4 ${
+                              isHighlighted
+                                ? 'text-[var(--accent)]'
+                                : 'text-[var(--text-secondary)]'
+                            }`}
                           />
                         </div>
 
@@ -1033,16 +957,17 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                             <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
                               {entry.title}
                             </span>
-                            {entry.action && (
+                            {showAdvancedIds && entry.action && (
                               <ParsedActionBadge
                                 action={entry.action}
                                 repeatConfig={entry.binding?.repeatConfig}
+                                showRawId
                                 maxSteps={2}
                                 className="shrink-0"
                               />
                             )}
                           </div>
-                          <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] truncate mt-0.5">
+                          <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] truncate mt-0.5 tabular-nums">
                             {entry.metaParts.map((part, pIdx) => (
                               <React.Fragment key={pIdx}>
                                 {pIdx > 0 && <span aria-hidden="true">·</span>}
@@ -1053,7 +978,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                         </div>
                       </div>
 
-                      {/* Direct Row Actions */}
                       <div
                         className="flex items-center gap-1.5 shrink-0"
                         onClick={e => e.stopPropagation()}
@@ -1069,7 +993,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                                 : testAvailability.reason ||
                                   'Connect USB pad or start Demo Mode to test'
                             }
-                            className="p-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
                           >
                             <Play className="w-3 h-3" />
                           </button>
@@ -1079,8 +1003,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           <button
                             type="button"
                             onClick={() => handleOpenInBuilder(entry)}
-                            title="Open in visual Macro Editor (Shift + Enter)"
-                            className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                            title="Open in Macro Builder (Shift + Enter)"
+                            className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
                           >
                             <Sliders className="w-3 h-3" />
                             <span>{entry.customMacroId ? 'Edit' : 'Customize'}</span>
@@ -1090,10 +1014,10 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                         <button
                           type="button"
                           onClick={() => handlePrimaryAction(entry)}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                             isHighlighted
-                              ? 'bg-[var(--accent)] border-[var(--accent)] text-white shadow-sm'
-                              : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--border-strong)]'
+                              ? 'bg-[var(--accent)] text-white shadow-xs'
+                              : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                           }`}
                         >
                           {entry.kind === 'assigned' ? (
@@ -1112,9 +1036,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                               <CornerDownLeft className="w-3 h-3" />
                             </>
                           ) : (
-                            <>
-                              <span>Assign · {SLOT_LABELS[assignSlot].short}</span>
-                            </>
+                            <span>Assign · {SLOT_LABELS[assignSlot].short}</span>
                           )}
                         </button>
                       </div>
@@ -1125,7 +1047,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
             </div>
 
             {/* Clean Keyboard Navigation Footer */}
-            <div className="px-3.5 py-2 border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)]/40 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)] shrink-0">
+            <div className="px-3.5 py-2 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)] shrink-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span>
                   <strong className="font-mono text-[var(--text-secondary)]">↑↓</strong>{' '}
@@ -1150,7 +1072,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                 </span>
               </div>
               <span className="font-mono text-[10px] tabular-nums">
-                {tabCounts.all} searchable items
+                {tabCounts.all} items
               </span>
             </div>
           </div>

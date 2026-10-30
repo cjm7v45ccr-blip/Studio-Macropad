@@ -14,10 +14,26 @@ export const HARDWARE_PROFILE_IDS: readonly HardwareProfileId[] = [
   'TV'
 ] as const;
 
+export type BleHostProfileId = 'HOST1' | 'HOST2' | 'HOST3';
+export type HostOsType = 'mac' | 'windows' | 'linux';
+export type HostOsMap = Record<BleHostProfileId, HostOsType>;
+
 export function isBleHostProfile(
   id: HardwareProfileId
-): id is 'HOST1' | 'HOST2' | 'HOST3' {
+): id is BleHostProfileId {
   return id === 'HOST1' || id === 'HOST2' || id === 'HOST3';
+}
+
+export function hostOsShortLabel(os: HostOsType): string {
+  if (os === 'windows') return 'Win';
+  if (os === 'linux') return 'Linux';
+  return 'Mac';
+}
+
+export function hostOsFullLabel(os: HostOsType): string {
+  if (os === 'windows') return 'Windows';
+  if (os === 'linux') return 'Linux';
+  return 'macOS';
 }
 
 export function bleSlotToProfileId(slot: BleHostSlot): 'HOST1' | 'HOST2' | 'HOST3' {
@@ -376,6 +392,8 @@ export interface StudioSettings {
   autoCheckFirmwareUpdates: boolean;
   firmwareRepo: string;
   lastKnownFirmware?: string;
+  hostOsMap: HostOsMap;
+  showAdvancedIds: boolean;
 }
 
 export interface FirmwareReleaseAsset {

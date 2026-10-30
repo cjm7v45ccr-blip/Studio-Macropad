@@ -1,5 +1,6 @@
 import {
   ActionBinding,
+  CustomMacroItem,
   EncoderControlConfig,
   HardwareProfileId,
   HardwareSlotId,
@@ -112,7 +113,8 @@ export function makeHardwareKey(
   id: KeyId,
   actionStr: string,
   existingAppearance?: KeyAppearance,
-  repeatConfig?: TextMacroRepeatConfig
+  repeatConfig?: TextMacroRepeatConfig,
+  customMacros?: CustomMacroItem[]
 ): KeyControlConfig {
   if (id === 'k9') {
     return {
@@ -120,7 +122,7 @@ export function makeHardwareKey(
       isModeSwitch: true,
       triggers: { tap: emptyAction() },
       appearance: {
-        label: 'MODE',
+        label: 'Mode',
         icon: 'layers',
         labelColor: '#38BDF8'
       }
@@ -131,7 +133,12 @@ export function makeHardwareKey(
   const matchedRepeat = resolveMatchingRepeatConfig(actionStr, repeatConfig);
   const upgradedAction = resolveUpgradedActionStr(actionStr, matchedRepeat);
   const binding = firmwareActionToBinding(upgradedAction, matchedRepeat);
-  const appearance = deriveAppearanceForAction(upgradedAction, existingAppearance, matchedRepeat);
+  const appearance = deriveAppearanceForAction(
+    upgradedAction,
+    existingAppearance,
+    matchedRepeat,
+    customMacros
+  );
 
   return {
     id,
@@ -177,7 +184,8 @@ export function buildHardwareProfile(
   name: string,
   slots?: Partial<Record<HardwareSlotId, string>>,
   existingProfile?: StudioProfile,
-  repeatConfigs?: SlotRepeatMap
+  repeatConfigs?: SlotRepeatMap,
+  customMacros?: CustomMacroItem[]
 ): StudioProfile {
   const accent = PROFILE_ACCENT_COLORS[id];
   const prevKeys = existingProfile?.layers[0]?.keys;
@@ -193,49 +201,57 @@ export function buildHardwareProfile(
       'k1',
       slots?.b1 || '',
       prevAppFor('k1'),
-      repeatConfigs?.[`${id}:b1`]
+      repeatConfigs?.[`${id}:b1`],
+      customMacros
     ),
     k2: makeHardwareKey(
       'k2',
       slots?.b2 || '',
       prevAppFor('k2'),
-      repeatConfigs?.[`${id}:b2`]
+      repeatConfigs?.[`${id}:b2`],
+      customMacros
     ),
     k3: makeHardwareKey(
       'k3',
       slots?.b3 || '',
       prevAppFor('k3'),
-      repeatConfigs?.[`${id}:b3`]
+      repeatConfigs?.[`${id}:b3`],
+      customMacros
     ),
     k4: makeHardwareKey(
       'k4',
       slots?.b4 || '',
       prevAppFor('k4'),
-      repeatConfigs?.[`${id}:b4`]
+      repeatConfigs?.[`${id}:b4`],
+      customMacros
     ),
     k5: makeHardwareKey(
       'k5',
       slots?.b5 || '',
       prevAppFor('k5'),
-      repeatConfigs?.[`${id}:b5`]
+      repeatConfigs?.[`${id}:b5`],
+      customMacros
     ),
     k6: makeHardwareKey(
       'k6',
       slots?.b6 || '',
       prevAppFor('k6'),
-      repeatConfigs?.[`${id}:b6`]
+      repeatConfigs?.[`${id}:b6`],
+      customMacros
     ),
     k7: makeHardwareKey(
       'k7',
       slots?.b7 || '',
       prevAppFor('k7'),
-      repeatConfigs?.[`${id}:b7`]
+      repeatConfigs?.[`${id}:b7`],
+      customMacros
     ),
     k8: makeHardwareKey(
       'k8',
       slots?.b8 || '',
       prevAppFor('k8'),
-      repeatConfigs?.[`${id}:b8`]
+      repeatConfigs?.[`${id}:b8`],
+      customMacros
     ),
     k9: makeHardwareKey('k9', '')
   };
@@ -266,9 +282,9 @@ export function buildHardwareProfile(
 
 export function buildBlankHardwareProfiles(): StudioProfile[] {
   return [
-    buildHardwareProfile('HOST1', 'Host 1'),
-    buildHardwareProfile('HOST2', 'Host 2'),
-    buildHardwareProfile('HOST3', 'Host 3'),
+    buildHardwareProfile('HOST1', 'Device 1'),
+    buildHardwareProfile('HOST2', 'Device 2'),
+    buildHardwareProfile('HOST3', 'Device 3'),
     buildHardwareProfile('TV', 'TV')
   ];
 }

@@ -2,10 +2,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ActionBinding,
   ActiveRepeatJob,
+  BleHostProfileId,
   CustomMacroItem,
   DeviceConnectionInfo,
   HardwareProfileId,
   HardwareSlotId,
+  HostOsMap,
   KeyboardLayoutId,
   MacroStepActionType,
   MacroStepConfig,
@@ -18,6 +20,7 @@ import {
   FIRMWARE_STATIC_CATALOG,
   FIRMWARE_SUPPORTED_KEYS,
   HARDWARE_SLOTS,
+  MAX_FIRMWARE_DELAY_STEP_MS,
   SLOT_LABELS,
   actionToMacroSteps,
   analyzeMacroOptimizations,
@@ -90,9 +93,9 @@ import {
   Undo2,
   Redo2,
   Sparkles,
-  HardDrive,
   Gauge,
-  Layers
+  Layers,
+  MoreHorizontal
 } from 'lucide-react';
 
 export interface MacroEditorExternalTarget {
@@ -115,9 +118,11 @@ interface MacroEditorViewProps {
   activeRepeatJob?: ActiveRepeatJob | null;
   externalTarget?: MacroEditorExternalTarget | null;
   initialTargetSlot?: HardwareSlotId;
+  hostOsMap?: HostOsMap;
+  showAdvancedIds?: boolean;
   onSaveMacro: (
     macro: CustomMacroItem,
-    options?: { forceNew?: boolean }
+    options?: { forceNew?: boolean; silent?: boolean }
   ) => { saved: CustomMacroItem | null; updatedSlotCount: number } | void;
   onDeleteMacro: (id: string) => void;
   onCleanUpDuplicateMacros?: () => void;
@@ -144,7 +149,7 @@ const MOD_LIST = [
 ];
 
 const QUICK_DELAY_PRESETS = [0, 100, 250, 500, 1000];
-const PAUSE_STEP_PRESETS = [100, 250, 500, 1000, 2000, 3000];
+const PAUSE_STEP_PRESETS = [100, 250, 500, 1000, 2000, 5000, 10000];
 const INLINE_CONNECTOR_CYCLE_MS = [0, 100, 250, 500, 1000];
 
 const BUTTON_GRID_SLOTS: HardwareSlotId[] = [
@@ -566,6 +571,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   activeRepeatJob,
   externalTarget,
   initialTargetSlot = 'b1',
+  hostOsMap,
+  showAdvancedIds = false,
   onSaveMacro,
   onDeleteMacro,
   onCleanUpDuplicateMacros,
@@ -607,6 +614,19 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     slot: HardwareSlotId;
   } | null>(null);
   const [studioSenseOpen, setStudioSenseOpen] = useState<boolean>(false);
+  const [builderMenuOpen, setBuilderMenuOpen] = useState<boolean>(false);
+  const builderMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!builderMenuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (builderMenuRef.current && !builderMenuRef.current.contains(e.target as Node)) {
+        setBuilderMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [builderMenuOpen]);
 
   const handleApplyStudioSenseSuggestion = (
     title: string,
@@ -1068,7 +1088,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   }, [macroName, macroSteps, currentRepeatKey, baseline]);
 
   const runWithUnsavedCheck = (label: string, action: () => void) => {
-    if (isDraftDirty) {
+    if (isDraftDirty && !isSequenceValid) {
       setPendingNavigation({ label, run: action });
       return;
     }
@@ -1362,14 +1382,24 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
     if (formStage2Mode !== 'none') {
       if (waitMs > 0) {
-        generated.push({
-          id: `form-${ts}-wait`,
-          label: 'Wait for Next Screen',
-          actionType: 'delay',
-          value: '',
-          delayMs: waitMs,
-          repeatCount: 1
-        });
+        let remainingWait = waitMs;
+        let waitChunkIdx = 1;
+        while (remainingWait > 0) {
+          const chunkMs = Math.min(MAX_FIRMWARE_DELAY_STEP_MS, remainingWait);
+          generated.push({
+            id: `form-${ts}-wait-${waitChunkIdx}`,
+            label:
+              waitMs > MAX_FIRMWARE_DELAY_STEP_MS
+                ? `Wait for Next Screen (${waitChunkIdx})`
+                : 'Wait for Next Screen',
+            actionType: 'delay',
+            value: '',
+            delayMs: chunkMs,
+            repeatCount: 1
+          });
+          remainingWait -= chunkMs;
+          waitChunkIdx += 1;
+        }
       }
 
       if (formStage2Mode === 'paste_mac' || formStage2Mode === 'paste_win') {
@@ -1602,19 +1632,16 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   const handleSaveMacroItem = (options?: {
     forceNew?: boolean;
     targetExistingId?: string;
+    silent?: boolean;
   }): CustomMacroItem | null => {
     if (!isSequenceValid) return null;
     const forceNew = Boolean(options?.forceNew);
-    let resolvedName = isGenericMacroName(macroName)
-      ? smartNameSuggestion
-      : macroName.trim();
-
-    if (forceNew) {
-      const lowerNames = new Set(customMacros.map(m => m.name.trim().toLowerCase()));
-      if (lowerNames.has(resolvedName.toLowerCase())) {
-        resolvedName = `${resolvedName} (Copy)`;
-      }
-    }
+    const silent = Boolean(options?.silent);
+    const trimmedInput = macroName.trim();
+    const resolvedName =
+      !trimmedInput || isGenericMacroName(macroName)
+        ? smartNameSuggestion
+        : trimmedInput;
 
     const effectiveId = forceNew
       ? `macro-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
@@ -1622,23 +1649,27 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
     const item: CustomMacroItem = {
       id: effectiveId,
-      name: resolvedName,
+      name: forceNew ? `${resolvedName} Copy` : resolvedName,
       action: builtAction,
       repeatConfig: effectiveRepeatConfig,
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       source: 'user'
     };
 
-    const result = onSaveMacro(item, { forceNew });
+    const result = onSaveMacro(item, { forceNew, silent });
     const savedItem = result && 'saved' in result && result.saved ? result.saved : item;
     const updatedSlots = result && 'updatedSlotCount' in result ? result.updatedSlotCount : 0;
 
     setSelectedMacroId(savedItem.id);
-    setMacroName(savedItem.name);
-    setAutoNamingActive(false);
-    setJustSavedFeedback({ mode: forceNew ? 'new' : 'saved', updatedSlots });
+    if (!silent || !trimmedInput) {
+      setMacroName(savedItem.name);
+      setAutoNamingActive(false);
+    }
+    if (!silent) {
+      setJustSavedFeedback({ mode: forceNew ? 'new' : 'saved', updatedSlots });
+    }
     commitBaseline(
-      savedItem.name,
+      silent && trimmedInput ? trimmedInput : savedItem.name,
       macroSteps,
       repeatCountInput,
       loopUntilStopped,
@@ -1647,24 +1678,58 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     return savedItem;
   };
 
+  // Autosave valid edits to the single macro library
+  useEffect(() => {
+    if (
+      !isDraftDirty ||
+      !isSequenceValid ||
+      isRecordingSequence ||
+      Boolean(recordingStepId) ||
+      Boolean(duplicateMacroMatch)
+    ) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      handleSaveMacroItem({ silent: true });
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [
+    isDraftDirty,
+    isSequenceValid,
+    isRecordingSequence,
+    recordingStepId,
+    duplicateMacroMatch,
+    macroName,
+    builtAction,
+    repeatCountInput,
+    loopUntilStopped,
+    repeatDelayInput
+  ]);
+
   const handleAssignToControl = () => {
     if (!isSequenceValid) return;
-    handleSaveMacroItem();
+    handleSaveMacroItem({ silent: true });
     onAssignSlot(targetProfile, targetSlot, builtBinding);
     setJustAssignedSlot({ profile: targetProfile, slot: targetSlot });
   };
 
-  // Categorized static catalog options
+  const targetHostOs = isBleHostProfile(targetProfile)
+    ? hostOsMap?.[targetProfile as BleHostProfileId] || 'mac'
+    : 'mac';
+
+  // Categorized static catalog options (OS-aware for target device)
   const mediaCatalog = useMemo(
     () => FIRMWARE_STATIC_CATALOG.filter(item => item.category === 'media'),
     []
   );
   const osCatalog = useMemo(
     () =>
-      FIRMWARE_STATIC_CATALOG.filter(
-        item => item.category === 'mac_macro' || item.category === 'win_macro'
+      FIRMWARE_STATIC_CATALOG.filter(item =>
+        targetHostOs === 'mac'
+          ? item.category === 'mac_macro'
+          : item.category === 'win_macro'
       ),
-    []
+    [targetHostOs]
   );
   const bleCatalog = useMemo(
     () => FIRMWARE_STATIC_CATALOG.filter(item => item.category === 'ble'),
@@ -1733,10 +1798,6 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     smartNameSuggestion.toLowerCase() !== macroName.trim().toLowerCase() &&
     (isGenericMacroName(macroName) || macroName.trim().length === 0);
 
-  const memoryRatio = Math.min(
-    100,
-    Math.round((draftValidation.byteLength / Math.max(1, draftValidation.maxBytes)) * 100)
-  );
   const memoryOverflow = draftValidation.byteLength > draftValidation.maxBytes;
 
   return (
@@ -1828,7 +1889,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 <div className="space-y-1.5">
                   {filteredSavedMacros.map(m => {
                     const stepsForMacro = actionToMacroSteps(m.action, m.repeatConfig);
-                    const { totalDelayMs } = calculateStepsTiming(stepsForMacro);
+                    const { estimatedRunMs } = calculateStepsTiming(stepsForMacro);
                     const isSelected = selectedMacroId === m.id;
                     const mSig = getMacroCanonicalSignature(m.action, m.repeatConfig);
                     const boundSlots = mSig ? signatureSlotUsageMap.get(mSig) || [] : [];
@@ -1839,7 +1900,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         key={m.id}
                         className={`group px-2.5 py-2 rounded-xl border flex items-start justify-between gap-2 transition-colors ${
                           isSelected
-                            ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.10)]'
+                            ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                             : 'bg-[var(--bg-input)]/45 border-[var(--border-subtle)] hover:bg-[var(--bg-input)] hover:border-[var(--border-strong)]'
                         }`}
                       >
@@ -1861,6 +1922,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               action={m.action}
                               repeatConfig={m.repeatConfig}
                               maxSteps={2}
+                              showRawId={showAdvancedIds}
+                              customMacros={customMacros}
                             />
                           </div>
 
@@ -1869,17 +1932,18 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               {stepsForMacro.length}{' '}
                               {stepsForMacro.length === 1 ? 'step' : 'steps'}
                             </span>
-                            {totalDelayMs > 0 && (
-                              <>
-                                <span aria-hidden="true">·</span>
-                                <span>{formatDurationCompact(totalDelayMs)}</span>
-                              </>
-                            )}
-                            {firstBound && (
-                              <span className="px-1.5 py-0.2 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)]">
+                            <span aria-hidden="true">·</span>
+                            <span>~{formatDurationCompact(estimatedRunMs)}</span>
+                            <span aria-hidden="true">·</span>
+                            {firstBound ? (
+                              <span className="text-[var(--accent)] font-medium">
                                 {profileShortTag(firstBound.profileId)}{' '}
                                 {SLOT_LABELS[firstBound.slot].short}
                                 {boundSlots.length > 1 ? ` +${boundSlots.length - 1}` : ''}
+                              </span>
+                            ) : (
+                              <span className="text-[var(--text-muted)] font-sans">
+                                Unassigned
                               </span>
                             )}
                           </div>
@@ -1971,8 +2035,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               ) : (
                 <div className="space-y-1.5">
                   {filteredTemplates.map(tpl => {
-                    const stepTags = tpl.steps.slice(0, 3).map((s, idx) =>
-                      parseMacroStepTag({ ...s, id: `${tpl.id}-${idx}` })
+                    const tplStepsHydrated = tpl.steps.map((s, idx) => ({
+                      ...s,
+                      id: `${tpl.id}-${idx}`
+                    }));
+                    const tplTiming = calculateStepsTiming(tplStepsHydrated);
+                    const stepTags = tplStepsHydrated.slice(0, 3).map(s =>
+                      parseMacroStepTag(s)
                     );
                     return (
                       <button
@@ -1983,29 +2052,29 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             applyStarterTemplateImmediate(tpl)
                           )
                         }
-                        className="w-full text-left px-2.5 py-2 rounded-xl bg-[var(--bg-input)]/40 border border-[var(--border-subtle)] hover:bg-[var(--bg-input)] hover:border-[var(--border-strong)] transition-colors cursor-pointer space-y-1.5"
+                        className="w-full text-left px-2.5 py-2 rounded-xl bg-[var(--bg-input)]/40 border border-[var(--border-subtle)] hover:bg-[var(--bg-input)] hover:border-[var(--border-strong)] transition-colors cursor-pointer space-y-1"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
                             {tpl.name}
                           </span>
                           <span className="font-mono text-[10px] text-[var(--text-secondary)] tabular-nums shrink-0">
-                            {tpl.summary}
+                            {tpl.steps.length} steps · ~{formatDurationCompact(tplTiming.estimatedRunMs)}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1 flex-wrap">
+                        <div className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] truncate">
                           {stepTags.map((tok, i) => (
                             <React.Fragment key={i}>
                               {i > 0 && (
-                                <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                                <span className="text-[10px] text-[var(--text-muted)]" aria-hidden="true">
                                   →
                                 </span>
                               )}
-                              <ActionPrefixTag prefix={tok.prefix} />
+                              <span className="truncate">{tok.prettyValue}</span>
                             </React.Fragment>
                           ))}
                           {tpl.steps.length > 3 && (
-                            <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                            <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">
                               +{tpl.steps.length - 3}
                             </span>
                           )}
@@ -2118,6 +2187,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               action={act}
                               repeatConfig={slotBind?.repeatConfig}
                               maxSteps={1}
+                              showRawId={showAdvancedIds}
+                              customMacros={customMacros}
                             />
                           ) : (
                             <span className="text-[var(--text-muted)] text-[11px]">
@@ -2299,95 +2370,83 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   </div>
                 )}
 
-                {/* Stats + Execution Mode + Visual Device Memory Meter */}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-[var(--text-secondary)] font-mono tabular-nums">
-                  <span>
+                {/* Compact Stats · Estimated Run Time · Storage Badge · Bound Provenance */}
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-[var(--text-secondary)] tabular-nums">
+                  <span className="font-mono">
                     {macroSteps.length} {macroSteps.length === 1 ? 'step' : 'steps'}
                   </span>
-                  <span aria-hidden="true">·</span>
-                  <span>{formatDurationCompact(timingSummary.totalDelayMs)} total wait</span>
-                  <span aria-hidden="true">·</span>
-                  <span
-                    className={
-                      needsLiveRunner
-                        ? "text-amber-400 [:root[data-theme='light']_&]:text-amber-600 font-medium"
-                        : "text-emerald-400 [:root[data-theme='light']_&]:text-emerald-600 font-medium"
-                    }
-                  >
-                    {needsLiveRunner ? 'USB Stream Assisted' : 'Runs Unplugged · BLE NVS'}
+                  <span className="text-[var(--text-muted)]" aria-hidden="true">
+                    ·
                   </span>
-                </div>
-
-                {/* Proper Device Memory Bar */}
-                <div className="pt-0.5 max-w-md space-y-1">
-                  <div className="flex items-center justify-between text-[11px] font-mono tabular-nums">
-                    <span className="inline-flex items-center gap-1.5 text-[var(--text-secondary)]">
-                      <HardDrive className="w-3 h-3 text-[var(--text-muted)]" />
-                      <span>Device memory</span>
-                      {nativeDelaySupported && timingSummary.totalDelayMs >= 150 && (
-                        <span className="px-1.5 py-0.2 rounded bg-emerald-500/12 border border-emerald-500/30 text-[10px] text-emerald-400">
-                          v4.5 DELAY
-                        </span>
-                      )}
+                  <span
+                    className="font-mono"
+                    title={`Estimated run time: ${formatDurationCompact(
+                      timingSummary.totalDelayMs
+                    )} explicit wait + ${
+                      timingSummary.firmwareOverheadMs
+                    } ms firmware pacing (50 ms after each step)`}
+                  >
+                    ~{formatDurationCompact(timingSummary.estimatedRunMs)} est. run
+                  </span>
+                  <span className="text-[var(--text-muted)]" aria-hidden="true">
+                    ·
+                  </span>
+                  <span
+                    title="Onboard macro slot storage usage (512 B max per key)"
+                    className={`px-2 py-0.5 rounded-md bg-[var(--bg-panel)] font-mono text-[11px] ${
+                      memoryOverflow
+                        ? 'text-rose-600 dark:text-rose-400 font-semibold'
+                        : draftValidation.byteLength > 400
+                        ? 'text-amber-700 dark:text-amber-300'
+                        : 'text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    {draftValidation.byteLength} / {draftValidation.maxBytes} B
+                  </span>
+                  {needsLiveRunner && (
+                    <>
+                      <span className="text-[var(--text-muted)]" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="text-amber-700 dark:text-amber-300 font-medium">
+                        USB Assisted
+                      </span>
+                    </>
+                  )}
+                  <span className="text-[var(--text-muted)]" aria-hidden="true">
+                    ·
+                  </span>
+                  {activeMacroBoundSlots.length > 0 ? (
+                    <span className="inline-flex items-center gap-1.5 flex-wrap">
+                      {activeMacroBoundSlots.map((b, bIdx) => (
+                        <React.Fragment key={`${b.profileId}-${b.slot}`}>
+                          {bIdx > 0 && (
+                            <span className="text-[var(--text-muted)]" aria-hidden="true">
+                              ·
+                            </span>
+                          )}
+                          {onJumpToControl ? (
+                            <button
+                              type="button"
+                              onClick={() => onJumpToControl(b.profileId, b.slot)}
+                              className="px-1.5 py-0.5 rounded-md bg-[var(--accent-soft)] font-mono text-[11px] font-medium text-[var(--accent)] hover:underline cursor-pointer"
+                            >
+                              {profileShortTag(b.profileId)} {SLOT_LABELS[b.slot].short}
+                            </button>
+                          ) : (
+                            <span className="font-mono text-[11px] text-[var(--accent)] font-medium">
+                              {profileShortTag(b.profileId)} {SLOT_LABELS[b.slot].short}
+                            </span>
+                          )}
+                        </React.Fragment>
+                      ))}
                     </span>
-                    <span
-                      className={
-                        memoryOverflow
-                          ? 'text-rose-400 font-semibold'
-                          : draftValidation.byteLength > 400
-                          ? 'text-amber-400'
-                          : 'text-[var(--text-secondary)]'
-                      }
-                    >
-                      {draftValidation.byteLength} / {draftValidation.maxBytes} B
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md bg-[var(--bg-panel)] text-[11px] text-[var(--text-muted)]">
+                      Unassigned
                     </span>
-                  </div>
-                  <div className="h-1.5 w-full rounded-full bg-[var(--bg-input)] border border-[var(--border-subtle)] overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-200 rounded-full ${
-                        memoryOverflow
-                          ? 'bg-rose-500'
-                          : draftValidation.byteLength > 400
-                          ? 'bg-amber-400'
-                          : 'bg-emerald-500'
-                      }`}
-                      style={{ width: `${Math.max(3, memoryRatio)}%` }}
-                    />
-                  </div>
-                  {!nativeDelaySupported &&
-                    draftValidation.nativeDelayByteEstimate > 0 &&
-                    draftValidation.nativeDelayByteEstimate < draftValidation.byteLength && (
-                      <p className="text-[11px] text-[var(--text-muted)] font-mono tabular-nums">
-                        Firmware v4.5.0 native DELAY shrinks this sequence from{' '}
-                        {draftValidation.byteLength} B → {draftValidation.nativeDelayByteEstimate} B.
-                      </p>
-                    )}
+                  )}
                 </div>
-
-                {/* Bound-Slot Provenance */}
-                {activeMacroBoundSlots.length > 0 && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] flex-wrap pt-0.5">
-                    <span>Bound to</span>
-                    {activeMacroBoundSlots.map((b, bIdx) => (
-                      <React.Fragment key={`${b.profileId}-${b.slot}`}>
-                        {bIdx > 0 && <span aria-hidden="true">·</span>}
-                        {onJumpToControl ? (
-                          <button
-                            type="button"
-                            onClick={() => onJumpToControl(b.profileId, b.slot)}
-                            className="px-1.5 py-0.5 rounded bg-[var(--bg-panel)] border border-[var(--border-subtle)] font-mono text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer tabular-nums"
-                          >
-                            {profileShortTag(b.profileId)} {SLOT_LABELS[b.slot].short}
-                          </button>
-                        ) : (
-                          <span className="font-mono text-[var(--text-primary)] tabular-nums">
-                            {profileShortTag(b.profileId)} {SLOT_LABELS[b.slot].short}
-                          </span>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {/* Clean Studio Action Toolbar */}
@@ -2801,7 +2860,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <span className="font-semibold text-[var(--text-primary)] truncate">
                     {nativeBuiltInMatch.label}
                   </span>
-                  <ParsedActionBadge action={nativeBuiltInMatch.action} />
+                  <ParsedActionBadge
+                    action={nativeBuiltInMatch.action}
+                    showRawId={showAdvancedIds}
+                    customMacros={customMacros}
+                  />
                 </div>
                 <button
                   type="button"
@@ -3108,19 +3171,22 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
                             <ActionPrefixTag prefix={stepTag.prefix} size="sm" />
 
-                            <div className="flex items-baseline gap-2 min-w-0">
+                            <div
+                              className="flex items-baseline gap-2 min-w-0"
+                              title={stepTag.value}
+                            >
                               <span
-                                className={`text-sm font-mono font-semibold truncate ${
+                                className={`text-sm font-medium truncate ${
                                   hasStepIssue
-                                    ? 'text-amber-200'
+                                    ? 'text-amber-700 dark:text-amber-200'
                                     : 'text-[var(--text-primary)]'
                                 }`}
                               >
-                                {stepTag.value}
+                                {stepTag.prettyValue}
                               </span>
-                              {stepTag.prettyValue !== stepTag.value && (
-                                <span className="text-xs text-[var(--text-secondary)] truncate hidden sm:inline">
-                                  {stepTag.prettyValue}
+                              {showAdvancedIds && stepTag.prettyValue !== stepTag.value && (
+                                <span className="text-[11px] font-mono text-[var(--text-muted)] truncate hidden sm:inline">
+                                  {stepTag.value}
                                 </span>
                               )}
                             </div>
@@ -3224,10 +3290,17 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               <span className="font-mono text-xs font-semibold text-[var(--accent)] tabular-nums shrink-0">
                                 Step {String(idx + 1).padStart(2, '0')}
                               </span>
-                              <ActionPrefixTag prefix={stepTag.prefix} size="sm" />
-                              <span className="font-mono text-xs font-semibold text-[var(--text-primary)] truncate">
-                                {stepTag.value}
+                              <span
+                                className="text-xs font-semibold text-[var(--text-primary)] truncate"
+                                title={stepTag.value}
+                              >
+                                {stepTag.prettyValue}
                               </span>
+                              {showAdvancedIds && stepTag.prettyValue !== stepTag.value && (
+                                <span className="font-mono text-[11px] text-[var(--text-muted)] truncate">
+                                  {stepTag.value}
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-1 shrink-0">
@@ -3564,22 +3637,24 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                   <button
                                     key={item.action}
                                     type="button"
+                                    title={item.action}
                                     onClick={() => updateStep(step.id, { value: item.action })}
                                     className={`p-2 rounded-lg border text-left transition-colors cursor-pointer min-w-0 ${
                                       selected
-                                        ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)]'
+                                        ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                                         : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
                                     }`}
                                   >
                                     <div className="text-xs font-medium text-[var(--text-primary)] truncate">
                                       {item.label}
                                     </div>
-                                    <div className="flex items-center gap-1.5 mt-1 min-w-0">
-                                      <ActionPrefixTag prefix={parsedItem.prefix} />
-                                      <span className="font-mono text-[10px] text-[var(--text-secondary)] truncate">
-                                        {parsedItem.value}
-                                      </span>
-                                    </div>
+                                    {showAdvancedIds && (
+                                      <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                                        <span className="font-mono text-[10px] text-[var(--text-muted)] truncate">
+                                          {parsedItem.value}
+                                        </span>
+                                      </div>
+                                    )}
                                   </button>
                                 );
                               })}
@@ -3595,22 +3670,24 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                   <button
                                     key={item.action}
                                     type="button"
+                                    title={item.action}
                                     onClick={() => updateStep(step.id, { value: item.action })}
                                     className={`p-2 rounded-lg border text-left transition-colors cursor-pointer min-w-0 ${
                                       selected
-                                        ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)]'
+                                        ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                                         : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
                                     }`}
                                   >
                                     <div className="text-xs font-medium text-[var(--text-primary)] truncate">
                                       {item.label}
                                     </div>
-                                    <div className="flex items-center gap-1.5 mt-1 min-w-0">
-                                      <ActionPrefixTag prefix={parsedItem.prefix} />
-                                      <span className="font-mono text-[10px] text-[var(--text-secondary)] truncate">
-                                        {parsedItem.value}
-                                      </span>
-                                    </div>
+                                    {showAdvancedIds && (
+                                      <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                                        <span className="font-mono text-[10px] text-[var(--text-muted)] truncate">
+                                          {parsedItem.value}
+                                        </span>
+                                      </div>
+                                    )}
                                   </button>
                                 );
                               })}
@@ -3626,22 +3703,24 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                   <button
                                     key={item.action}
                                     type="button"
+                                    title={item.action}
                                     onClick={() => updateStep(step.id, { value: item.action })}
                                     className={`p-2.5 rounded-lg border text-left transition-colors cursor-pointer min-w-0 ${
                                       selected
-                                        ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)]'
+                                        ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                                         : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
                                     }`}
                                   >
                                     <div className="text-xs font-medium text-[var(--text-primary)] truncate">
                                       {item.label}
                                     </div>
-                                    <div className="flex items-center gap-1.5 mt-1 min-w-0">
-                                      <ActionPrefixTag prefix={parsedItem.prefix} />
-                                      <span className="font-mono text-[10px] text-[var(--text-secondary)] truncate">
-                                        {parsedItem.value}
-                                      </span>
-                                    </div>
+                                    {showAdvancedIds && (
+                                      <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                                        <span className="font-mono text-[10px] text-[var(--text-muted)] truncate">
+                                          {parsedItem.value}
+                                        </span>
+                                      </div>
+                                    )}
                                   </button>
                                 );
                               })}
@@ -3705,22 +3784,24 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                       <button
                                         key={item.action}
                                         type="button"
+                                        title={item.action}
                                         onClick={() => updateStep(step.id, { value: item.action })}
                                         className={`p-2 rounded-lg border text-left transition-colors cursor-pointer min-w-0 ${
                                           selected
-                                            ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)]'
+                                            ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                                             : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
                                         }`}
                                       >
                                         <div className="text-xs font-medium text-[var(--text-primary)] truncate">
                                           {item.label}
                                         </div>
-                                        <div className="flex items-center gap-1.5 mt-1 min-w-0">
-                                          <ActionPrefixTag prefix={parsedItem.prefix} />
-                                          <span className="font-mono text-[10px] text-[var(--text-secondary)] truncate">
-                                            {parsedItem.value}
-                                          </span>
-                                        </div>
+                                        {showAdvancedIds && (
+                                          <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                                            <span className="font-mono text-[10px] text-[var(--text-muted)] truncate">
+                                              {parsedItem.value}
+                                            </span>
+                                          </div>
+                                        )}
                                       </button>
                                     );
                                   })}
@@ -3846,48 +3927,64 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           )}
 
                           {step.actionType === 'delay' && (
-                            <div className="flex items-center justify-between gap-3 flex-wrap">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {PAUSE_STEP_PRESETS.map(msVal => {
-                                  const active = step.delayMs === msVal;
-                                  return (
-                                    <button
-                                      key={msVal}
-                                      type="button"
-                                      onClick={() => updateStep(step.id, { delayMs: msVal })}
-                                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono tabular-nums cursor-pointer whitespace-nowrap ${
-                                        active
-                                          ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] font-semibold'
-                                          : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                                      }`}
-                                    >
-                                      {msVal >= 1000 ? `${msVal / 1000} s` : `${msVal} ms`}
-                                    </button>
-                                  );
-                                })}
+                            <div className="space-y-2.5">
+                              <div className="flex items-center justify-between gap-3 flex-wrap">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {PAUSE_STEP_PRESETS.map(msVal => {
+                                    const active = step.delayMs === msVal;
+                                    return (
+                                      <button
+                                        key={msVal}
+                                        type="button"
+                                        onClick={() => updateStep(step.id, { delayMs: msVal })}
+                                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono tabular-nums cursor-pointer whitespace-nowrap ${
+                                          active
+                                            ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text-primary)] font-semibold'
+                                            : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                                        }`}
+                                      >
+                                        {msVal >= 1000 ? `${msVal / 1000} s` : `${msVal} ms`}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    aria-label="Wait duration in milliseconds"
+                                    type="number"
+                                    min={10}
+                                    max={MAX_FIRMWARE_DELAY_STEP_MS}
+                                    step={50}
+                                    value={Math.min(MAX_FIRMWARE_DELAY_STEP_MS, step.delayMs)}
+                                    onChange={e =>
+                                      updateStep(step.id, {
+                                        delayMs: Math.max(
+                                          10,
+                                          Math.min(
+                                            MAX_FIRMWARE_DELAY_STEP_MS,
+                                            parseInt(e.target.value, 10) || 0
+                                          )
+                                        )
+                                      })
+                                    }
+                                    className="w-24 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] text-right focus:outline-none focus:border-[var(--accent)]"
+                                  />
+                                  <span className="text-xs font-mono text-[var(--text-muted)]">
+                                    ms
+                                  </span>
+                                </div>
                               </div>
 
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  aria-label="Wait duration in milliseconds"
-                                  type="number"
-                                  min={10}
-                                  max={60000}
-                                  step={50}
-                                  value={step.delayMs}
-                                  onChange={e =>
-                                    updateStep(step.id, {
-                                      delayMs: Math.max(
-                                        0,
-                                        Math.min(60000, parseInt(e.target.value, 10) || 0)
-                                      )
-                                    })
-                                  }
-                                  className="w-24 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono tabular-nums text-[var(--text-primary)] text-right focus:outline-none focus:border-[var(--accent)]"
-                                />
-                                <span className="text-xs font-mono text-[var(--text-muted)]">
-                                  ms
-                                </span>
+                              <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--text-muted)] flex-wrap">
+                                <span>Max 10,000 ms (10 s) per firmware wait step.</span>
+                                <button
+                                  type="button"
+                                  onClick={() => insertStepAfter(idx, 'delay')}
+                                  className="font-medium text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap"
+                                >
+                                  + Chain another Wait step
+                                </button>
                               </div>
                             </div>
                           )}
@@ -3923,14 +4020,17 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                       aria-label="Wait after step in milliseconds"
                                       type="number"
                                       min={0}
-                                      max={60000}
+                                      max={MAX_FIRMWARE_DELAY_STEP_MS}
                                       step={50}
-                                      value={step.delayMs}
+                                      value={Math.min(MAX_FIRMWARE_DELAY_STEP_MS, step.delayMs)}
                                       onChange={e =>
                                         updateStep(step.id, {
                                           delayMs: Math.max(
                                             0,
-                                            Math.min(60000, parseInt(e.target.value, 10) || 0)
+                                            Math.min(
+                                              MAX_FIRMWARE_DELAY_STEP_MS,
+                                              parseInt(e.target.value, 10) || 0
+                                            )
                                           )
                                         })
                                       }
@@ -4162,18 +4262,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 </div>
               )}
 
-              {needsLiveRunner ? (
-                <p className="text-[11px] text-amber-300/90 leading-relaxed">
+              {needsLiveRunner && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
                   {draftValidation.usbRequiredReason ||
                     'Keep Studio MacroPad open over USB to stream remaining steps or repeats.'}
                 </p>
-              ) : (
-                isSequenceValid &&
-                (macroSteps.length > 1 || timingSummary.totalDelayMs > 0) && (
-                  <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                    Runs standalone on MacroPad over Bluetooth — all steps and wait timings save directly to onboard NVS.
-                  </p>
-                )
               )}
             </div>
 
@@ -4196,7 +4289,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         title={`${p.name} (${profileShortTag(p.id)})`}
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                           active
-                            ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                            ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs'
                             : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                         }`}
                       >
@@ -4211,7 +4304,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 </div>
               </div>
 
-              {/* Mini Physical Layout: 2x4 Keys + 3 Rotary Knob Slots with Colored Tags */}
+              {/* Mini Physical Layout: 2x4 Keys + 3 Rotary Knob Slots */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                 <div className="sm:col-span-8 grid grid-cols-4 gap-1.5">
                   {BUTTON_GRID_SLOTS.map((slot, i) => {
@@ -4229,7 +4322,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         onClick={() => setTargetSlot(slot)}
                         className={`p-2 rounded-lg border text-left transition-colors cursor-pointer min-w-0 ${
                           isSelected
-                            ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.12)]'
+                            ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                             : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
                         }`}
                       >
@@ -4242,6 +4335,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               action={act}
                               repeatConfig={slotBind?.repeatConfig}
                               maxSteps={1}
+                              showRawId={showAdvancedIds}
+                              customMacros={customMacros}
                             />
                           ) : (
                             <span className="text-[10px] font-mono text-[var(--text-muted)]">
@@ -4271,7 +4366,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         onClick={() => setTargetSlot(slot)}
                         className={`flex-1 px-2.5 py-1.5 rounded-lg border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer min-w-0 ${
                           isSelected
-                            ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.12)]'
+                            ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                             : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
                         }`}
                       >
@@ -4287,6 +4382,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               action={act}
                               repeatConfig={slotBind?.repeatConfig}
                               maxSteps={1}
+                              showRawId={showAdvancedIds}
+                              customMacros={customMacros}
                             />
                           ) : (
                             <span className="text-[10px] font-mono text-[var(--text-muted)]">
@@ -4303,15 +4400,15 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
           </section>
         </div>
 
-        {/* Sticky Bottom Save & Assign Action Bar */}
+        {/* Simplified Sticky Bottom Bar: Autosave status + Overflow Menu + Single Primary Assign CTA */}
         <footer className="sticky bottom-0 z-20 bg-[var(--bg-panel)]/95 backdrop-blur-md border-t border-[var(--border-subtle)] px-4 py-3 sm:px-8">
           <div className="max-w-3xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] min-w-0 flex-wrap">
               {justAssignedSlot &&
               justAssignedSlot.profile === targetProfile &&
               justAssignedSlot.slot === targetSlot ? (
-                <span className="text-emerald-400 font-semibold">
-                  Assigned to {activeTargetProfileObj.name} · {SLOT_LABELS[targetSlot].short}
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                  Assigned to {activeTargetProfileObj.name} · {SLOT_LABELS[targetSlot].short} ✓
                 </span>
               ) : (
                 <>
@@ -4323,6 +4420,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       action={currentSlotAction}
                       repeatConfig={currentSlotBinding?.repeatConfig}
                       maxSteps={2}
+                      showRawId={showAdvancedIds}
+                      customMacros={customMacros}
                     />
                   ) : (
                     <span className="font-mono text-[var(--text-muted)]">Empty</span>
@@ -4331,7 +4430,20 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+              {/* Quiet Autosave Status */}
+              <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+                {justSavedFeedback?.mode === 'new'
+                  ? 'Saved copy ✓'
+                  : !isSequenceValid
+                  ? 'Incomplete step'
+                  : isDraftDirty
+                  ? 'Autosaving…'
+                  : selectedMacroId
+                  ? 'Saved ✓'
+                  : 'Ready'}
+              </span>
+
               {onJumpToControl &&
                 justAssignedSlot &&
                 justAssignedSlot.profile === targetProfile &&
@@ -4339,55 +4451,92 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onJumpToControl(targetProfile, targetSlot)}
-                    className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                    className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <span>View on Device</span>
                     <ArrowUpRight className="w-3.5 h-3.5" />
                   </button>
                 )}
 
-              {(selectedMacroId || duplicateMacroMatch) && (
+              {/* Secondary Actions Menu (Save as copy, New blank, Studio Sense, Delete) */}
+              <div className="relative" ref={builderMenuRef}>
                 <button
                   type="button"
-                  disabled={!isSequenceValid}
-                  onClick={() => handleSaveMacroItem({ forceNew: true })}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+                  onClick={() => setBuilderMenuOpen(v => !v)}
+                  aria-label="More macro actions"
+                  aria-expanded={builderMenuOpen}
+                  title="More macro actions (Save as copy, New blank, Studio Sense)"
+                  className="p-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0"
                 >
-                  <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
-                  <span>Save as New</span>
+                  <MoreHorizontal className="w-4 h-4" />
                 </button>
-              )}
 
-              <button
-                type="button"
-                disabled={!isSequenceValid}
-                onClick={() => handleSaveMacroItem()}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-strong)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
-              >
-                {justSavedFeedback ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>
-                      {justSavedFeedback.mode === 'new'
-                        ? 'Saved as New'
-                        : justSavedFeedback.updatedSlots > 0
-                        ? `Updated · ${justSavedFeedback.updatedSlots} keys`
-                        : 'Saved'}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5 text-[var(--accent)]" />
-                    <span>{selectedMacroId ? 'Update Macro' : 'Save Macro'}</span>
-                  </>
+                {builderMenuOpen && (
+                  <div className="absolute right-0 bottom-full mb-2 w-52 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-xl py-1.5 z-40 text-xs">
+                    <button
+                      type="button"
+                      disabled={!isSequenceValid}
+                      onClick={() => {
+                        handleSaveMacroItem({ forceNew: true });
+                        setBuilderMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 text-[var(--text-primary)] hover:bg-[var(--bg-input)] disabled:opacity-40 disabled:pointer-events-none cursor-pointer whitespace-nowrap"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                      <span>Save as copy</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        startBlankMacroImmediate();
+                        setBuilderMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 text-[var(--text-primary)] hover:bg-[var(--bg-input)] cursor-pointer whitespace-nowrap"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                      <span>New blank macro</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudioSenseOpen(true);
+                        setBuilderMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 text-[var(--text-primary)] hover:bg-[var(--bg-input)] cursor-pointer whitespace-nowrap"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
+                      <span>Studio Sense suggestions…</span>
+                    </button>
+
+                    {selectedMacroId && (
+                      <>
+                        <div className="my-1 border-t border-[var(--border-subtle)]" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onDeleteMacro(selectedMacroId);
+                            setSelectedMacroId(null);
+                            setBuilderMenuOpen(false);
+                          }}
+                          className="w-full px-3 py-2 text-left flex items-center gap-2 text-rose-600 dark:text-rose-400 hover:bg-[var(--bg-input)] cursor-pointer whitespace-nowrap"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete from library</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
-              </button>
+              </div>
 
+              {/* One Primary CTA Button */}
               <button
                 type="button"
                 disabled={!isSequenceValid}
                 onClick={handleAssignToControl}
-                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap"
+                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>

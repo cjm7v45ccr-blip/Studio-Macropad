@@ -69,10 +69,17 @@ import {
   Command,
   Sliders,
   CheckSquare,
-  CircleOff
+  CircleOff,
+  X,
+  Square
 } from 'lucide-react';
 import { ActionBinding, CustomMacroItem } from '../types/studio';
-import { bindingToFirmwareAction, describeFirmwareAction } from './firmwareCatalog';
+import {
+  bindingToFirmwareAction,
+  canonicalizeFirmwareAction,
+  describeFirmwareAction,
+  getMacroCanonicalSignature
+} from './firmwareCatalog';
 
 export interface IconEntry {
   id: string;
@@ -105,7 +112,9 @@ export const ICON_LIBRARY: IconEntry[] = [
   { id: 'clapperboard', label: 'Cinema / App', category: 'Stream & Calls', keywords: ['scene', 'movie', 'tv', 'clip', 'local_movies'], component: Clapperboard },
   { id: 'hand', label: 'Raise Hand', category: 'Stream & Calls', keywords: ['hand', 'zoom', 'question', 'front_hand'], component: Hand },
   { id: 'message-square', label: 'Captions / Chat', category: 'Stream & Calls', keywords: ['chat', 'cc', 'captions', 'forum', 'comment'], component: MessageSquare },
-  { id: 'phone-off', label: 'Close / Exit', category: 'Stream & Calls', keywords: ['leave', 'exit', 'close', 'stop', 'call_end'], component: PhoneOff },
+  { id: 'square', label: 'Stop', category: 'Media', keywords: ['stop', 'halt', 'square'], component: Square },
+  { id: 'x', label: 'Close / Dismiss', category: 'System', keywords: ['close', 'tab', 'exit', 'cancel', 'dismiss', 'x'], component: X },
+  { id: 'phone-off', label: 'End Call / Leave', category: 'Stream & Calls', keywords: ['leave', 'hangup', 'call_end'], component: PhoneOff },
 
   // Creative & Video Editing
   { id: 'scissors', label: 'Cut / Blade', category: 'Creative', keywords: ['cut', 'razor', 'blade', 'split', 'trim', 'content_cut'], component: Scissors },
@@ -192,14 +201,22 @@ export const KeycapIcon: React.FC<{
 
 export function summarizeAction(binding: ActionBinding, customMacros: CustomMacroItem[] = []): string {
   const raw = bindingToFirmwareAction(binding);
-  if (!raw) return 'Unassigned (Sync USB or choose action)';
+  if (!raw) return 'Unassigned';
+  if (customMacros.length > 0) {
+    const sig = getMacroCanonicalSignature(raw, binding.repeatConfig);
+    const canon = canonicalizeFirmwareAction(raw);
+    const matchedMacro = customMacros.find(
+      m =>
+        (sig && getMacroCanonicalSignature(m.action, m.repeatConfig) === sig) ||
+        canonicalizeFirmwareAction(m.action) === canon
+    );
+    if (matchedMacro) {
+      return matchedMacro.name;
+    }
+  }
   if (binding.repeatConfig) {
-    return describeFirmwareAction(raw, binding.repeatConfig).fullLabel;
+    return describeFirmwareAction(raw, binding.repeatConfig, customMacros).fullLabel;
   }
-  const matchedMacro = customMacros.find(m => m.action === raw);
-  if (matchedMacro) {
-    return matchedMacro.name;
-  }
-  const info = describeFirmwareAction(raw);
+  const info = describeFirmwareAction(raw, undefined, customMacros);
   return info.fullLabel;
 }

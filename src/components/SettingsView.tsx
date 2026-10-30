@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
+  BleHostProfileId,
   BleHostSlot,
   DebugLogEntry,
   DeviceConnectionInfo,
   FirmwareInstallProgress,
   FirmwareReleaseInfo,
   FirmwareUpdateState,
+  HostOsType,
   KeyboardLayoutId,
   StudioProfile,
   StudioSettings,
@@ -77,6 +79,7 @@ interface SettingsViewProps {
     opts?: { autoBackupBeforeFlash?: boolean }
   ) => Promise<boolean>;
   onUpdateSettings: (patch: Partial<StudioSettings>) => void;
+  onSetHostOs?: (hostId: BleHostProfileId, nextOs: HostOsType) => void;
   onPullFromUsb: () => Promise<boolean>;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   onResetBothProfiles: () => Promise<void> | void;
@@ -139,6 +142,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onUploadFirmwareToMacropad,
   onUploadLocalFirmwareFile,
   onUpdateSettings,
+  onSetHostOs,
   onPullFromUsb,
   onSwitchBleHost,
   onResetBothProfiles,
@@ -779,7 +783,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <span
                           className={
                             telemetry.wifiConnected
-                              ? 'text-emerald-400'
+                              ? 'text-emerald-600 dark:text-emerald-400'
                               : 'text-[var(--text-muted)]'
                           }
                         >
@@ -800,7 +804,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <span
                           className={
                             telemetry.tvPaired
-                              ? 'text-emerald-400'
+                              ? 'text-emerald-600 dark:text-emerald-400'
                               : 'text-[var(--text-muted)]'
                           }
                         >
@@ -903,7 +907,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
                     <Code2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
                     <span>ESP32 Firmware v4.5.0 Source Studio</span>
-                    <span className="font-mono text-[11px] font-medium text-emerald-400">
+                    <span className="font-mono text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                       · Arduino / PlatformIO
                     </span>
                   </div>
@@ -918,7 +922,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onClick={() => setFirmwareBinGuideOpen(true)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                   >
-                    <HelpCircle className="w-3.5 h-3.5 text-sky-400" />
+                    <HelpCircle className="w-3.5 h-3.5 text-[var(--accent)]" />
                     <span>Firmware .bin Guide</span>
                   </button>
                   <button
@@ -948,7 +952,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     Native DELAY:&lt;ms&gt; Engine
                   </div>
                   <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    Runs 1 ms–60 s multi-screen login & 2FA waits completely unplugged in &lt;80 bytes.
+                    Runs up to 10 s per DELAY step (chainable for longer waits) completely unplugged in &lt;80 bytes.
                   </div>
                 </div>
                 <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
@@ -998,13 +1002,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-2 flex-wrap">
                   <span>Multi-Host Bluetooth Engine</span>
                   {connection.connected && telemetry && (
-                    <span className="font-mono text-[11px] font-semibold text-sky-400 tabular-nums">
+                    <span className="font-mono text-[11px] font-semibold text-[var(--accent)] tabular-nums">
                       · H{telemetry.bleActiveHost} {telemetry.bleDeviceName}
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-[var(--text-muted)]">
-                  3 independent Bluetooth host profiles with unique MAC addresses (<span className="font-mono">Studio Pad 1–3</span>) and separate 11-control button layouts. Hold <span className="font-mono">Mode</span> + rotate the dial on hardware to cycle instantly.
+                  3 independent Bluetooth host profiles (<span className="font-mono">Studio Pad 1–3</span>) with per-device OS mapping so shortcuts like Copy map automatically to ⌘C or Ctrl+C.
                 </p>
               </div>
             </div>
@@ -1014,8 +1018,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 !connection.connected
                   ? 'text-[var(--text-muted)]'
                   : telemetry?.bleConnected
-                  ? 'text-emerald-400'
-                  : 'text-amber-300'
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-amber-700 dark:text-amber-300'
               }`}
             >
               {!connection.connected
@@ -1033,42 +1037,90 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           >
             {([1, 2, 3] as const).map(slot => {
               const isActive = connection.connected && (telemetry?.bleActiveHost ?? 1) === slot;
-              const hostProf = profiles.find(p => p.id === bleSlotToProfileId(slot));
-              const customName = hostProf?.name || `Host ${slot}`;
+              const hostId = bleSlotToProfileId(slot);
+              const hostProf = profiles.find(p => p.id === hostId);
+              const customName = hostProf?.name || `Device ${slot}`;
+              const currentOs = settings.hostOsMap?.[hostId] || 'mac';
               return (
-                <button
+                <div
                   key={slot}
-                  type="button"
-                  disabled={!connection.connected || bleBusy}
-                  onClick={() => handleSwitchBleHost(slot)}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer disabled:opacity-45 disabled:pointer-events-none flex items-center justify-between gap-2 ${
+                  className={`p-3 rounded-xl border transition-all flex flex-col justify-between gap-2.5 ${
                     isActive
-                      ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] shadow-sm'
-                      : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
+                      ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text-primary)]'
+                      : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
                   }`}
                 >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-[11px] font-bold text-sky-400 tabular-nums shrink-0">
-                        H{slot}
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      disabled={!connection.connected || bleBusy}
+                      onClick={() => handleSwitchBleHost(slot)}
+                      className="min-w-0 text-left cursor-pointer disabled:cursor-default flex-1"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-[11px] font-bold text-[var(--accent)] tabular-nums shrink-0">
+                          H{slot}
+                        </span>
+                        <span className="text-[var(--text-muted)]" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                          {customName}
+                        </span>
+                      </div>
+                      <div className="font-mono text-[11px] text-[var(--text-muted)] mt-0.5 truncate tabular-nums">
+                        Studio Pad {slot}
+                      </div>
+                    </button>
+                    {isActive && (
+                      <span className="text-[10px] font-mono font-semibold text-[var(--accent)] shrink-0">
+                        Active
                       </span>
-                      <span className="text-[var(--text-muted)]" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                        {customName}
-                      </span>
-                    </div>
-                    <div className="font-mono text-[11px] text-[var(--text-muted)] mt-1 truncate tabular-nums">
-                      Studio Pad {slot} · 11 controls
-                    </div>
+                    )}
                   </div>
-                  {isActive && (
-                    <span className="text-[10px] font-mono font-semibold text-sky-400 shrink-0">
-                      Active
-                    </span>
-                  )}
-                </button>
+
+                  {/* Per-device OS selector */}
+                  <div
+                    role="group"
+                    aria-label={`${customName} operating system`}
+                    className="grid grid-cols-3 gap-1 p-0.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)]"
+                  >
+                    {(
+                      [
+                        { id: 'mac', label: 'Mac' },
+                        { id: 'windows', label: 'Windows' },
+                        { id: 'linux', label: 'Linux' }
+                      ] as const
+                    ).map(osOpt => {
+                      const selectedOs = currentOs === osOpt.id;
+                      return (
+                        <button
+                          key={osOpt.id}
+                          type="button"
+                          onClick={() => {
+                            if (onSetHostOs) {
+                              onSetHostOs(hostId, osOpt.id);
+                            } else {
+                              onUpdateSettings({
+                                hostOsMap: {
+                                  ...settings.hostOsMap,
+                                  [hostId]: osOpt.id
+                                }
+                              });
+                            }
+                          }}
+                          className={`py-1 px-1.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                            selectedOs
+                              ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs font-semibold'
+                              : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                          }`}
+                        >
+                          {osOpt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -1086,11 +1138,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="font-mono text-[11px] text-[var(--text-secondary)]">
               {connection.connected && telemetry ? (
                 telemetry.wifiConnected ? (
-                  <span className="text-emerald-400">
+                  <span className="text-emerald-600 dark:text-emerald-400">
                     Saved: {telemetry.ssid || 'Wi-Fi'} · IP {telemetry.ip}
                   </span>
                 ) : telemetry.ssid ? (
-                  <span className="text-amber-300">
+                  <span className="text-amber-700 dark:text-amber-300">
                     Saved network: {telemetry.ssid} (Disconnected)
                   </span>
                 ) : (
@@ -1139,14 +1191,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div
               className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
                 wifiStatusBanner.ok
-                  ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-300'
-                  : 'bg-rose-500/12 border-rose-500/35 text-rose-300'
+                  ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-rose-500/12 border-rose-500/35 text-rose-700 dark:text-rose-300'
               }`}
             >
               {wifiStatusBanner.ok ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
               )}
               <span>{wifiStatusBanner.text}</span>
             </div>
@@ -1298,14 +1350,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div
               className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
                 tvTestResult.ok
-                  ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-300'
-                  : 'bg-rose-500/12 border-rose-500/35 text-rose-300'
+                  ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-rose-500/12 border-rose-500/35 text-rose-700 dark:text-rose-300'
               }`}
             >
               {tvTestResult.ok ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
               )}
               <span>{tvTestResult.text}</span>
             </div>
@@ -1420,7 +1472,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             })}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[var(--border-subtle)]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-[var(--border-subtle)]">
             {/* Live Events Toggle */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-[var(--text-secondary)]">
@@ -1437,7 +1489,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <Activity
                     className={`w-4 h-4 ${
                       settings.liveEventsEnabled
-                        ? 'text-emerald-400'
+                        ? 'text-emerald-600 dark:text-emerald-400'
                         : 'text-[var(--text-muted)]'
                     }`}
                   />
@@ -1463,7 +1515,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               >
                 <span className="flex items-center gap-2">
                   {settings.soundEnabled ? (
-                    <Volume2 className="w-4 h-4 text-emerald-400" />
+                    <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   ) : (
                     <VolumeX className="w-4 h-4 text-[var(--text-muted)]" />
                   )}
@@ -1471,6 +1523,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </span>
                 <span className="font-mono text-[11px] text-[var(--text-muted)]">
                   {settings.soundEnabled ? 'ON' : 'OFF'}
+                </span>
+              </button>
+            </div>
+
+            {/* Advanced Raw Firmware IDs Toggle */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[var(--text-secondary)]">
+                Advanced Labels
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSettings({ showAdvancedIds: !settings.showAdvancedIds })
+                }
+                title="Show or hide raw firmware command strings like PLAY_PAUSE and VOL_DOWN"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <Code2
+                    className={`w-4 h-4 ${
+                      settings.showAdvancedIds
+                        ? 'text-[var(--accent)]'
+                        : 'text-[var(--text-muted)]'
+                    }`}
+                  />
+                  <span>Raw Firmware IDs</span>
+                </span>
+                <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                  {settings.showAdvancedIds ? 'ON' : 'OFF'}
                 </span>
               </button>
             </div>

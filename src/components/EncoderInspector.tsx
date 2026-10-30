@@ -8,6 +8,7 @@ import {
   EncoderSubControlId,
   HardwareProfileId,
   HardwareSlotId,
+  HostOsType,
   KeyboardLayoutId,
   SlotRepeatMap,
   profileShortTag
@@ -35,6 +36,10 @@ interface EncoderInspectorProps {
   onSelectSubControl: (sub: EncoderSubControlId) => void;
   activeProfileId: HardwareProfileId;
   activeProfileName: string;
+  activeHostOs: HostOsType;
+  onChangeHostOs?: (os: HostOsType) => void;
+  showAdvancedIds?: boolean;
+  onToggleAdvancedIds?: () => void;
   customMacros: CustomMacroItem[];
   keyboardLayout: KeyboardLayoutId;
   connection: DeviceConnectionInfo;
@@ -61,6 +66,10 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   onSelectSubControl,
   activeProfileId,
   activeProfileName,
+  activeHostOs,
+  onChangeHostOs,
+  showAdvancedIds = false,
+  onToggleAdvancedIds,
   customMacros,
   keyboardLayout,
   connection,
@@ -81,7 +90,6 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
       ? encoder.cw
       : encoder.ccw;
 
-  // Track the exact binding this encoder sub-control had when selected
   const selectionKey = `${activeProfileId}:${selectedSubControl}`;
   const [trackedKey, setTrackedKey] = useState(selectionKey);
   const [initialBindingOnSelect, setInitialBindingOnSelect] = useState<ActionBinding>(
@@ -97,7 +105,11 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
 
   const slotMeta = SLOT_LABELS[selectedSubControl];
   const factoryDefaultAction = FACTORY_DEFAULT_SLOTS[activeProfileId][selectedSubControl];
-  const factoryDesc = describeFirmwareAction(factoryDefaultAction);
+  const factoryDesc = describeFirmwareAction(
+    factoryDefaultAction,
+    undefined,
+    customMacros
+  );
 
   const canUndoSelection =
     activeBinding.value !== initialBindingOnSelect.value ||
@@ -201,7 +213,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   }[] = [
     {
       id: 'dial',
-      title: 'Knob Press',
+      title: 'Press',
       icon: Disc,
       binding: encoder.dial
     },
@@ -220,132 +232,120 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   ];
 
   return (
-    <aside className="w-full lg:w-[400px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col lg:h-full overflow-hidden">
-      {/* Header */}
-      <div className="px-4 sm:px-5 py-3.5 border-b border-[var(--border-subtle)] space-y-2.5">
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className="w-9 h-9 rounded-full bg-[var(--bg-input)] border-2 flex items-center justify-center shrink-0"
-            style={{ borderColor: encoder.color }}
-          >
-            <RotateCw className="w-4 h-4 text-[var(--text-primary)]" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
+    <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
+      {/* Sticky Single-Scroll Header */}
+      <div className="sticky top-0 z-20 bg-[var(--bg-panel)]/95 backdrop-blur-md px-4 sm:px-5 py-3.5 border-b border-[var(--border-subtle)] space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="w-9 h-9 rounded-full bg-[var(--bg-input)] border-2 flex items-center justify-center shrink-0"
+              style={{ borderColor: encoder.color }}
+            >
+              <RotateCw className="w-4 h-4 text-[var(--text-primary)]" />
+            </div>
+            <div className="min-w-0">
               <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
                 {slotMeta.full}
               </h2>
-
+              <p className="text-xs text-[var(--text-muted)] truncate">
+                {activeProfileName} · {profileShortTag(activeProfileId)} · {slotMeta.short}
+              </p>
             </div>
-            <p className="text-xs text-[var(--text-muted)] truncate">
-              {activeProfileName} ({profileShortTag(activeProfileId)}) · {slotMeta.short}
-            </p>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              disabled={!canUndoSelection}
+              onClick={() => onUpdateSlot(selectedSubControl, initialBindingOnSelect)}
+              title="Undo changes to this knob control"
+              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <Undo2 className="w-3 h-3 shrink-0" />
+              <span>Undo</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isAlreadyUnassigned}
+              onClick={() =>
+                onClearSlot
+                  ? onClearSlot(selectedSubControl)
+                  : onUpdateSlot(selectedSubControl, { type: 'none', value: '' })
+              }
+              title="Clear this knob control"
+              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <XCircle className="w-3 h-3 shrink-0" />
+              <span>Clear</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isAlreadyFactoryDefault}
+              onClick={() => onResetSlotToDefault(selectedSubControl)}
+              title={`Reset to default: ${factoryDesc.fullLabel}`}
+              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw className="w-3 h-3 shrink-0" />
+              <span>Default</span>
+            </button>
           </div>
         </div>
 
-        {/* Control-Scoped Undo, Clear & Reset to Default Bar */}
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            disabled={!canUndoSelection}
-            onClick={() => onUpdateSlot(selectedSubControl, initialBindingOnSelect)}
-            title="Restore the value this knob control had when you selected it"
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <Undo2 className="w-3.5 h-3.5 shrink-0" />
-            <span>Undo</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={isAlreadyUnassigned}
-            onClick={() =>
-              onClearSlot
-                ? onClearSlot(selectedSubControl)
-                : onUpdateSlot(selectedSubControl, { type: 'none', value: '' })
-            }
-            title="Clear this knob control so it sends nothing"
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <XCircle className="w-3.5 h-3.5 shrink-0" />
-            <span>Clear</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={isAlreadyFactoryDefault}
-            onClick={() => onResetSlotToDefault(selectedSubControl)}
-            title={`Reset to factory default: ${factoryDesc.fullLabel}`}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-            <span>Default</span>
-          </button>
+        {/* 3 Real Hardware Encoder Controls Selector */}
+        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[var(--bg-input)]">
+          {slotCards.map(card => {
+            const Icon = card.icon;
+            const active = selectedSubControl === card.id;
+            return (
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => onSelectSubControl(card.id)}
+                className={`flex flex-col items-start gap-1 px-2.5 py-2 rounded-lg text-left transition-all cursor-pointer min-w-0 ${
+                  active
+                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-2xs ring-1 ring-[var(--accent)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 w-full min-w-0">
+                  <Icon
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
+                    }`}
+                  />
+                  <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                    {card.title}
+                  </span>
+                </div>
+                <div className="w-full min-w-0 truncate">
+                  <ParsedActionBadge
+                    action={card.binding.value}
+                    repeatConfig={card.binding.repeatConfig}
+                    customMacros={customMacros}
+                    showRawId={showAdvancedIds}
+                    maxSteps={1}
+                  />
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-        {/* 3 Real Hardware Encoder Controls Selector */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[var(--text-secondary)]">
-            Rotary Knob Controls (3 Slots)
-          </label>
-          <div className="grid grid-cols-3 gap-1.5">
-            {slotCards.map(card => {
-              const Icon = card.icon;
-              const active = selectedSubControl === card.id;
-              return (
-                <button
-                  key={card.id}
-                  type="button"
-                  onClick={() => onSelectSubControl(card.id)}
-                  style={
-                    active
-                      ? {
-                          borderColor: 'var(--accent)',
-                          backgroundColor: 'rgba(var(--accent-rgb), 0.14)'
-                        }
-                      : undefined
-                  }
-                  className={`flex flex-col items-start gap-1.5 p-2.5 rounded-xl border text-left transition-all cursor-pointer min-w-0 ${
-                    active
-                      ? 'text-[var(--text-primary)] shadow-sm'
-                      : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full gap-1">
-                    <Icon className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                    <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
-                      {card.title}
-                    </span>
-                  </div>
-                  <div className="w-full min-w-0 truncate">
-                    <ParsedActionBadge
-                      action={card.binding.value}
-                      repeatConfig={card.binding.repeatConfig}
-                      maxSteps={1}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed pt-0.5">
-            Hardware shortcut: holding <span className="font-semibold text-[var(--text-secondary)]">Mode</span> while rotating the dial cycles BLE Hosts 1–3 without overriding these bindings.
-          </p>
-        </div>
-
+      {/* Single-Scroll Body */}
+      <div key={selectionKey} className="p-4 sm:p-5 space-y-4 animate-panel-in">
         {/* Quick Knob Presets & Swap Directions */}
-        <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2.5">
+        <div className="p-3 rounded-xl bg-[var(--bg-input)] space-y-2.5">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <span className="text-[11px] font-medium text-[var(--text-muted)]">
               Knob Presets
             </span>
             <button
               type="button"
               onClick={handleSwapDirections}
-              className="flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--bg-elevated)] hover:border-[var(--accent)] border border-[var(--border-subtle)] text-[10px] font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--bg-elevated)] text-[10px] font-semibold text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors cursor-pointer whitespace-nowrap"
               title="Swap Turn Left and Turn Right actions"
             >
               <ArrowLeftRight className="w-3 h-3 text-[var(--accent)]" />
@@ -366,7 +366,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                 key={preset.id}
                 type="button"
                 onClick={() => handleApplyKnobPreset(preset.id)}
-                className="py-1.5 px-2 rounded-lg bg-[var(--bg-elevated)] hover:border-[var(--accent)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                className="py-1.5 px-2 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
               >
                 {preset.label}
               </button>
@@ -374,20 +374,25 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
           </div>
         </div>
 
-        {/* Action Picker for selected encoder slot */}
+        {/* Two-Pane Action Picker for selected encoder slot */}
         <ActionPickerControl
           binding={activeBinding}
           onChange={next => onUpdateSlot(selectedSubControl, next)}
           customMacros={customMacros}
           keyboardLayout={keyboardLayout}
           connection={connection}
+          activeProfileId={activeProfileId}
+          activeHostOs={activeHostOs}
+          onChangeHostOs={onChangeHostOs}
+          showAdvancedIds={showAdvancedIds}
+          onToggleAdvancedIds={onToggleAdvancedIds}
           activeRepeatJob={activeRepeatJob}
           onTestBinding={onTestBinding}
           onStopRepeat={onStopRepeat}
           onOpenMacroBuilder={onOpenMacroBuilder}
         />
 
-        {/* UI Ring Accent */}
+        {/* Dial Ring Accent */}
         <div className="space-y-2 pt-3 border-t border-[var(--border-subtle)]">
           <label className="text-xs font-medium text-[var(--text-secondary)]">
             Dial Ring Accent
@@ -404,7 +409,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                   className={`w-6 h-6 rounded-full border transition-transform cursor-pointer ${
                     active
                       ? 'scale-110 ring-2 ring-[var(--accent)] border-white'
-                      : 'border-white/20 hover:scale-105'
+                      : 'border-black/15 dark:border-white/20 hover:scale-105'
                   }`}
                   style={{ backgroundColor: hex }}
                 />

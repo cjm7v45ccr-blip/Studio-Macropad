@@ -6,7 +6,9 @@ import {
   Library,
   Sliders,
   Volume2,
-  VolumeX
+  VolumeX,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 interface LeftSidebarProps {
@@ -14,6 +16,8 @@ interface LeftSidebarProps {
   onSelectSection: (section: SidebarSection) => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
+  resolvedTheme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
   macroCount: number;
   hasFirmwareUpdate?: boolean;
   variant?: 'rail' | 'bottom';
@@ -22,12 +26,13 @@ interface LeftSidebarProps {
 const NAV_ITEMS: {
   id: SidebarSection;
   label: string;
+  tooltip: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { id: 'device', label: 'Device', icon: Grid3X3 },
-  { id: 'macros', label: 'Macros', icon: Zap },
-  { id: 'library', label: 'Profiles', icon: Library },
-  { id: 'settings', label: 'Settings', icon: Sliders }
+  { id: 'device', label: 'Device', tooltip: 'Configure MacroPad keys & knob', icon: Grid3X3 },
+  { id: 'macros', label: 'Macros', tooltip: 'Macro Library & Sequence Builder', icon: Zap },
+  { id: 'library', label: 'Profiles', tooltip: 'Profiles & Layout Presets', icon: Library },
+  { id: 'settings', label: 'Settings', tooltip: 'Device Settings & Firmware', icon: Sliders }
 ];
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -35,6 +40,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onSelectSection,
   soundEnabled,
   onToggleSound,
+  resolvedTheme = 'dark',
+  onToggleTheme,
   hasFirmwareUpdate = false,
   variant = 'rail'
 }) => {
@@ -53,19 +60,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               key={item.id}
               type="button"
               onClick={() => onSelectSection(item.id)}
-              style={
+              title={item.tooltip}
+              className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl text-[10px] transition-colors cursor-pointer whitespace-nowrap ${
                 active
-                  ? {
-                      backgroundColor: 'rgba(var(--accent-rgb), 0.16)',
-                      color: 'var(--text-primary)',
-                      borderColor: 'rgba(var(--accent-rgb), 0.4)'
-                    }
-                  : undefined
-              }
-              className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl text-[10px] border transition-all cursor-pointer whitespace-nowrap ${
-                active
-                  ? 'font-semibold'
-                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  ? 'bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] font-semibold'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
               <span className="relative">
@@ -90,8 +89,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   }
 
   return (
-    <aside className="hidden sm:flex w-16 shrink-0 bg-[var(--bg-panel)] border-r border-[var(--border-subtle)] flex-col items-center justify-between py-3 px-2 select-none z-30">
-      <nav aria-label="Primary navigation" className="space-y-2.5 w-full flex flex-col items-center">
+    <aside className="hidden sm:flex w-[74px] shrink-0 bg-[var(--bg-panel)] border-r border-[var(--border-subtle)] flex-col items-center justify-between py-3 px-1.5 select-none z-30">
+      <nav
+        aria-label="Primary navigation"
+        className="space-y-1.5 w-full flex flex-col items-center"
+      >
         {NAV_ITEMS.map(item => {
           const Icon = item.icon;
           const active = activeSection === item.id;
@@ -101,52 +103,67 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               key={item.id}
               type="button"
               onClick={() => onSelectSection(item.id)}
-              style={
+              title={showDot ? `${item.tooltip} (Firmware update available)` : item.tooltip}
+              className={`relative w-full py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${
                 active
-                  ? {
-                      backgroundColor: 'rgba(var(--accent-rgb), 0.18)',
-                      color: 'var(--text-primary)',
-                      borderColor: 'rgba(var(--accent-rgb), 0.45)'
-                    }
-                  : undefined
-              }
-              className={`relative w-12 h-12 rounded-2xl flex items-center justify-center border transition-all cursor-pointer ${
-                active
-                  ? 'shadow-sm font-semibold'
-                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)]'
+                  ? 'bg-[rgba(var(--accent-rgb),0.15)] text-[var(--text-primary)] font-semibold'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] font-medium'
               }`}
-              title={showDot ? `${item.label} (Firmware update available)` : item.label}
             >
               <span className="relative flex items-center justify-center">
                 <Icon
-                  className={`w-5 h-5 shrink-0 ${
+                  className={`w-4 h-4 shrink-0 ${
                     active ? 'text-[var(--accent)]' : ''
                   }`}
                 />
                 {showDot && (
                   <span
                     aria-label="Firmware update available"
-                    className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-[var(--bg-panel)]"
+                    className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-[var(--bg-panel)]"
                   />
                 )}
               </span>
+              <span className="text-[10px] leading-none">{item.label}</span>
             </button>
           );
         })}
       </nav>
 
-      <div className="pt-3 border-t border-[var(--border-subtle)] w-full flex flex-col items-center">
+      <div className="pt-2.5 border-t border-[var(--border-subtle)] w-full flex flex-col items-center gap-1.5">
+        {onToggleTheme && (
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            className="w-full py-2 px-1 rounded-xl hover:bg-[var(--bg-input)] flex flex-col items-center justify-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+            title={
+              resolvedTheme === 'dark'
+                ? 'Switch to Light theme'
+                : 'Switch to Dark theme'
+            }
+          >
+            {resolvedTheme === 'dark' ? (
+              <Sun className="w-4 h-4 shrink-0" />
+            ) : (
+              <Moon className="w-4 h-4 shrink-0" />
+            )}
+            <span className="text-[10px] leading-none">
+              {resolvedTheme === 'dark' ? 'Light' : 'Dark'}
+            </span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onToggleSound}
-          className="w-12 h-12 rounded-2xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-          title={soundEnabled ? 'Switch Audio: ON' : 'Switch Audio: MUTED'}
+          className="w-full py-2 px-1 rounded-xl hover:bg-[var(--bg-input)] flex flex-col items-center justify-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+          title={soundEnabled ? 'Key click audio: On (click to mute)' : 'Key click audio: Muted'}
         >
           {soundEnabled ? (
-            <Volume2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <Volume2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
           ) : (
-            <VolumeX className="w-5 h-5 text-[var(--text-muted)] shrink-0" />
+            <VolumeX className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
           )}
+          <span className="text-[10px] leading-none">Sound</span>
         </button>
       </div>
     </aside>

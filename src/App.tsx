@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ActionBinding,
   ActiveRepeatJob,
+  BleHostProfileId,
   BleHostSlot,
   CanvasViewMode,
   ControlId,
@@ -9,9 +10,11 @@ import {
   EncoderSubControlId,
   HardwareProfileId,
   HardwareSlotId,
+  HostOsType,
   KeyId,
   SidebarSection,
   bleSlotToProfileId,
+  isBleHostProfile,
   profileShortTag
 } from './types/studio';
 import {
@@ -73,6 +76,37 @@ export default function App() {
   }, [toast]);
 
   const studio = useStudioState(showToast);
+
+  const [systemPrefersLight, setSystemPrefersLight] = useState<boolean>(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: light)').matches
+      : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onChange = (e: MediaQueryListEvent) => setSystemPrefersLight(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const resolvedTheme: 'light' | 'dark' =
+    studio.settings.theme === 'system'
+      ? systemPrefersLight
+        ? 'light'
+        : 'dark'
+      : studio.settings.theme;
+
+  const handleToggleTheme = useCallback(() => {
+    studio.updateSettings({
+      theme: resolvedTheme === 'dark' ? 'light' : 'dark'
+    });
+  }, [resolvedTheme, studio]);
+
+  const activeHostOs: HostOsType = isBleHostProfile(studio.activeProfile.id)
+    ? studio.settings.hostOsMap[studio.activeProfile.id]
+    : 'mac';
 
   const [activeSection, setActiveSection] = useState<SidebarSection>('device');
   const [selectedControl, setSelectedControl] = useState<ControlId>('k1');
@@ -462,6 +496,8 @@ export default function App() {
         onPullFromUsb={handlePullFromUsb}
         profiles={studio.profiles}
         activeProfile={studio.activeProfile}
+        hostOsMap={studio.settings.hostOsMap}
+        onSetHostOs={studio.setHostOs}
         onSelectProfile={studio.selectProfile}
         onRenameProfile={studio.renameProfile}
         onRequestCopyProfile={(source, target) =>
@@ -481,6 +517,8 @@ export default function App() {
             selectedControl={selectedControl}
             customMacros={studio.customMacros}
             connection={connection}
+            activeHostOs={activeHostOs}
+            showAdvancedIds={studio.settings.showAdvancedIds}
             onSaveMacro={studio.saveCustomMacro}
             onAssignSlot={studio.assignSlotAction}
             onJumpToControl={(profileId, controlId) => {
@@ -511,8 +549,6 @@ export default function App() {
         }
       />
 
-
-
       {/* Main Workspace Area: Desktop Left Rail + Active Section */}
       <div className="flex-1 flex overflow-hidden min-w-0">
         <LeftSidebar
@@ -523,6 +559,8 @@ export default function App() {
           onToggleSound={() =>
             studio.updateSettings({ soundEnabled: !studio.settings.soundEnabled })
           }
+          resolvedTheme={resolvedTheme}
+          onToggleTheme={handleToggleTheme}
           macroCount={studio.customMacros.length}
           hasFirmwareUpdate={hasFirmwareUpdateNotification}
         />
@@ -568,6 +606,18 @@ export default function App() {
                 keyboardLayout={studio.settings.keyboardLayout}
                 connection={connection}
                 activeRepeatJob={activeRepeatJob}
+                activeHostOs={activeHostOs}
+                onChangeHostOs={
+                  isBleHostProfile(studio.activeProfile.id)
+                    ? os => studio.setHostOs(studio.activeProfile.id as BleHostProfileId, os)
+                    : undefined
+                }
+                showAdvancedIds={studio.settings.showAdvancedIds}
+                onToggleAdvancedIds={() =>
+                  studio.updateSettings({
+                    showAdvancedIds: !studio.settings.showAdvancedIds
+                  })
+                }
                 onUpdateSlot={studio.updateEncoderSlot}
                 onResetSlotToDefault={slot =>
                   studio.resetSlotToDefault(studio.activeProfile.id, slot)
@@ -609,6 +659,18 @@ export default function App() {
                   keyboardLayout={studio.settings.keyboardLayout}
                   connection={connection}
                   activeRepeatJob={activeRepeatJob}
+                  activeHostOs={activeHostOs}
+                  onChangeHostOs={
+                    isBleHostProfile(studio.activeProfile.id)
+                      ? os => studio.setHostOs(studio.activeProfile.id as BleHostProfileId, os)
+                      : undefined
+                  }
+                  showAdvancedIds={studio.settings.showAdvancedIds}
+                  onToggleAdvancedIds={() =>
+                    studio.updateSettings({
+                      showAdvancedIds: !studio.settings.showAdvancedIds
+                    })
+                  }
                   onUpdateBinding={binding =>
                     studio.updateKeyBinding(
                       selectedKeyConfig.id,
@@ -656,6 +718,8 @@ export default function App() {
             activeRepeatJob={activeRepeatJob}
             externalTarget={externalMacroTarget}
             initialTargetSlot={selectedHardwareSlot}
+            hostOsMap={studio.settings.hostOsMap}
+            showAdvancedIds={studio.settings.showAdvancedIds}
             onSaveMacro={studio.saveCustomMacro}
             onDeleteMacro={studio.deleteCustomMacro}
             onCleanUpDuplicateMacros={studio.cleanUpDuplicateMacros}
@@ -679,6 +743,7 @@ export default function App() {
             userPresets={studio.userPresets}
             customMacros={studio.customMacros}
             isConnected={connection.connected}
+            showAdvancedIds={studio.settings.showAdvancedIds}
             onPullFromUsb={handlePullFromUsb}
             onPushAllToUsb={handleSaveToDevice}
             onCopyHardwareProfile={studio.copyHardwareProfile}
@@ -686,17 +751,7 @@ export default function App() {
             onResetBothProfiles={studio.resetBothProfilesToDefault}
             onSaveUserSnapshot={studio.saveUserSnapshot}
             onDeleteUserSnapshot={studio.deleteUserSnapshot}
-            onDeleteMacro={studio.deleteCustomMacro}
-            onCleanUpDuplicateMacros={studio.cleanUpDuplicateMacros}
-            onExportMacrosFile={studio.exportMacrosFile}
-            onImportMacrosFile={studio.importMacrosFile}
-            onOpenInMacroEditor={payload => {
-              setExternalMacroTarget({
-                ...payload,
-                requestId: Date.now()
-              });
-              setActiveSection('macros');
-            }}
+            onOpenMacros={() => setActiveSection('macros')}
             onApplyHardwareBackup={studio.applyHardwareBackup}
             onExportBackupFile={studio.exportHardwareBackupFile}
             onImportBackupFile={studio.importHardwareBackupFile}
@@ -720,6 +775,7 @@ export default function App() {
             onUploadFirmwareToMacropad={firmwareUpdater.uploadFirmwareToMacropad}
             onUploadLocalFirmwareFile={firmwareUpdater.uploadLocalFirmwareFile}
             onUpdateSettings={studio.updateSettings}
+            onSetHostOs={studio.setHostOs}
             onPullFromUsb={handlePullFromUsb}
             onSwitchBleHost={handleSwitchBleHost}
             onResetBothProfiles={studio.resetBothProfilesToDefault}
@@ -741,6 +797,8 @@ export default function App() {
         onToggleSound={() =>
           studio.updateSettings({ soundEnabled: !studio.settings.soundEnabled })
         }
+        resolvedTheme={resolvedTheme}
+        onToggleTheme={handleToggleTheme}
         macroCount={studio.customMacros.length}
         hasFirmwareUpdate={hasFirmwareUpdateNotification}
       />

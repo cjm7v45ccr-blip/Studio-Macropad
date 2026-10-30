@@ -81,20 +81,6 @@ const SLOT_TO_KEY: Record<string, KeyId> = {
   mode: 'k9'
 };
 
-const ELEVEN_CONTROLS: { id: ControlId; label: string }[] = [
-  { id: 'k1', label: 'Key 1' },
-  { id: 'k2', label: 'Key 2' },
-  { id: 'k3', label: 'Key 3' },
-  { id: 'k4', label: 'Key 4' },
-  { id: 'k5', label: 'Key 5' },
-  { id: 'k6', label: 'Key 6' },
-  { id: 'k7', label: 'Key 7' },
-  { id: 'k8', label: 'Key 8' },
-  { id: 'dial', label: 'Knob Press' },
-  { id: 'enc_cw', label: 'Turn Right' },
-  { id: 'enc_ccw', label: 'Turn Left' }
-];
-
 export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   activeProfileId,
   activeProfileName,
@@ -227,10 +213,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     ]);
   };
 
-  /**
-   * Light up the on-screen key or knob when physical `press` / `turn` / `profile` events arrive over USB.
-   * Coalesces rapid knob turns via rAF so fast spinning never lags or freezes the page.
-   */
   useEffect(() => {
     const triggerSlotFlash = (slot: HardwareFlashSlot) => {
       setFlashedSlots(prev => {
@@ -282,7 +264,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         pushLog(
           'Mode + Dial',
           `[H${hostNum}]`,
-          `Switched BLE to Studio Pad ${hostNum} (Host ${hostNum})`,
+          `Switched BLE to Studio Pad ${hostNum} (Device ${hostNum})`,
           'hardware'
         );
         return;
@@ -295,7 +277,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       const currLayer = layerRef.current;
       const macros = customMacrosRef.current;
 
-      // Rotary Turn (`enc_cw` / `enc_ccw` or `turn` + `dir`)
       if (
         e.event === 'turn' ||
         rawSlot === 'enc_cw' ||
@@ -316,11 +297,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         const actionDesc = binding.repeatConfig
           ? summarizeAction(binding, macros)
           : e.action
-          ? describeFirmwareAction(e.action).fullLabel
+          ? describeFirmwareAction(e.action, undefined, macros).fullLabel
           : summarizeAction(binding, macros);
         const shortToast = e.action
-          ? describeFirmwareAction(e.action).shortLabel
-          : describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel;
+          ? describeFirmwareAction(e.action, undefined, macros).shortLabel
+          : describeFirmwareAction(binding.value, binding.repeatConfig, macros).shortLabel;
         triggerOledToast(
           `${isCcw ? 'CCW' : 'CW'}${mult > 1 ? ` ${mult}x` : ''}`,
           shortToast
@@ -334,7 +315,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         return;
       }
 
-      // Encoder Push (`dial`)
       if (rawSlot === 'dial') {
         soundEngine.playKeyClick();
         triggerSlotFlash('dial');
@@ -342,17 +322,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         const actionDesc = dialBinding.repeatConfig
           ? summarizeAction(dialBinding, macros)
           : e.action
-          ? describeFirmwareAction(e.action).fullLabel
+          ? describeFirmwareAction(e.action, undefined, macros).fullLabel
           : summarizeAction(dialBinding, macros);
         const shortToast = e.action
-          ? describeFirmwareAction(e.action).shortLabel
-          : describeFirmwareAction(dialBinding.value, dialBinding.repeatConfig).shortLabel;
+          ? describeFirmwareAction(e.action, undefined, macros).shortLabel
+          : describeFirmwareAction(dialBinding.value, dialBinding.repeatConfig, macros)
+              .shortLabel;
         triggerOledToast('DIAL', shortToast);
         pushLog('Knob Press', 'Press', actionDesc, 'hardware');
         return;
       }
 
-      // Mechanical Key Press (`b1`..`b8` or `mode`)
       const mappedKey = SLOT_TO_KEY[rawSlot];
       if (mappedKey) {
         soundEngine.playKeyClick();
@@ -365,7 +345,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         const actionDesc = keyCfg.triggers.tap.repeatConfig
           ? summarizeAction(keyCfg.triggers.tap, macros)
           : e.action
-          ? describeFirmwareAction(e.action).fullLabel
+          ? describeFirmwareAction(e.action, undefined, macros).fullLabel
           : summarizeAction(keyCfg.triggers.tap, macros);
         triggerOledToast(`KEY ${keyNum}`, keyCfg.appearance.label);
         pushLog(`Key ${keyNum}`, 'Press', actionDesc, 'hardware');
@@ -419,7 +399,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
     if (cfg.isModeSwitch || kid === 'k9') {
       const targetLabel =
-        activeProfileId === 'TV' ? `Host ${activeBleHost}` : 'TV';
+        activeProfileId === 'TV' ? `Device ${activeBleHost}` : 'TV';
       onToggleHardwareMode();
       triggerOledToast('PROFILE', targetLabel.toUpperCase());
       pushLog(
@@ -483,7 +463,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       pushLog(
         'Mode + Dial',
         `[H${nextSlot}]`,
-        `Switched BLE to Studio Pad ${nextSlot} (Host ${nextSlot})`,
+        `Switched BLE to Studio Pad ${nextSlot} (Device ${nextSlot})`,
         'usb-test'
       );
     } else {
@@ -492,7 +472,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       pushLog(
         'Mode + Dial',
         `[H${nextSlot}]`,
-        `Switched workspace to Host ${nextSlot} (Studio Pad ${nextSlot})`,
+        `Switched workspace to Device ${nextSlot} (Studio Pad ${nextSlot})`,
         'sim'
       );
     }
@@ -524,7 +504,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
     const binding = dir === 'cw' ? layer.encoder.cw : layer.encoder.ccw;
     const summary = summarizeAction(binding, customMacros);
-    const shortToast = describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel;
+    const shortToast = describeFirmwareAction(
+      binding.value,
+      binding.repeatConfig,
+      customMacros
+    ).shortLabel;
     const label = dir === 'cw' ? 'Turn Right' : 'Turn Left';
     triggerOledToast(
       `${dir.toUpperCase()}${mult > 1 ? ` ${mult}x` : ''}`,
@@ -568,7 +552,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
     const binding = layer.encoder.dial;
     const summary = summarizeAction(binding, customMacros);
-    const shortToast = describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel;
+    const shortToast = describeFirmwareAction(
+      binding.value,
+      binding.repeatConfig,
+      customMacros
+    ).shortLabel;
     triggerOledToast('DIAL', shortToast);
     if (connection.connected && binding.value) {
       const sent = await onExecuteHardwareBinding(binding);
@@ -578,7 +566,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
   };
 
-  const renderEncoderUnit = (size: 'compact' | 'large') => {
+  const renderEncoderUnit = () => {
     const isDialSelected =
       (selectedControl === 'dial' || selectedControl === 'encoder') && viewMode === 'edit';
     const isCwSelected = selectedControl === 'enc_cw' && viewMode === 'edit';
@@ -588,40 +576,39 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const isCwFlashed = flashedSlots.has('enc_cw');
     const isCcwFlashed = flashedSlots.has('enc_ccw');
 
-    const outerDim =
-      size === 'large'
-        ? 'w-20 h-20 sm:w-26 sm:h-26'
-        : 'w-16 h-16 sm:w-20 sm:h-20';
-    const innerDim =
-      size === 'large'
-        ? 'w-14 h-14 sm:w-18 sm:h-18'
-        : 'w-11 h-11 sm:w-14 sm:h-14';
-
     const dialInfo = describeFirmwareAction(
       layer.encoder.dial.value,
-      layer.encoder.dial.repeatConfig
+      layer.encoder.dial.repeatConfig,
+      customMacros
     );
     const cwInfo = describeFirmwareAction(
       layer.encoder.cw.value,
-      layer.encoder.cw.repeatConfig
+      layer.encoder.cw.repeatConfig,
+      customMacros
     );
     const ccwInfo = describeFirmwareAction(
       layer.encoder.ccw.value,
-      layer.encoder.ccw.repeatConfig
+      layer.encoder.ccw.repeatConfig,
+      customMacros
     );
 
+    const isDialUnassigned = !layer.encoder.dial.value;
+    const isCwUnassigned = !layer.encoder.cw.value;
+    const isCcwUnassigned = !layer.encoder.ccw.value;
+
     return (
-      <div className="flex flex-col items-center justify-center gap-1">
-        <div className="relative flex items-center justify-center gap-0.5 sm:gap-1">
+      <div className="flex flex-col items-center justify-center gap-2">
+        <div className="relative flex items-center justify-center gap-1.5 sm:gap-2">
           {knobAccel > 1 && (
             <span
               title={`Smart Knob velocity acceleration (${knobAccel}× step)`}
-              className="absolute -top-2 right-5 z-10 px-1.5 py-0.5 rounded-md bg-sky-500/20 border border-sky-400/60 font-mono text-[9px] font-bold text-sky-300 tabular-nums pointer-events-none shadow-sm"
+              className="absolute -top-2.5 right-6 z-10 px-1.5 py-0.5 rounded-md bg-sky-500/20 border border-sky-400/60 font-mono text-[9px] font-bold text-sky-300 tabular-nums pointer-events-none"
             >
               {knobAccel}×
             </span>
           )}
-          {/* Turn Left (`enc_ccw`) Control */}
+
+          {/* Prominent Clickable Turn Left (`enc_ccw`) Arrow Button */}
           <button
             type="button"
             aria-label={`Turn Left: ${ccwInfo.fullLabel}`}
@@ -629,27 +616,23 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               e.stopPropagation();
               triggerEncoderSpin('ccw');
             }}
-            title={`Turn Left: ${ccwInfo.fullLabel}`}
-            style={
-              isCcwSelected
-                ? {
-                    borderColor: 'var(--accent)',
-                    backgroundColor: 'rgba(var(--accent-rgb), 0.22)'
-                  }
-                : undefined
-            }
-            className={`p-1.5 rounded-full border transition-all cursor-pointer ${
+            title={`Turn Left (${ccwInfo.fullLabel}) — click to ${
+              viewMode === 'edit' ? 'configure' : 'trigger'
+            }`}
+            className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
               isCcwFlashed
-                ? 'bg-sky-500/30 border-sky-400 text-sky-300 scale-125 shadow-[0_0_14px_rgba(56,189,248,0.55)]'
+                ? 'bg-sky-500/35 ring-2 ring-sky-400 text-sky-200 scale-110'
                 : isCcwSelected
-                ? 'text-[var(--text-primary)]'
-                : 'border-transparent text-zinc-400 hover:text-white hover:bg-white/10'
+                ? 'bg-[rgba(var(--accent-rgb),0.28)] ring-2 ring-[var(--accent)] text-white shadow-[0_0_16px_rgba(var(--accent-rgb),0.45)]'
+                : `bg-white/[0.06] hover:bg-white/[0.15] text-zinc-300 hover:text-white ${
+                    isCcwUnassigned ? 'opacity-45 hover:opacity-85' : ''
+                  }`
             }`}
           >
-            <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <RotateCcw className="w-4 h-4" />
           </button>
 
-          {/* Knob Press (`dial`) Control */}
+          {/* Larger Physical Rotary Knob (`dial`) */}
           <button
             type="button"
             aria-label={`Knob Press: ${dialInfo.fullLabel}`}
@@ -674,13 +657,19 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 ? 'var(--accent)'
                 : 'rgba(255,255,255,0.14)',
               boxShadow: isDialFlashed
-                ? '0 0 0 4px rgba(56, 189, 248, 0.45), 0 0 24px rgba(56, 189, 248, 0.35)'
-                : isDialSelected
-                ? '0 0 0 3px rgba(var(--accent-rgb), 0.3), 0 10px 20px rgba(0,0,0,0.45)'
-                : '0 8px 18px rgba(0,0,0,0.45), inset 0 1px 1px rgba(255,255,255,0.08)'
+                ? '0 0 0 4px rgba(56, 189, 248, 0.45), 0 0 26px rgba(56, 189, 248, 0.35)'
+                : undefined
             }}
-            className={`${outerDim} rounded-full bg-gradient-to-b from-[#262A34] to-[#171A21] border-2 flex items-center justify-center transition-all cursor-pointer select-none ${
-              knobPressed || isDialFlashed ? 'scale-95' : 'hover:scale-[1.02]'
+            className={`w-22 h-22 sm:w-28 sm:h-28 xl:w-30 xl:h-30 rounded-full bg-gradient-to-b from-[#282C37] to-[#171A21] border-2 flex items-center justify-center transition-all duration-150 cursor-pointer select-none ${
+              isDialSelected && !isDialFlashed
+                ? 'encoder-ring-selected'
+                : !isDialFlashed
+                ? 'shadow-[0_10px_22px_rgba(0,0,0,0.48),inset_0_1px_1px_rgba(255,255,255,0.09)]'
+                : ''
+            } ${knobPressed || isDialFlashed ? 'scale-95' : 'hover:scale-[1.02]'} ${
+              isDialUnassigned && !isDialSelected && !isDialFlashed
+                ? 'opacity-55 hover:opacity-85'
+                : ''
             }`}
           >
             <span
@@ -688,21 +677,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 borderColor: isDialFlashed ? '#38BDF8' : layer.encoder.color,
                 transform: `rotate(${knobAngle}deg)`
               }}
-              className={`${innerDim} rounded-full bg-[#12141A] border-2 flex items-center justify-center relative transition-transform duration-100 ease-out shadow-inner`}
+              className="w-15 h-15 sm:w-20 sm:h-20 xl:w-21 xl:h-21 rounded-full bg-[#12141A] border-2 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner"
             >
               <span
-                className="w-1.5 h-2.5 rounded-full absolute top-1"
+                className="w-1.5 h-3 rounded-full absolute top-1.5"
                 style={{
                   backgroundColor: isDialFlashed ? '#38BDF8' : layer.encoder.color
                 }}
               />
-              <span className="font-mono text-[8px] sm:text-[9px] uppercase tracking-wider text-zinc-300">
+              <span className="font-mono text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-300">
                 KNOB
               </span>
             </span>
           </button>
 
-          {/* Turn Right (`enc_cw`) Control */}
+          {/* Prominent Clickable Turn Right (`enc_cw`) Arrow Button */}
           <button
             type="button"
             aria-label={`Turn Right: ${cwInfo.fullLabel}`}
@@ -710,30 +699,61 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               e.stopPropagation();
               triggerEncoderSpin('cw');
             }}
-            title={`Turn Right: ${cwInfo.fullLabel}`}
-            style={
-              isCwSelected
-                ? {
-                    borderColor: 'var(--accent)',
-                    backgroundColor: 'rgba(var(--accent-rgb), 0.22)'
-                  }
-                : undefined
-            }
-            className={`p-1.5 rounded-full border transition-all cursor-pointer ${
+            title={`Turn Right (${cwInfo.fullLabel}) — click to ${
+              viewMode === 'edit' ? 'configure' : 'trigger'
+            }`}
+            className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
               isCwFlashed
-                ? 'bg-sky-500/30 border-sky-400 text-sky-300 scale-125 shadow-[0_0_14px_rgba(56,189,248,0.55)]'
+                ? 'bg-sky-500/35 ring-2 ring-sky-400 text-sky-200 scale-110'
                 : isCwSelected
-                ? 'text-[var(--text-primary)]'
-                : 'border-transparent text-zinc-400 hover:text-white hover:bg-white/10'
+                ? 'bg-[rgba(var(--accent-rgb),0.28)] ring-2 ring-[var(--accent)] text-white shadow-[0_0_16px_rgba(var(--accent-rgb),0.45)]'
+                : `bg-white/[0.06] hover:bg-white/[0.15] text-zinc-300 hover:text-white ${
+                    isCwUnassigned ? 'opacity-45 hover:opacity-85' : ''
+                  }`
             }`}
           >
-            <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <RotateCw className="w-4 h-4" />
           </button>
         </div>
 
-        <span className="text-[9px] sm:text-[10px] font-mono text-zinc-400 tracking-tight text-center max-w-[115px] sm:max-w-[140px] truncate">
-          {dialInfo.shortLabel} · {ccwInfo.shortLabel}/{cwInfo.shortLabel}
-        </span>
+        <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-zinc-400 text-center max-w-[165px] truncate">
+          <button
+            type="button"
+            onClick={() => triggerEncoderSpin('ccw')}
+            title={`Turn Left: ${ccwInfo.fullLabel}`}
+            className={`hover:text-white transition-colors cursor-pointer truncate ${
+              isCcwSelected ? 'text-sky-300 font-semibold' : ''
+            }`}
+          >
+            ↺ {ccwInfo.shortLabel}
+          </button>
+          <span aria-hidden="true" className="text-zinc-600">
+            ·
+          </span>
+          <button
+            type="button"
+            onClick={activateDialPush}
+            title={`Knob Press: ${dialInfo.fullLabel}`}
+            className={`hover:text-white transition-colors cursor-pointer truncate ${
+              isDialSelected ? 'text-sky-300 font-semibold' : ''
+            }`}
+          >
+            {dialInfo.shortLabel}
+          </button>
+          <span aria-hidden="true" className="text-zinc-600">
+            ·
+          </span>
+          <button
+            type="button"
+            onClick={() => triggerEncoderSpin('cw')}
+            title={`Turn Right: ${cwInfo.fullLabel}`}
+            className={`hover:text-white transition-colors cursor-pointer truncate ${
+              isCwSelected ? 'text-sky-300 font-semibold' : ''
+            }`}
+          >
+            {cwInfo.shortLabel} ↻
+          </button>
+        </div>
       </div>
     );
   };
@@ -749,13 +769,20 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const conflict = hasConflict(kid);
     const isUnassigned = !cfg.isModeSwitch && !cfg.triggers.tap.value;
 
-    const badgeText = cfg.isModeSwitch ? 'MODE' : `KEY ${index + 1}`;
+    const badgeText = cfg.isModeSwitch ? 'MODE' : `K${index + 1}`;
 
     return (
       <button
         key={kid}
         type="button"
         aria-label={`${badgeText}: ${cfg.appearance.label}`}
+        title={
+          cfg.isModeSwitch
+            ? 'Mode Switch (short press: Host/TV, hold+dial: Host 1–3)'
+            : isUnassigned
+            ? `Key ${index + 1} — Unassigned`
+            : `Key ${index + 1}: ${summarizeAction(cfg.triggers.tap, customMacros)}`
+        }
         onMouseDown={() => setPressedKey(kid)}
         onMouseUp={() => setPressedKey(null)}
         onMouseLeave={() => {
@@ -770,53 +797,62 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             : conflict
             ? '#F59E0B'
             : cfg.isModeSwitch
-            ? 'rgba(56,189,248,0.35)'
-            : 'rgba(255,255,255,0.09)',
+            ? 'rgba(56,189,248,0.28)'
+            : 'rgba(255,255,255,0.08)',
           boxShadow: isFlashed
             ? '0 0 0 4px rgba(56, 189, 248, 0.45), 0 0 24px rgba(56, 189, 248, 0.35)'
             : isSelected
-            ? '0 0 0 3px rgba(var(--accent-rgb), 0.28), 0 8px 18px rgba(0,0,0,0.4)'
+            ? undefined
             : isDown
             ? '0 2px 4px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.4)'
-            : '0 6px 0 #101217, 0 10px 18px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.1)'
+            : '0 6px 0 #101217, 0 10px 18px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.09)'
         }}
-        className={`relative w-[82px] h-[82px] sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-b from-[#252933] to-[#1B1E26] border-2 p-2 sm:p-2.5 flex flex-col items-center justify-between select-none transition-all cursor-pointer ${
-          isDown ? 'translate-y-1' : 'hover:-translate-y-0.5'
-        } ${isUnassigned && !isFlashed ? 'opacity-80' : ''}`}
+        className={`relative w-[88px] h-[88px] sm:w-[104px] sm:h-[104px] xl:w-[114px] xl:h-[114px] rounded-2xl bg-gradient-to-b from-[#252933] to-[#1B1E26] border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none transition-all duration-150 ease-out cursor-pointer ${
+          isSelected && !isFlashed ? 'keycap-selected-glow -translate-y-0.5' : ''
+        } ${isDown ? 'translate-y-1' : !isSelected ? 'hover:-translate-y-0.5' : ''} ${
+          isUnassigned && !isSelected && !isFlashed
+            ? 'opacity-40 hover:opacity-75'
+            : ''
+        }`}
       >
         <div className="w-full flex items-center justify-between">
           <span
-            className={`font-mono text-[9px] sm:text-[10px] leading-none font-semibold ${
-              isFlashed || cfg.isModeSwitch ? 'text-sky-400' : 'text-zinc-400'
+            className={`font-mono text-[9px] sm:text-[10px] leading-none font-medium tabular-nums ${
+              isFlashed || cfg.isModeSwitch
+                ? 'text-sky-400'
+                : isSelected
+                ? 'text-zinc-200'
+                : 'text-zinc-500'
             }`}
           >
             {badgeText}
           </span>
           {conflict ? (
-            <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
-          ) : cfg.triggers.tap.value ? (
-            <span
-              className="w-1.5 h-1.5 rounded-full shrink-0"
-              style={{
-                backgroundColor: isFlashed ? '#38BDF8' : cfg.appearance.labelColor
-              }}
-            />
+            <span title="Duplicate action warning">
+              <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+            </span>
           ) : null}
         </div>
 
         <div className="my-auto flex items-center justify-center">
           <KeycapIcon
             icon={cfg.appearance.icon}
-            className={`w-5 h-5 sm:w-6 sm:h-6 transition-transform ${
-              isFlashed ? 'scale-110' : ''
+            className={`w-6 h-6 sm:w-7 sm:h-7 transition-transform duration-150 ${
+              isFlashed || isSelected ? 'scale-105' : ''
             }`}
-            style={{ color: isFlashed ? '#38BDF8' : cfg.appearance.labelColor }}
+            style={{
+              color: isFlashed
+                ? '#38BDF8'
+                : isUnassigned
+                ? '#71717A'
+                : cfg.appearance.labelColor
+            }}
           />
         </div>
 
         <span
-          className={`text-[10px] sm:text-[11px] font-medium truncate max-w-full tracking-tight ${
-            isUnassigned ? 'text-zinc-500 italic' : 'text-zinc-200'
+          className={`text-[11px] sm:text-xs font-medium truncate max-w-full tracking-tight ${
+            isUnassigned ? 'text-zinc-500' : 'text-zinc-100'
           }`}
         >
           {cfg.appearance.label}
@@ -828,28 +864,28 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const telemetry = connection.telemetry;
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-between p-3 sm:p-6 lg:overflow-y-auto relative min-w-0">
-      {/* Top Canvas Controls */}
-      <div className="w-full max-w-2xl flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
+    <div className="flex-1 flex flex-col items-center p-4 sm:p-6 lg:overflow-y-auto relative min-w-0">
+      {/* Top Canvas Toolbar (Clean Filled Controls, Minimal Outlines) */}
+      <div className="w-full max-w-2xl flex items-center justify-between gap-2 flex-wrap shrink-0">
+        <div className="flex items-center p-1 rounded-xl bg-[var(--bg-panel)] shadow-2xs">
           <button
             type="button"
             onClick={() => onChangeViewMode('edit')}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               viewMode === 'edit'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
-            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent)]" />
             <span>Configure</span>
           </button>
           <button
             type="button"
             onClick={() => onChangeViewMode('test')}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               viewMode === 'test'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
@@ -864,23 +900,20 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               type="button"
               onClick={onOpenCheatSheet}
               title="Open printable 4-profile Desk Reference Cheat Sheet"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               <BookOpen className="w-3.5 h-3.5 text-[var(--accent)]" />
               <span>Cheat Sheet</span>
             </button>
           )}
 
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
-            <span className="text-[11px] text-[var(--text-muted)] px-1.5 hidden sm:inline whitespace-nowrap">
-              Knob Layout:
-            </span>
+          <div className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-panel)] shadow-2xs">
             <button
               type="button"
               onClick={() => onChangeEncoderPlacement('grid')}
-              className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 encoderPlacement === 'grid'
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
@@ -889,9 +922,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <button
               type="button"
               onClick={() => onChangeEncoderPlacement('top')}
-              className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 encoderPlacement === 'top'
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
@@ -903,13 +936,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
       {/* Unsupported Browser Banner (Firefox / Safari) */}
       {!usbHardware.browserSupportsWebSerial && !connection.connected && (
-        <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-amber-500/12 border border-amber-500/35 flex items-center justify-between gap-3 flex-wrap">
+        <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-amber-500/12 border border-amber-500/35 flex items-center justify-between gap-3 flex-wrap shrink-0">
           <div className="flex items-start gap-2.5 min-w-0 flex-1">
-            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-xs text-amber-200 leading-relaxed">
-              <strong className="text-amber-300">Unsupported browser:</strong> Web Serial is
-              only available in <strong>Chrome</strong> or <strong>Edge</strong> on desktop
-              over HTTPS. You can explore the full app right now in demo mode.
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              <strong className="text-[var(--text-primary)]">Unsupported browser:</strong>{' '}
+              Web Serial requires Chrome or Edge on desktop. You can explore everything in Demo Mode.
             </div>
           </div>
           <button
@@ -919,24 +951,26 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5"
           >
             <PlayCircle className="w-3.5 h-3.5" />
-            <span>Try demo mode</span>
+            <span>Start Demo</span>
           </button>
         </div>
       )}
 
       {/* Active Hardware Setup Mode Banner */}
       {connection.connected && connection.telemetry?.setupMode && onOpenSetupWizard && (
-        <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/35 flex items-center justify-between gap-3 flex-wrap">
+        <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/35 flex items-center justify-between gap-3 flex-wrap shrink-0">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <SlidersHorizontal className="w-4 h-4 text-amber-400 shrink-0" />
+            <SlidersHorizontal className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              <strong className="text-amber-300">Board is in Setup Mode.</strong> Choose your OS starter layout, name your 3 Bluetooth host slots, and optionally pair Wi-Fi or SmartCast TV.
+              <strong className="text-[var(--text-primary)]">Board is in Setup Mode.</strong>{' '}
+              Configure your starter layout, Bluetooth device names, and optional Wi-Fi or TV pairing.
             </div>
           </div>
           <button
             type="button"
             onClick={onOpenSetupWizard}
-            className="px-3.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/45 text-xs font-semibold text-amber-200 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shrink-0"
+            style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap flex items-center gap-1.5 shrink-0"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             <span>Open Setup Wizard</span>
@@ -944,57 +978,48 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
       )}
 
-      {/* Offline State: Prominent Demo Mode & Connection Card */}
+      {/* Compact Offline Demo / USB Prompt */}
       {!connection.connected && !isSyncedWithHardware && (
-        <div className="w-full max-w-2xl mt-3 p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
-              <PlayCircle className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div className="space-y-0.5 min-w-0">
-              <div className="text-sm font-semibold text-[var(--text-primary)]">
-                Explore in Demo Mode
-              </div>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                No physical MacroPad detected over USB. Test all 11 controls, customize layers, and preview macros instantly in virtual simulator mode.
-              </p>
-            </div>
+        <div className="w-full max-w-2xl mt-3 px-4 py-2.5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap shrink-0">
+          <div className="text-xs text-[var(--text-secondary)] min-w-0">
+            <span className="font-semibold text-[var(--text-primary)]">No USB MacroPad connected</span>
+            <span className="hidden sm:inline"> — customize offline or launch the interactive simulator.</span>
           </div>
-          <div className="flex items-center gap-2 flex-wrap shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={onStartDemoMode}
-              style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold hover:opacity-95 transition-opacity cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
+              className="px-3 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
             >
-              <PlayCircle className="w-4 h-4" />
-              <span>Start Demo Mode</span>
+              <PlayCircle className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>Demo Mode</span>
             </button>
             {usbHardware.browserSupportsWebSerial && (
               <button
                 type="button"
                 onClick={onConnectUsbPad}
-                className="px-3.5 py-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-95 transition-opacity cursor-pointer whitespace-nowrap flex items-center gap-1.5"
               >
-                <Usb className="w-4 h-4 text-[var(--accent)]" />
-                <span>Connect USB Pad</span>
+                <Usb className="w-3.5 h-3.5" />
+                <span>Connect USB</span>
               </button>
             )}
           </div>
         </div>
       )}
 
-      {/* Center: Physical Anodized Aluminum 9-Button MacroPad + 11-Control Quick Bar */}
-      <div className="my-auto py-3 sm:py-5 flex flex-col items-center justify-center w-full gap-3.5">
+      {/* Vertically Centered Larger Physical MacroPad */}
+      <div className="my-auto py-4 sm:py-6 flex flex-col items-center justify-center w-full">
         <div
           className={`w-full ${
             encoderPlacement === 'top'
-              ? 'max-w-[340px] sm:max-w-[392px]'
-              : 'max-w-[340px] sm:max-w-[536px]'
-          } rounded-[28px] sm:rounded-[34px] p-4 sm:p-6 bg-gradient-to-b from-[#20232C] to-[#14161C] border border-white/10 shadow-[0_28px_60px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.08)]`}
+              ? 'max-w-[356px] sm:max-w-[440px] xl:max-w-[468px]'
+              : 'max-w-[356px] sm:max-w-[604px] xl:max-w-[644px]'
+          } chassis-shell rounded-[32px] sm:rounded-[38px] p-5 sm:p-7 bg-gradient-to-b from-[#232731] to-[#151820] border border-white/10`}
         >
           {/* 128x64 SSD1306 Hardware OLED Strip */}
-          <div className="mb-4 sm:mb-5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-[#090B0E] border border-white/10 shadow-inner flex items-center justify-between gap-2 min-h-[38px]">
+          <div className="mb-5 sm:mb-6 px-3.5 py-2.5 rounded-xl bg-[#090B0E] border border-white/10 shadow-inner flex items-center justify-between gap-2 min-h-[40px]">
             <div className="flex items-center gap-2 min-w-0">
               {oledToast ? (
                 <div className="flex items-center gap-1.5 min-w-0 font-mono text-[10px] sm:text-[11px] tabular-nums">
@@ -1008,28 +1033,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   )}
                 </div>
               ) : (
-                <>
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{
-                      backgroundColor:
-                        connection.connected && connection.telemetry?.setupMode
-                          ? '#F59E0B'
-                          : layer.color
-                    }}
-                  />
-                  <span
-                    className={`font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-wider truncate tabular-nums ${
-                      connection.connected && connection.telemetry?.setupMode
-                        ? 'text-amber-300'
-                        : 'text-sky-300'
-                    }`}
-                  >
-                    {connection.connected && connection.telemetry?.setupMode
-                      ? `SETUP · ${activeProfileName}`
-                      : activeProfileName}
-                  </span>
-                </>
+                <span
+                  className={`font-mono text-[11px] sm:text-xs font-bold uppercase tracking-wider truncate tabular-nums ${
+                    connection.connected && connection.telemetry?.setupMode
+                      ? 'text-amber-300'
+                      : 'text-sky-300'
+                  }`}
+                >
+                  {connection.connected && connection.telemetry?.setupMode
+                    ? `SETUP · ${activeProfileName}`
+                    : activeProfileName}
+                </span>
               )}
             </div>
 
@@ -1078,7 +1092,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 </span>
               )}
 
-              {/* Hardware SSD1306 Upper-Right Host Badge in BLE Host Mode ([H1], [H2], [H3]) */}
               {isBleHostProfile(activeProfileId) && (
                 <button
                   type="button"
@@ -1093,8 +1106,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   }}
                   title={
                     connection.connected
-                      ? `Host ${oledBadgeHost} (Studio Pad ${oledBadgeHost}) — click to cycle BLE host (/api/ble/switch) or hold Mode + turn Dial`
-                      : `Viewing Host ${oledBadgeHost} (Studio Pad ${oledBadgeHost}) — click to cycle [H1]–[H3]`
+                      ? `Device ${oledBadgeHost} (Studio Pad ${oledBadgeHost}) — click to switch host`
+                      : `Viewing Device ${oledBadgeHost} — click to cycle H1–H3`
                   }
                   className={`px-1.5 py-0.5 rounded bg-black border font-mono text-[10px] font-bold leading-none tracking-tight transition-colors cursor-pointer tabular-nums shrink-0 ${
                     connection.connected && oledBadgeHost !== activeBleHost
@@ -1109,170 +1122,133 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </div>
 
           {encoderPlacement === 'top' ? (
-            <div className="flex flex-col items-center gap-4 sm:gap-5">
-              {renderEncoderUnit('large')}
-              <div className="grid grid-cols-3 gap-2.5 sm:gap-3 justify-items-center">
+            <div className="flex flex-col items-center gap-5 sm:gap-6">
+              {renderEncoderUnit()}
+              <div className="grid grid-cols-3 gap-3 sm:gap-3.5 justify-items-center">
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
             </div>
           ) : (
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5">
-              <div className="order-2 sm:order-1 grid grid-cols-3 gap-2.5 sm:gap-3 justify-items-center">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-5 sm:gap-6">
+              <div className="order-2 sm:order-1 grid grid-cols-3 gap-3 sm:gap-3.5 justify-items-center">
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
-              <div className="order-1 sm:order-2 flex flex-col items-center justify-center sm:pl-5 sm:border-l sm:border-white/10 sm:self-stretch">
-                {renderEncoderUnit('large')}
+              <div className="order-1 sm:order-2 flex flex-col items-center justify-center sm:pl-6 sm:border-l sm:border-white/10 sm:self-stretch">
+                {renderEncoderUnit()}
               </div>
             </div>
           )}
         </div>
-
-        {/* Direct 11-Control Selector Strip (Configure mode) */}
-        {viewMode === 'edit' && (
-          <div
-            role="group"
-            aria-label="Select one of the 11 programmable controls"
-            className="w-full max-w-2xl flex items-center justify-center gap-1.5 flex-wrap"
-          >
-            {ELEVEN_CONTROLS.map(ctrl => {
-              const active =
-                selectedControl === ctrl.id ||
-                (selectedControl === 'encoder' && ctrl.id === 'dial');
-              return (
-                <button
-                  key={ctrl.id}
-                  type="button"
-                  onClick={() => onSelectControl(ctrl.id)}
-                  style={
-                    active
-                      ? {
-                          borderColor: 'var(--accent)',
-                          backgroundColor: 'rgba(var(--accent-rgb), 0.16)',
-                          color: 'var(--text-primary)'
-                        }
-                      : undefined
-                  }
-                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                    active
-                      ? 'font-semibold shadow-sm'
-                      : 'bg-[var(--bg-panel)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                  }`}
-                >
-                  {ctrl.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* Bottom: Conflict Alert or Test View Feed */}
-      <div className="w-full max-w-2xl space-y-2">
-        {conflicts.length > 0 && viewMode === 'edit' && (
-          <div className="px-3.5 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-300">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
-            <span>{conflicts[0].summary}</span>
-          </div>
-        )}
-
-        {viewMode === 'test' && (
-          <div className="rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-3.5 space-y-2.5">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-[var(--text-primary)]">
-                Test View Feed (Live Presses & Knob Turns)
-              </span>
-              {testLog.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setTestLog([])}
-                  className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  <span>Clear</span>
-                </button>
-              )}
+      {(conflicts.length > 0 && viewMode === 'edit') || viewMode === 'test' ? (
+        <div className="w-full max-w-2xl space-y-2 shrink-0">
+          {conflicts.length > 0 && viewMode === 'edit' && (
+            <div className="px-3.5 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+              <span>{conflicts[0].summary}</span>
             </div>
+          )}
 
-            <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-[var(--border-subtle)]">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {connection.transport === 'demo' && (
-                  <>
-                    <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] mr-1">
-                      Simulate pad:
-                    </span>
-                    {(
-                      [
-                        { slot: 'b1', label: 'Key 1' },
-                        { slot: 'b2', label: 'Key 2' },
-                        { slot: 'b3', label: 'Key 3' },
-                        { slot: 'b4', label: 'Key 4' },
-                        { slot: 'b5', label: 'Key 5' },
-                        { slot: 'b6', label: 'Key 6' },
-                        { slot: 'b7', label: 'Key 7' },
-                        { slot: 'b8', label: 'Key 8' },
-                        { slot: 'dial', label: 'Knob', icon: Disc },
-                        { slot: 'enc_ccw', label: 'Turn Left' },
-                        { slot: 'enc_cw', label: 'Turn Right' },
-                        { slot: 'mode', label: 'Mode' }
-                      ] as const
-                    ).map(btn => (
-                      <button
-                        key={btn.slot}
-                        type="button"
-                        onClick={() => usbHardware.simulateDemoPadInput(btn.slot)}
-                        className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[10px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-                      >
-                        {btn.label}
-                      </button>
-                    ))}
-                  </>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => triggerModePlusDialHostSwitch('cw')}
-                  title="Simulate holding Mode + rotating Dial clockwise to switch BLE Host"
-                  className="px-2 py-1 rounded-md bg-sky-500/12 hover:bg-sky-500/20 border border-sky-500/35 text-[10px] font-mono text-sky-300 cursor-pointer whitespace-nowrap flex items-center gap-1"
-                >
-                  <Bluetooth className="w-3 h-3 shrink-0" />
-                  <span>Mode + Dial ↻ ([H{(((activeBleHost % 3) + 1))}])</span>
-                </button>
-              </div>
-            </div>
-
-            {testLog.length === 0 ? (
-              <p className="text-xs text-[var(--text-muted)] py-1.5">
-                Press keys or turn the knob on your MacroPad (or click controls above) to see
-                each press and turn with its assigned action.
-              </p>
-            ) : (
-              <div className="max-h-32 overflow-y-auto space-y-1 font-mono text-[11px] tabular-nums">
-                {testLog.map(item => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between gap-2 py-1 px-2 rounded bg-[var(--bg-input)]"
+          {viewMode === 'test' && (
+            <div className="rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-[var(--text-primary)]">
+                  Live Input Feed
+                </span>
+                {testLog.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTestLog([])}
+                    className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
                   >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[var(--text-muted)] shrink-0">
-                        {item.timestamp}
+                    <Trash2 className="w-3 h-3" />
+                    <span>Clear</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-[var(--border-subtle)]">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {connection.transport === 'demo' && (
+                    <>
+                      <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] mr-1">
+                        Simulate:
                       </span>
-                      <span className="font-semibold text-[var(--text-primary)] shrink-0">
-                        {item.controlLabel}
-                      </span>
-                      <span className="px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] text-[10px] text-[var(--accent)] shrink-0">
-                        {item.triggerLabel}
+                      {(
+                        [
+                          { slot: 'b1', label: 'Key 1' },
+                          { slot: 'b2', label: 'Key 2' },
+                          { slot: 'b3', label: 'Key 3' },
+                          { slot: 'b4', label: 'Key 4' },
+                          { slot: 'b5', label: 'Key 5' },
+                          { slot: 'b6', label: 'Key 6' },
+                          { slot: 'b7', label: 'Key 7' },
+                          { slot: 'b8', label: 'Key 8' },
+                          { slot: 'dial', label: 'Knob', icon: Disc },
+                          { slot: 'enc_ccw', label: 'Turn Left' },
+                          { slot: 'enc_cw', label: 'Turn Right' },
+                          { slot: 'mode', label: 'Mode' }
+                        ] as const
+                      ).map(btn => (
+                        <button
+                          key={btn.slot}
+                          type="button"
+                          onClick={() => usbHardware.simulateDemoPadInput(btn.slot)}
+                          className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[10px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+                        >
+                          {btn.label}
+                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => triggerModePlusDialHostSwitch('cw')}
+                    title="Simulate holding Mode + rotating Dial clockwise to switch BLE Host"
+                    className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[10px] font-mono text-[var(--accent)] cursor-pointer whitespace-nowrap flex items-center gap-1"
+                  >
+                    <Bluetooth className="w-3 h-3 shrink-0" />
+                    <span>Mode + Dial ↻ ([H{(((activeBleHost % 3) + 1))}])</span>
+                  </button>
+                </div>
+              </div>
+
+              {testLog.length === 0 ? (
+                <p className="text-xs text-[var(--text-muted)] py-1.5">
+                  Press keys or click the knob and its left/right arrows above to see live events.
+                </p>
+              ) : (
+                <div className="max-h-32 overflow-y-auto space-y-1 font-mono text-[11px] tabular-nums">
+                  {testLog.map(item => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 py-1 px-2 rounded bg-[var(--bg-input)]"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[var(--text-muted)] shrink-0">
+                          {item.timestamp}
+                        </span>
+                        <span className="font-semibold text-[var(--text-primary)] shrink-0">
+                          {item.controlLabel}
+                        </span>
+                        <span className="text-[10px] text-[var(--accent)] shrink-0">
+                          · {item.triggerLabel}
+                        </span>
+                      </div>
+                      <span className="text-[var(--text-secondary)] truncate">
+                        {item.actionSummary}
                       </span>
                     </div>
-                    <span className="text-[var(--text-secondary)] truncate">
-                      {item.actionSummary}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 };

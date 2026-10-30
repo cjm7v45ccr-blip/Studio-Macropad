@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ActionBinding,
+  BleHostProfileId,
   BleHostSlot,
   ConflictWarning,
   CustomMacroItem,
@@ -10,6 +11,8 @@ import {
   HardwareEventPacket,
   HardwareProfileId,
   HardwareSlotId,
+  HostOsMap,
+  HostOsType,
   KeyAppearance,
   KeyId,
   SerializedPadProfiles,
@@ -23,6 +26,7 @@ import {
   UserPreset,
   bleSlotToProfileId,
   defaultProfileAlias,
+  hostOsFullLabel,
   normalizeHardwareProfileId,
   profileIdToBleSlot
 } from '../types/studio';
@@ -51,10 +55,12 @@ import {
   firmwareSupportsNativeDelay,
   getMacroCanonicalSignature,
   getProfilePresetSignature,
+  inferHostOsFromSlots,
   isGenericMacroName,
   isMultiStepOrTimedMacro,
   isValidFirmwareAction,
   isValidSlotAssignment,
+  remapActionForHostOs,
   requiresUsbSequenceExecution,
   sanitizeFirmwareAlias,
   stepToFirmwareAction,
@@ -88,6 +94,12 @@ interface PersistedUiPrefs {
   appearanceOverrides: Record<string, KeyAppearance>;
 }
 
+const DEFAULT_HOST_OS_MAP: HostOsMap = {
+  HOST1: 'mac',
+  HOST2: 'windows',
+  HOST3: 'mac'
+};
+
 const DEFAULT_SETTINGS: StudioSettings = {
   theme: 'dark',
   accentColor: '#3B82F6',
@@ -96,7 +108,9 @@ const DEFAULT_SETTINGS: StudioSettings = {
   soundEnabled: true,
   liveEventsEnabled: true,
   autoCheckFirmwareUpdates: true,
-  firmwareRepo: PUBLIC_FIRMWARE_SOURCE_SLUG
+  firmwareRepo: PUBLIC_FIRMWARE_SOURCE_SLUG,
+  hostOsMap: DEFAULT_HOST_OS_MAP,
+  showAdvancedIds: false
 };
 
 function hexToRgbString(hex: string): string {
@@ -359,13 +373,21 @@ function serializedProfilesToStudioProfiles(
   serialized: SerializedPadProfiles,
   overrides: Record<string, KeyAppearance>,
   repeatConfigs?: SlotRepeatMap,
-  prevProfiles?: StudioProfile[]
+  prevProfiles?: StudioProfile[],
+  customMacros?: CustomMacroItem[]
 ): StudioProfile[] {
   return HARDWARE_PROFILE_IDS.map(profId => {
     const prevProf = prevProfiles?.find(p => p.id === profId);
     const slots = getSerializedProfileSlots(serialized, profId);
     const name = getSerializedProfileName(serialized, profId);
-    const built = buildHardwareProfile(profId, name, slots, prevProf, repeatConfigs);
+    const built = buildHardwareProfile(
+      profId,
+      name,
+      slots,
+      prevProf,
+      repeatConfigs,
+      customMacros
+    );
 
     ACTION_KEY_IDS.forEach(kid => {
       const slot = KEY_TO_SLOT[kid];
@@ -376,7 +398,8 @@ function serializedProfilesToStudioProfiles(
         built.layers[0].keys[kid].appearance = deriveAppearanceForAction(
           slots[slot],
           ov,
-          built.layers[0].keys[kid].triggers.tap.repeatConfig
+          built.layers[0].keys[kid].triggers.tap.repeatConfig,
+          customMacros
         );
       }
     });
@@ -510,8 +533,34 @@ function isCustomDynamicAction(action: string): boolean {
 }
 
 /**
+ * Guarantees every macro in the single library has a distinct display name by auto-suffixing
+ * duplicate names ("Launch Spotify", "Launch Spotify 2", "Launch Spotify 3").
+ */
+export function ensureUniqueMacroNames(items: CustomMacroItem[]): CustomMacroItem[] {
+  const usedNames = new Set<string>();
+  return items.map(item => {
+    const rawTrimmed = (item.name || '').trim() || 'Macro';
+    const lower = rawTrimmed.toLowerCase();
+    if (!usedNames.has(lower)) {
+      usedNames.add(lower);
+      return item.name === rawTrimmed ? item : { ...item, name: rawTrimmed };
+    }
+    const baseName = rawTrimmed.replace(/\s+\d+$/, '').trim() || rawTrimmed;
+    let suffix = 2;
+    let candidate = `${baseName} ${suffix}`;
+    while (usedNames.has(candidate.toLowerCase())) {
+      suffix += 1;
+      candidate = `${baseName} ${suffix}`;
+    }
+    usedNames.add(candidate.toLowerCase());
+    return { ...item, name: candidate };
+  });
+}
+
+/**
  * Deduplicates saved macros by deterministic canonical signature (ignoring ephemeral step IDs),
- * repairs generic names ("Set Macro", "Untitled Macro", "3 Steps"), and drops invalid empty entries.
+ * repairs generic names ("Set Macro", "Untitled Macro", "3 Steps"), auto-suffixes duplicate names,
+ * and drops invalid empty entries.
  */
 export function deduplicateCustomMacros(items: CustomMacroItem[]): CustomMacroItem[] {
   const bySig = new Map<string, CustomMacroItem>();
@@ -547,7 +596,6 @@ export function deduplicateCustomMacros(items: CustomMacroItem[]): CustomMacroIt
     if (!existing) {
       bySig.set(sig, normalizedItem);
     } else {
-      // Prefer explicit 'user' macros over 'device' auto-discovered macros, and prefer custom-named macros
       const preferCandidate =
         (existing.source === 'device' && normalizedItem.source !== 'device') ||
         (isGenericMacroName(existing.name) && !isGenericMacroName(raw.name));
@@ -557,7 +605,7 @@ export function deduplicateCustomMacros(items: CustomMacroItem[]): CustomMacroIt
     }
   }
 
-  return Array.from(bySig.values());
+  return ensureUniqueMacroNames(Array.from(bySig.values()));
 }
 
 function mergeDiscoveredCustomMacros(
@@ -601,13 +649,13 @@ function mergeDiscoveredCustomMacros(
       source: 'device'
     });
   }
-  return merged;
+  return ensureUniqueMacroNames(merged);
 }
 
 export function useStudioState(
   onToast: (msg: string, variant?: ToastVariant) => void
 ) {
-  const initialUiPrefs = useMemo((): PersistedUiPrefs => {
+  const initialUiPrefs = useMemo((): PersistedUiPrefs & { hadStoredHostOsMap?: boolean } => {
     try {
       const raw = localStorage.getItem(UI_PREFS_KEY);
       if (raw) {
@@ -615,10 +663,19 @@ export function useStudioState(
         const rawSettings = parsed.settings || {};
         const migratedFromLegacyRepo =
           rawSettings.firmwareRepo !== PUBLIC_FIRMWARE_SOURCE_SLUG;
+        const hadStoredHostOsMap = Boolean(
+          rawSettings.hostOsMap && typeof rawSettings.hostOsMap === 'object'
+        );
         return {
+          hadStoredHostOsMap,
           settings: {
             ...DEFAULT_SETTINGS,
             ...rawSettings,
+            hostOsMap: {
+              ...DEFAULT_HOST_OS_MAP,
+              ...(rawSettings.hostOsMap || {})
+            },
+            showAdvancedIds: Boolean(rawSettings.showAdvancedIds ?? false),
             firmwareRepo: PUBLIC_FIRMWARE_SOURCE_SLUG,
             autoCheckFirmwareUpdates: migratedFromLegacyRepo
               ? true
@@ -633,6 +690,7 @@ export function useStudioState(
       }
     } catch {}
     return {
+      hadStoredHostOsMap: false,
       settings: DEFAULT_SETTINGS,
       userPresets: [],
       customMacros: [],
@@ -646,53 +704,73 @@ export function useStudioState(
       if (lastId) {
         const rec = readStoredPadRecord(lastId);
         if (rec) {
+          const mergedMacros = mergeDiscoveredCustomMacros(
+            initialUiPrefs.customMacros,
+            rec.profiles,
+            rec.repeatConfigs
+          );
           return {
             deviceId: lastId,
             rev: rec.rev,
             dirty: rec.dirty,
             hasStoredPad: true,
+            inferredHostOsMap: !initialUiPrefs.hadStoredHostOsMap
+              ? {
+                  HOST1: inferHostOsFromSlots(rec.profiles.h1, 'mac'),
+                  HOST2: inferHostOsFromSlots(rec.profiles.h2, 'windows'),
+                  HOST3: inferHostOsFromSlots(rec.profiles.h3, 'mac')
+                }
+              : undefined,
             profiles: serializedProfilesToStudioProfiles(
               rec.profiles,
               initialUiPrefs.appearanceOverrides,
-              rec.repeatConfigs
+              rec.repeatConfigs,
+              undefined,
+              mergedMacros
             ),
             activeProfileId: rec.profiles.active || 'HOST1',
-            customMacros: mergeDiscoveredCustomMacros(
-              initialUiPrefs.customMacros,
-              rec.profiles,
-              rec.repeatConfigs
-            )
+            customMacros: mergedMacros
           };
         }
       }
       const draft = readStoredPadRecord(DRAFT_PAD_ID);
       if (draft) {
+        const mergedMacros = mergeDiscoveredCustomMacros(
+          initialUiPrefs.customMacros,
+          draft.profiles,
+          draft.repeatConfigs
+        );
         return {
           deviceId: DRAFT_PAD_ID,
           rev: 0,
           dirty: draft.dirty,
           hasStoredPad: false,
+          inferredHostOsMap: !initialUiPrefs.hadStoredHostOsMap
+            ? {
+                HOST1: inferHostOsFromSlots(draft.profiles.h1, 'mac'),
+                HOST2: inferHostOsFromSlots(draft.profiles.h2, 'windows'),
+                HOST3: inferHostOsFromSlots(draft.profiles.h3, 'mac')
+              }
+            : undefined,
           profiles: serializedProfilesToStudioProfiles(
             draft.profiles,
             initialUiPrefs.appearanceOverrides,
-            draft.repeatConfigs
+            draft.repeatConfigs,
+            undefined,
+            mergedMacros
           ),
           activeProfileId: draft.profiles.active || 'HOST1',
-          customMacros: mergeDiscoveredCustomMacros(
-            initialUiPrefs.customMacros,
-            draft.profiles,
-            draft.repeatConfigs
-          )
+          customMacros: mergedMacros
         };
       }
     } catch {}
 
-    // Offline pre-connect state uses universal factory defaults across Host 1–3 + TV
+    // Offline pre-connect state uses universal factory defaults across Device 1–3 + TV
     const factorySerialized: SerializedPadProfiles = {
       active: 'HOST1',
-      h1_name: 'Host 1',
-      h2_name: 'Host 2',
-      h3_name: 'Host 3',
+      h1_name: 'Device 1',
+      h2_name: 'Device 2',
+      h3_name: 'Device 3',
       tv_name: 'TV',
       h1: { ...FACTORY_DEFAULT_SLOTS.HOST1 },
       h2: { ...FACTORY_DEFAULT_SLOTS.HOST2 },
@@ -705,9 +783,13 @@ export function useStudioState(
       rev: 0,
       dirty: false,
       hasStoredPad: false,
+      inferredHostOsMap: undefined as HostOsMap | undefined,
       profiles: serializedProfilesToStudioProfiles(
         factorySerialized,
-        initialUiPrefs.appearanceOverrides
+        initialUiPrefs.appearanceOverrides,
+        undefined,
+        undefined,
+        initialUiPrefs.customMacros
       ),
       activeProfileId: 'HOST1' as HardwareProfileId,
       customMacros: initialUiPrefs.customMacros
@@ -736,7 +818,11 @@ export function useStudioState(
   const [past, setPast] = useState<WorkspaceSnapshot[]>([]);
   const [future, setFuture] = useState<WorkspaceSnapshot[]>([]);
   const [userPresets, setUserPresets] = useState<UserPreset[]>(initialUiPrefs.userPresets);
-  const [settings, setSettings] = useState<StudioSettings>(initialUiPrefs.settings);
+  const [settings, setSettings] = useState<StudioSettings>(() =>
+    bootPadData.inferredHostOsMap
+      ? { ...initialUiPrefs.settings, hostOsMap: bootPadData.inferredHostOsMap }
+      : initialUiPrefs.settings
+  );
 
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
@@ -767,6 +853,7 @@ export function useStudioState(
           : 'dark';
       }
       root.setAttribute('data-theme', resolved);
+      root.classList.toggle('dark', resolved === 'dark');
     };
 
     applyResolvedTheme();
@@ -832,23 +919,29 @@ export function useStudioState(
         existingRec?.repeatConfigs ??
         extractRepeatMapFromProfiles(snapshotRef.current.profiles);
 
+      const mergedMacros = mergeDiscoveredCustomMacros(
+        snapshotRef.current.customMacros,
+        padProfiles,
+        effectiveRepeats
+      );
       const builtProfiles = serializedProfilesToStudioProfiles(
         padProfiles,
         overridesRef.current,
         effectiveRepeats,
-        snapshotRef.current.profiles
+        snapshotRef.current.profiles,
+        mergedMacros
       );
       const cleanedRepeatMap = extractRepeatMapFromProfiles(builtProfiles);
 
-      setSnapshot(prev => ({
+      setSnapshot({
         profiles: builtProfiles,
         activeProfileId: padProfiles.active,
         customMacros: mergeDiscoveredCustomMacros(
-          prev.customMacros,
+          mergedMacros,
           padProfiles,
           cleanedRepeatMap
         )
-      }));
+      });
 
       setCurrentDeviceId(deviceId);
       deviceIdRef.current = deviceId;
@@ -1746,7 +1839,7 @@ export function useStudioState(
         if (!exists && candidateSig) {
           const steps = actionToMacroSteps(actionStr, normalizedBinding.repeatConfig);
           const smartName = suggestSmartMacroName(steps, normalizedBinding.repeatConfig);
-          nextMacros = [
+          nextMacros = ensureUniqueMacroNames([
             {
               id: `custom-${Date.now()}`,
               name: smartName,
@@ -1759,13 +1852,39 @@ export function useStudioState(
               source: 'user'
             },
             ...nextMacros
-          ];
+          ]);
         }
       }
 
+      const syncedProfiles = nextProfiles.map(prof => {
+        if (prof.id !== profileId || !(slot in SLOT_TO_ACTION_KEY)) return prof;
+        const kid = SLOT_TO_ACTION_KEY[slot as ButtonSlotId];
+        const existingApp = prof.layers[0].keys[kid].appearance;
+        return {
+          ...prof,
+          layers: [
+            {
+              ...prof.layers[0],
+              keys: {
+                ...prof.layers[0].keys,
+                [kid]: {
+                  ...prof.layers[0].keys[kid],
+                  appearance: deriveAppearanceForAction(
+                    actionStr,
+                    existingApp,
+                    normalizedBinding.repeatConfig,
+                    nextMacros
+                  )
+                }
+              }
+            }
+          ] as [typeof prof.layers[0]]
+        };
+      });
+
       const nextSnap: WorkspaceSnapshot = {
         ...prevSnap,
-        profiles: nextProfiles,
+        profiles: syncedProfiles,
         customMacros: nextMacros
       };
 
@@ -2065,8 +2184,9 @@ export function useStudioState(
   const saveCustomMacro = useCallback(
     (
       item: CustomMacroItem,
-      options?: { forceNew?: boolean }
+      options?: { forceNew?: boolean; silent?: boolean }
     ): { saved: CustomMacroItem | null; updatedSlotCount: number } => {
+      const silent = Boolean(options?.silent);
       const steps =
         item.repeatConfig?.steps && item.repeatConfig.steps.length > 0
           ? item.repeatConfig.steps
@@ -2077,7 +2197,9 @@ export function useStudioState(
       if (steps.length > 0) {
         const check = validateMacroSequenceDraft(steps, item.repeatConfig, { nativeDelay });
         if (!check.valid) {
-          onToast(check.issues[0]?.message || 'Complete all macro steps before saving', 'error');
+          if (!silent) {
+            onToast(check.issues[0]?.message || 'Complete all macro steps before saving', 'error');
+          }
           return { saved: null, updatedSlotCount: 0 };
         }
         if (item.repeatConfig && check.builtAction) {
@@ -2087,15 +2209,17 @@ export function useStudioState(
 
       const canonAction = canonicalizeFirmwareAction(resolvedAction);
       if (!canonAction || !isValidFirmwareAction(canonAction)) {
-        onToast(
-          `Macro sequence is incomplete or exceeds ${MAX_NVS_ACTION_BYTES}-byte NVS limit`,
-          'error'
-        );
+        if (!silent) {
+          onToast(
+            `Macro sequence is incomplete or exceeds ${MAX_NVS_ACTION_BYTES}-byte NVS limit`,
+            'error'
+          );
+        }
         return { saved: null, updatedSlotCount: 0 };
       }
 
       const smartName = suggestSmartMacroName(steps, item.repeatConfig);
-      const finalName = isGenericMacroName(item.name) ? smartName : item.name.trim();
+      const requestedName = isGenericMacroName(item.name) ? smartName : item.name.trim();
       const newSig = getMacroCanonicalSignature(canonAction, item.repeatConfig);
       const forceNew = Boolean(options?.forceNew);
 
@@ -2107,7 +2231,6 @@ export function useStudioState(
         ? getMacroCanonicalSignature(existingById.action, existingById.repeatConfig)
         : null;
 
-      // Check if another saved macro already has this exact canonical signature
       const duplicateMatch = forceNew
         ? undefined
         : prevSnap.customMacros.find(
@@ -2116,38 +2239,61 @@ export function useStudioState(
               getMacroCanonicalSignature(m.action, m.repeatConfig) === newSig
           );
 
+      const targetId = forceNew
+        ? `macro-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        : duplicateMatch && !existingById
+        ? duplicateMatch.id
+        : item.id;
+
+      // Ensure unique name against all OTHER macros in the library
+      const otherLowerNames = new Set(
+        prevSnap.customMacros
+          .filter(m => m.id !== targetId && (!duplicateMatch || m.id !== duplicateMatch.id))
+          .map(m => m.name.trim().toLowerCase())
+      );
+      let uniqueName = requestedName;
+      if (otherLowerNames.has(uniqueName.toLowerCase())) {
+        const baseName = uniqueName.replace(/\s+\d+$/, '').trim() || uniqueName;
+        let suffix = 2;
+        uniqueName = `${baseName} ${suffix}`;
+        while (otherLowerNames.has(uniqueName.toLowerCase())) {
+          suffix += 1;
+          uniqueName = `${baseName} ${suffix}`;
+        }
+      }
+
       const finalMacro: CustomMacroItem = {
         ...item,
-        id: forceNew
-          ? `macro-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-          : duplicateMatch && !existingById
-          ? duplicateMatch.id
-          : item.id,
-        name: finalName,
+        id: targetId,
+        name: uniqueName,
         action: canonAction,
         source: 'user'
       };
 
-      let nextList: CustomMacroItem[];
+      let rawNextList: CustomMacroItem[];
       if (existingById) {
-        nextList = prevSnap.customMacros
+        rawNextList = prevSnap.customMacros
           .filter(m => !duplicateMatch || m.id !== duplicateMatch.id)
           .map(m => (m.id === existingById.id ? finalMacro : m));
       } else if (duplicateMatch) {
-        nextList = prevSnap.customMacros.map(m =>
+        rawNextList = prevSnap.customMacros.map(m =>
           m.id === duplicateMatch.id ? finalMacro : m
         );
       } else {
-        nextList = [finalMacro, ...prevSnap.customMacros];
+        rawNextList = [finalMacro, ...prevSnap.customMacros];
       }
+      const nextList = ensureUniqueMacroNames(rawNextList);
+      const resolvedSaved = nextList.find(m => m.id === finalMacro.id) || finalMacro;
 
-      // Propagate edits to all hardware slots across HOST1..3 & TV that were bound to `oldSig`
+      // Propagate edits or macro name updates to hardware slots bound to oldSig or newSig
       let updatedSlotCount = 0;
-      const updatedBinding = firmwareActionToBinding(canonAction, finalMacro.repeatConfig);
+      const actionChanged = Boolean(oldSig && oldSig !== newSig);
+      const nameChanged = Boolean(existingById && existingById.name !== resolvedSaved.name);
+      const updatedBinding = firmwareActionToBinding(canonAction, resolvedSaved.repeatConfig);
       const slotsToPush: { profileId: HardwareProfileId; slot: HardwareSlotId }[] = [];
 
       const nextProfiles =
-        oldSig && oldSig !== newSig
+        actionChanged || nameChanged
           ? prevSnap.profiles.map(prof => {
               const layer = prof.layers[0];
               let profChanged = false;
@@ -2160,39 +2306,44 @@ export function useStudioState(
                   bindingToFirmwareAction(tap),
                   tap.repeatConfig
                 );
-                if (tapSig && tapSig === oldSig) {
+                if (tapSig && (tapSig === oldSig || tapSig === newSig)) {
                   profChanged = true;
-                  updatedSlotCount += 1;
-                  slotsToPush.push({ profileId: prof.id, slot });
+                  if (actionChanged && tapSig === oldSig) {
+                    updatedSlotCount += 1;
+                    slotsToPush.push({ profileId: prof.id, slot });
+                  }
                   const existingApp = layer.keys[kid].appearance;
                   nextKeys[kid] = {
                     ...layer.keys[kid],
-                    triggers: { tap: updatedBinding },
+                    triggers: { tap: actionChanged ? updatedBinding : tap },
                     appearance: deriveAppearanceForAction(
                       canonAction,
                       existingApp,
-                      finalMacro.repeatConfig
+                      resolvedSaved.repeatConfig,
+                      nextList
                     )
                   };
                 }
               });
 
               const nextEncoder: EncoderControlConfig = { ...layer.encoder };
-              (['dial', 'cw', 'ccw'] as const).forEach(encKey => {
-                const hwSlot: HardwareSlotId =
-                  encKey === 'dial' ? 'dial' : encKey === 'cw' ? 'enc_cw' : 'enc_ccw';
-                const bind = layer.encoder[encKey];
-                const bindSig = getMacroCanonicalSignature(
-                  bindingToFirmwareAction(bind),
-                  bind.repeatConfig
-                );
-                if (bindSig && bindSig === oldSig) {
-                  profChanged = true;
-                  updatedSlotCount += 1;
-                  slotsToPush.push({ profileId: prof.id, slot: hwSlot });
-                  nextEncoder[encKey] = updatedBinding;
-                }
-              });
+              if (actionChanged) {
+                (['dial', 'cw', 'ccw'] as const).forEach(encKey => {
+                  const hwSlot: HardwareSlotId =
+                    encKey === 'dial' ? 'dial' : encKey === 'cw' ? 'enc_cw' : 'enc_ccw';
+                  const bind = layer.encoder[encKey];
+                  const bindSig = getMacroCanonicalSignature(
+                    bindingToFirmwareAction(bind),
+                    bind.repeatConfig
+                  );
+                  if (bindSig && bindSig === oldSig) {
+                    profChanged = true;
+                    updatedSlotCount += 1;
+                    slotsToPush.push({ profileId: prof.id, slot: hwSlot });
+                    nextEncoder[encKey] = updatedBinding;
+                  }
+                });
+              }
 
               if (!profChanged) return prof;
               return {
@@ -2243,13 +2394,15 @@ export function useStudioState(
             }
             return lastRes;
           },
-          `Saved "${finalName}" & updated ${updatedSlotCount} bound ${
-            updatedSlotCount === 1 ? 'control' : 'controls'
-          }`
+          silent
+            ? undefined
+            : `Saved "${resolvedSaved.name}" & updated ${updatedSlotCount} bound ${
+                updatedSlotCount === 1 ? 'control' : 'controls'
+              }`
         );
       }
 
-      return { saved: finalMacro, updatedSlotCount };
+      return { saved: resolvedSaved, updatedSlotCount };
     },
     [onToast, persistSlotOrProfileOnHardware, runConnectedWrite]
   );
@@ -2676,6 +2829,71 @@ export function useStudioState(
     }
   }, [onToast, pullFromUsbNow]);
 
+  const setHostOs = useCallback(
+    async (hostId: BleHostProfileId, nextOs: HostOsType) => {
+      setSettings(prev => ({
+        ...prev,
+        hostOsMap: {
+          ...prev.hostOsMap,
+          [hostId]: nextOs
+        }
+      }));
+
+      const prevSnap = snapshotRef.current;
+      const targetProf = prevSnap.profiles.find(p => p.id === hostId);
+      if (!targetProf) return;
+
+      const currentSlots = extractProfileSlots(targetProf);
+      const remappedSlots: Record<HardwareSlotId, string> = { ...currentSlots };
+      let changedCount = 0;
+
+      for (const s of HARDWARE_SLOTS) {
+        const cur = currentSlots[s] || '';
+        if (!cur) continue;
+        const nextAct = remapActionForHostOs(cur, nextOs);
+        if (nextAct !== cur && isValidSlotAssignment(nextAct)) {
+          remappedSlots[s] = nextAct;
+          changedCount += 1;
+        }
+      }
+
+      const osLabel = hostOsFullLabel(nextOs);
+      if (changedCount === 0) {
+        onToast(`${targetProf.name} set to ${osLabel}`);
+        return;
+      }
+
+      const existingRepeats = extractRepeatMapFromProfiles(prevSnap.profiles);
+      const rebuilt = buildHardwareProfile(
+        hostId,
+        targetProf.name,
+        remappedSlots,
+        targetProf,
+        existingRepeats,
+        prevSnap.customMacros
+      );
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: prevSnap.profiles.map(p => (p.id === hostId ? rebuilt : p))
+      };
+
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setSnapshot(nextSnap);
+
+      await runConnectedWrite(
+        prevSnap,
+        nextSnap,
+        () => usbHardware.saveFullProfile(hostId, remappedSlots),
+        `${targetProf.name} set to ${osLabel} · mapped ${changedCount} ${
+          changedCount === 1 ? 'shortcut' : 'shortcuts'
+        }`
+      );
+    },
+    [onToast, runConnectedWrite]
+  );
+
   return {
     profiles: snapshot.profiles,
     activeProfile,
@@ -2723,6 +2941,7 @@ export function useStudioState(
     exportHardwareBackupFile,
     importHardwareBackupFile,
     clearLocalUnSyncedState,
+    setHostOs,
     updateSettings: (patch: Partial<StudioSettings>) =>
       setSettings(prev => ({ ...prev, ...patch }))
   };

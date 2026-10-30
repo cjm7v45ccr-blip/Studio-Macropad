@@ -8,6 +8,7 @@ import {
 } from '../types/studio';
 import { ToastVariant } from '../hooks/useStudioState';
 import {
+  compareFirmwareVersions,
   formatBytesCompact,
   selectPrimaryOtaBinaryAsset
 } from '../services/firmwareUpdateService';
@@ -16,7 +17,10 @@ import {
   AlertCircle,
   Archive,
   ArrowUpCircle,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Cpu,
   Download,
   FolderOpen,
@@ -86,10 +90,10 @@ function getBannerVisualConfig(
     return {
       statusLabel: 'Installation Complete',
       Icon: CheckCircle2,
-      iconColorClass: 'text-emerald-400',
-      statusTextClass: 'text-emerald-400',
-      strokeClass: 'stroke-emerald-400',
-      fillClass: 'fill-emerald-400',
+      iconColorClass: 'text-emerald-600 dark:text-emerald-400',
+      statusTextClass: 'text-emerald-700 dark:text-emerald-400',
+      strokeClass: 'stroke-emerald-500 dark:stroke-emerald-400',
+      fillClass: 'fill-emerald-500 dark:fill-emerald-400',
       compactSurfaceClass: 'bg-emerald-500/10 border-b border-emerald-500/30',
       fullSurfaceClass: 'bg-emerald-500/10 border border-emerald-500/35',
       dividerBorderClass: 'border-emerald-500/25'
@@ -100,10 +104,10 @@ function getBannerVisualConfig(
     return {
       statusLabel: 'Update Interrupted',
       Icon: AlertCircle,
-      iconColorClass: 'text-rose-400',
-      statusTextClass: 'text-rose-400',
-      strokeClass: 'stroke-rose-400',
-      fillClass: 'fill-rose-400/80',
+      iconColorClass: 'text-rose-600 dark:text-rose-400',
+      statusTextClass: 'text-rose-700 dark:text-rose-400',
+      strokeClass: 'stroke-rose-500 dark:stroke-rose-400',
+      fillClass: 'fill-rose-500/80 dark:fill-rose-400/80',
       compactSurfaceClass: 'bg-rose-500/10 border-b border-rose-500/30',
       fullSurfaceClass: 'bg-rose-500/10 border border-rose-500/35',
       dividerBorderClass: 'border-rose-500/25'
@@ -114,10 +118,10 @@ function getBannerVisualConfig(
     return {
       statusLabel: 'Backing Up',
       Icon: Archive,
-      iconColorClass: 'text-sky-400',
-      statusTextClass: 'text-sky-400',
-      strokeClass: 'stroke-sky-400',
-      fillClass: 'fill-sky-400',
+      iconColorClass: 'text-sky-600 dark:text-sky-400',
+      statusTextClass: 'text-sky-700 dark:text-sky-400',
+      strokeClass: 'stroke-sky-500 dark:stroke-sky-400',
+      fillClass: 'fill-sky-500 dark:fill-sky-400',
       compactSurfaceClass: 'bg-sky-500/10 border-b border-sky-500/30',
       fullSurfaceClass: 'bg-sky-500/10 border border-sky-500/35',
       dividerBorderClass: 'border-sky-500/25'
@@ -128,10 +132,10 @@ function getBannerVisualConfig(
     return {
       statusLabel: 'Downloading',
       Icon: Download,
-      iconColorClass: 'text-sky-400',
-      statusTextClass: 'text-sky-400',
-      strokeClass: 'stroke-sky-400',
-      fillClass: 'fill-sky-400',
+      iconColorClass: 'text-sky-600 dark:text-sky-400',
+      statusTextClass: 'text-sky-700 dark:text-sky-400',
+      strokeClass: 'stroke-sky-500 dark:stroke-sky-400',
+      fillClass: 'fill-sky-500 dark:fill-sky-400',
       compactSurfaceClass: 'bg-sky-500/10 border-b border-sky-500/30',
       fullSurfaceClass: 'bg-sky-500/10 border border-sky-500/35',
       dividerBorderClass: 'border-sky-500/25'
@@ -142,10 +146,10 @@ function getBannerVisualConfig(
     return {
       statusLabel: 'Verifying',
       Icon: ShieldCheck,
-      iconColorClass: 'text-cyan-400',
-      statusTextClass: 'text-cyan-400',
-      strokeClass: 'stroke-cyan-400',
-      fillClass: 'fill-cyan-400',
+      iconColorClass: 'text-cyan-600 dark:text-cyan-400',
+      statusTextClass: 'text-cyan-700 dark:text-cyan-400',
+      strokeClass: 'stroke-cyan-500 dark:stroke-cyan-400',
+      fillClass: 'fill-cyan-500 dark:fill-cyan-400',
       compactSurfaceClass: 'bg-cyan-500/10 border-b border-cyan-500/30',
       fullSurfaceClass: 'bg-cyan-500/10 border border-cyan-500/35',
       dividerBorderClass: 'border-cyan-500/25'
@@ -173,10 +177,10 @@ function getBannerVisualConfig(
       statusLabel: 'Restarting MacroPad',
       Icon: RefreshCw,
       spinIcon: true,
-      iconColorClass: 'text-violet-400',
-      statusTextClass: 'text-violet-400',
-      strokeClass: 'stroke-violet-400',
-      fillClass: 'fill-violet-400',
+      iconColorClass: 'text-violet-600 dark:text-violet-400',
+      statusTextClass: 'text-violet-700 dark:text-violet-400',
+      strokeClass: 'stroke-violet-500 dark:stroke-violet-400',
+      fillClass: 'fill-violet-500 dark:fill-violet-400',
       compactSurfaceClass: 'bg-violet-500/10 border-b border-violet-500/30',
       fullSurfaceClass: 'bg-violet-500/10 border border-violet-500/35',
       dividerBorderClass: 'border-violet-500/25'
@@ -188,10 +192,10 @@ function getBannerVisualConfig(
       statusLabel: 'Checking Update',
       Icon: RefreshCw,
       spinIcon: true,
-      iconColorClass: 'text-sky-400',
-      statusTextClass: 'text-sky-400',
-      strokeClass: 'stroke-sky-400',
-      fillClass: 'fill-sky-400',
+      iconColorClass: 'text-sky-600 dark:text-sky-400',
+      statusTextClass: 'text-sky-700 dark:text-sky-400',
+      strokeClass: 'stroke-sky-500 dark:stroke-sky-400',
+      fillClass: 'fill-sky-500 dark:fill-sky-400',
       compactSurfaceClass: 'bg-amber-500/10 border-b border-amber-500/30',
       fullSurfaceClass: 'bg-amber-500/10 border border-amber-500/35',
       dividerBorderClass: 'border-amber-500/20'
@@ -201,10 +205,10 @@ function getBannerVisualConfig(
   return {
     statusLabel: 'Ready to Install',
     Icon: ArrowUpCircle,
-    iconColorClass: 'text-amber-400',
-    statusTextClass: 'text-amber-400',
-    strokeClass: 'stroke-amber-400',
-    fillClass: 'fill-amber-400',
+    iconColorClass: 'text-amber-600 dark:text-amber-400',
+    statusTextClass: 'text-amber-700 dark:text-amber-400',
+    strokeClass: 'stroke-amber-500 dark:stroke-amber-400',
+    fillClass: 'fill-amber-500 dark:fill-amber-400',
     compactSurfaceClass: 'bg-amber-500/10 border-b border-amber-500/30',
     fullSurfaceClass: 'bg-amber-500/10 border border-amber-500/35',
     dividerBorderClass: 'border-amber-500/20'
@@ -299,7 +303,7 @@ const FirmwareLinearProgress: React.FC<{
       aria-valuetext={`${clamped}% — ${STAGE_LABELS[stage]}`}
       className={`w-full ${
         thick ? 'h-2' : 'h-1.5'
-      } rounded-full bg-black/25 overflow-hidden`}
+      } rounded-full bg-black/15 dark:bg-black/25 overflow-hidden`}
     >
       <svg
         viewBox="0 0 100 4"
@@ -374,7 +378,7 @@ const FirmwareStageTrail: React.FC<{
             <span
               className={`inline-flex items-center gap-1 ${
                 isDone
-                  ? 'text-emerald-400 font-medium'
+                  ? 'text-emerald-700 dark:text-emerald-400 font-medium'
                   : isCurrent
                   ? `${activeVisual.statusTextClass} font-semibold`
                   : 'text-[var(--text-muted)]'
@@ -407,9 +411,9 @@ const FirmwareProgressBox: React.FC<{
     <div
       className={`p-3 rounded-xl border space-y-2 text-xs ${
         installProgress.stage === 'error'
-          ? 'bg-rose-500/10 border-rose-500/35 text-rose-200'
+          ? 'bg-rose-500/10 border-rose-500/35 text-rose-800 dark:text-rose-200'
           : installProgress.stage === 'complete'
-          ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-200'
+          ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-800 dark:text-emerald-200'
           : 'bg-[var(--bg-elevated)] border-[var(--border-strong)] text-[var(--text-primary)]'
       }`}
     >
@@ -486,7 +490,9 @@ export const FirmwareUpdateBanner: React.FC<{
     !isFirmwareBannerDismissed;
 
   const showActiveUploadInBanner =
-    activeStage !== null && (!isFirmwareBannerDismissed || isUploadingFirmware);
+    activeStage !== null &&
+    activeStage !== 'complete' &&
+    (!isFirmwareBannerDismissed || isUploadingFirmware);
 
   if (!hasAvailableUpdate && !showActiveUploadInBanner) return null;
 
@@ -575,19 +581,6 @@ export const FirmwareUpdateBanner: React.FC<{
                       </span>
                     </>
                   )}
-                  {isVerifying && installProgress?.sha256 && (
-                    <>
-                      <span
-                        className="text-[var(--text-muted)] hidden sm:inline"
-                        aria-hidden="true"
-                      >
-                        ·
-                      </span>
-                      <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums hidden sm:inline">
-                        SHA-256 {installProgress.sha256.slice(0, 10)}…
-                      </span>
-                    </>
-                  )}
                   {hasByteTelemetry && !isError && (
                     <>
                       <span
@@ -602,62 +595,26 @@ export const FirmwareUpdateBanner: React.FC<{
                       </span>
                     </>
                   )}
-                  {(isWritingBinary || activeStage === 'rebooting') && (
-                    <>
-                      <span
-                        className="text-[var(--text-muted)] hidden lg:inline"
-                        aria-hidden="true"
-                      >
-                        ·
-                      </span>
-                      <span className="text-[11px] text-[var(--text-secondary)] hidden lg:inline">
-                        Keep USB cable connected
-                      </span>
-                    </>
-                  )}
                 </>
               ) : (
-                <>
-                  {latestRelease && firmwareUpdate.installedVersion && (
-                    <>
-                      <span className="text-[var(--text-muted)]" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
-                        Installed {firmwareUpdate.installedVersion} → v
-                        {latestRelease.version}
-                      </span>
-                    </>
-                  )}
-                  {primaryAsset && primaryAsset.sizeBytes > 0 && (
-                    <>
-                      <span
-                        className="text-[var(--text-muted)] hidden md:inline"
-                        aria-hidden="true"
-                      >
-                        ·
-                      </span>
-                      <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums hidden md:inline">
-                        {formatBytesCompact(primaryAsset.sizeBytes)}
-                      </span>
-                    </>
-                  )}
-                </>
+                latestRelease &&
+                firmwareUpdate.installedVersion && (
+                  <>
+                    <span className="text-[var(--text-muted)]" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
+                      Installed {firmwareUpdate.installedVersion} → v
+                      {latestRelease.version}
+                    </span>
+                  </>
+                )
               )}
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {isComplete ? (
-              <button
-                type="button"
-                onClick={onDismissFirmwareBanner}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold hover:bg-emerald-500/30 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Done</span>
-              </button>
-            ) : (hasAvailableUpdate || isActiveTransfer || isError) && (
+            {(hasAvailableUpdate || isActiveTransfer || isError) && (
               <button
                 type="button"
                 disabled={isUploadingFirmware || !primaryAsset}
@@ -763,9 +720,7 @@ export const FirmwareUpdateBanner: React.FC<{
             </div>
 
             <div className="text-sm font-semibold text-[var(--text-primary)]">
-              {isComplete
-                ? `MacroPad updated${targetVersion ? ` to v${targetVersion}` : ''}`
-                : isError
+              {isError
                 ? 'Firmware update could not complete'
                 : isVerifying
                 ? `Verifying firmware${targetVersion ? ` v${targetVersion}` : ''} integrity`
@@ -857,9 +812,7 @@ export const FirmwareUpdateBanner: React.FC<{
             <span
               className={
                 isError
-                  ? 'text-rose-300'
-                  : isComplete
-                  ? 'text-emerald-300'
+                  ? 'text-rose-700 dark:text-rose-300'
                   : 'text-[var(--text-secondary)]'
               }
             >
@@ -884,7 +837,7 @@ export const FirmwareUpdateBanner: React.FC<{
           <button
             type="button"
             onClick={() => setShowReleaseNotes(v => !v)}
-            className="text-xs font-medium text-amber-400 hover:underline cursor-pointer whitespace-nowrap"
+            className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline cursor-pointer whitespace-nowrap"
           >
             {showReleaseNotes ? 'Hide release notes' : 'View release notes'}
           </button>
@@ -897,36 +850,25 @@ export const FirmwareUpdateBanner: React.FC<{
       )}
 
       <div className="flex items-center gap-2 flex-wrap pt-0.5">
-        {isComplete ? (
-          <button
-            type="button"
-            onClick={onDismissFirmwareBanner}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold hover:bg-emerald-500/30 transition-colors cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Done</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={isUploadingFirmware || !primaryAsset}
-            onClick={onUploadToMacropad}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-60 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
-          >
-            {isUploadingFirmware ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Upload className="w-3.5 h-3.5" />
-            )}
-            <span className="tabular-nums">
-              {isUploadingFirmware
-                ? `${visual.statusLabel} (${clampedPercent}%)…`
-                : isError
-                ? `Retry Upload${targetVersion ? ` (v${targetVersion})` : ''}`
-                : `Upload v${targetVersion} to MacroPad`}
-            </span>
-          </button>
-        )}
+        <button
+          type="button"
+          disabled={isUploadingFirmware || !primaryAsset}
+          onClick={onUploadToMacropad}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-60 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+        >
+          {isUploadingFirmware ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Upload className="w-3.5 h-3.5" />
+          )}
+          <span className="tabular-nums">
+            {isUploadingFirmware
+              ? `${visual.statusLabel} (${clampedPercent}%)…`
+              : isError
+              ? `Retry Upload${targetVersion ? ` (v${targetVersion})` : ''}`
+              : `Upload v${targetVersion} to MacroPad`}
+          </span>
+        </button>
       </div>
     </div>
   );
@@ -948,6 +890,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
   const [selectedVersion, setSelectedVersion] = useState<string>('');
   const [autoBackupBeforeFlash, setAutoBackupBeforeFlash] = useState<boolean>(false);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  const [reinstallExpanded, setReinstallExpanded] = useState(false);
   const localBinInputRef = useRef<HTMLInputElement | null>(null);
 
   const availableReleases: FirmwareReleaseInfo[] = useMemo(() => {
@@ -968,6 +911,13 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
     }
   }, [availableReleases, selectedVersion]);
 
+  // Collapse manual reinstall drawer automatically once an installation succeeds
+  useEffect(() => {
+    if (installProgress?.stage === 'complete') {
+      setReinstallExpanded(false);
+    }
+  }, [installProgress?.stage]);
+
   const selectedRelease: FirmwareReleaseInfo | null = useMemo(() => {
     if (availableReleases.length === 0) return null;
     return (
@@ -984,6 +934,49 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
   const canFlashUsb = connection.connected || usbHardware.browserSupportsWebSerial;
   const latestRelease = firmwareUpdate.latestRelease;
 
+  const knownInstalledVersion =
+    firmwareUpdate.installedVersion ||
+    (connection.connected &&
+    connection.firmwareVersion &&
+    connection.firmwareVersion !== '—' &&
+    connection.firmwareVersion !== 'Connecting…'
+      ? connection.firmwareVersion
+      : settings.lastKnownFirmware || null);
+
+  const isFirmwareCurrent = useMemo(() => {
+    if (firmwareUpdate.status === 'up_to_date' || firmwareUpdate.status === 'ahead') {
+      return true;
+    }
+    if (firmwareUpdate.status === 'update_available') {
+      return false;
+    }
+    if (knownInstalledVersion && latestRelease) {
+      return compareFirmwareVersions(knownInstalledVersion, latestRelease.version) <= 0;
+    }
+    if (connection.connected && !latestRelease) {
+      return true;
+    }
+    return false;
+  }, [
+    firmwareUpdate.status,
+    knownInstalledVersion,
+    latestRelease,
+    connection.connected
+  ]);
+
+  const hasActiveOrFailedTransfer =
+    isUploadingFirmware ||
+    (installProgress !== null &&
+      installProgress.stage !== 'idle' &&
+      installProgress.stage !== 'complete');
+
+  const isUpdateAvailable = firmwareUpdate.status === 'update_available';
+
+  // Only show upload controls automatically when an update is actually available or mid-transfer;
+  // when current (or idle offline), tuck "Select USB Port & Upload" cleanly under "Reinstall".
+  const showUploadDrawer =
+    isUpdateAvailable || hasActiveOrFailedTransfer || reinstallExpanded;
+
   const handleManualFirmwareCheck = async () => {
     const result = await onCheckFirmwareUpdate({
       force: true,
@@ -995,16 +988,21 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
       onToast(
         `New update available: ${result.installedVersion} → v${result.latestRelease.version}`
       );
-    } else if (result.status === 'up_to_date') {
-      onToast(`MacroPad firmware (${result.installedVersion}) is up to date`);
-    } else if (result.status === 'ahead' && result.latestRelease) {
+    } else if (result.status === 'up_to_date' || result.status === 'ahead') {
       onToast(`MacroPad firmware (${result.installedVersion}) is up to date`);
     } else if (result.latestRelease) {
-      onToast(
-        `Firmware v${result.latestRelease.version} is ready to upload over USB`
-      );
+      if (
+        knownInstalledVersion &&
+        compareFirmwareVersions(knownInstalledVersion, result.latestRelease.version) <= 0
+      ) {
+        onToast(`Firmware (${knownInstalledVersion}) is up to date`);
+      } else {
+        onToast(
+          `Firmware v${result.latestRelease.version} available — connect MacroPad via USB to check or reinstall`
+        );
+      }
     } else {
-      onToast('Your MacroPad firmware is up to date — no new update posted yet');
+      onToast('Your MacroPad firmware is up to date');
     }
   };
 
@@ -1022,10 +1020,10 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
                 firmwareUpdate.status === 'checking' ? 'animate-spin' : ''
               }`}
             />
-            <span>MacroPad Firmware Updates</span>
+            <span>MacroPad Firmware</span>
           </div>
           <p className="text-xs text-[var(--text-muted)]">
-            Installs firmware updates over USB or Wi-Fi while preserving saved profiles, Bluetooth hosts, and SmartCast pairing.
+            Updates over USB or Wi-Fi while preserving saved profiles, Bluetooth hosts, and SmartCast pairing.
           </p>
         </div>
 
@@ -1038,13 +1036,13 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
                 autoCheckFirmwareUpdates: !settings.autoCheckFirmwareUpdates
               })
             }
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             <span>Auto-Notify</span>
             <span
               className={`font-mono text-[11px] font-semibold ${
                 settings.autoCheckFirmwareUpdates
-                  ? 'text-emerald-400'
+                  ? 'text-emerald-600 dark:text-emerald-400'
                   : 'text-[var(--text-muted)]'
               }`}
             >
@@ -1056,7 +1054,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
             type="button"
             disabled={firmwareUpdate.status === 'checking' || isUploadingFirmware}
             onClick={handleManualFirmwareCheck}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-strong)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             {firmwareUpdate.status === 'checking' ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
@@ -1070,242 +1068,254 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
         </div>
       </div>
 
-      {/* Live Status Row */}
-      <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-[var(--border-subtle)] text-xs">
-        <div className="flex items-center gap-2 min-w-0 flex-wrap font-mono text-[11px] tabular-nums">
+      {/* Live Status Row + Collapsible "Reinstall" Toggle When Current */}
+      <div className="flex items-center justify-between gap-3 flex-wrap pt-3 border-t border-[var(--border-subtle)] text-xs">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap tabular-nums">
           {firmwareUpdate.status === 'checking' ? (
             <span className="text-[var(--text-secondary)]">
               Checking for firmware updates…
             </span>
           ) : firmwareUpdate.status === 'error' ? (
-            <span className="inline-flex items-center gap-1.5 text-rose-300 font-sans text-xs">
-              <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+            <span className="inline-flex items-center gap-1.5 text-rose-700 dark:text-rose-300">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
               <span>{firmwareUpdate.error}</span>
             </span>
-          ) : firmwareUpdate.status === 'update_available' && latestRelease ? (
-            <span className="inline-flex items-center gap-1.5 text-amber-300">
-              <ArrowUpCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          ) : isUpdateAvailable && latestRelease ? (
+            <span className="inline-flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-300">
+              <ArrowUpCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
               <span>
                 Update available · {firmwareUpdate.installedVersion} → v{latestRelease.version}
               </span>
             </span>
-          ) : firmwareUpdate.status === 'up_to_date' && latestRelease ? (
-            <span className="inline-flex items-center gap-1.5 text-emerald-300">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>
-                Up to date · Installed {firmwareUpdate.installedVersion}
-              </span>
-            </span>
-          ) : firmwareUpdate.status === 'ahead' && latestRelease ? (
-            <span className="inline-flex items-center gap-1.5 text-emerald-300">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>
-                Up to date · Installed {firmwareUpdate.installedVersion}
-              </span>
-            </span>
-          ) : latestRelease && !connection.connected ? (
-            <span className="text-[var(--text-secondary)]">
-              {settings.lastKnownFirmware
-                ? `Last synced: v${settings.lastKnownFirmware.replace(/^v/i, '')} · Available: v${latestRelease.version}`
-                : `Available firmware: v${latestRelease.version} · Connect MacroPad via USB to update`}
-            </span>
-          ) : (
-            <span className="text-[var(--text-muted)] font-sans text-xs">
-              {connection.connected
-                ? `Installed firmware: ${connection.firmwareVersion} · Up to date`
-                : settings.lastKnownFirmware
-                ? `Last synced firmware: ${settings.lastKnownFirmware} · Connect via USB to check for updates.`
-                : 'Connect your MacroPad via USB to check your firmware version and install updates.'}
-            </span>
-          )}
-        </div>
-
-        {firmwareUpdate.checkedAt && (
-          <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">
-            Checked {firmwareUpdate.checkedAt}
-          </span>
-        )}
-      </div>
-
-      {/* Upload to MacroPad Controls */}
-      <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="space-y-0.5 min-w-0">
-            <div className="text-xs font-semibold text-[var(--text-primary)]">
-              {selectedRelease && primaryBinAsset
-                ? `Firmware v${selectedRelease.version}`
-                : 'No Firmware Update Posted Yet'}
-            </div>
-            <div className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums truncate">
-              {selectedRelease && primaryBinAsset ? (
-                <>
-                  <span>{primaryBinAsset.name}</span>
-                  {primaryBinAsset.sizeBytes > 0 && (
-                    <>
-                      <span aria-hidden="true"> · </span>
-                      <span>{formatBytesCompact(primaryBinAsset.sizeBytes)}</span>
-                    </>
-                  )}
-                  {primaryBinAsset.sha256 && (
-                    <>
-                      <span aria-hidden="true"> · </span>
-                      <span>SHA-256 {primaryBinAsset.sha256.slice(0, 10)}…</span>
-                    </>
-                  )}
-                </>
-              ) : (
-                <span className="font-sans">
-                  When a new firmware update is released, you will get a notification here to upload it to your MacroPad.
+          ) : isFirmwareCurrent ? (
+            <span className="inline-flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-semibold">
+              <Check className="w-4 h-4 shrink-0" />
+              <span>Up to date ✓</span>
+              {knownInstalledVersion && (
+                <span className="font-mono text-[11px] font-normal text-[var(--text-secondary)]">
+                  · {knownInstalledVersion.startsWith('v') ? knownInstalledVersion : `v${knownInstalledVersion}`}
                 </span>
               )}
-            </div>
-          </div>
-
-          {availableReleases.length > 0 && (
-            <div className="flex items-center gap-2 shrink-0">
-              {availableReleases.length > 1 && (
-                <select
-                  aria-label="Target firmware version"
-                  disabled={isUploadingFirmware}
-                  value={selectedRelease?.version || ''}
-                  onChange={e => setSelectedVersion(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
-                >
-                  {availableReleases.map((rel, idx) => (
-                    <option key={rel.version} value={rel.version}>
-                      v{rel.version}
-                      {idx === 0 ? ' (Latest)' : ''}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {selectedRelease?.notes && (
-                <button
-                  type="button"
-                  onClick={() => setShowReleaseNotes(v => !v)}
-                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-                >
-                  {showReleaseNotes ? 'Hide notes' : 'Release notes'}
-                </button>
-              )}
-            </div>
+            </span>
+          ) : (
+            <span className="text-[var(--text-secondary)]">
+              {latestRelease
+                ? `Latest release v${latestRelease.version} · Connect MacroPad via USB to verify installed version`
+                : 'Connect your MacroPad via USB to check installed firmware'}
+            </span>
           )}
         </div>
 
-        {showReleaseNotes && selectedRelease?.notes && (
-          <pre className="p-2.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-secondary)] whitespace-pre-wrap break-words max-h-36 overflow-y-auto leading-relaxed">
-            {selectedRelease.notes}
-          </pre>
-        )}
-
-        {onExportBackupFile && primaryBinAsset && connection.connected && (
-          <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={autoBackupBeforeFlash}
-              disabled={isUploadingFirmware}
-              onChange={e => setAutoBackupBeforeFlash(e.target.checked)}
-              className="rounded border-[var(--border-strong)] accent-[var(--accent)]"
-            />
-            <span>Download profile backup automatically before updating</span>
-          </label>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2 pt-0.5">
-          <button
-            type="button"
-            disabled={isUploadingFirmware || !canFlashUsb || !primaryBinAsset}
-            onClick={() =>
-              onUploadFirmwareToMacropad({
-                releaseOverride: selectedRelease,
-                method: 'usb_serial',
-                autoBackupBeforeFlash
-              })
-            }
-            title={
-              !canFlashUsb
-                ? 'Open this site in Chrome or Edge on desktop to flash over USB'
-                : !primaryBinAsset
-                ? 'No firmware update available yet'
-                : 'Uploads firmware directly over USB while preserving onboard settings'
-            }
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
-          >
-            {isUploadingFirmware && installProgress?.method === 'usb_serial' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Upload className="w-3.5 h-3.5" />
-            )}
-            <span>
-              {isUploadingFirmware && installProgress?.method === 'usb_serial'
-                ? 'Uploading to MacroPad…'
-                : selectedRelease && primaryBinAsset
-                ? !connection.connected
-                  ? `Select USB Port & Upload (v${selectedRelease.version})`
-                  : firmwareUpdate.status === 'update_available'
-                  ? `Upload Update to MacroPad (v${selectedRelease.version})`
-                  : `Upload v${selectedRelease.version} to MacroPad`
-                : 'Upload to MacroPad'}
+        <div className="flex items-center gap-3 shrink-0">
+          {firmwareUpdate.checkedAt && (
+            <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+              Checked {firmwareUpdate.checkedAt}
             </span>
-          </button>
-
-          {padWifiOnline && primaryBinAsset && selectedRelease && (
-            <button
-              type="button"
-              disabled={isUploadingFirmware}
-              onClick={() =>
-                onUploadFirmwareToMacropad({
-                  releaseOverride: selectedRelease,
-                  method: 'wifi_ota',
-                  autoBackupBeforeFlash
-                })
-              }
-              title="MacroPad downloads and installs the update over Wi-Fi"
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Upload via Wi-Fi</span>
-            </button>
           )}
 
-          {onUploadLocalFirmwareFile && (
-            <>
+          {!isUpdateAvailable && !hasActiveOrFailedTransfer && (
+            <button
+              type="button"
+              onClick={() => setReinstallExpanded(v => !v)}
+              aria-expanded={reinstallExpanded}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+            >
+              {reinstallExpanded ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5" />
+              )}
+              <span>Reinstall</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Upload / Reinstall Drawer (Shown automatically when an update is available, or on demand under "Reinstall") */}
+      {showUploadDrawer && (
+        <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-3 animate-panel-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="space-y-0.5 min-w-0">
+              <div className="text-xs font-semibold text-[var(--text-primary)]">
+                {selectedRelease && primaryBinAsset
+                  ? `Firmware v${selectedRelease.version}`
+                  : 'Manual Firmware Flash'}
+              </div>
+              <div className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums truncate">
+                {selectedRelease && primaryBinAsset ? (
+                  <>
+                    <span>{primaryBinAsset.name}</span>
+                    {primaryBinAsset.sizeBytes > 0 && (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        <span>{formatBytesCompact(primaryBinAsset.sizeBytes)}</span>
+                      </>
+                    )}
+                    {primaryBinAsset.sha256 && (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        <span>SHA-256 {primaryBinAsset.sha256.slice(0, 10)}…</span>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <span className="font-sans">
+                    Select a compiled ESP32 .bin file to flash directly over USB.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {availableReleases.length > 0 && (
+              <div className="flex items-center gap-2 shrink-0">
+                {availableReleases.length > 1 && (
+                  <select
+                    aria-label="Target firmware version"
+                    disabled={isUploadingFirmware}
+                    value={selectedRelease?.version || ''}
+                    onChange={e => setSelectedVersion(e.target.value)}
+                    className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
+                  >
+                    {availableReleases.map((rel, idx) => (
+                      <option key={rel.version} value={rel.version}>
+                        v{rel.version}
+                        {idx === 0 ? ' (Latest)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {selectedRelease?.notes && (
+                  <button
+                    type="button"
+                    onClick={() => setShowReleaseNotes(v => !v)}
+                    className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+                  >
+                    {showReleaseNotes ? 'Hide notes' : 'Release notes'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {showReleaseNotes && selectedRelease?.notes && (
+            <pre className="p-2.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-secondary)] whitespace-pre-wrap break-words max-h-36 overflow-y-auto leading-relaxed">
+              {selectedRelease.notes}
+            </pre>
+          )}
+
+          {onExportBackupFile && primaryBinAsset && connection.connected && (
+            <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer select-none">
               <input
-                ref={localBinInputRef}
-                type="file"
-                accept=".bin,application/octet-stream"
-                className="hidden"
-                onChange={async e => {
-                  const chosen = e.target.files?.[0];
-                  e.target.value = '';
-                  if (!chosen) return;
-                  await onUploadLocalFirmwareFile(chosen, { autoBackupBeforeFlash });
-                }}
+                type="checkbox"
+                checked={autoBackupBeforeFlash}
+                disabled={isUploadingFirmware}
+                onChange={e => setAutoBackupBeforeFlash(e.target.checked)}
+                className="rounded border-[var(--border-strong)] accent-[var(--accent)]"
               />
+              <span>Download profile backup automatically before flashing</span>
+            </label>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+            {primaryBinAsset && (
               <button
                 type="button"
                 disabled={isUploadingFirmware || !canFlashUsb}
-                onClick={() => localBinInputRef.current?.click()}
-                title="Pick any compiled ESP32 .bin file from your computer and flash it directly over USB"
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
+                onClick={() =>
+                  onUploadFirmwareToMacropad({
+                    releaseOverride: selectedRelease,
+                    method: 'usb_serial',
+                    autoBackupBeforeFlash
+                  })
+                }
+                title={
+                  !canFlashUsb
+                    ? 'Open this site in Chrome or Edge on desktop to flash over USB'
+                    : 'Flashes firmware directly over USB while preserving onboard settings'
+                }
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  isUpdateAvailable
+                    ? 'bg-[var(--accent)] text-white hover:opacity-90'
+                    : 'bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] border border-[var(--border-strong)] text-[var(--text-primary)]'
+                }`}
               >
-                {isUploadingFirmware && installProgress?.method === 'local_bin' ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
+                {isUploadingFirmware && installProgress?.method === 'usb_serial' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
+                  <Upload className="w-3.5 h-3.5 text-[var(--accent)]" />
                 )}
-                <span>Upload Local .bin</span>
+                <span>
+                  {isUploadingFirmware && installProgress?.method === 'usb_serial'
+                    ? 'Uploading to MacroPad…'
+                    : selectedRelease
+                    ? !connection.connected
+                      ? `Select USB Port & Upload (v${selectedRelease.version})`
+                      : isUpdateAvailable
+                      ? `Install Update (v${selectedRelease.version})`
+                      : `Select USB Port & Upload (v${selectedRelease.version})`
+                    : 'Select USB Port & Upload'}
+                </span>
               </button>
-            </>
-          )}
-        </div>
+            )}
 
-        <FirmwareProgressBox
-          installProgress={installProgress}
-          isUploading={isUploadingFirmware}
-        />
-      </div>
+            {padWifiOnline && primaryBinAsset && selectedRelease && (
+              <button
+                type="button"
+                disabled={isUploadingFirmware}
+                onClick={() =>
+                  onUploadFirmwareToMacropad({
+                    releaseOverride: selectedRelease,
+                    method: 'wifi_ota',
+                    autoBackupBeforeFlash
+                  })
+                }
+                title="MacroPad downloads and installs firmware over Wi-Fi"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Wifi className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>Upload via Wi-Fi</span>
+              </button>
+            )}
+
+            {onUploadLocalFirmwareFile && (
+              <>
+                <input
+                  ref={localBinInputRef}
+                  type="file"
+                  accept=".bin,application/octet-stream"
+                  className="hidden"
+                  onChange={async e => {
+                    const chosen = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!chosen) return;
+                    await onUploadLocalFirmwareFile(chosen, { autoBackupBeforeFlash });
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={isUploadingFirmware || !canFlashUsb}
+                  onClick={() => localBinInputRef.current?.click()}
+                  title="Pick any compiled ESP32 .bin file from your computer and flash it directly over USB"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  {isUploadingFirmware && installProgress?.method === 'local_bin' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
+                  ) : (
+                    <FolderOpen className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  )}
+                  <span>Upload Local .bin</span>
+                </button>
+              </>
+            )}
+          </div>
+
+          <FirmwareProgressBox
+            installProgress={installProgress}
+            isUploading={isUploadingFirmware}
+          />
+        </div>
+      )}
     </div>
   );
 };

@@ -7,6 +7,7 @@ import {
   DeviceConnectionInfo,
   HardwareProfileId,
   HardwareSlotId,
+  HostOsType,
   KeyAppearance,
   KeyControlConfig,
   KeyboardLayoutId,
@@ -39,6 +40,10 @@ interface ButtonInspectorProps {
   profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
   activeProfileName: string;
+  activeHostOs: HostOsType;
+  onChangeHostOs?: (os: HostOsType) => void;
+  showAdvancedIds?: boolean;
+  onToggleAdvancedIds?: () => void;
   customMacros: CustomMacroItem[];
   keyboardLayout: KeyboardLayoutId;
   connection: DeviceConnectionInfo;
@@ -73,6 +78,10 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   profiles,
   activeProfileId,
   activeProfileName,
+  activeHostOs,
+  onChangeHostOs,
+  showAdvancedIds = false,
+  onToggleAdvancedIds,
   customMacros,
   keyboardLayout,
   connection,
@@ -94,7 +103,6 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   const [iconCategory, setIconCategory] = useState<string>('All');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Track the exact binding this control had when selected so Undo restores it cleanly
   const selectionKey = `${activeProfileId}:${keyConfig.id}`;
   const [trackedSelectionKey, setTrackedSelectionKey] = useState(selectionKey);
   const [initialBindingOnSelect, setInitialBindingOnSelect] = useState<ActionBinding>(
@@ -116,58 +124,53 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     const activeHostProf = profiles.find(
       p => p.id === bleSlotToProfileId(activeBleHost)
     );
-    const activeHostDisplay = activeHostProf?.name || `Host ${activeBleHost}`;
+    const activeHostDisplay = activeHostProf?.name || `Device ${activeBleHost}`;
 
     return (
-      <aside className="w-full lg:w-[400px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col lg:h-full overflow-hidden">
-        <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
+      <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
+        <div className="sticky top-0 z-20 bg-[var(--bg-panel)]/95 backdrop-blur-md px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[var(--bg-input)] border border-[var(--border-strong)] flex items-center justify-center shadow-inner">
-              <Layers className="w-5 h-5 text-sky-400" />
+            <div className="w-9 h-9 rounded-xl bg-[var(--bg-input)] flex items-center justify-center">
+              <Layers className="w-4 h-4 text-[var(--accent)]" />
             </div>
             <div>
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                Mode Switch
+                Mode Key
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Mode Toggle, Multi-Host BLE & Setup
+                Mode Toggle · Multi-Host BLE · Setup
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2.5">
-            <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-              <Layers className="w-4 h-4 text-[var(--accent)]" />
-              <span>Hardware Gestures</span>
+        <div key={selectionKey} className="p-5 space-y-4 animate-panel-in">
+          <div className="p-4 rounded-xl bg-[var(--bg-input)] space-y-2.5">
+            <div className="text-xs font-semibold text-[var(--text-primary)]">
+              Hardware Gestures
             </div>
-            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              This physical key controls mode switching, multi-device Bluetooth selection, and USB setup:
-            </p>
-            <ul className="space-y-2 text-xs text-[var(--text-secondary)] pt-1">
-              <li className="flex items-start gap-2">
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] shrink-0 whitespace-nowrap">
+            <ul className="space-y-2 text-xs text-[var(--text-secondary)] pt-0.5">
+              <li className="flex items-start gap-2.5">
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-[var(--bg-elevated)] text-[var(--text-primary)] shrink-0 whitespace-nowrap">
                   Short Press
                 </span>
                 <span>
-                  Toggles between your active Bluetooth host (<strong>{activeHostDisplay}</strong>) and <strong>TV</strong>.
+                  Switches between <strong>{activeHostDisplay}</strong> and <strong>TV</strong>.
                 </span>
               </li>
-              <li className="flex items-start gap-2">
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-sky-300 shrink-0 whitespace-nowrap">
+              <li className="flex items-start gap-2.5">
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-[var(--bg-elevated)] text-[var(--accent)] shrink-0 whitespace-nowrap">
                   Hold + Dial
                 </span>
                 <span>
-                  Cycles between <strong>Host 1</strong>, <strong>Host 2</strong>, and{' '}
-                  <strong>Host 3</strong> — each with its own independent button layout and Bluetooth MAC.
+                  Cycles between <strong>Device 1–3</strong>, each with its own layout and Bluetooth MAC.
                 </span>
               </li>
-              <li className="flex items-start gap-2">
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] shrink-0 whitespace-nowrap">
+              <li className="flex items-start gap-2.5">
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-[var(--bg-elevated)] text-[var(--text-primary)] shrink-0 whitespace-nowrap">
                   Hold 3 Sec
                 </span>
-                <span>Enters or exits Setup Mode on the 128×64 OLED display.</span>
+                <span>Opens or exits Setup Mode on the OLED screen.</span>
               </li>
             </ul>
           </div>
@@ -184,24 +187,23 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             </span>
           </button>
 
-          {/* Direct Web & Serial Multi-Host BLE Switcher (/api/ble/switch) */}
-          <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-3">
+          <div className="p-4 rounded-xl bg-[var(--bg-input)] space-y-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-                <Bluetooth className="w-4 h-4 text-sky-400 shrink-0" />
-                <span>Multi-Host BLE Engine</span>
+                <Bluetooth className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                <span>Bluetooth Host</span>
               </div>
               <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
                 {connection.connected
                   ? connection.telemetry?.bleDeviceName || `Studio Pad ${activeBleHost}`
-                  : 'Inspect or edit'}
+                  : 'Select host'}
               </span>
             </div>
 
             <div
               role="group"
               aria-label="Select Bluetooth host"
-              className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)]"
+              className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[var(--bg-panel)]"
             >
               {([1, 2, 3] as const).map(slot => {
                 const hostProfId = bleSlotToProfileId(slot);
@@ -220,34 +222,22 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                         onSelectProfile(hostProfId);
                       }
                     }}
-                    style={
+                    className={`py-2 px-2 rounded-lg text-center transition-colors cursor-pointer whitespace-nowrap min-w-0 ${
                       isCurrent
-                        ? {
-                            borderColor: 'var(--accent)',
-                            backgroundColor: 'rgba(var(--accent-rgb), 0.16)'
-                          }
-                        : undefined
-                    }
-                    className={`py-2 px-2 rounded-lg border text-center transition-colors cursor-pointer whitespace-nowrap min-w-0 ${
-                      isCurrent
-                        ? 'text-[var(--text-primary)] font-semibold'
-                        : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                        ? 'bg-[rgba(var(--accent-rgb),0.16)] ring-1 ring-[var(--accent)] text-[var(--text-primary)] font-semibold'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
                   >
-                    <div className="font-mono text-[10px] text-sky-400 tabular-nums">
-                      [H{slot}]
+                    <div className="font-mono text-[10px] text-[var(--accent)] tabular-nums">
+                      H{slot}
                     </div>
                     <div className="text-[11px] mt-0.5 truncate">
-                      {hostProf?.name || `Host ${slot}`}
+                      {hostProf?.name || `Device ${slot}`}
                     </div>
                   </button>
                 );
               })}
             </div>
-
-            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              Each host stores its own 11 button & knob bindings plus a dedicated Bluetooth MAC (<span className="font-mono">Studio Pad 1–3</span>).
-            </p>
           </div>
         </div>
       </aside>
@@ -258,7 +248,11 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   const slotMeta = SLOT_LABELS[slotId];
   const currentTap = keyConfig.triggers.tap;
   const factoryDefaultAction = FACTORY_DEFAULT_SLOTS[activeProfileId][slotId];
-  const factoryDesc = describeFirmwareAction(factoryDefaultAction);
+  const factoryDesc = describeFirmwareAction(
+    factoryDefaultAction,
+    undefined,
+    customMacros
+  );
 
   const canUndoSelection =
     currentTap.value !== initialBindingOnSelect.value ||
@@ -305,12 +299,12 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   };
 
   return (
-    <aside className="w-full lg:w-[400px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col lg:h-full overflow-hidden">
-      {/* Header */}
-      <div className="px-4 sm:px-5 py-3.5 border-b border-[var(--border-subtle)] space-y-2.5">
+    <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
+      {/* Sticky Single-Scroll Header */}
+      <div className="sticky top-0 z-20 bg-[var(--bg-panel)]/95 backdrop-blur-md px-4 sm:px-5 py-3.5 border-b border-[var(--border-subtle)] space-y-2.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-[var(--bg-input)] border border-[var(--border-strong)] flex items-center justify-center shadow-inner shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-[var(--bg-input)] flex items-center justify-center shrink-0">
               <KeycapIcon
                 icon={keyConfig.appearance.icon}
                 className="w-4 h-4"
@@ -318,80 +312,75 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                  {slotMeta.full}
-                </h2>
-
-              </div>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                {slotMeta.full}
+              </h2>
               <p className="text-xs text-[var(--text-muted)] truncate tabular-nums">
-                {activeProfileName} ({profileShortTag(activeProfileId)}) · {slotMeta.short}
+                {activeProfileName} · {profileShortTag(activeProfileId)} · {slotMeta.short}
               </p>
             </div>
           </div>
+
+          {/* Compact Subtle Control Actions */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              disabled={!canUndoSelection}
+              onClick={() => onUpdateBinding(initialBindingOnSelect)}
+              title="Undo changes to this key"
+              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <Undo2 className="w-3 h-3 shrink-0" />
+              <span>Undo</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isAlreadyUnassigned}
+              onClick={() =>
+                onClearSlot
+                  ? onClearSlot(slotId)
+                  : onUpdateBinding({ type: 'none', value: '' })
+              }
+              title="Clear this key so pressing it sends nothing"
+              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <XCircle className="w-3 h-3 shrink-0" />
+              <span>Clear</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isAlreadyFactoryDefault}
+              onClick={() => onResetSlotToDefault(slotId)}
+              title={`Reset to default: ${factoryDesc.fullLabel}`}
+              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw className="w-3 h-3 shrink-0" />
+              <span>Default</span>
+            </button>
+          </div>
         </div>
 
-        {/* Control-Scoped Undo, Clear & Reset to Default Bar */}
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            disabled={!canUndoSelection}
-            onClick={() => onUpdateBinding(initialBindingOnSelect)}
-            title="Restore the value this control had when you selected it"
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <Undo2 className="w-3.5 h-3.5 shrink-0" />
-            <span>Undo</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={isAlreadyUnassigned}
-            onClick={() =>
-              onClearSlot
-                ? onClearSlot(slotId)
-                : onUpdateBinding({ type: 'none', value: '' })
-            }
-            title="Clear this key so pressing it sends nothing"
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <XCircle className="w-3.5 h-3.5 shrink-0" />
-            <span>Clear</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={isAlreadyFactoryDefault}
-            onClick={() => onResetSlotToDefault(slotId)}
-            title={`Reset to factory default: ${factoryDesc.fullLabel}`}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-            <span>Default</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Section Switcher: Hardware Action vs Keycap Legend */}
-      <div className="px-4 sm:px-5 pt-3">
-        <div className="grid grid-cols-2 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+        {/* Section Switcher: Action vs Keycap Legend */}
+        <div className="grid grid-cols-2 p-1 rounded-xl bg-[var(--bg-input)]">
           <button
             type="button"
             onClick={() => setInspectorSection('action')}
-            className={`py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+            className={`py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
               inspectorSection === 'action'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
-            Hardware Action
+            Action
           </button>
           <button
             type="button"
             onClick={() => setInspectorSection('appearance')}
-            className={`py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+            className={`py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
               inspectorSection === 'appearance'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
@@ -400,8 +389,8 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
         </div>
       </div>
 
-      {/* Scrollable Body */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
+      {/* Single-Scroll Body */}
+      <div key={selectionKey} className="p-4 sm:p-5 space-y-5 animate-panel-in">
         {inspectorSection === 'action' ? (
           <ActionPickerControl
             binding={keyConfig.triggers.tap}
@@ -409,6 +398,11 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             customMacros={customMacros}
             keyboardLayout={keyboardLayout}
             connection={connection}
+            activeProfileId={activeProfileId}
+            activeHostOs={activeHostOs}
+            onChangeHostOs={onChangeHostOs}
+            showAdvancedIds={showAdvancedIds}
+            onToggleAdvancedIds={onToggleAdvancedIds}
             activeRepeatJob={activeRepeatJob}
             onTestBinding={onTestBinding}
             onStopRepeat={onStopRepeat}
@@ -417,33 +411,27 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
         ) : (
           <div className="space-y-5">
             {/* Virtual OLED Preview Box */}
-            <div className="p-3.5 rounded-2xl bg-[#02060a] border border-cyan-500/40 shadow-[0_0_16px_rgba(6,182,212,0.2)] flex flex-col items-center justify-center space-y-2 font-mono text-cyan-300">
+            <div className="p-3.5 rounded-2xl bg-[#02060a] border border-cyan-500/35 flex flex-col items-center justify-center space-y-2 font-mono text-cyan-300">
               <div className="w-full flex items-center justify-between text-[10px] border-b border-cyan-500/20 pb-1.5 text-cyan-400">
-                <span className="font-bold flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                  OLED LIVE PREVIEW
-                </span>
+                <span className="font-semibold">OLED Preview</span>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[9px] text-cyan-400/80">128×64 · {slotMeta.short}</span>
                   {isBleHostProfile(activeProfileId) && (
-                    <span
-                      title={`Active BLE Host Badge ([${profileShortTag(activeProfileId)}])`}
-                      className="px-1.5 py-0.5 rounded bg-black border border-white/80 text-white font-mono text-[9px] font-bold leading-none tabular-nums"
-                    >
+                    <span className="px-1.5 py-0.5 rounded bg-black border border-white/70 text-white font-mono text-[9px] font-bold leading-none tabular-nums">
                       [{profileShortTag(activeProfileId)}]
                     </span>
                   )}
                 </div>
               </div>
               <div className="py-2.5 flex flex-col items-center justify-center space-y-1.5">
-                <div className="w-12 h-12 rounded-xl bg-cyan-950/70 border border-cyan-500/45 flex items-center justify-center shadow-inner">
+                <div className="w-12 h-12 rounded-xl bg-cyan-950/70 border border-cyan-500/45 flex items-center justify-center">
                   <KeycapIcon
                     icon={keyConfig.appearance.icon}
                     className="w-6 h-6"
                     style={{ color: keyConfig.appearance.labelColor || '#38BDF8' }}
                   />
                 </div>
-                <span className="text-xs font-extrabold tracking-widest text-cyan-100 uppercase truncate max-w-[200px]">
+                <span className="text-xs font-bold tracking-wider text-cyan-100 truncate max-w-[200px]">
                   {keyConfig.appearance.label || slotMeta.short}
                 </span>
               </div>
@@ -451,7 +439,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
 
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-[var(--text-secondary)]">
-                Custom Keycap Appearance
+                Keycap Appearance
               </span>
               <button
                 type="button"
@@ -466,7 +454,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-medium text-[var(--text-secondary)]">
-                  UI Keycap Label
+                  Keycap Label
                 </label>
                 <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
                   {keyConfig.appearance.label.length}/12
@@ -500,7 +488,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                       className={`w-6 h-6 rounded-full border transition-transform cursor-pointer ${
                         active
                           ? 'scale-110 ring-2 ring-[var(--accent)] border-white'
-                          : 'border-white/20 hover:scale-105'
+                          : 'border-black/15 dark:border-white/20 hover:scale-105'
                       }`}
                       style={{ backgroundColor: hex }}
                     />
@@ -516,7 +504,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               </div>
             </div>
 
-            {/* Icon Library + Custom Upload */}
+            {/* Icon Library + Custom Upload (no nested scroll container) */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-medium text-[var(--text-secondary)]">
@@ -525,7 +513,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
                 >
                   <Upload className="w-3 h-3" />
                   <span>Upload SVG/PNG</span>
@@ -556,19 +544,10 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                     key={cat}
                     type="button"
                     onClick={() => setIconCategory(cat)}
-                    style={
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
                       iconCategory === cat
-                        ? {
-                            backgroundColor: 'rgba(var(--accent-rgb), 0.16)',
-                            borderColor: 'var(--accent)',
-                            color: 'var(--text-primary)'
-                          }
-                        : undefined
-                    }
-                    className={`px-2 py-1 rounded-md text-[10px] font-medium whitespace-nowrap border transition-colors cursor-pointer ${
-                      iconCategory === cat
-                        ? ''
-                        : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                        ? 'bg-[rgba(var(--accent-rgb),0.16)] text-[var(--accent)] font-semibold'
+                        : 'bg-[var(--bg-input)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
                   >
                     {cat}
@@ -576,7 +555,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 ))}
               </div>
 
-              <div className="grid grid-cols-6 gap-1.5 max-h-56 overflow-y-auto p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+              <div className="grid grid-cols-6 gap-1.5 p-1.5 rounded-xl bg-[var(--bg-input)]">
                 {filteredIcons.map(entry => {
                   const IconComp = entry.component;
                   const active = keyConfig.appearance.icon === entry.id;
@@ -586,19 +565,10 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                       type="button"
                       title={entry.label}
                       onClick={() => onUpdateAppearance({ icon: entry.id })}
-                      style={
+                      className={`aspect-square rounded-lg flex items-center justify-center transition-all cursor-pointer ${
                         active
-                          ? {
-                              borderColor: 'var(--accent)',
-                              backgroundColor: 'rgba(var(--accent-rgb), 0.18)',
-                              color: 'var(--text-primary)'
-                            }
-                          : undefined
-                      }
-                      className={`aspect-square rounded-lg flex items-center justify-center border transition-all cursor-pointer ${
-                        active
-                          ? ''
-                          : 'border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]'
+                          ? 'bg-[rgba(var(--accent-rgb),0.18)] ring-1 ring-[var(--accent)] text-[var(--accent)]'
+                          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]'
                       }`}
                     >
                       <IconComp className="w-4 h-4" />
