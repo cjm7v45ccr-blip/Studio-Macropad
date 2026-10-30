@@ -105,26 +105,8 @@ interface ActionPrefixTagProps {
  * Stylized rectangular colored tag box for parsed 'KEY:VALUE' action prefixes
  * (e.g. MEDIA, KEY, MACRO, WIN, BLE, SHORTCUT, TEXT, TV, APP, WAIT).
  */
-export const ActionPrefixTag: React.FC<ActionPrefixTagProps> = ({
-  prefix,
-  size = 'xs',
-  className = ''
-}) => {
-  if (!prefix) return null;
-  const upper = prefix.toUpperCase();
-  const theme = getPrefixTagStyle(upper);
-  const sizeClasses =
-    size === 'sm'
-      ? 'px-1.5 py-0.5 text-[10px]'
-      : 'px-1.5 py-[2px] text-[9px]';
-
-  return (
-    <span
-      className={`inline-flex items-center justify-center rounded-md border font-mono font-bold uppercase tracking-wider leading-none shrink-0 select-none ${sizeClasses} ${theme.bg} ${theme.text} ${theme.border} ${className}`}
-    >
-      {upper}
-    </span>
-  );
+export const ActionPrefixTag: React.FC<ActionPrefixTagProps> = () => {
+  return null;
 };
 
 interface ParsedActionBadgeProps {
