@@ -45,8 +45,10 @@ import {
   Code2,
   Download,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  HelpCircle
 } from 'lucide-react';
+import { FirmwareBinGuideModal } from './FirmwareBinGuideModal';
 
 interface SettingsViewProps {
   profiles: StudioProfile[];
@@ -140,6 +142,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onExportBackupFile,
   onToast
 }) => {
+  const [firmwareBinGuideOpen, setFirmwareBinGuideOpen] = useState<boolean>(false);
   // Wi-Fi Provisioning State (live from pad only — never stored in localStorage)
   const [wifiSsid, setWifiSsid] = useState('');
   const [wifiPass, setWifiPass] = useState('');
@@ -707,6 +710,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                   <button
+                    type="button"
+                    onClick={() => setFirmwareBinGuideOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Firmware .bin Guide</span>
+                  </button>
                   <button
                     type="button"
                     disabled={sourceBusy}
@@ -1485,6 +1496,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           await onResetBothProfiles();
         }}
         onCancel={() => setResetProfilesModalOpen(false)}
+      />
+
+      <FirmwareBinGuideModal
+        isOpen={firmwareBinGuideOpen}
+        onClose={() => setFirmwareBinGuideOpen(false)}
       />
     </div>
   );

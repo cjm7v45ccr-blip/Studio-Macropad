@@ -47,10 +47,12 @@ import {
 } from '../data/firmwareCatalog';
 import {
   extractProfileSlots,
-  getBindingForProfileSlot
+  getBindingForProfileSlot,
+  ToastVariant
 } from '../hooks/useStudioState';
 import { repeatMacroRunner } from '../services/repeatMacroRunner';
 import { ActionPrefixTag, ParsedActionBadge } from './ActionTagBadge';
+import { StudioSenseModal } from './StudioSenseModal';
 import {
   Plus,
   Trash2,
@@ -130,6 +132,7 @@ interface MacroEditorViewProps {
   onStopRepeat: () => void;
   onPullFromUsb: () => void;
   onJumpToControl?: (profileId: HardwareProfileId, slot: HardwareSlotId) => void;
+  onToast?: (msg: string, variant?: ToastVariant) => void;
 }
 
 const MOD_LIST = [
@@ -572,7 +575,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   onTestBinding,
   onStopRepeat,
   onPullFromUsb,
-  onJumpToControl
+  onJumpToControl,
+  onToast = () => {}
 }) => {
   const initialHydratedSteps = useMemo(
     () =>
@@ -602,6 +606,26 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     profile: HardwareProfileId;
     slot: HardwareSlotId;
   } | null>(null);
+  const [studioSenseOpen, setStudioSenseOpen] = useState<boolean>(false);
+
+  const handleApplyStudioSenseSuggestion = (
+    title: string,
+    steps: Omit<MacroStepConfig, 'id'>[]
+  ) => {
+    const nextSteps: MacroStepConfig[] = steps.map((s, idx) => ({
+      ...s,
+      id: `sense-${Date.now()}-${idx}`
+    }));
+    setSelectedMacroId(null);
+    setAutoNamingActive(false);
+    setMacroName(title);
+    setMacroSteps(nextSteps);
+    setExpandedStepId(null);
+    setRepeatCountInput('1');
+    setLoopUntilStopped(false);
+    setRepeatDelayInput('500');
+    commitBaseline(title, nextSteps, '1', false, '500');
+  };
 
   // Visual step sequence state + undo/redo stack
   const [macroSteps, setMacroSteps] = useState<MacroStepConfig[]>(initialHydratedSteps);
@@ -1729,14 +1753,25 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 Saved macros & multi-step recipes
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => runWithUnsavedCheck('a new blank macro', startBlankMacroImmediate)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
-              <span>New</span>
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setStudioSenseOpen(true)}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[rgba(var(--accent-rgb),0.12)] border border-[rgba(var(--accent-rgb),0.3)] text-[11px] font-semibold text-[var(--accent)] hover:bg-[rgba(var(--accent-rgb),0.2)] transition-colors cursor-pointer whitespace-nowrap"
+                title="Studio Sense AI Macro Optimizer"
+              >
+                <Sparkles className="w-3 h-3 animate-pulse" />
+                <span>Studio Sense</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => runWithUnsavedCheck('a new blank macro', startBlankMacroImmediate)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>New</span>
+              </button>
+            </div>
           </div>
 
           <div className="relative">
@@ -4382,6 +4417,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
           </div>
         </footer>
       </main>
+
+      <StudioSenseModal
+        isOpen={studioSenseOpen}
+        onClose={() => setStudioSenseOpen(false)}
+        customMacros={customMacros}
+        onApplySuggestion={handleApplyStudioSenseSuggestion}
+        onToast={onToast}
+      />
     </div>
   );
 };

@@ -691,6 +691,7 @@ export default function App() {
             onStopRepeat={handleStopRepeat}
             onPullFromUsb={handlePullFromUsb}
             onJumpToControl={handleJumpToSlotControl}
+            onToast={showToast}
           />
         )}
 
