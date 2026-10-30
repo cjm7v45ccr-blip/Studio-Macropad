@@ -47,7 +47,6 @@ import { MacroEditorExternalTarget, MacroEditorView } from './components/MacroEd
 import { GlobalMacroSearch } from './components/GlobalMacroSearch';
 import { LibraryView } from './components/LibraryView';
 import { SettingsView } from './components/SettingsView';
-import { FirmwareUpdateBanner } from './components/FirmwareUpdaterCard';
 import { UsbConnectModal } from './components/UsbConnectModal';
 import { SetupWizardModal, WizardCompletionPayload } from './components/SetupWizardModal';
 import { SyncConflictModal } from './components/SyncConflictModal';
@@ -719,6 +718,7 @@ export default function App() {
             onDismissFirmwareBanner={firmwareUpdater.dismissUpdateBanner}
             onCheckFirmwareUpdate={firmwareUpdater.checkForUpdates}
             onUploadFirmwareToMacropad={firmwareUpdater.uploadFirmwareToMacropad}
+            onUploadLocalFirmwareFile={firmwareUpdater.uploadLocalFirmwareFile}
             onUpdateSettings={studio.updateSettings}
             onPullFromUsb={handlePullFromUsb}
             onSwitchBleHost={handleSwitchBleHost}

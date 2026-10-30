@@ -4,12 +4,24 @@ import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import { buildPublicFirmwareCatalogJson } from './serverFirmwareCatalog';
 
 dotenv.config();
 
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '15mb' }));
+
+  const rootDir = import.meta.dirname;
+  const publicDir = path.resolve(rootDir, 'public');
+  const distDir = path.resolve(rootDir, 'dist');
+
+  app.get('/firmware-catalog.json', (_req, res) => {
+    const scanDir = fs.existsSync(publicDir) ? publicDir : distDir;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.send(buildPublicFirmwareCatalogJson(scanDir));
+  });
 
   const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
@@ -82,9 +94,18 @@ Return valid JSON with the following structure:
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(__dirname, 'dist');
-    if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
+    if (fs.existsSync(publicDir)) {
+      app.use(express.static(publicDir));
+    }
+    if (fs.existsSync(distDir)) {
+      app.use(express.static(distDir));
+      app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api/') || /\.bin$/i.test(req.path)) {
+          next();
+          return;
+        }
+        res.sendFile(path.join(distDir, 'index.html'));
+      });
     }
   }
 

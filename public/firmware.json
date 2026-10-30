@@ -1,6 +1,0 @@
-{
-  "version": "4.4.7",
-  "title": "Studio MacroPad Firmware v4.4.7",
-  "file": "firmware-v4.4.7.ino.bin",
-  "notes": "3-Host Easy-Switch Bluetooth identities, 512-byte NVS multi-step macros, Vizio SmartCast HTTPS worker queue, and direct USB Web Serial flashing."
-}

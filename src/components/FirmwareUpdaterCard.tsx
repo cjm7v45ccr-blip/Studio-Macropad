@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DeviceConnectionInfo,
   FirmwareInstallProgress,
@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Cpu,
   Download,
+  FolderOpen,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -44,6 +45,10 @@ interface FirmwareSharedProps {
     method?: 'usb_serial' | 'wifi_ota';
     autoBackupBeforeFlash?: boolean;
   }) => Promise<boolean>;
+  onUploadLocalFirmwareFile?: (
+    file: File,
+    opts?: { autoBackupBeforeFlash?: boolean }
+  ) => Promise<boolean>;
   onUpdateSettings: (patch: Partial<StudioSettings>) => void;
   onExportBackupFile?: () => Promise<void> | void;
   onToast: (msg: string, variant?: ToastVariant) => void;
@@ -935,6 +940,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
   isUploadingFirmware,
   onCheckFirmwareUpdate,
   onUploadFirmwareToMacropad,
+  onUploadLocalFirmwareFile,
   onUpdateSettings,
   onExportBackupFile,
   onToast
@@ -942,6 +948,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
   const [selectedVersion, setSelectedVersion] = useState<string>('');
   const [autoBackupBeforeFlash, setAutoBackupBeforeFlash] = useState<boolean>(false);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  const localBinInputRef = useRef<HTMLInputElement | null>(null);
 
   const availableReleases: FirmwareReleaseInfo[] = useMemo(() => {
     if (firmwareUpdate.recentReleases && firmwareUpdate.recentReleases.length > 0) {
@@ -1260,6 +1267,37 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
               <Wifi className="w-3.5 h-3.5 text-emerald-400" />
               <span>Upload via Wi-Fi</span>
             </button>
+          )}
+
+          {onUploadLocalFirmwareFile && (
+            <>
+              <input
+                ref={localBinInputRef}
+                type="file"
+                accept=".bin,application/octet-stream"
+                className="hidden"
+                onChange={async e => {
+                  const chosen = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!chosen) return;
+                  await onUploadLocalFirmwareFile(chosen, { autoBackupBeforeFlash });
+                }}
+              />
+              <button
+                type="button"
+                disabled={isUploadingFirmware || !canFlashUsb}
+                onClick={() => localBinInputRef.current?.click()}
+                title="Pick any compiled ESP32 .bin file from your computer and flash it directly over USB"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                {isUploadingFirmware && installProgress?.method === 'local_bin' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
+                ) : (
+                  <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
+                )}
+                <span>Upload Local .bin</span>
+              </button>
+            </>
           )}
         </div>
 

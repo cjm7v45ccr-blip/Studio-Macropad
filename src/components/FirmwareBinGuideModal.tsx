@@ -67,9 +67,9 @@ export const FirmwareBinGuideModal: React.FC<FirmwareBinGuideModalProps> = ({
               <div className="flex items-start gap-2.5">
                 <FolderOpen className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold text-[var(--text-primary)]">Method A: Place in Workspace /public/firmware/</span>
+                  <span className="font-semibold text-[var(--text-primary)]">Method A: Place in Workspace /public/</span>
                   <p className="text-[11px] text-[var(--text-muted)]">
-                    Drop your <code className="text-[var(--text-primary)]">.bin</code> file into the project&apos;s <code className="text-[var(--text-primary)]">public/firmware/</code> folder. The application automatically detects and catalogs it via <code className="text-[var(--text-primary)]">/firmware-catalog.json</code>.
+                    Drop your <code className="text-[var(--text-primary)]">firmware-vX.Y.Z.bin</code> file into the project&apos;s <code className="text-[var(--text-primary)]">public/</code> folder. The application automatically hashes and catalogs it via <code className="text-[var(--text-primary)]">/firmware-catalog.json</code>.
                   </p>
                 </div>
               </div>
@@ -77,9 +77,9 @@ export const FirmwareBinGuideModal: React.FC<FirmwareBinGuideModalProps> = ({
               <div className="flex items-start gap-2.5">
                 <Upload className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold text-[var(--text-primary)]">Method B: Direct USB Web Serial Upload</span>
+                  <span className="font-semibold text-[var(--text-primary)]">Method B: Direct Local .bin Flash over USB</span>
                   <p className="text-[11px] text-[var(--text-muted)]">
-                    In the <span className="text-[var(--text-primary)]">Firmware Updater</span> card (found in Settings), click <span className="text-[var(--text-primary)]">Upload Custom .bin</span> to select any local binary file and flash it instantly over USB.
+                    In <span className="text-[var(--text-primary)]">MacroPad Firmware Updates</span> (in Settings), click <span className="text-[var(--text-primary)]">Upload Local .bin</span> to pick any compiled binary from your computer and flash it directly over USB.
                   </p>
                 </div>
               </div>

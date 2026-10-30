@@ -46,7 +46,8 @@ import {
   Download,
   ChevronDown,
   ChevronRight,
-  HelpCircle
+  HelpCircle,
+  RefreshCw
 } from 'lucide-react';
 import { FirmwareBinGuideModal } from './FirmwareBinGuideModal';
 
@@ -71,6 +72,10 @@ interface SettingsViewProps {
     method?: 'usb_serial' | 'wifi_ota';
     autoBackupBeforeFlash?: boolean;
   }) => Promise<boolean>;
+  onUploadLocalFirmwareFile?: (
+    file: File,
+    opts?: { autoBackupBeforeFlash?: boolean }
+  ) => Promise<boolean>;
   onUpdateSettings: (patch: Partial<StudioSettings>) => void;
   onPullFromUsb: () => Promise<boolean>;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
@@ -132,6 +137,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onDismissFirmwareBanner,
   onCheckFirmwareUpdate,
   onUploadFirmwareToMacropad,
+  onUploadLocalFirmwareFile,
   onUpdateSettings,
   onPullFromUsb,
   onSwitchBleHost,
@@ -143,6 +149,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onToast
 }) => {
   const [firmwareBinGuideOpen, setFirmwareBinGuideOpen] = useState<boolean>(false);
+  const [diagRefreshing, setDiagRefreshing] = useState<boolean>(false);
   // Wi-Fi Provisioning State (live from pad only — never stored in localStorage)
   const [wifiSsid, setWifiSsid] = useState('');
   const [wifiPass, setWifiPass] = useState('');
@@ -577,7 +584,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </section>
         )}
 
-        {/* 1. Device Diagnostics Card */}
+        {/* 1. Live Device Diagnostics Card */}
         {showConnection && (
           <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -585,49 +592,236 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <Cpu className="w-4 h-4 text-[var(--accent)]" />
                 <span>Device Diagnostics</span>
               </div>
-              <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
-                {syncStatus} · {connection.connected ? connection.deviceName : 'Disconnected'}
-              </span>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
+                  <span>{syncStatus}</span>
+                  <span className="text-[var(--text-muted)]" aria-hidden="true">
+                    ·
+                  </span>
+                  <span>{connection.connected ? connection.deviceName : 'Disconnected'}</span>
+                  {connection.connected && connection.lastSyncedAt && (
+                    <>
+                      <span className="text-[var(--text-muted)]" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="text-[var(--text-muted)]">
+                        Live {connection.lastSyncedAt}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {connection.connected && (
+                  <button
+                    type="button"
+                    disabled={diagRefreshing}
+                    onClick={async () => {
+                      setDiagRefreshing(true);
+                      try {
+                        await usbHardware.fetchStatus();
+                        onToast('Refreshed live hardware diagnostics');
+                      } catch (err: any) {
+                        onToast(err?.message || 'Could not query MacroPad status', 'error');
+                      } finally {
+                        setDiagRefreshing(false);
+                      }
+                    }}
+                    title="Poll /api/status from MacroPad right now (also auto-updates every 4s)"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <RefreshCw
+                      className={`w-3 h-3 ${diagRefreshing ? 'animate-spin text-[var(--accent)]' : ''}`}
+                    />
+                    <span>Refresh</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
-              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <div className="text-[10px] text-[var(--text-muted)]">Device ID</div>
-                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 truncate">
-                  {connection.deviceId || currentDeviceId || '—'}
-                </div>
-              </div>
-              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <div className="text-[10px] text-[var(--text-muted)]">
-                  {connection.connected ? 'Firmware version' : 'Last known FW'}
-                </div>
-                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums truncate">
-                  {connection.connected
-                    ? connection.firmwareVersion
-                    : settings.lastKnownFirmware || '—'}
-                </div>
-              </div>
-              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <div className="text-[10px] text-[var(--text-muted)]">API version</div>
-                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
-                  {connection.connected && telemetry ? telemetry.apiVersion : '—'}
-                </div>
-              </div>
-              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <div className="text-[10px] text-[var(--text-muted)]">Config revision</div>
-                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
-                  rev {currentRev}
-                </div>
-              </div>
-              <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] col-span-2 sm:col-span-1">
-                <div className="text-[10px] text-[var(--text-muted)]">Free memory</div>
-                <div className="font-mono font-bold text-[var(--text-primary)] mt-0.5 tabular-nums">
-                  {connection.connected && telemetry
-                    ? `${Math.round(telemetry.freeHeap / 1024)} KB`
-                    : '—'}
-                </div>
-              </div>
-            </div>
+            {(() => {
+              const fullDeviceId = connection.deviceId || currentDeviceId || '';
+              const liveRev =
+                connection.connected && typeof connection.rev === 'number'
+                  ? connection.rev
+                  : currentRev;
+              const reportedRawFw = telemetry?.reportedFirmwareVersion;
+              const hasEmbeddedFwDiff = Boolean(
+                connection.connected &&
+                  reportedRawFw &&
+                  reportedRawFw !== connection.firmwareVersion
+              );
+              const heapBytes = telemetry?.freeHeap ?? 0;
+
+              return (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-2.5 text-xs">
+                    {/* Device ID (2 cols on desktop so full ESP32 MAC ID never truncates) */}
+                    <div className="sm:col-span-2 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-[var(--text-muted)]">Device ID</span>
+                        {fullDeviceId && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(fullDeviceId);
+                                onToast(`Copied Device ID (${fullDeviceId})`);
+                              } catch {
+                                onToast('Could not copy Device ID', 'error');
+                              }
+                            }}
+                            title="Copy full Device ID"
+                            className="inline-flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </button>
+                        )}
+                      </div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] break-all tabular-nums">
+                        {fullDeviceId || '—'}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                        {connection.connected
+                          ? isDemo
+                            ? 'Virtual Demo Transport'
+                            : `USB Serial 115,200 bd${
+                                connection.vendorProduct ? ` · ${connection.vendorProduct}` : ''
+                              }`
+                          : currentDeviceId
+                          ? 'Cached offline workspace'
+                          : 'No MacroPad connected'}
+                      </div>
+                    </div>
+
+                    {/* Firmware Version */}
+                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="text-[11px] text-[var(--text-muted)]">
+                        {connection.connected ? 'Firmware version' : 'Last synced FW'}
+                      </div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                        {connection.connected
+                          ? connection.firmwareVersion
+                          : settings.lastKnownFirmware || '—'}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                        {hasEmbeddedFwDiff
+                          ? `config.h: ${reportedRawFw}`
+                          : connection.connected
+                          ? telemetry?.supportsNativeDelay
+                            ? 'Native Delay + 512B'
+                            : 'Standard PadLink'
+                          : 'Connect USB to read'}
+                      </div>
+                    </div>
+
+                    {/* API Version */}
+                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="text-[11px] text-[var(--text-muted)]">API version</div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                        {connection.connected && telemetry ? `v${telemetry.apiVersion}` : '—'}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                        {connection.connected && telemetry
+                          ? telemetry.connectionType || 'USB'
+                          : 'PadLink JSON'}
+                      </div>
+                    </div>
+
+                    {/* Config Revision */}
+                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="text-[11px] text-[var(--text-muted)]">Config revision</div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                        rev {liveRev}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                        {connection.connected && telemetry
+                          ? `Active: ${telemetry.activeProfile}`
+                          : 'Local NVS mirror'}
+                      </div>
+                    </div>
+
+                    {/* Free SRAM */}
+                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="text-[11px] text-[var(--text-muted)]">Free SRAM</div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                        {connection.connected && telemetry && heapBytes > 0
+                          ? `${(heapBytes / 1024).toFixed(1)} KB`
+                          : '—'}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                        {connection.connected && telemetry && heapBytes > 0
+                          ? `${heapBytes.toLocaleString()} B free`
+                          : 'ESP32 heap'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {connection.connected && telemetry && (
+                    <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center gap-x-2.5 gap-y-1 flex-wrap font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
+                      <span>
+                        BLE:{' '}
+                        <span
+                          className={
+                            telemetry.bleConnected ? 'text-emerald-400' : 'text-amber-300'
+                          }
+                        >
+                          H{telemetry.bleActiveHost} {telemetry.bleDeviceName} (
+                          {telemetry.bleConnected ? 'Connected' : 'Advertising'})
+                        </span>
+                      </span>
+                      <span className="text-[var(--text-muted)]" aria-hidden="true">
+                        ·
+                      </span>
+                      <span>
+                        Wi-Fi:{' '}
+                        <span
+                          className={
+                            telemetry.wifiConnected
+                              ? 'text-emerald-400'
+                              : 'text-[var(--text-muted)]'
+                          }
+                        >
+                          {telemetry.wifiConnected
+                            ? `${telemetry.ssid || 'Online'}${
+                                telemetry.ip ? ` (${telemetry.ip})` : ''
+                              }`
+                            : telemetry.ssid
+                            ? `${telemetry.ssid} (Offline)`
+                            : 'Not configured'}
+                        </span>
+                      </span>
+                      <span className="text-[var(--text-muted)]" aria-hidden="true">
+                        ·
+                      </span>
+                      <span>
+                        TV:{' '}
+                        <span
+                          className={
+                            telemetry.tvPaired
+                              ? 'text-emerald-400'
+                              : 'text-[var(--text-muted)]'
+                          }
+                        >
+                          {telemetry.tvPaired
+                            ? `Paired (${telemetry.tvHost}:${telemetry.tvPort})`
+                            : telemetry.tvConfigured
+                            ? `${telemetry.tvHost} (Unpaired)`
+                            : 'Unpaired'}
+                        </span>
+                      </span>
+                      <span className="text-[var(--text-muted)]" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="text-[var(--text-muted)]">
+                        Events: {telemetry.eventsEnabled !== false ? 'Live' : 'Muted'}
+                      </span>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {isDemo && telemetry && (
               <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 flex-wrap">
@@ -662,13 +856,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onClick={() =>
                       usbHardware.setDemoLinkState({
                         firmwareVersion:
-                          connection.firmwareVersion === '1.0.0' ? '4.5.0' : '1.0.0'
+                          connection.firmwareVersion === 'v1.0.0' ||
+                          connection.firmwareVersion === '1.0.0'
+                            ? '4.5.0'
+                            : '1.0.0'
                       })
                     }
                     className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
                     title="Simulate older connected firmware in Demo Mode to test the firmware update flow"
                   >
-                    Simulate FW ({connection.firmwareVersion === '1.0.0' ? 'Restore 4.5.0' : 'Set 1.0.0'})
+                    Simulate FW (
+                    {connection.firmwareVersion === 'v1.0.0' ||
+                    connection.firmwareVersion === '1.0.0'
+                      ? 'Restore 4.5.0'
+                      : 'Set 1.0.0'}
+                    )
                   </button>
                 </div>
               </div>
@@ -689,6 +891,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               onDismissFirmwareBanner={onDismissFirmwareBanner}
               onCheckFirmwareUpdate={onCheckFirmwareUpdate}
               onUploadFirmwareToMacropad={onUploadFirmwareToMacropad}
+              onUploadLocalFirmwareFile={onUploadLocalFirmwareFile}
               onUpdateSettings={onUpdateSettings}
               onExportBackupFile={onExportBackupFile}
               onToast={onToast}
@@ -700,8 +903,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
                     <Code2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
                     <span>ESP32 Firmware v4.5.0 Source Studio</span>
-                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/12 border border-emerald-500/30 font-mono text-[10px] font-semibold text-emerald-400 tabular-nums">
-                      Arduino / PlatformIO
+                    <span className="font-mono text-[11px] font-medium text-emerald-400">
+                      · Arduino / PlatformIO
                     </span>
                   </div>
                   <p className="text-xs text-[var(--text-muted)] leading-relaxed">

@@ -30,6 +30,11 @@ import {
   formatBytesCompact,
   resolveEsp32FlashTarget
 } from './firmwareUpdateService';
+import {
+  inspectFirmwareBinaryCapabilities,
+  resolveDeviceFirmwareInfo,
+  writeFlashedLedger
+} from './firmwareLedger';
 
 export interface FirmwareStatusPacket {
   ok?: boolean;
@@ -304,6 +309,7 @@ class PadLinkService {
   private queue: Promise<void> = Promise.resolve();
   private pending: ((msg: any) => void) | null = null;
   private pendingReject: ((err: Error) => void) | null = null;
+  private pendingSilentLog = false;
   private buf = '';
 
   private isOpening = false;
@@ -312,6 +318,7 @@ class PadLinkService {
   private manualDisconnect = false;
   private desiredEventsEnabled = true;
   private rebootResyncTimer: number | null = null;
+  private liveTelemetryTimer: number | null = null;
   private pendingBootSetupBeacon = false;
   private rxCharsSinceOpen = 0;
   private sawRomDownloadBoot = false;
@@ -476,8 +483,8 @@ class PadLinkService {
     });
 
     document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
       if (
-        document.visibilityState === 'visible' &&
         !this.port &&
         !this.isOpening &&
         !this.isFlashingOta &&
@@ -485,6 +492,15 @@ class PadLinkService {
       ) {
         this.manualDisconnect = false;
         this.tryAutoConnectSerial();
+      } else if (
+        this.port &&
+        this.connectionInfo.connected &&
+        !this.demoModeActive &&
+        !this.isOpening &&
+        !this.isFlashingOta &&
+        !this.pending
+      ) {
+        this.pollLiveStatusOnce();
       }
     });
 
@@ -501,8 +517,55 @@ class PadLinkService {
     this.tryAutoConnectSerial();
   }
 
+  private startLiveTelemetryPolling() {
+    this.stopLiveTelemetryPolling();
+    if (typeof window === 'undefined' || this.demoModeActive) return;
+    this.liveTelemetryTimer = window.setInterval(() => {
+      this.pollLiveStatusOnce();
+    }, 4000);
+  }
+
+  private stopLiveTelemetryPolling() {
+    if (this.liveTelemetryTimer !== null) {
+      window.clearInterval(this.liveTelemetryTimer);
+      this.liveTelemetryTimer = null;
+    }
+  }
+
+  private pollLiveStatusOnce() {
+    if (
+      !this.port ||
+      !this.connectionInfo.connected ||
+      this.demoModeActive ||
+      this.isOpening ||
+      this.isFlashingOta ||
+      this.pending ||
+      this.rebootResyncTimer !== null ||
+      (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+    ) {
+      return;
+    }
+    const prevRev = this.connectionInfo.rev;
+    this.call<FirmwareStatusPacket>({ path: '/api/status' }, 2000, { silentLog: true })
+      .then(pkt => {
+        if (
+          pkt &&
+          typeof pkt.rev === 'number' &&
+          typeof prevRev === 'number' &&
+          pkt.rev !== prevRev
+        ) {
+          this.handleHardwareEvent({
+            event: 'config',
+            rev: pkt.rev
+          });
+        }
+      })
+      .catch(() => {});
+  }
+
   private markDisconnected() {
     this.demoModeActive = false;
+    this.stopLiveTelemetryPolling();
     if (this.rebootResyncTimer !== null) {
       window.clearTimeout(this.rebootResyncTimer);
       this.rebootResyncTimer = null;
@@ -511,6 +574,7 @@ class PadLinkService {
       const rej = this.pendingReject;
       this.pending = null;
       this.pendingReject = null;
+      this.pendingSilentLog = false;
       rej(new Error('MacroPad USB disconnected'));
     }
 
@@ -884,7 +948,7 @@ class PadLinkService {
       ssid: d.ssid,
       device: {
         id: 'demo-pad',
-        name: 'Studio MacroPad',
+        name: 'Studio MacroPad (Demo)',
         firmware: d.firmware || '4.5.0',
         connection_type: 'DEMO',
         setup_mode: d.setupMode
@@ -1392,7 +1456,7 @@ class PadLinkService {
             'MacroPad Wi-Fi is offline. Connect Wi-Fi first or use USB Serial Stream / Local .bin Flash.'
         });
       }
-      const nextVersion = String(obj.version || '3.3-PRO').replace(/^[vV]/, '');
+      const nextVersion = String(obj.version || d.firmware || '4.5.0').replace(/^[vV]/, '');
       window.setTimeout(() => {
         if (!this.demoModeActive || !this.demoPad) return;
         const stages: { phase: string; percent: number; message: string; delay: number }[] = [
@@ -1470,7 +1534,7 @@ class PadLinkService {
     }
 
     if (path === '/api/ota/end') {
-      const nextVersion = String(obj.version || '3.3-PRO').replace(/^[vV]/, '');
+      const nextVersion = String(obj.version || d.firmware || '4.5.0').replace(/^[vV]/, '');
       d.firmware = nextVersion;
       this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       const doneEvt: HardwareEventPacket = {
@@ -1632,6 +1696,7 @@ class PadLinkService {
       this.pendingBootSetupBeacon = false;
 
       this.applyTelemetryFromStatus(status, vendorProduct);
+      this.startLiveTelemetryPolling();
       this.connectStatusListeners.forEach(fn => fn(status));
       if (extractSetupModeFlag(status)) {
         this.emitSetupMode(true, 'status', status.device?.id || 'studio-pad');
@@ -1800,13 +1865,18 @@ class PadLinkService {
             continue;
           }
 
-          this.logSerial('rx', line);
-
           let msg: any;
           try {
             msg = JSON.parse(line);
           } catch {
             continue;
+          }
+
+          const shouldSilenceRx = Boolean(
+            this.pending && this.pendingSilentLog && !msg.event
+          );
+          if (!shouldSilenceRx) {
+            this.logSerial('rx', line);
           }
 
           if (msg.event) {
@@ -1856,6 +1926,7 @@ class PadLinkService {
               const resolveFn = this.pending;
               this.pending = null;
               this.pendingReject = null;
+              this.pendingSilentLog = false;
               resolveFn(msg);
             }
           }
@@ -1960,12 +2031,15 @@ class PadLinkService {
   }
 
   private applyTelemetryFromStatus(pkt: FirmwareStatusPacket, vendorProduct?: string) {
+    const deviceId = pkt.device?.id || this.connectionInfo.deviceId || 'studio-pad';
     const rawFw = pkt.device?.firmware || '';
-    const fw = rawFw
-      ? rawFw.startsWith('v')
-        ? rawFw
-        : `v${rawFw}`
-      : this.connectionInfo.firmwareVersion;
+    const resolvedFw = resolveDeviceFirmwareInfo(deviceId, rawFw);
+    const fw =
+      resolvedFw.displayVersion ||
+      (this.connectionInfo.firmwareVersion &&
+      this.connectionInfo.firmwareVersion !== 'Connecting…'
+        ? this.connectionInfo.firmwareVersion
+        : '—');
 
     const rawSlot = Number(pkt.ble?.active_host ?? pkt.ble_slot ?? 1);
     const activeHost: BleHostSlot = rawSlot === 2 ? 2 : rawSlot === 3 ? 3 : 1;
@@ -1982,12 +2056,25 @@ class PadLinkService {
       ? extractSetupModeFlag(pkt)
       : Boolean(this.connectionInfo.telemetry?.setupMode);
 
+    const wifiConnected = Boolean(pkt.connection?.wifi_connected ?? pkt.wifi_connected);
+    const rawIp = String(pkt.connection?.ip || pkt.ip || '').trim();
+    const cleanIp =
+      (wifiConnected || setupMode) && rawIp && rawIp !== '0.0.0.0' ? rawIp : '';
+    const eventsEnabled =
+      typeof pkt.diagnostics?.events_enabled === 'boolean'
+        ? pkt.diagnostics.events_enabled
+        : this.desiredEventsEnabled;
+
     const telemetry: HardwareTelemetry = {
       apiVersion: Number(pkt.api_version ?? 1),
+      reportedFirmwareVersion: resolvedFw.reportedVersion || undefined,
+      eventsEnabled,
+      supportsNativeDelay: resolvedFw.supportsV45Engine,
+      supports512ByteSlotSave: resolvedFw.supportsV45Engine,
       setupMode,
       activeProfile,
-      wifiConnected: Boolean(pkt.connection?.wifi_connected ?? pkt.wifi_connected),
-      ip: pkt.connection?.ip || pkt.ip || '',
+      wifiConnected,
+      ip: cleanIp,
       ssid: pkt.ssid || '',
       bleConnected: Boolean(pkt.connection?.ble_connected),
       bleActiveHost: activeHost,
@@ -2006,9 +2093,11 @@ class PadLinkService {
       connected: true,
       connecting: false,
       transport: this.demoModeActive ? 'demo' : 'webserial',
-      deviceId: pkt.device?.id || 'studio-pad',
+      deviceId,
       rev: typeof pkt.rev === 'number' ? pkt.rev : this.connectionInfo.rev ?? 0,
-      deviceName: pkt.device?.name || 'Studio MacroPad',
+      deviceName:
+        pkt.device?.name ||
+        (this.demoModeActive ? 'Studio MacroPad (Demo)' : 'Studio MacroPad'),
       firmwareVersion: fw,
       vendorProduct: vendorProduct ?? this.connectionInfo.vendorProduct,
       lastSyncedAt: new Date().toLocaleTimeString(),
@@ -2059,9 +2148,12 @@ class PadLinkService {
           if (this.pending === onReply) {
             this.pending = null;
             this.pendingReject = null;
+            this.pendingSilentLog = false;
           }
           const err = new Error('Timed out waiting for MacroPad reply over USB.');
-          this.logSerial('error', err.message);
+          if (!silentLog) {
+            this.logSerial('error', err.message);
+          }
           reject(err);
         }, timeoutMs);
 
@@ -2071,8 +2163,10 @@ class PadLinkService {
         };
 
         this.pending = onReply;
+        this.pendingSilentLog = silentLog;
         this.pendingReject = (err: Error) => {
           window.clearTimeout(t);
+          this.pendingSilentLog = false;
           reject(err);
         };
 
@@ -2081,6 +2175,7 @@ class PadLinkService {
           if (this.pending === onReply) {
             this.pending = null;
             this.pendingReject = null;
+            this.pendingSilentLog = false;
           }
           reject(
             err instanceof Error ? err : new Error('Failed to write to USB Serial port.')
@@ -2746,6 +2841,7 @@ class PadLinkService {
     url: string;
     version: string;
     sha256?: string;
+    supportsV45Engine?: boolean;
     onProgress?: (
       percent: number,
       message: string,
@@ -2759,6 +2855,10 @@ class PadLinkService {
 
     const cleanUrl = params.url.trim();
     const cleanVersion = params.version.replace(/^[vV]/, '').trim();
+    const preOtaDeviceId =
+      this.connectionInfo.deviceId && this.connectionInfo.deviceId !== 'demo-pad'
+        ? this.connectionInfo.deviceId
+        : undefined;
     if (!cleanUrl.startsWith('https://') && !cleanUrl.startsWith('http://')) {
       throw new Error('Invalid firmware binary URL.');
     }
@@ -2826,13 +2926,36 @@ class PadLinkService {
       }
 
       if (!this.demoModeActive) {
+        if (preOtaDeviceId) {
+          writeFlashedLedger(preOtaDeviceId, {
+            rawReportedVersion: '*',
+            flashedVersion: cleanVersion,
+            sha256: params.sha256,
+            flashedAt: new Date().toISOString(),
+            supportsV45Engine: params.supportsV45Engine
+          });
+        }
         params.onProgress?.(95, 'Waiting for ESP32 reboot & PadLink handshake…', 'rebooting');
         await new Promise(r => setTimeout(r, 2600));
         await this.call(
           { path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 },
           3000
         ).catch(() => {});
-        await this.fetchStatus(4000).catch(() => {});
+        const freshPkt = await this.fetchStatus(4000).catch(() => null);
+        const actualId = freshPkt?.device?.id || preOtaDeviceId;
+        if (actualId && actualId !== 'demo-pad') {
+          const rawRep = freshPkt?.device?.firmware;
+          writeFlashedLedger(actualId, {
+            rawReportedVersion: rawRep ? `v${rawRep.replace(/^[vV]/, '')}` : '*',
+            flashedVersion: cleanVersion,
+            sha256: params.sha256,
+            flashedAt: new Date().toISOString(),
+            supportsV45Engine: params.supportsV45Engine
+          });
+          if (freshPkt) {
+            this.applyTelemetryFromStatus(freshPkt, this.connectionInfo.vendorProduct);
+          }
+        }
       }
 
       const activeFw = this.connectionInfo.firmwareVersion || `v${cleanVersion}`;
@@ -2860,6 +2983,7 @@ class PadLinkService {
     fileName?: string;
     version: string;
     sha256?: string;
+    supportsV45Engine?: boolean;
     onProgress?: (
       percent: number,
       bytesSent: number,
@@ -2876,7 +3000,17 @@ class PadLinkService {
     }
 
     const cleanVersion = (params.version || 'custom').replace(/^[vV]/, '').trim();
+    const inspectedBin = inspectFirmwareBinaryCapabilities(params.bytes);
+    const effectiveSupportsV45 =
+      typeof params.supportsV45Engine === 'boolean'
+        ? params.supportsV45Engine
+        : inspectedBin.supportsV45Engine;
+    const preFlashDeviceId =
+      this.connectionInfo.deviceId && this.connectionInfo.deviceId !== 'demo-pad'
+        ? this.connectionInfo.deviceId
+        : undefined;
 
+    this.stopLiveTelemetryPolling();
     if (this.rebootResyncTimer !== null) {
       window.clearTimeout(this.rebootResyncTimer);
       this.rebootResyncTimer = null;
@@ -3264,20 +3398,66 @@ class PadLinkService {
           activeTransport = null;
         }
 
-        // Re-open live MacroPad PadLink serial session on the same authorized USB port
-        this.isFlashingOta = false;
-        await new Promise(r => setTimeout(r, 650));
-        await this.openAuthorizedPort(flashPort, false).catch(() => null);
+        // Record flashed binary metadata in shared ledger BEFORE reconnecting so the
+        // first post-boot status probe immediately resolves the newly installed version.
+        if (preFlashDeviceId) {
+          writeFlashedLedger(preFlashDeviceId, {
+            rawReportedVersion: inspectedBin.embeddedVersion
+              ? `v${inspectedBin.embeddedVersion.replace(/^[vV]/, '')}`
+              : '*',
+            flashedVersion: cleanVersion,
+            sha256: params.sha256,
+            flashedAt: new Date().toISOString(),
+            supportsV45Engine: effectiveSupportsV45
+          });
+        }
 
+        // Re-open live MacroPad PadLink serial session on the same authorized USB port
+        // with retry backoff in case NimBLE / OLED boot takes an extra moment after flash reset.
+        this.isFlashingOta = false;
+        let reopenedStatus: FirmwareStatusPacket | null = null;
+        for (let reconnAttempt = 1; reconnAttempt <= 3; reconnAttempt++) {
+          await new Promise(r => setTimeout(r, reconnAttempt === 1 ? 850 : 1000));
+          reopenedStatus = await this.openAuthorizedPort(flashPort, false).catch(() => null);
+          if (reopenedStatus) break;
+        }
+
+        const actualDeviceId =
+          reopenedStatus?.device?.id ||
+          preFlashDeviceId ||
+          (this.connectionInfo.deviceId !== 'demo-pad'
+            ? this.connectionInfo.deviceId
+            : undefined);
+        const actualRawFw =
+          reopenedStatus?.device?.firmware || inspectedBin.embeddedVersion || '';
+
+        if (actualDeviceId) {
+          writeFlashedLedger(actualDeviceId, {
+            rawReportedVersion: actualRawFw
+              ? `v${actualRawFw.replace(/^[vV]/, '')}`
+              : '*',
+            flashedVersion: cleanVersion,
+            sha256: params.sha256,
+            flashedAt: new Date().toISOString(),
+            supportsV45Engine: effectiveSupportsV45
+          });
+          if (reopenedStatus) {
+            this.applyTelemetryFromStatus(
+              reopenedStatus,
+              this.connectionInfo.vendorProduct
+            );
+          }
+        }
+
+        const finalLabel = `v${cleanVersion}`;
         const reportedFw =
           this.connectionInfo.connected &&
           this.connectionInfo.firmwareVersion &&
           this.connectionInfo.firmwareVersion !== '—' &&
           this.connectionInfo.firmwareVersion !== 'Connecting…'
             ? this.connectionInfo.firmwareVersion
-            : `v${cleanVersion}`;
+            : finalLabel;
 
-        const finalLabel = `v${cleanVersion}`;
         params.onProgress?.(
           100,
           totalBytes,
@@ -3328,6 +3508,7 @@ class PadLinkService {
   }
 
   private async cleanupPort() {
+    this.stopLiveTelemetryPolling();
     try {
       const portToClose = this.port;
       this.port = null;

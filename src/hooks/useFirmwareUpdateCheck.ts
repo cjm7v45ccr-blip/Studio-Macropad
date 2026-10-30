@@ -10,46 +10,22 @@ import { usbHardware } from '../services/usbHardwareService';
 import {
   PUBLIC_FIRMWARE_SOURCE_SLUG,
   compareFirmwareVersions,
+  computeSha256Hex,
   downloadFirmwareBinary,
   fetchPublicFirmwareCatalog,
   formatBytesCompact,
+  resolveEsp32FlashTarget,
   selectPrimaryOtaBinaryAsset
 } from '../services/firmwareUpdateService';
+import {
+  FlashedDeviceLedgerEntry,
+  extractVersionFromBinFilename,
+  inspectFirmwareBinaryCapabilities,
+  normalizeFirmwareDisplayTag,
+  readFlashedLedger
+} from '../services/firmwareLedger';
 
 const AUTO_CHECK_INTERVAL_MS = 2 * 60 * 1000; // Re-check /public every 2 minutes & on tab focus
-const FLASHED_LEDGER_STORAGE_KEY = 'studio-pad-flashed-fw-v1';
-
-interface FlashedDeviceLedgerEntry {
-  rawReportedVersion: string;
-  flashedVersion: string;
-  sha256?: string;
-  flashedAt: string;
-}
-
-function readFlashedLedger(deviceId: string | undefined): FlashedDeviceLedgerEntry | null {
-  if (!deviceId || typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(FLASHED_LEDGER_STORAGE_KEY);
-    if (!raw) return null;
-    const map = JSON.parse(raw) as Record<string, FlashedDeviceLedgerEntry>;
-    return map?.[deviceId] || null;
-  } catch {
-    return null;
-  }
-}
-
-function writeFlashedLedger(
-  deviceId: string | undefined,
-  entry: FlashedDeviceLedgerEntry
-): void {
-  if (!deviceId || typeof window === 'undefined') return;
-  try {
-    const raw = localStorage.getItem(FLASHED_LEDGER_STORAGE_KEY);
-    const map: Record<string, FlashedDeviceLedgerEntry> = raw ? JSON.parse(raw) : {};
-    map[deviceId] = entry;
-    localStorage.setItem(FLASHED_LEDGER_STORAGE_KEY, JSON.stringify(map));
-  } catch {}
-}
 
 interface UseFirmwareUpdateCheckOptions {
   connected: boolean;
@@ -69,17 +45,14 @@ function evaluateStatus(
   if (!installedVersion) return 'idle';
 
   const primarySha = release.assets?.[0]?.sha256;
-  if (
-    ledgerEntry &&
-    primarySha &&
-    ledgerEntry.sha256 &&
-    ledgerEntry.sha256 === primarySha &&
-    ledgerEntry.rawReportedVersion === installedVersion
-  ) {
-    return 'up_to_date';
+  const cmp = compareFirmwareVersions(installedVersion, release.version);
+
+  if (cmp === 0 && ledgerEntry?.sha256 && primarySha) {
+    return ledgerEntry.sha256.toLowerCase() === primarySha.toLowerCase()
+      ? 'up_to_date'
+      : 'update_available';
   }
 
-  const cmp = compareFirmwareVersions(installedVersion, release.version);
   if (cmp === 1) return 'update_available';
   if (cmp === -1) return 'ahead';
   return 'up_to_date';
@@ -93,21 +66,10 @@ export function useFirmwareUpdateCheck({
   onToast,
   onUpdateAvailableToast
 }: UseFirmwareUpdateCheckOptions) {
-  const rawHardwareVersion =
-    connected && installedVersion && installedVersion !== '—'
-      ? installedVersion.trim()
-      : null;
-
-  const activeDeviceId = connected ? usbHardware.info.deviceId || 'studio-pad' : undefined;
-  const ledgerEntry = readFlashedLedger(activeDeviceId);
-
   const effectiveInstalled =
-    rawHardwareVersion &&
-    ledgerEntry &&
-    ledgerEntry.rawReportedVersion === rawHardwareVersion &&
-    compareFirmwareVersions(rawHardwareVersion, ledgerEntry.flashedVersion) === 1
-      ? `v${ledgerEntry.flashedVersion.replace(/^[vV]/, '')}`
-      : rawHardwareVersion;
+    connected && installedVersion && installedVersion !== '—' && installedVersion !== 'Connecting…'
+      ? normalizeFirmwareDisplayTag(installedVersion)
+      : null;
 
   const [updateState, setUpdateState] = useState<FirmwareUpdateState>({
     status: 'idle',
@@ -381,6 +343,7 @@ export function useFirmwareUpdateCheck({
             url: absoluteBinUrl,
             version: targetRelease.version,
             sha256: primaryAsset.sha256,
+            supportsV45Engine: primaryAsset.supportsV45Engine,
             onProgress: (pct, msg, phase) => {
               lastProgressSnap = { percent: pct };
               setInstallProgress({
@@ -478,6 +441,7 @@ export function useFirmwareUpdateCheck({
           fileName: primaryAsset.name,
           version: targetRelease.version,
           sha256,
+          supportsV45Engine: primaryAsset.supportsV45Engine,
           onProgress: (pct, sent, total, msg) => {
             const clampedPct = Math.min(99, Math.max(10, Math.round(pct)));
             const isRebootPhase = clampedPct >= 96;
@@ -500,18 +464,6 @@ export function useFirmwareUpdateCheck({
           }
         });
 
-        // Persist flashed firmware version/hash per deviceId so boards whose .ino code
-        // still reports an older hardcoded version string don't endlessly re-prompt for the same .bin.
-        const currentHardwareRaw = usbHardware.info.firmwareVersion;
-        const devId = usbHardware.info.deviceId || 'studio-pad';
-        if (currentHardwareRaw && currentHardwareRaw !== '—') {
-          writeFlashedLedger(devId, {
-            rawReportedVersion: currentHardwareRaw.trim(),
-            flashedVersion: targetRelease.version.replace(/^[vV]/, ''),
-            sha256,
-            flashedAt: new Date().toISOString()
-          });
-        }
         installedRef.current = `v${targetRelease.version.replace(/^[vV]/, '')}`;
 
         setInstallProgress({
@@ -546,6 +498,132 @@ export function useFirmwareUpdateCheck({
     [checkForUpdates, connected, updateState.latestRelease]
   );
 
+  const uploadLocalFirmwareFile = useCallback(
+    async (
+      file: File,
+      opts?: { autoBackupBeforeFlash?: boolean }
+    ): Promise<boolean> => {
+      if (!connected && !usbHardware.browserSupportsWebSerial) {
+        generalToastRef.current?.(
+          'Open this site in Chrome or Edge on desktop (or start Demo Mode) to flash a local .bin over USB',
+          'error'
+        );
+        return false;
+      }
+
+      let lastProgressSnap: {
+        percent: number;
+        bytesWritten?: number;
+        totalBytes?: number;
+        sha256?: string;
+      } = { percent: 4 };
+
+      let derivedVersion = extractVersionFromBinFilename(file.name) || 'custom';
+
+      try {
+        if (opts?.autoBackupBeforeFlash && connected && exportBackupRef.current) {
+          setInstallProgress({
+            stage: 'backing_up',
+            method: 'local_bin',
+            percent: 3,
+            message: 'Saving profile backup before flashing local binary…',
+            targetVersion: derivedVersion
+          });
+          await exportBackupRef.current();
+        }
+
+        const ab = await file.arrayBuffer();
+        const bytes = new Uint8Array(ab);
+        resolveEsp32FlashTarget(bytes, file.name);
+
+        const binCaps = inspectFirmwareBinaryCapabilities(bytes);
+        derivedVersion =
+          extractVersionFromBinFilename(file.name) ||
+          binCaps.embeddedVersion ||
+          new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+
+        const sha256 = await computeSha256Hex(bytes);
+        lastProgressSnap = {
+          percent: 8,
+          totalBytes: bytes.byteLength,
+          sha256
+        };
+
+        setInstallProgress({
+          stage: 'verifying_hash',
+          method: 'local_bin',
+          percent: 8,
+          totalBytes: bytes.byteLength,
+          sha256,
+          message: sha256
+            ? `Verified ${file.name} (SHA-256 ${sha256.slice(0, 12)}…)…`
+            : `Verified ${file.name} header…`,
+          targetVersion: derivedVersion
+        });
+
+        await new Promise(resolve => window.setTimeout(resolve, 220));
+
+        const res = await usbHardware.installFirmwareViaUsbSerial({
+          bytes,
+          fileName: file.name,
+          version: derivedVersion,
+          sha256,
+          supportsV45Engine: binCaps.supportsV45Engine,
+          onProgress: (pct, sent, total, msg) => {
+            const clampedPct = Math.min(99, Math.max(10, Math.round(pct)));
+            const isRebootPhase = clampedPct >= 96;
+            lastProgressSnap = {
+              percent: clampedPct,
+              bytesWritten: sent,
+              totalBytes: total,
+              sha256
+            };
+            setInstallProgress({
+              stage: isRebootPhase ? 'rebooting' : 'flashing',
+              method: 'local_bin',
+              percent: clampedPct,
+              bytesWritten: sent,
+              totalBytes: total,
+              sha256,
+              message: msg,
+              targetVersion: derivedVersion
+            });
+          }
+        });
+
+        installedRef.current = `v${derivedVersion.replace(/^[vV]/, '')}`;
+        setInstallProgress({
+          stage: 'complete',
+          method: 'local_bin',
+          percent: 100,
+          bytesWritten: bytes.byteLength,
+          totalBytes: bytes.byteLength,
+          sha256,
+          message: res.message,
+          targetVersion: derivedVersion
+        });
+        generalToastRef.current?.(res.message, 'success');
+        await checkForUpdates({ force: false, silent: true });
+        return true;
+      } catch (err: any) {
+        const msg = err?.message || 'Could not flash local .bin file to MacroPad';
+        setInstallProgress({
+          stage: 'error',
+          method: 'local_bin',
+          percent: lastProgressSnap.percent,
+          bytesWritten: lastProgressSnap.bytesWritten,
+          totalBytes: lastProgressSnap.totalBytes,
+          sha256: lastProgressSnap.sha256,
+          message: msg,
+          targetVersion: derivedVersion
+        });
+        generalToastRef.current?.(msg, 'error');
+        return false;
+      }
+    },
+    [checkForUpdates, connected]
+  );
+
   const currentBannerKey =
     updateState.latestRelease && updateState.installedVersion
       ? `${updateState.installedVersion}->${updateState.latestRelease.version}`
@@ -571,6 +649,7 @@ export function useFirmwareUpdateCheck({
     isBannerDismissed,
     dismissUpdateBanner,
     checkForUpdates,
-    uploadFirmwareToMacropad
+    uploadFirmwareToMacropad,
+    uploadLocalFirmwareFile
   };
 }

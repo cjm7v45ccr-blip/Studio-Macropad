@@ -385,6 +385,8 @@ export interface FirmwareReleaseAsset {
   corsSafeUrl?: string;
   sha256?: string;
   isBinary?: boolean;
+  embeddedVersion?: string;
+  supportsV45Engine?: boolean;
 }
 
 export interface FirmwareReleaseInfo {
@@ -462,6 +464,10 @@ export type UsbTransport = 'webserial' | 'demo' | 'disconnected';
 
 export interface HardwareTelemetry {
   apiVersion: number;
+  reportedFirmwareVersion?: string;
+  eventsEnabled?: boolean;
+  supportsNativeDelay?: boolean;
+  supports512ByteSlotSave?: boolean;
   setupMode: boolean;
   activeProfile: HardwareProfileId;
   wifiConnected: boolean;

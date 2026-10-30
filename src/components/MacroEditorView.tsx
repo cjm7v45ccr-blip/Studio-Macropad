@@ -1460,7 +1460,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   // Sequence timing, completeness validation, and optimizer analysis
   const timingSummary = useMemo(() => calculateStepsTiming(macroSteps), [macroSteps]);
 
-  const nativeDelaySupported = firmwareSupportsNativeDelay(connection.firmwareVersion);
+  const nativeDelaySupported = firmwareSupportsNativeDelay(connection);
 
   const draftValidation = useMemo(
     () =>

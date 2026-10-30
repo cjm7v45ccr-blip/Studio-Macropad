@@ -276,14 +276,34 @@ export function isFirmwareAtLeast(
   return pat >= patch;
 }
 
-/** True when connected firmware supports native `DELAY:<1..60000>` tokens in NVS (v4.5.0+) */
-export function firmwareSupportsNativeDelay(fw?: string | null): boolean {
-  return isFirmwareAtLeast(fw, 4, 5, 0);
+/** True when connected firmware supports native `DELAY:<1..60000>` tokens in NVS (v4.5.0+ C++ engine) */
+export function firmwareSupportsNativeDelay(
+  fwOrConn?: string | DeviceConnectionInfo | null
+): boolean {
+  if (!fwOrConn) return false;
+  if (typeof fwOrConn === 'object') {
+    if (typeof fwOrConn.telemetry?.supportsNativeDelay === 'boolean') {
+      return fwOrConn.telemetry.supportsNativeDelay;
+    }
+    const raw = fwOrConn.telemetry?.reportedFirmwareVersion || fwOrConn.firmwareVersion;
+    return isFirmwareAtLeast(raw, 4, 5, 0);
+  }
+  return isFirmwareAtLeast(fwOrConn, 4, 5, 0);
 }
 
-/** True when connected firmware supports 512-byte `/api/customizer/save` single-slot saves (v4.5.0+) */
-export function firmwareSupports512ByteSlotSave(fw?: string | null): boolean {
-  return isFirmwareAtLeast(fw, 4, 5, 0);
+/** True when connected firmware supports 512-byte `/api/customizer/save` single-slot saves (v4.5.0+ C++ engine) */
+export function firmwareSupports512ByteSlotSave(
+  fwOrConn?: string | DeviceConnectionInfo | null
+): boolean {
+  if (!fwOrConn) return false;
+  if (typeof fwOrConn === 'object') {
+    if (typeof fwOrConn.telemetry?.supports512ByteSlotSave === 'boolean') {
+      return fwOrConn.telemetry.supports512ByteSlotSave;
+    }
+    const raw = fwOrConn.telemetry?.reportedFirmwareVersion || fwOrConn.firmwareVersion;
+    return isFirmwareAtLeast(raw, 4, 5, 0);
+  }
+  return isFirmwareAtLeast(fwOrConn, 4, 5, 0);
 }
 
 export function isValidDelayActionToken(action: string): boolean {

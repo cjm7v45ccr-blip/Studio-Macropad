@@ -1010,7 +1010,7 @@ export function useStudioState(
         if (!repeats || Object.keys(repeats).length === 0) {
           return { nextSerialized: baseProfiles, upgradedProfiles: [] };
         }
-        const nativeDelay = firmwareSupportsNativeDelay(status.device?.firmware);
+        const nativeDelay = firmwareSupportsNativeDelay(usbHardware.info);
         const cloned: SerializedPadProfiles = {
           ...baseProfiles,
           h1: { ...baseProfiles.h1 },
@@ -1139,7 +1139,7 @@ export function useStudioState(
             activeProfId,
             hwSlot
           );
-          const nativeDelay = firmwareSupportsNativeDelay(usbHardware.info.firmwareVersion);
+          const nativeDelay = firmwareSupportsNativeDelay(usbHardware.info);
           if (
             binding?.repeatConfig &&
             requiresUsbSequenceExecution(binding.repeatConfig, { nativeDelay })
@@ -1425,9 +1425,7 @@ export function useStudioState(
       actionStr: string,
       targetSnap: WorkspaceSnapshot
     ): Promise<{ ok: boolean; rev?: number; message?: string }> => {
-      const maxSingleSlotBytes = firmwareSupports512ByteSlotSave(
-        usbHardware.info.firmwareVersion
-      )
+      const maxSingleSlotBytes = firmwareSupports512ByteSlotSave(usbHardware.info)
         ? MAX_NVS_ACTION_BYTES
         : MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES;
 
@@ -2074,7 +2072,7 @@ export function useStudioState(
           ? item.repeatConfig.steps
           : actionToMacroSteps(item.action, item.repeatConfig);
 
-      const nativeDelay = firmwareSupportsNativeDelay(usbHardware.info.firmwareVersion);
+      const nativeDelay = firmwareSupportsNativeDelay(usbHardware.info);
       let resolvedAction = item.action;
       if (steps.length > 0) {
         const check = validateMacroSequenceDraft(steps, item.repeatConfig, { nativeDelay });
@@ -2228,9 +2226,7 @@ export function useStudioState(
           async () => {
             let lastRes: { rev?: number } | undefined;
             const pushedFullProfiles = new Set<HardwareProfileId>();
-            const maxSingleBytes = firmwareSupports512ByteSlotSave(
-              usbHardware.info.firmwareVersion
-            )
+            const maxSingleBytes = firmwareSupports512ByteSlotSave(usbHardware.info)
               ? MAX_NVS_ACTION_BYTES
               : MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES;
             for (const target of slotsToPush) {

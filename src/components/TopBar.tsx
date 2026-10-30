@@ -313,38 +313,79 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
         </div>
 
-        {/* Single Connection Chip */}
-        <button
-          type="button"
-          onClick={connection.connected ? onSaveToDevice : onConnectUsbPad}
-          style={{
-            backgroundColor: !connection.connected || dirty ? 'var(--accent)' : undefined,
-            color: !connection.connected || dirty ? '#FFFFFF' : undefined
-          }}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shadow-sm ${
-            connection.connected
-              ? 'bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-strong)] hover:border-[var(--accent)]'
-              : 'hover:opacity-95'
-          }`}
-          title={
-            connection.connected
-              ? `Synced · USB (${connection.deviceName || 'ESP32 Pad'})`
-              : 'Connect MacroPad via USB'
+        {/* Live Connection & Sync Action Chip */}
+        {(() => {
+          const isDemo = connection.transport === 'demo';
+          const isSaving = isSyncingUsb || syncStatus === 'Saving';
+          const needsSave = dirty || syncStatus === 'Out of sync';
+          const activeRev = connection.rev ?? currentRev;
+
+          if (!connection.connected) {
+            return (
+              <button
+                type="button"
+                onClick={connection.connecting ? onOpenConnectModal : onConnectUsbPad}
+                style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shadow-sm hover:opacity-95"
+                title={
+                  connection.connecting
+                    ? 'Opening USB port & syncing profiles…'
+                    : 'Connect MacroPad via USB'
+                }
+              >
+                <Usb className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {connection.connecting
+                    ? 'Connecting…'
+                    : needsSave
+                    ? 'Connect · Draft'
+                    : 'Connect'}
+                </span>
+              </button>
+            );
           }
-        >
-          {connection.connected ? (
-            <>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)] shrink-0" />
-              <span>Synced · USB</span>
-              {dirty && <span className="text-[10px] opacity-75">· Unsaved</span>}
-            </>
-          ) : (
-            <>
-              <Usb className="w-3.5 h-3.5 shrink-0" />
-              <span>Connect</span>
-            </>
-          )}
-        </button>
+
+          return (
+            <button
+              type="button"
+              onClick={needsSave ? onSaveToDevice : onOpenConnectModal}
+              style={
+                needsSave
+                  ? { backgroundColor: 'var(--accent)', color: '#FFFFFF' }
+                  : undefined
+              }
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shadow-sm ${
+                needsSave
+                  ? 'hover:opacity-95'
+                  : 'bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-strong)] hover:border-[var(--accent)]'
+              }`}
+              title={
+                needsSave
+                  ? `Push unsaved changes to ${connection.deviceName}`
+                  : `${connection.deviceName} · ${connection.firmwareVersion} · rev ${activeRev}`
+              }
+            >
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  isSaving || needsSave
+                    ? 'bg-amber-400'
+                    : isDemo
+                    ? 'bg-sky-400'
+                    : 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+                }`}
+              />
+              <span className="tabular-nums">
+                {isSaving
+                  ? `Saving · ${isDemo ? 'Demo' : 'USB'}`
+                  : needsSave
+                  ? `Save · ${isDemo ? 'Demo' : 'USB'}`
+                  : isDemo
+                  ? `Demo · ${connection.firmwareVersion}`
+                  : `Synced · USB`}
+              </span>
+            </button>
+          );
+        })()}
       </div>
     </header>
   );

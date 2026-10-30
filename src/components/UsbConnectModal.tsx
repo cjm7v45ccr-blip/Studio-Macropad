@@ -122,8 +122,14 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
               >
                 Connect Studio MacroPad
               </h3>
-              <p className="text-[11px] text-[var(--text-muted)]">
-                115,200 baud · Firmware 3.2-PRO · Multi-Host BLE
+              <p className="text-[11px] text-[var(--text-muted)] font-mono tabular-nums">
+                {connection.connected
+                  ? `${
+                      isDemo
+                        ? 'Demo Session'
+                        : `115,200 baud${connection.vendorProduct ? ` · ${connection.vendorProduct}` : ''}`
+                    } · ${connection.firmwareVersion}`
+                  : '115,200 baud Web Serial · Multi-Host BLE'}
               </p>
             </div>
           </div>

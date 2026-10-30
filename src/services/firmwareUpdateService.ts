@@ -199,16 +199,14 @@ function isHtmlSpaFallbackBytes(bytes: Uint8Array): boolean {
 }
 
 /**
- * Checks the website's static `/public` folder for any uploaded `.bin` firmware update.
- * Uses the static `firmware-catalog.json` index (auto-generated from `/public`) with a
- * direct `/firmware.json` static fallback — zero APIs or external services required.
+ * Checks the website's `/public` folder for any uploaded `.bin` firmware update
+ * via the dynamically generated `/firmware-catalog.json` index.
  */
 export async function fetchPublicFirmwareCatalog(options?: {
   signal?: AbortSignal;
 }): Promise<PublicFirmwareCatalogResult> {
   const cacheBust = `t=${Date.now()}`;
 
-  // 1. Check static /firmware-catalog.json generated from files in /public
   try {
     const catRes = await fetch(`/firmware-catalog.json?${cacheBust}`, {
       method: 'GET',
@@ -228,69 +226,6 @@ export async function fetchPublicFirmwareCatalog(options?: {
           latestRelease: parsed.latestRelease || recent[0] || null,
           recentReleases: recent
         };
-      }
-    }
-  } catch (err: any) {
-    if (err?.name === 'AbortError') throw err;
-  }
-
-  // 2. Fallback: Check /firmware.json directly and verify the .bin file exists in /public
-  try {
-    const metaRes = await fetch(`/firmware.json?${cacheBust}`, {
-      method: 'GET',
-      cache: 'no-store',
-      signal: options?.signal
-    });
-    const metaType = (metaRes.headers.get('content-type') || '').toLowerCase();
-    if (metaRes.ok && !metaType.includes('text/html')) {
-      const meta = await metaRes.json();
-      const rawFile = String(meta?.file || meta?.binary || 'firmware.bin').trim();
-      const rawVersion = normalizeFirmwareVersionLabel(
-        String(meta?.version || meta?.tag || '')
-      );
-      if (rawFile && rawVersion) {
-        const fileUrl = rawFile.startsWith('/') ? rawFile : `/${rawFile}`;
-        const headRes = await fetch(`${fileUrl}?${cacheBust}`, {
-          method: 'HEAD',
-          cache: 'no-store',
-          signal: options?.signal
-        });
-        const binType = (headRes.headers.get('content-type') || '').toLowerCase();
-        if (headRes.ok && !binType.includes('text/html')) {
-          const sizeBytes =
-            Number(headRes.headers.get('content-length') || meta?.sizeBytes || 0) || 0;
-          const fileName = fileUrl.split('/').pop() || 'firmware.bin';
-          const release: FirmwareReleaseInfo = {
-            version: rawVersion,
-            rawTag: `v${rawVersion}`,
-            title: String(meta?.title || `Firmware v${rawVersion}`),
-            notes: String(meta?.notes || ''),
-            publishedAt:
-              typeof meta?.publishedAt === 'string'
-                ? meta.publishedAt
-                : headRes.headers.get('last-modified'),
-            htmlUrl: fileUrl,
-            source: 'release',
-            repoSlug: PUBLIC_FIRMWARE_SOURCE_SLUG,
-            assets: [
-              {
-                name: fileName,
-                sizeBytes,
-                downloadUrl: fileUrl,
-                corsSafeUrl: fileUrl,
-                sha256:
-                  typeof meta?.sha256 === 'string' && /^[0-9a-f]{64}$/i.test(meta.sha256)
-                    ? meta.sha256.toLowerCase()
-                    : undefined,
-                isBinary: true
-              }
-            ]
-          };
-          return {
-            latestRelease: release,
-            recentReleases: [release]
-          };
-        }
       }
     }
   } catch (err: any) {

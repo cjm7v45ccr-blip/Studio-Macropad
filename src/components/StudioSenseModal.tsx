@@ -192,7 +192,10 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-xs">
-          <span className="text-[var(--text-muted)]">Powered by Gemini 3.8 Flash & Studio Sense AI</span>
+          <span className="text-[var(--text-muted)] tabular-nums">
+            Studio Sense Workflow Analyzer · {customMacros.length} saved{' '}
+            {customMacros.length === 1 ? 'macro' : 'macros'}
+          </span>
           <button
             type="button"
             onClick={onClose}
