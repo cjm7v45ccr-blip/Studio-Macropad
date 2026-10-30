@@ -512,29 +512,7 @@ export default function App() {
         }
       />
 
-      {/* Global Firmware Update Notification Bar with Direct One-Click Upload */}
-      {activeSection !== 'settings' && (
-        <FirmwareUpdateBanner
-          compact
-          connection={connection}
-          firmwareUpdate={firmwareUpdater.updateState}
-          installProgress={firmwareUpdater.installProgress}
-          isUploadingFirmware={firmwareUpdater.isUploadingFirmware}
-          isFirmwareBannerDismissed={firmwareUpdater.isBannerDismissed}
-          onDismissFirmwareBanner={firmwareUpdater.dismissUpdateBanner}
-          onUploadToMacropad={() => {
-            firmwareUpdater.uploadFirmwareToMacropad();
-          }}
-          onJumpToUpdater={() => {
-            setActiveSection('settings');
-            setTimeout(() => {
-              document
-                .getElementById('firmware-updater-card')
-                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 60);
-          }}
-        />
-      )}
+
 
       {/* Main Workspace Area: Desktop Left Rail + Active Section */}
       <div className="flex-1 flex overflow-hidden min-w-0">
