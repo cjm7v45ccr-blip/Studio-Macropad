@@ -29,7 +29,7 @@ import {
   describeFirmwareAction,
   getActionTestAvailability,
   getMacroCanonicalSignature,
-  requiresUsbSequenceExecution,
+  isMultiStepOrTimedMacro,
   suggestSmartMacroName
 } from './data/firmwareCatalog';
 import {
@@ -52,6 +52,7 @@ import { UsbConnectModal } from './components/UsbConnectModal';
 import { SetupWizardModal, WizardCompletionPayload } from './components/SetupWizardModal';
 import { SyncConflictModal } from './components/SyncConflictModal';
 import { DiffConfirmModal, DiffPreviewRow } from './components/DiffConfirmModal';
+import { CheatSheetModal } from './components/CheatSheetModal';
 import { AlertCircle, CheckCircle2, Repeat, Square } from 'lucide-react';
 
 export default function App() {
@@ -67,7 +68,8 @@ export default function App() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3400);
+    const duration = toast.variant === 'error' ? 8500 : 3600;
+    const t = setTimeout(() => setToast(null), duration);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -88,6 +90,7 @@ export default function App() {
     source: HardwareProfileId;
     target: HardwareProfileId;
   } | null>(null);
+  const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
 
   const [connection, setConnection] = useState<DeviceConnectionInfo>(usbHardware.info);
   const [activeRepeatJob, setActiveRepeatJob] = useState<ActiveRepeatJob | null>(
@@ -138,10 +141,26 @@ export default function App() {
     Boolean(firmwareUpdater.updateState.latestRelease);
 
   const handleStopRepeat = useCallback(() => {
-    if (repeatMacroRunner.stop()) {
+    const stoppedLocal = repeatMacroRunner.stop();
+    if (connection.connected) {
+      usbHardware.cancelRunningMacro().catch(() => {});
+    }
+    if (stoppedLocal) {
       showToast('Stopped repeat sequence');
     }
-  }, [showToast]);
+  }, [connection.connected, showToast]);
+
+  useEffect(() => {
+    if (!activeRepeatJob) return;
+    const handleGlobalEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleStopRepeat();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalEsc);
+    return () => window.removeEventListener('keydown', handleGlobalEsc);
+  }, [activeRepeatJob, handleStopRepeat]);
 
   const handleConnectUsbPad = useCallback(async () => {
     if (!usbHardware.browserSupportsWebSerial) {
@@ -273,7 +292,7 @@ export default function App() {
         return false;
       }
 
-      if (binding.repeatConfig && requiresUsbSequenceExecution(binding.repeatConfig)) {
+      if (binding.repeatConfig && isMultiStepOrTimedMacro(binding.value, binding.repeatConfig)) {
         repeatMacroRunner
           .runFromUiTest(binding.repeatConfig)
           .catch((err: any) => {
@@ -493,29 +512,7 @@ export default function App() {
         }
       />
 
-      {/* Global Firmware Update Notification Bar with Direct One-Click Upload */}
-      {activeSection !== 'settings' && (
-        <FirmwareUpdateBanner
-          compact
-          connection={connection}
-          firmwareUpdate={firmwareUpdater.updateState}
-          installProgress={firmwareUpdater.installProgress}
-          isUploadingFirmware={firmwareUpdater.isUploadingFirmware}
-          isFirmwareBannerDismissed={firmwareUpdater.isBannerDismissed}
-          onDismissFirmwareBanner={firmwareUpdater.dismissUpdateBanner}
-          onUploadToMacropad={() => {
-            firmwareUpdater.uploadFirmwareToMacropad();
-          }}
-          onJumpToUpdater={() => {
-            setActiveSection('settings');
-            setTimeout(() => {
-              document
-                .getElementById('firmware-updater-card')
-                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 60);
-          }}
-        />
-      )}
+
 
       {/* Main Workspace Area: Desktop Left Rail + Active Section */}
       <div className="flex-1 flex overflow-hidden min-w-0">
@@ -558,6 +555,7 @@ export default function App() {
               onExecuteHardwareBinding={handleExecuteHardwareBinding}
               onSwitchBleHost={handleSwitchBleHost}
               onOpenSetupWizard={handleOpenSetupWizard}
+              onOpenCheatSheet={() => setCheatSheetOpen(true)}
             />
 
             {isEncoderControlSelected ? (
@@ -574,6 +572,9 @@ export default function App() {
                 onUpdateSlot={studio.updateEncoderSlot}
                 onResetSlotToDefault={slot =>
                   studio.resetSlotToDefault(studio.activeProfile.id, slot)
+                }
+                onClearSlot={slot =>
+                  studio.clearSlot(studio.activeProfile.id, slot)
                 }
                 onApplyKnobSlots={(partial, msg, repeatOverrides) =>
                   studio.assignProfileSlots(
@@ -617,6 +618,9 @@ export default function App() {
                   }
                   onResetSlotToDefault={slot =>
                     studio.resetSlotToDefault(studio.activeProfile.id, slot)
+                  }
+                  onClearSlot={slot =>
+                    studio.clearSlot(studio.activeProfile.id, slot)
                   }
                   onUpdateAppearance={patch =>
                     studio.updateKeyAppearance(selectedKeyConfig.id, patch)
@@ -665,6 +669,7 @@ export default function App() {
             onStopRepeat={handleStopRepeat}
             onPullFromUsb={handlePullFromUsb}
             onJumpToControl={handleJumpToSlotControl}
+            onToast={showToast}
           />
         )}
 
@@ -805,6 +810,15 @@ export default function App() {
         onUsePad={studio.resolveConflictUsePad}
       />
 
+      {/* All-Host Desk Reference Cheat Sheet Modal */}
+      <CheatSheetModal
+        isOpen={cheatSheetOpen}
+        profiles={studio.profiles}
+        activeProfileId={studio.activeProfile.id}
+        onClose={() => setCheatSheetOpen(false)}
+        onJumpToControl={handleJumpToSlotControl}
+      />
+
       {/* Active Repeat Macro Floating Bar with Instant Stop */}
       {activeRepeatJob && (
         <div className="fixed bottom-16 sm:bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-2xl text-xs max-w-[94vw]">
@@ -841,10 +855,11 @@ export default function App() {
           <button
             type="button"
             onClick={handleStopRepeat}
+            title="Stop macro sequence immediately (Esc)"
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 font-semibold transition-colors cursor-pointer shrink-0"
           >
             <Square className="w-3 h-3 fill-current" />
-            <span>Stop</span>
+            <span>Stop (Esc)</span>
           </button>
         </div>
       )}

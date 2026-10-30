@@ -11,12 +11,17 @@ import {
   formatBytesCompact,
   selectPrimaryOtaBinaryAsset
 } from '../services/firmwareUpdateService';
+import { usbHardware } from '../services/usbHardwareService';
 import {
   AlertCircle,
+  Archive,
   ArrowUpCircle,
   CheckCircle2,
+  Cpu,
+  Download,
   Loader2,
   RefreshCw,
+  ShieldCheck,
   Upload,
   Wifi,
   X
@@ -45,15 +50,161 @@ interface FirmwareSharedProps {
 }
 
 const STAGE_LABELS: Record<FirmwareInstallProgress['stage'], string> = {
-  idle: 'Ready',
-  backing_up: 'Saving profile backup',
-  downloading: 'Loading firmware binary',
-  verifying_hash: 'Verifying SHA-256 checksum',
-  flashing: 'Writing binary to MacroPad',
+  idle: 'Ready to Install',
+  backing_up: 'Backing Up',
+  downloading: 'Downloading',
+  verifying_hash: 'Verifying',
+  flashing: 'Writing to MacroPad',
   rebooting: 'Restarting MacroPad',
-  complete: 'Update complete',
-  error: 'Update interrupted'
+  complete: 'Installation Complete',
+  error: 'Update Interrupted'
 };
+
+interface BannerVisualConfig {
+  statusLabel: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  spinIcon?: boolean;
+  iconColorClass: string;
+  statusTextClass: string;
+  strokeClass: string;
+  fillClass: string;
+  compactSurfaceClass: string;
+  fullSurfaceClass: string;
+  dividerBorderClass: string;
+}
+
+function getBannerVisualConfig(
+  activeStage: FirmwareInstallProgress['stage'] | null,
+  updateStatus: FirmwareUpdateState['status']
+): BannerVisualConfig {
+  if (activeStage === 'complete') {
+    return {
+      statusLabel: 'Installation Complete',
+      Icon: CheckCircle2,
+      iconColorClass: 'text-emerald-400',
+      statusTextClass: 'text-emerald-400',
+      strokeClass: 'stroke-emerald-400',
+      fillClass: 'fill-emerald-400',
+      compactSurfaceClass: 'bg-emerald-500/10 border-b border-emerald-500/30',
+      fullSurfaceClass: 'bg-emerald-500/10 border border-emerald-500/35',
+      dividerBorderClass: 'border-emerald-500/25'
+    };
+  }
+
+  if (activeStage === 'error' || (!activeStage && updateStatus === 'error')) {
+    return {
+      statusLabel: 'Update Interrupted',
+      Icon: AlertCircle,
+      iconColorClass: 'text-rose-400',
+      statusTextClass: 'text-rose-400',
+      strokeClass: 'stroke-rose-400',
+      fillClass: 'fill-rose-400/80',
+      compactSurfaceClass: 'bg-rose-500/10 border-b border-rose-500/30',
+      fullSurfaceClass: 'bg-rose-500/10 border border-rose-500/35',
+      dividerBorderClass: 'border-rose-500/25'
+    };
+  }
+
+  if (activeStage === 'backing_up') {
+    return {
+      statusLabel: 'Backing Up',
+      Icon: Archive,
+      iconColorClass: 'text-sky-400',
+      statusTextClass: 'text-sky-400',
+      strokeClass: 'stroke-sky-400',
+      fillClass: 'fill-sky-400',
+      compactSurfaceClass: 'bg-sky-500/10 border-b border-sky-500/30',
+      fullSurfaceClass: 'bg-sky-500/10 border border-sky-500/35',
+      dividerBorderClass: 'border-sky-500/25'
+    };
+  }
+
+  if (activeStage === 'downloading') {
+    return {
+      statusLabel: 'Downloading',
+      Icon: Download,
+      iconColorClass: 'text-sky-400',
+      statusTextClass: 'text-sky-400',
+      strokeClass: 'stroke-sky-400',
+      fillClass: 'fill-sky-400',
+      compactSurfaceClass: 'bg-sky-500/10 border-b border-sky-500/30',
+      fullSurfaceClass: 'bg-sky-500/10 border border-sky-500/35',
+      dividerBorderClass: 'border-sky-500/25'
+    };
+  }
+
+  if (activeStage === 'verifying_hash') {
+    return {
+      statusLabel: 'Verifying',
+      Icon: ShieldCheck,
+      iconColorClass: 'text-cyan-400',
+      statusTextClass: 'text-cyan-400',
+      strokeClass: 'stroke-cyan-400',
+      fillClass: 'fill-cyan-400',
+      compactSurfaceClass: 'bg-cyan-500/10 border-b border-cyan-500/30',
+      fullSurfaceClass: 'bg-cyan-500/10 border border-cyan-500/35',
+      dividerBorderClass: 'border-cyan-500/25'
+    };
+  }
+
+  if (activeStage === 'flashing') {
+    return {
+      statusLabel: 'Writing to MacroPad',
+      Icon: Cpu,
+      iconColorClass: 'text-[var(--accent)]',
+      statusTextClass: 'text-[var(--accent)]',
+      strokeClass: 'stroke-[var(--accent)]',
+      fillClass: 'fill-[var(--accent)]',
+      compactSurfaceClass:
+        'bg-[rgba(var(--accent-rgb),0.10)] border-b border-[rgba(var(--accent-rgb),0.32)]',
+      fullSurfaceClass:
+        'bg-[rgba(var(--accent-rgb),0.09)] border border-[rgba(var(--accent-rgb),0.35)]',
+      dividerBorderClass: 'border-[rgba(var(--accent-rgb),0.25)]'
+    };
+  }
+
+  if (activeStage === 'rebooting') {
+    return {
+      statusLabel: 'Restarting MacroPad',
+      Icon: RefreshCw,
+      spinIcon: true,
+      iconColorClass: 'text-violet-400',
+      statusTextClass: 'text-violet-400',
+      strokeClass: 'stroke-violet-400',
+      fillClass: 'fill-violet-400',
+      compactSurfaceClass: 'bg-violet-500/10 border-b border-violet-500/30',
+      fullSurfaceClass: 'bg-violet-500/10 border border-violet-500/35',
+      dividerBorderClass: 'border-violet-500/25'
+    };
+  }
+
+  if (updateStatus === 'checking') {
+    return {
+      statusLabel: 'Checking Update',
+      Icon: RefreshCw,
+      spinIcon: true,
+      iconColorClass: 'text-sky-400',
+      statusTextClass: 'text-sky-400',
+      strokeClass: 'stroke-sky-400',
+      fillClass: 'fill-sky-400',
+      compactSurfaceClass: 'bg-amber-500/10 border-b border-amber-500/30',
+      fullSurfaceClass: 'bg-amber-500/10 border border-amber-500/35',
+      dividerBorderClass: 'border-amber-500/20'
+    };
+  }
+
+  return {
+    statusLabel: 'Ready to Install',
+    Icon: ArrowUpCircle,
+    iconColorClass: 'text-amber-400',
+    statusTextClass: 'text-amber-400',
+    strokeClass: 'stroke-amber-400',
+    fillClass: 'fill-amber-400',
+    compactSurfaceClass: 'bg-amber-500/10 border-b border-amber-500/30',
+    fullSurfaceClass: 'bg-amber-500/10 border border-amber-500/35',
+    dividerBorderClass: 'border-amber-500/20'
+  };
+}
 
 function clampProgressPercent(raw: number | undefined): number {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
@@ -66,13 +217,9 @@ const FirmwareRadialProgress: React.FC<{
   size?: 'sm' | 'md';
 }> = ({ percent, stage, size = 'md' }) => {
   const clamped = clampProgressPercent(percent);
-  const arcPercent = stage === 'error' ? 100 : Math.max(4, clamped);
-  const strokeClass =
-    stage === 'complete'
-      ? 'stroke-emerald-400'
-      : stage === 'error'
-      ? 'stroke-rose-400'
-      : 'stroke-[var(--accent)]';
+  const arcPercent = Math.max(4, clamped);
+  const visual = getBannerVisualConfig(stage, 'idle');
+  const StageIcon = visual.Icon;
 
   const dimensions = size === 'sm' ? 'w-7 h-7' : 'w-11 h-11';
 
@@ -100,27 +247,23 @@ const FirmwareRadialProgress: React.FC<{
           strokeDasharray={100}
           strokeDashoffset={100 - arcPercent}
           strokeLinecap="round"
-          className={`-rotate-90 origin-center transition-[stroke-dashoffset] duration-150 ease-out ${strokeClass}`}
+          className={`-rotate-90 origin-center transition-[stroke-dashoffset] duration-150 ease-out ${visual.strokeClass}`}
         />
       </svg>
 
       <div className="absolute inset-0 flex items-center justify-center">
-        {stage === 'complete' ? (
-          <CheckCircle2
-            className={
-              size === 'sm'
-                ? 'w-3.5 h-3.5 text-emerald-400'
-                : 'w-4 h-4 text-emerald-400'
-            }
-          />
-        ) : stage === 'error' ? (
-          <AlertCircle
-            className={
-              size === 'sm' ? 'w-3.5 h-3.5 text-rose-400' : 'w-4 h-4 text-rose-400'
-            }
+        {stage === 'complete' || stage === 'error' ? (
+          <StageIcon
+            className={`${size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4'} ${
+              visual.iconColorClass
+            }`}
           />
         ) : size === 'sm' ? (
-          <Upload className="w-3 h-3 text-[var(--accent)]" />
+          <StageIcon
+            className={`w-3 h-3 ${visual.iconColorClass} ${
+              visual.spinIcon ? 'animate-spin' : ''
+            }`}
+          />
         ) : (
           <span className="font-mono text-[10px] font-bold text-[var(--text-primary)] tabular-nums leading-none">
             {clamped}%
@@ -138,13 +281,8 @@ const FirmwareLinearProgress: React.FC<{
   thick?: boolean;
 }> = ({ percent, stage, ariaLabel, thick = false }) => {
   const clamped = clampProgressPercent(percent);
-  const fillWidth = stage === 'error' ? 100 : Math.max(2, clamped);
-  const fillClass =
-    stage === 'complete'
-      ? 'fill-emerald-400'
-      : stage === 'error'
-      ? 'fill-rose-400/80'
-      : 'fill-[var(--accent)]';
+  const fillWidth = Math.max(3, clamped);
+  const visual = getBannerVisualConfig(stage, 'idle');
 
   return (
     <div
@@ -169,9 +307,84 @@ const FirmwareLinearProgress: React.FC<{
           y={0}
           width={fillWidth}
           height={4}
-          className={`transition-all duration-150 ease-out ${fillClass}`}
+          className={`transition-all duration-150 ease-out ${visual.fillClass}`}
         />
       </svg>
+    </div>
+  );
+};
+
+const INSTALL_MILESTONES: {
+  id: 'download' | 'verify' | 'write' | 'complete';
+  label: string;
+  Icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { id: 'download', label: 'Downloading', Icon: Download },
+  { id: 'verify', label: 'Verifying', Icon: ShieldCheck },
+  { id: 'write', label: 'Writing', Icon: Cpu },
+  { id: 'complete', label: 'Installation Complete', Icon: CheckCircle2 }
+];
+
+function getMilestoneRank(stage: FirmwareInstallProgress['stage']): number {
+  switch (stage) {
+    case 'backing_up':
+    case 'downloading':
+      return 0;
+    case 'verifying_hash':
+      return 1;
+    case 'flashing':
+    case 'rebooting':
+      return 2;
+    case 'complete':
+      return 3;
+    default:
+      return -1;
+  }
+}
+
+const FirmwareStageTrail: React.FC<{
+  stage: FirmwareInstallProgress['stage'];
+}> = ({ stage }) => {
+  if (stage === 'idle' || stage === 'error') return null;
+  const activeRank = getMilestoneRank(stage);
+  const activeVisual = getBannerVisualConfig(stage, 'idle');
+
+  return (
+    <div
+      aria-label="Firmware installation stages"
+      className="flex items-center gap-1.5 flex-wrap text-[11px] select-none"
+    >
+      {INSTALL_MILESTONES.map((step, idx) => {
+        const isDone = stage === 'complete' || idx < activeRank;
+        const isCurrent = stage !== 'complete' && idx === activeRank;
+        const StepIcon = isDone ? CheckCircle2 : step.Icon;
+
+        return (
+          <React.Fragment key={step.id}>
+            {idx > 0 && (
+              <span className="text-[var(--text-muted)]" aria-hidden="true">
+                →
+              </span>
+            )}
+            <span
+              className={`inline-flex items-center gap-1 ${
+                isDone
+                  ? 'text-emerald-400 font-medium'
+                  : isCurrent
+                  ? `${activeVisual.statusTextClass} font-semibold`
+                  : 'text-[var(--text-muted)]'
+              }`}
+            >
+              <StepIcon className="w-3 h-3 shrink-0" />
+              <span>
+                {step.id === 'write' && stage === 'rebooting'
+                  ? 'Restarting'
+                  : step.label}
+              </span>
+            </span>
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 };
@@ -182,6 +395,8 @@ const FirmwareProgressBox: React.FC<{
 }> = ({ installProgress, isUploading }) => {
   if (!installProgress || installProgress.stage === 'idle') return null;
   const clamped = clampProgressPercent(installProgress.percent);
+  const visual = getBannerVisualConfig(installProgress.stage, 'idle');
+  const StageIcon = visual.Icon;
 
   return (
     <div
@@ -194,20 +409,20 @@ const FirmwareProgressBox: React.FC<{
       }`}
     >
       <div className="flex items-center justify-between gap-2 font-mono text-[11px] tabular-nums">
-        <span className="font-semibold flex items-center gap-1.5">
-          {isUploading && (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
-          )}
-          {installProgress.stage === 'complete' && (
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-          )}
-          {installProgress.stage === 'error' && (
-            <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+        <span className={`font-semibold flex items-center gap-1.5 ${visual.statusTextClass}`}>
+          {isUploading && visual.spinIcon ? (
+            <Loader2 className={`w-3.5 h-3.5 animate-spin ${visual.iconColorClass}`} />
+          ) : (
+            <StageIcon className={`w-3.5 h-3.5 shrink-0 ${visual.iconColorClass}`} />
           )}
           <span>{STAGE_LABELS[installProgress.stage]}</span>
         </span>
         <span>
-          {installProgress.stage !== 'error' && `${clamped}%`}
+          {installProgress.stage === 'error'
+            ? clamped > 0
+              ? `Stopped at ${clamped}%`
+              : ''
+            : `${clamped}%`}
           {installProgress.bytesWritten !== undefined &&
             installProgress.totalBytes !== undefined &&
             installProgress.totalBytes > 0 &&
@@ -217,13 +432,11 @@ const FirmwareProgressBox: React.FC<{
         </span>
       </div>
 
-      {installProgress.stage !== 'error' && (
-        <FirmwareLinearProgress
-          percent={clamped}
-          stage={installProgress.stage}
-          ariaLabel="MacroPad firmware write progress"
-        />
-      )}
+      <FirmwareLinearProgress
+        percent={clamped}
+        stage={installProgress.stage}
+        ariaLabel="MacroPad firmware write progress"
+      />
 
       <div className="text-[11px] leading-relaxed opacity-90">
         {installProgress.message}
@@ -290,7 +503,11 @@ export const FirmwareUpdateBanner: React.FC<{
   const isComplete = activeStage === 'complete';
   const isError = activeStage === 'error';
   const isWritingBinary = activeStage === 'flashing';
+  const isVerifying = activeStage === 'verifying_hash';
   const isActiveTransfer = activeStage !== null && !isComplete && !isError;
+
+  const visual = getBannerVisualConfig(activeStage, firmwareUpdate.status);
+  const StatusIcon = visual.Icon;
 
   const hasByteTelemetry =
     installProgress?.bytesWritten !== undefined &&
@@ -298,19 +515,11 @@ export const FirmwareUpdateBanner: React.FC<{
     installProgress.totalBytes > 0;
 
   if (compact) {
-    const compactSurfaceClass = isComplete
-      ? 'bg-emerald-500/10 border-b border-emerald-500/30'
-      : isError
-      ? 'bg-rose-500/10 border-b border-rose-500/30'
-      : isActiveTransfer
-      ? 'bg-[rgba(var(--accent-rgb),0.10)] border-b border-[rgba(var(--accent-rgb),0.32)]'
-      : 'bg-amber-500/10 border-b border-amber-500/30';
-
     return (
       <div
         role="region"
         aria-label="MacroPad firmware update notification"
-        className={`shrink-0 ${compactSurfaceClass} px-3 sm:px-5 py-2.5 space-y-2 transition-colors`}
+        className={`shrink-0 ${visual.compactSurfaceClass} px-3 sm:px-5 py-2.5 space-y-2 transition-colors`}
       >
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -321,21 +530,31 @@ export const FirmwareUpdateBanner: React.FC<{
                 size="sm"
               />
             ) : (
-              <ArrowUpCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <StatusIcon
+                className={`w-4 h-4 ${visual.iconColorClass} shrink-0 ${
+                  visual.spinIcon ? 'animate-spin' : ''
+                }`}
+              />
             )}
 
             <div className="flex items-center gap-2 flex-wrap text-xs min-w-0">
-              <span className="font-semibold text-[var(--text-primary)]">
+              <span className={`font-semibold ${visual.statusTextClass}`}>
+                {visual.statusLabel}
+              </span>
+
+              <span className="text-[var(--text-muted)]" aria-hidden="true">
+                ·
+              </span>
+
+              <span className="font-medium text-[var(--text-primary)]">
                 {isComplete
-                  ? `MacroPad updated${targetVersion ? ` to v${targetVersion}` : ''}`
+                  ? `Running${targetVersion ? ` v${targetVersion}` : ' latest firmware'}`
                   : isError
-                  ? 'Firmware update interrupted'
-                  : isWritingBinary
-                  ? `Writing${targetVersion ? ` v${targetVersion}` : ' firmware'} to MacroPad`
-                  : isActiveTransfer && activeStage
-                  ? `${STAGE_LABELS[activeStage]}${targetVersion ? ` (v${targetVersion})` : ''}`
+                  ? installProgress?.message || 'Check USB cable and retry'
+                  : activeStage
+                  ? `Firmware${targetVersion ? ` v${targetVersion}` : ''}`
                   : latestRelease
-                  ? `New MacroPad update available (v${latestRelease.version})`
+                  ? `Firmware v${latestRelease.version} available`
                   : 'MacroPad firmware update'}
               </span>
 
@@ -348,6 +567,19 @@ export const FirmwareUpdateBanner: React.FC<{
                       </span>
                       <span className="font-mono text-[11px] font-bold text-[var(--text-primary)] tabular-nums">
                         {clampedPercent}%
+                      </span>
+                    </>
+                  )}
+                  {isVerifying && installProgress?.sha256 && (
+                    <>
+                      <span
+                        className="text-[var(--text-muted)] hidden sm:inline"
+                        aria-hidden="true"
+                      >
+                        ·
+                      </span>
+                      <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums hidden sm:inline">
+                        SHA-256 {installProgress.sha256.slice(0, 10)}…
                       </span>
                     </>
                   )}
@@ -375,16 +607,6 @@ export const FirmwareUpdateBanner: React.FC<{
                       </span>
                       <span className="text-[11px] text-[var(--text-secondary)] hidden lg:inline">
                         Keep USB cable connected
-                      </span>
-                    </>
-                  )}
-                  {isError && installProgress?.message && (
-                    <>
-                      <span className="text-[var(--text-muted)]" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-rose-300 truncate max-w-md">
-                        {installProgress.message}
                       </span>
                     </>
                   )}
@@ -444,9 +666,7 @@ export const FirmwareUpdateBanner: React.FC<{
                 )}
                 <span className="tabular-nums">
                   {isUploadingFirmware
-                    ? isWritingBinary
-                      ? `Writing ${clampedPercent}%…`
-                      : `Uploading ${clampedPercent}%…`
+                    ? `${visual.statusLabel} ${clampedPercent}%…`
                     : isError
                     ? 'Retry Upload'
                     : 'Upload to MacroPad'}
@@ -491,27 +711,11 @@ export const FirmwareUpdateBanner: React.FC<{
 
   if (!latestRelease && !activeStage) return null;
 
-  const fullSurfaceClass = isComplete
-    ? 'bg-emerald-500/10 border border-emerald-500/35'
-    : isError
-    ? 'bg-rose-500/10 border border-rose-500/35'
-    : isActiveTransfer
-    ? 'bg-[rgba(var(--accent-rgb),0.09)] border border-[rgba(var(--accent-rgb),0.35)]'
-    : 'bg-amber-500/10 border border-amber-500/35';
-
-  const dividerBorderClass = isComplete
-    ? 'border-emerald-500/25'
-    : isError
-    ? 'border-rose-500/25'
-    : isActiveTransfer
-    ? 'border-[rgba(var(--accent-rgb),0.25)]'
-    : 'border-amber-500/20';
-
   return (
     <div
       role="region"
       aria-label="MacroPad firmware update available"
-      className={`p-4 sm:p-5 rounded-2xl ${fullSurfaceClass} space-y-3 transition-colors`}
+      className={`p-4 sm:p-5 rounded-2xl ${visual.fullSurfaceClass} space-y-3 transition-colors`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
@@ -522,15 +726,44 @@ export const FirmwareUpdateBanner: React.FC<{
               size="md"
             />
           ) : (
-            <ArrowUpCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <StatusIcon
+              className={`w-5 h-5 ${visual.iconColorClass} shrink-0 mt-0.5 ${
+                visual.spinIcon ? 'animate-spin' : ''
+              }`}
+            />
           )}
 
           <div className="space-y-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span
+                className={`inline-flex items-center gap-1.5 font-semibold ${visual.statusTextClass}`}
+              >
+                <StatusIcon
+                  className={`w-3.5 h-3.5 shrink-0 ${
+                    visual.spinIcon ? 'animate-spin' : ''
+                  }`}
+                />
+                <span>{visual.statusLabel}</span>
+              </span>
+              {targetVersion && (
+                <>
+                  <span className="text-[var(--text-muted)]" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
+                    v{targetVersion}
+                  </span>
+                </>
+              )}
+            </div>
+
             <div className="text-sm font-semibold text-[var(--text-primary)]">
               {isComplete
                 ? `MacroPad updated${targetVersion ? ` to v${targetVersion}` : ''}`
                 : isError
-                ? 'Firmware update interrupted'
+                ? 'Firmware update could not complete'
+                : isVerifying
+                ? `Verifying firmware${targetVersion ? ` v${targetVersion}` : ''} integrity`
                 : isWritingBinary
                 ? `Writing firmware${targetVersion ? ` v${targetVersion}` : ''} to MacroPad`
                 : isActiveTransfer && activeStage
@@ -542,12 +775,14 @@ export const FirmwareUpdateBanner: React.FC<{
               {activeStage ? (
                 <>
                   <span className="text-[var(--text-primary)] font-semibold">
-                    {STAGE_LABELS[activeStage]}
+                    {isError && clampedPercent > 0
+                      ? `Stopped at ${clampedPercent}%`
+                      : `${clampedPercent}%`}
                   </span>
-                  {!isError && (
+                  {isVerifying && installProgress?.sha256 && (
                     <>
                       <span aria-hidden="true">·</span>
-                      <span>{clampedPercent}%</span>
+                      <span>SHA-256 {installProgress.sha256.slice(0, 12)}…</span>
                     </>
                   )}
                   {hasByteTelemetry && !isError && (
@@ -603,15 +838,16 @@ export const FirmwareUpdateBanner: React.FC<{
       </div>
 
       {activeStage && installProgress ? (
-        <div className={`space-y-2 border-t ${dividerBorderClass} pt-3`}>
-          {!isError && (
-            <FirmwareLinearProgress
-              thick
-              percent={clampedPercent}
-              stage={activeStage}
-              ariaLabel="MacroPad firmware binary write progress"
-            />
-          )}
+        <div className={`space-y-2.5 border-t ${visual.dividerBorderClass} pt-3`}>
+          <FirmwareStageTrail stage={activeStage} />
+
+          <FirmwareLinearProgress
+            thick
+            percent={clampedPercent}
+            stage={activeStage}
+            ariaLabel="MacroPad firmware binary write progress"
+          />
+
           <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
             <span
               className={
@@ -679,9 +915,7 @@ export const FirmwareUpdateBanner: React.FC<{
             )}
             <span className="tabular-nums">
               {isUploadingFirmware
-                ? isWritingBinary
-                  ? `Writing to MacroPad (${clampedPercent}%)…`
-                  : `Uploading (${clampedPercent}%)…`
+                ? `${visual.statusLabel} (${clampedPercent}%)…`
                 : isError
                 ? `Retry Upload${targetVersion ? ` (v${targetVersion})` : ''}`
                 : `Upload v${targetVersion} to MacroPad`}
@@ -740,6 +974,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
   );
 
   const padWifiOnline = Boolean(connection.connected && connection.telemetry?.wifiConnected);
+  const canFlashUsb = connection.connected || usbHardware.browserSupportsWebSerial;
   const latestRelease = firmwareUpdate.latestRelease;
 
   const handleManualFirmwareCheck = async () => {
@@ -759,7 +994,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
       onToast(`MacroPad firmware (${result.installedVersion}) is up to date`);
     } else if (result.latestRelease) {
       onToast(
-        `Firmware v${result.latestRelease.version} is ready — connect your MacroPad to update`
+        `Firmware v${result.latestRelease.version} is ready to upload over USB`
       );
     } else {
       onToast('Your MacroPad firmware is up to date — no new update posted yet');
@@ -783,7 +1018,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
             <span>MacroPad Firmware Updates</span>
           </div>
           <p className="text-xs text-[var(--text-muted)]">
-            Notifies you automatically when a new firmware update is available and uploads it directly to your MacroPad.
+            Installs firmware updates over USB or Wi-Fi while preserving saved profiles, Bluetooth hosts, and SmartCast pairing.
           </p>
         </div>
 
@@ -863,12 +1098,16 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
             </span>
           ) : latestRelease && !connection.connected ? (
             <span className="text-[var(--text-secondary)]">
-              Available firmware: v{latestRelease.version} · Connect MacroPad via USB to update
+              {settings.lastKnownFirmware
+                ? `Last synced: v${settings.lastKnownFirmware.replace(/^v/i, '')} · Available: v${latestRelease.version}`
+                : `Available firmware: v${latestRelease.version} · Connect MacroPad via USB to update`}
             </span>
           ) : (
             <span className="text-[var(--text-muted)] font-sans text-xs">
               {connection.connected
                 ? `Installed firmware: ${connection.firmwareVersion} · Up to date`
+                : settings.lastKnownFirmware
+                ? `Last synced firmware: ${settings.lastKnownFirmware} · Connect via USB to check for updates.`
                 : 'Connect your MacroPad via USB to check your firmware version and install updates.'}
             </span>
           )}
@@ -953,7 +1192,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
           </pre>
         )}
 
-        {onExportBackupFile && primaryBinAsset && (
+        {onExportBackupFile && primaryBinAsset && connection.connected && (
           <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer select-none">
             <input
               type="checkbox"
@@ -969,7 +1208,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
           <button
             type="button"
-            disabled={isUploadingFirmware || !connection.connected || !primaryBinAsset}
+            disabled={isUploadingFirmware || !canFlashUsb || !primaryBinAsset}
             onClick={() =>
               onUploadFirmwareToMacropad({
                 releaseOverride: selectedRelease,
@@ -978,11 +1217,11 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
               })
             }
             title={
-              !connection.connected
-                ? 'Connect your MacroPad via USB first'
+              !canFlashUsb
+                ? 'Open this site in Chrome or Edge on desktop to flash over USB'
                 : !primaryBinAsset
                 ? 'No firmware update available yet'
-                : 'Uploads firmware directly to your connected MacroPad over USB'
+                : 'Uploads firmware directly over USB while preserving onboard settings'
             }
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
           >
@@ -995,7 +1234,9 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
               {isUploadingFirmware && installProgress?.method === 'usb_serial'
                 ? 'Uploading to MacroPad…'
                 : selectedRelease && primaryBinAsset
-                ? firmwareUpdate.status === 'update_available'
+                ? !connection.connected
+                  ? `Select USB Port & Upload (v${selectedRelease.version})`
+                  : firmwareUpdate.status === 'update_available'
                   ? `Upload Update to MacroPad (v${selectedRelease.version})`
                   : `Upload v${selectedRelease.version} to MacroPad`
                 : 'Upload to MacroPad'}

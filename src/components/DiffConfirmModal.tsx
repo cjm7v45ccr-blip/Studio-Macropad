@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, AlertTriangle, GitCompareArrows, X } from 'lucide-react';
+import { parseSingleActionKeyValue } from '../data/firmwareCatalog';
+import { ParsedActionBadge } from './ActionTagBadge';
 
 export interface DiffPreviewRow {
   id: string;
@@ -117,35 +119,51 @@ export const DiffConfirmModal: React.FC<DiffConfirmModalProps> = ({
               </div>
 
               <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
-                {rows.map(row => (
-                  <div
-                    key={row.id}
-                    className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 ${
-                      row.changed
-                        ? 'bg-[var(--bg-input)] border-[var(--border-strong)]'
-                        : 'bg-[var(--bg-input)]/50 border-[var(--border-subtle)] opacity-70'
-                    }`}
-                  >
-                    <span className="font-mono text-[11px] font-bold text-[var(--text-primary)] shrink-0">
-                      {row.slotLabel}
-                    </span>
-                    <div className="flex items-center gap-1.5 text-[11px] font-mono flex-wrap min-w-0">
-                      <span className="px-2 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-secondary)] truncate max-w-[165px]">
-                        {row.beforeLabel}
+                {rows.map(row => {
+                  const beforeHasPrefix = Boolean(
+                    parseSingleActionKeyValue(row.beforeLabel).prefix
+                  );
+                  const afterHasPrefix = Boolean(
+                    parseSingleActionKeyValue(row.afterLabel).prefix
+                  );
+                  return (
+                    <div
+                      key={row.id}
+                      className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 ${
+                        row.changed
+                          ? 'bg-[var(--bg-input)] border-[var(--border-strong)]'
+                          : 'bg-[var(--bg-input)]/50 border-[var(--border-subtle)] opacity-70'
+                      }`}
+                    >
+                      <span className="font-mono text-[11px] font-bold text-[var(--text-primary)] shrink-0">
+                        {row.slotLabel}
                       </span>
-                      <ArrowRight className="w-3 h-3 text-[var(--text-muted)] shrink-0" />
-                      <span
-                        className={`px-2 py-0.5 rounded truncate max-w-[165px] ${
-                          row.changed
-                            ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold'
-                            : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
-                        }`}
-                      >
-                        {row.afterLabel}
-                      </span>
+                      <div className="flex items-center gap-1.5 text-[11px] font-mono flex-wrap min-w-0">
+                        <span className="px-2 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-secondary)] truncate max-w-[175px] inline-flex items-center">
+                          {beforeHasPrefix ? (
+                            <ParsedActionBadge action={row.beforeLabel} maxSteps={1} />
+                          ) : (
+                            row.beforeLabel
+                          )}
+                        </span>
+                        <ArrowRight className="w-3 h-3 text-[var(--text-muted)] shrink-0" />
+                        <span
+                          className={`px-2 py-0.5 rounded truncate max-w-[175px] inline-flex items-center ${
+                            row.changed
+                              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold'
+                              : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
+                          }`}
+                        >
+                          {afterHasPrefix ? (
+                            <ParsedActionBadge action={row.afterLabel} maxSteps={1} />
+                          ) : (
+                            row.afterLabel
+                          )}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

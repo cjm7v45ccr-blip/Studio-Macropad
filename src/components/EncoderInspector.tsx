@@ -19,12 +19,14 @@ import {
   describeFirmwareAction
 } from '../data/firmwareCatalog';
 import { ActionPickerControl } from './ActionPickerControl';
+import { ParsedActionBadge } from './ActionTagBadge';
 import {
   RotateCw,
   RotateCcw,
   Disc,
   Undo2,
-  ArrowLeftRight
+  ArrowLeftRight,
+  XCircle
 } from 'lucide-react';
 
 interface EncoderInspectorProps {
@@ -39,6 +41,7 @@ interface EncoderInspectorProps {
   activeRepeatJob?: ActiveRepeatJob | null;
   onUpdateSlot: (slot: EncoderSubControlId, binding: ActionBinding) => void;
   onResetSlotToDefault: (slot: HardwareSlotId) => void;
+  onClearSlot?: (slot: HardwareSlotId) => void;
   onApplyKnobSlots: (
     partialSlots: Partial<Record<HardwareSlotId, string>>,
     successMsg: string,
@@ -64,6 +67,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   activeRepeatJob,
   onUpdateSlot,
   onResetSlotToDefault,
+  onClearSlot,
   onApplyKnobSlots,
   onUpdateColor,
   onTestBinding,
@@ -102,6 +106,8 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
 
   const isAlreadyFactoryDefault =
     activeBinding.value === factoryDefaultAction && !activeBinding.repeatConfig;
+
+  const isAlreadyUnassigned = !activeBinding.value && !activeBinding.repeatConfig;
 
   const handleApplyKnobPreset = (
     presetId: 'volume' | 'track' | 'channel' | 'arrows'
@@ -237,28 +243,43 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
           </div>
         </div>
 
-        {/* Control-Scoped Undo & Reset to Default Bar */}
-        <div className="flex items-center gap-2">
+        {/* Control-Scoped Undo, Clear & Reset to Default Bar */}
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             disabled={!canUndoSelection}
             onClick={() => onUpdateSlot(selectedSubControl, initialBindingOnSelect)}
             title="Restore the value this knob control had when you selected it"
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Undo2 className="w-3.5 h-3.5" />
+            <Undo2 className="w-3.5 h-3.5 shrink-0" />
             <span>Undo</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isAlreadyUnassigned}
+            onClick={() =>
+              onClearSlot
+                ? onClearSlot(selectedSubControl)
+                : onUpdateSlot(selectedSubControl, { type: 'none', value: '' })
+            }
+            title="Clear this knob control so it sends nothing"
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <XCircle className="w-3.5 h-3.5 shrink-0" />
+            <span>Clear</span>
           </button>
 
           <button
             type="button"
             disabled={isAlreadyFactoryDefault}
             onClick={() => onResetSlotToDefault(selectedSubControl)}
-            title={`Reset to factory default: ${factoryDesc.fullLabel} (${factoryDefaultAction})`}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            title={`Reset to factory default: ${factoryDesc.fullLabel}`}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset to default</span>
+            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+            <span>Default</span>
           </button>
         </div>
       </div>
@@ -274,10 +295,6 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
             {slotCards.map(card => {
               const Icon = card.icon;
               const active = selectedSubControl === card.id;
-              const summary = describeFirmwareAction(
-                card.binding.value,
-                card.binding.repeatConfig
-              );
               return (
                 <button
                   key={card.id}
@@ -291,7 +308,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                         }
                       : undefined
                   }
-                  className={`flex flex-col items-start gap-1 p-2.5 rounded-xl border text-left transition-all cursor-pointer min-w-0 ${
+                  className={`flex flex-col items-start gap-1.5 p-2.5 rounded-xl border text-left transition-all cursor-pointer min-w-0 ${
                     active
                       ? 'text-[var(--text-primary)] shadow-sm'
                       : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
@@ -299,13 +316,17 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                 >
                   <div className="flex items-center justify-between w-full gap-1">
                     <Icon className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                      {card.title}
+                    </span>
                   </div>
-                  <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate w-full">
-                    {card.title}
-                  </span>
-                  <span className="text-[10px] truncate w-full text-[var(--text-secondary)]">
-                    {summary.shortLabel}
-                  </span>
+                  <div className="w-full min-w-0 truncate">
+                    <ParsedActionBadge
+                      action={card.binding.value}
+                      repeatConfig={card.binding.repeatConfig}
+                      maxSteps={1}
+                    />
+                  </div>
                 </button>
               );
             })}

@@ -128,8 +128,7 @@ export function isAuxiliaryBootloaderAsset(name: string): boolean {
     lower.includes('bootloader') ||
     lower.includes('partitions') ||
     lower.includes('boot_app0') ||
-    lower.includes('ota_data') ||
-    lower.includes('merged')
+    lower.includes('ota_data')
   );
 }
 
@@ -140,14 +139,55 @@ export function selectPrimaryOtaBinaryAsset(
   const binAssets = assets.filter(a => /\.bin$/i.test(a.name));
   if (binAssets.length === 0) return null;
 
-  const appBins = binAssets.filter(a => !isAuxiliaryBootloaderAsset(a.name));
-  if (appBins.length > 0) {
-    const preferred = appBins.find(a =>
-      /(?:firmware|studio|macropad|pad|ota|app)/i.test(a.name)
-    );
-    return preferred || appBins[0];
+  const validBins = binAssets.filter(a => !isAuxiliaryBootloaderAsset(a.name));
+  if (validBins.length === 0) return null;
+
+  // Prefer standalone app .ino.bin / .bin (flashed at 0x10000, preserving NVS settings)
+  // over full-flash .merged.bin if both exist in /public
+  const standaloneBins = validBins.filter(a => !/merged/i.test(a.name));
+  const pool = standaloneBins.length > 0 ? standaloneBins : validBins;
+
+  const preferred = pool.find(a =>
+    /(?:firmware|studio|macropad|pad|ota|app)/i.test(a.name)
+  );
+  return preferred || pool[0];
+}
+
+/**
+ * Determines the ESP32 SPI flash offset for a compiled `.bin` file:
+ * - Standard Arduino `*.ino.bin` / `*.bin` app binaries (including `Huge APP 3MB No OTA`)
+ *   start with `0xE9` (`ESP_IMAGE_HEADER_MAGIC`) and flash to `app0` at `0x10000`.
+ * - Full merged images (`*.merged.bin` with partition table `0x50AA` at `0x8000` and app at `0x10000`)
+ *   flash at `0x0`.
+ */
+export function resolveEsp32FlashTarget(
+  bytes: Uint8Array,
+  fileName?: string
+): { address: number; isMerged: boolean } {
+  const lowerName = (fileName || '').toLowerCase();
+  const namedMerged = /(?:^|[-_.])merged\.bin$/.test(lowerName);
+
+  const hasPartitionTableAt8000 =
+    bytes.byteLength >= 0x10020 &&
+    bytes[0x8000] === 0xaa &&
+    bytes[0x8001] === 0x50 &&
+    bytes[0x10000] === 0xe9;
+
+  if (namedMerged || hasPartitionTableAt8000) {
+    return { address: 0x0, isMerged: true };
   }
-  return binAssets[0];
+
+  if (bytes[0] !== 0xe9) {
+    throw new Error(
+      `Invalid ESP32 firmware binary${
+        fileName ? ` (${fileName})` : ''
+      } — expected ESP image header 0xE9 (got 0x${(bytes[0] ?? 0)
+        .toString(16)
+        .padStart(2, '0')}). Export the compiled .ino.bin from Arduino IDE.`
+    );
+  }
+
+  return { address: 0x10000, isMerged: false };
 }
 
 function isHtmlSpaFallbackBytes(bytes: Uint8Array): boolean {

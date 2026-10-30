@@ -1,8 +1,8 @@
 import { ActiveRepeatJob, MacroStepConfig, TextMacroRepeatConfig } from '../types/studio';
 import {
   buildFirmwareShortcut,
+  compileMacroConfigForHardware,
   formatTextRepeatSummary,
-  requiresUsbSequenceExecution,
   sanitizeSerialString,
   stepToFirmwareAction
 } from '../data/firmwareCatalog';
@@ -325,7 +325,8 @@ class RepeatMacroRunner {
       return 'stopped';
     }
 
-    if (!requiresUsbSequenceExecution(cfg)) {
+    const compiled = compileMacroConfigForHardware(cfg);
+    if (compiled.standaloneComplete) {
       return 'noop';
     }
 
@@ -352,21 +353,24 @@ class RepeatMacroRunner {
     this.emit();
 
     try {
-      if (cfg.steps && cfg.steps.length > 0) {
-        await this.executeStepList(cfg.steps, ac.signal, false, true);
-      } else {
-        const needsDeferredKeyForIter1 =
-          cfg.text.length > 0 &&
-          Boolean(cfg.followUpKey) &&
-          (cfg.followUpKey !== 'enter' || cfg.keyDelayMs > 0);
-        if (needsDeferredKeyForIter1 && cfg.followUpKey) {
-          if (cfg.keyDelayMs > 0) {
-            this.updateStepProgress(0, 'delay');
-            await this.sleep(cfg.keyDelayMs, ac.signal);
-          }
-          if (!ac.signal.aborted) {
-            this.updateStepProgress(1, 'action');
-            await usbHardware.testAction(buildFirmwareShortcut([], cfg.followUpKey));
+      // Only stream remaining steps of Iteration 1 when Pass 1 did NOT fit standalone in NVS
+      if (!compiled.singleCycleStandalone) {
+        if (cfg.steps && cfg.steps.length > 0) {
+          await this.executeStepList(cfg.steps, ac.signal, false, true);
+        } else {
+          const needsDeferredKeyForIter1 =
+            cfg.text.length > 0 &&
+            Boolean(cfg.followUpKey) &&
+            (cfg.followUpKey !== 'enter' || cfg.keyDelayMs > 0);
+          if (needsDeferredKeyForIter1 && cfg.followUpKey) {
+            if (cfg.keyDelayMs > 0) {
+              this.updateStepProgress(0, 'delay');
+              await this.sleep(cfg.keyDelayMs, ac.signal);
+            }
+            if (!ac.signal.aborted) {
+              this.updateStepProgress(1, 'action');
+              await usbHardware.testAction(buildFirmwareShortcut([], cfg.followUpKey));
+            }
           }
         }
       }

@@ -24,12 +24,14 @@ import {
   isValidFirmwareAction,
   normalizeBrowserKeyToFirmware,
   parseFirmwareShortcut,
+  parseSingleActionKeyValue,
   parseTextConfigFromFirmwareAction,
   requiresUsbSequenceExecution,
   sanitizeSerialString,
   validateTextMacroInput
 } from '../data/firmwareCatalog';
 import { KeycapIcon } from '../data/iconRegistry';
+import { ActionPrefixTag, ParsedActionBadge } from './ActionTagBadge';
 import {
   Command,
   Volume2,
@@ -415,15 +417,26 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
       {/* Live Synced Firmware Action Bar + Test with Link-Down Reason */}
       <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-semibold">
               Assigned Action
             </div>
-            <div className="font-mono text-xs text-[var(--text-primary)] truncate mt-0.5">
-              {binding.value ? binding.value.replace(/\n/g, '\\n') : '— UNASSIGNED —'}
+            <div className="mt-1 min-w-0">
+              {binding.value ? (
+                <ParsedActionBadge
+                  action={binding.value}
+                  repeatConfig={binding.repeatConfig}
+                  size="sm"
+                  maxSteps={3}
+                />
+              ) : (
+                <span className="font-mono text-xs text-[var(--text-muted)]">
+                  Unassigned
+                </span>
+              )}
             </div>
             {binding.value && (
-              <div className="text-[11px] text-[var(--text-secondary)] truncate">
+              <div className="text-[11px] text-[var(--text-secondary)] truncate mt-0.5">
                 {currentInfo.fullLabel}
               </div>
             )}
@@ -459,8 +472,8 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                   type="button"
                   disabled={!mainTestAvail.canTest}
                   onClick={() => onTestBinding(binding)}
-                  title={mainTestAvail.reason || 'Fire this action live on the MacroPad'}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:border-[var(--accent)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+                  title={mainTestAvail.reason || 'Connect MacroPad via USB to test actions on hardware'}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:border-[var(--accent)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <Play className="w-3 h-3 text-emerald-400" />
                   <span>Test</span>
@@ -469,13 +482,6 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             )}
           </div>
         </div>
-
-        {binding.value && !mainTestAvail.canTest && mainTestAvail.reason && (
-          <div className="flex items-start gap-1.5 text-[11px] text-amber-300 pt-1.5 border-t border-[var(--border-subtle)]">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-            <span>{mainTestAvail.reason}</span>
-          </div>
-        )}
       </div>
 
       {/* Search Bar + Platform Shortcut Toggle */}
@@ -570,18 +576,24 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             {customMacros.map(m => {
               const macroSig = getMacroCanonicalSignature(m.action, m.repeatConfig);
               const selected = Boolean(currentSignature) && macroSig === currentSignature;
+              const parsedMacro = parseSingleActionKeyValue(
+                m.action.includes('||') || (m.repeatConfig?.steps && m.repeatConfig.steps.length > 1)
+                  ? `SEQ:${m.name}`
+                  : m.action
+              );
               return (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => onChange(firmwareActionToBinding(m.action, m.repeatConfig))}
-                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1.5 max-w-full ${
+                  className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1.5 max-w-full ${
                     selected
                       ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] font-semibold'
                       : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
                   }`}
                 >
-                  <span className="truncate max-w-[165px]">{m.name}</span>
+                  <ActionPrefixTag prefix={parsedMacro.prefix} />
+                  <span className="truncate max-w-[155px]">{m.name}</span>
                 </button>
               );
             })}
@@ -640,6 +652,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             <div className="grid grid-cols-2 gap-1.5 max-h-60 overflow-y-auto pr-0.5">
               {staticItemsToDisplay.map(spec => {
                 const selected = binding.value === spec.action && !binding.repeatConfig;
+                const parsedSpec = parseSingleActionKeyValue(spec.action);
                 return (
                   <button
                     key={spec.action}
@@ -662,9 +675,14 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                       style={{ color: spec.color }}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs truncate">{spec.label}</div>
-                      <div className="font-mono text-[9px] text-[var(--text-muted)] truncate">
-                        {spec.action}
+                      <div className="text-xs font-medium text-[var(--text-primary)] truncate">
+                        {spec.label}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                        <ActionPrefixTag prefix={parsedSpec.prefix} />
+                        <span className="font-mono text-[10px] text-[var(--text-secondary)] truncate">
+                          {parsedSpec.value}
+                        </span>
                       </div>
                     </div>
                   </button>
@@ -700,10 +718,14 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-semibold">
                 BLE Shortcut Preview
               </div>
-              <div className="font-mono text-sm font-semibold text-[var(--text-primary)] mt-0.5 truncate">
-                {isShortcutBinding
-                  ? `${formatShortcutPretty(binding.value)} (${binding.value})`
-                  : 'Press Record or pick keys below'}
+              <div className="mt-1 truncate">
+                {isShortcutBinding ? (
+                  <ParsedActionBadge action={binding.value} size="sm" />
+                ) : (
+                  <span className="text-xs font-medium text-[var(--text-secondary)]">
+                    Press Record or pick keys below
+                  </span>
+                )}
               </div>
             </div>
             <button
@@ -725,9 +747,13 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
 
           {equivalentBuiltIn && (
             <div className="p-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-between gap-2 text-[11px]">
-              <span className="text-[var(--text-secondary)] truncate">
-                Matches native <strong className="text-[var(--text-primary)]">{equivalentBuiltIn.label}</strong> ({equivalentBuiltIn.action})
-              </span>
+              <div className="flex items-center gap-1.5 min-w-0 truncate text-[var(--text-secondary)]">
+                <span>Matches native</span>
+                <strong className="text-[var(--text-primary)] truncate">
+                  {equivalentBuiltIn.label}
+                </strong>
+                <ParsedActionBadge action={equivalentBuiltIn.action} />
+              </div>
               <button
                 type="button"
                 onClick={() =>
@@ -753,7 +779,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              Modifiers (optional — leave empty for single key like SHORTCUT::right)
+              Modifiers (optional — leave unchecked for a single key press)
             </label>
             <div className="flex flex-wrap gap-1.5">
               {MODIFIER_OPTIONS.map(mod => {
@@ -1011,13 +1037,9 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
         <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              Custom TV Key (`TVKEY:codeset:code`)
+              Custom SmartCast Remote Code
             </span>
-            {draftTvKeyAction && (
-              <span className="font-mono text-[10px] text-[var(--text-secondary)]">
-                {draftTvKeyAction}
-              </span>
-            )}
+            {draftTvKeyAction && <ParsedActionBadge action={draftTvKeyAction} />}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <input
@@ -1041,7 +1063,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
           </div>
           {isTvKeyDraftUnsaved && (
             <div className="text-[11px] font-mono text-amber-300">
-              Unapplied draft — click Save TVKEY to update slot
+              Unapplied draft — click Save Remote Code to update slot
             </div>
           )}
           <div className="flex items-center gap-2">
@@ -1051,7 +1073,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               onClick={handleApplyCustomTvKey}
               className="flex-1 py-1.5 px-3 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer whitespace-nowrap"
             >
-              Save TVKEY
+              Save Remote Code
             </button>
             {onTestBinding && (
               <button
@@ -1060,7 +1082,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 onClick={() =>
                   onTestBinding({ type: 'tv', value: draftTvKeyAction })
                 }
-                title={tvKeyTestAvail.reason || 'Test custom TVKEY on SmartCast TV'}
+                title={tvKeyTestAvail.reason || 'Test custom remote code on SmartCast TV'}
                 className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:border-[var(--accent)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
               >
                 <Play className="w-3 h-3 text-emerald-400" />
@@ -1082,13 +1104,9 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
         <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              Custom TV App (`TVAPP:id:namespace:url`)
+              Custom SmartCast App Launch
             </span>
-            {draftTvAppAction && (
-              <span className="font-mono text-[10px] text-[var(--text-secondary)] truncate max-w-[140px]">
-                {draftTvAppAction}
-              </span>
-            )}
+            {draftTvAppAction && <ParsedActionBadge action={draftTvAppAction} />}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <input

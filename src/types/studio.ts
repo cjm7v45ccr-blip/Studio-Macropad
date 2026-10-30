@@ -239,6 +239,7 @@ export interface HardwareEventPacket {
     | 'setup'
     | 'mode'
     | 'ota'
+    | 'macro_cancel'
     | string;
   mode?: string;
   setup_mode?: boolean;
@@ -249,6 +250,7 @@ export interface HardwareEventPacket {
   message?: string;
   slot?: string;
   dir?: string;
+  accel?: number;
   action?: string;
   active?: FirmwareWireProfileId;
   profile?: FirmwareWireProfileId;
@@ -373,6 +375,7 @@ export interface StudioSettings {
   liveEventsEnabled: boolean;
   autoCheckFirmwareUpdates: boolean;
   firmwareRepo: string;
+  lastKnownFirmware?: string;
 }
 
 export interface FirmwareReleaseAsset {

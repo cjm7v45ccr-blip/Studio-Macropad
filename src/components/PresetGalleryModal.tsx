@@ -1,7 +1,8 @@
 import React from 'react';
 import { CURATED_PRESETS, ProfilePreset } from '../data/presetProfiles';
-import { Sparkles, X, Check, Laptop, Tv } from 'lucide-react';
+import { Sparkles, X, Check } from 'lucide-react';
 import { ProfileMode } from '../types/macropod';
+import { ParsedActionBadge } from './ActionTagBadge';
 
 interface PresetGalleryModalProps {
   isOpen: boolean;
@@ -62,12 +63,15 @@ export const PresetGalleryModal: React.FC<PresetGalleryModalProps> = ({
                 <p className="text-[11px] text-slate-400 max-w-sm">
                   {preset.description}
                 </p>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-mono text-slate-500 pt-1">
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-400 pt-1">
                   {(['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8'] as const).map((slot, idx) => (
-                    <React.Fragment key={slot}>
-                      {idx > 0 && <span>·</span>}
-                      <span>Key {idx + 1}: {preset.bindings[slot].split(':')[1] || preset.bindings[slot]}</span>
-                    </React.Fragment>
+                    <span
+                      key={slot}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800"
+                    >
+                      <span className="text-slate-500">K{idx + 1}</span>
+                      <ParsedActionBadge action={preset.bindings[slot]} maxSteps={1} />
+                    </span>
                   ))}
                 </div>
               </div>

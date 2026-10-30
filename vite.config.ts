@@ -108,8 +108,15 @@ function buildPublicFirmwareCatalogJson(publicDir: string): string {
   }
 
   const allRelBins = collectBinFilesRecursive(publicDir, publicDir);
-  const appRelBins = allRelBins.filter(rel => !isAuxBootloaderBin(path.basename(rel)));
-  const targetBins = appRelBins.length > 0 ? appRelBins : allRelBins;
+  const targetBins = allRelBins.filter(rel => {
+    if (isAuxBootloaderBin(path.basename(rel))) return false;
+    try {
+      const st = fs.statSync(path.join(publicDir, rel));
+      return st.size >= 32768;
+    } catch {
+      return false;
+    }
+  });
 
   const releases = targetBins
     .map(relPath => {
@@ -218,15 +225,56 @@ function publicFirmwareCatalogPlugin(): Plugin {
   };
 }
 
+const PWA_DEV_ENTRY_VIRTUAL = '/@vite-plugin-pwa/pwa-entry-point-loaded';
+const RESOLVED_PWA_DEV_ENTRY_NOOP = '\0pwa-dev-entry-noop';
+
+function pwaSafeDevPrePlugin(): Plugin {
+  return {
+    name: 'pwa-safe-dev-pre',
+    enforce: 'pre',
+    apply: 'serve',
+    resolveId(id) {
+      if (id === PWA_DEV_ENTRY_VIRTUAL) {
+        return RESOLVED_PWA_DEV_ENTRY_NOOP;
+      }
+      return undefined;
+    },
+    load(id) {
+      if (id === RESOLVED_PWA_DEV_ENTRY_NOOP) {
+        return 'export default function registerDevSW() {}\n';
+      }
+      return undefined;
+    },
+  };
+}
+
+function pwaSafeDevPostPlugin(): Plugin {
+  return {
+    name: 'pwa-safe-dev-post',
+    enforce: 'post',
+    apply: 'serve',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        return html.replace(
+          /<script id="vite-plugin-pwa:register-dev-sw"[\s\S]*?<\/script>\s*/g,
+          ''
+        );
+      },
+    },
+  };
+}
+
 export default defineConfig(() => {
   return {
     plugins: [
+      pwaSafeDevPrePlugin(),
       publicFirmwareCatalogPlugin(),
       react(),
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
+        includeAssets: ['apple-touch-icon.png', 'icon.svg'],
         workbox: {
           globIgnores: ['**/*.bin', '**/firmware-catalog.json', '**/firmware.json'],
           navigateFallbackDenylist: [
@@ -269,8 +317,10 @@ export default defineConfig(() => {
         devOptions: {
           enabled: true,
           type: 'module',
+          suppressWarnings: true,
         },
       }),
+      pwaSafeDevPostPlugin(),
     ],
     resolve: {
       alias: {

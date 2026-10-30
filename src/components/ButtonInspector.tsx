@@ -30,7 +30,8 @@ import {
   Search,
   Layers,
   ArrowLeftRight,
-  Bluetooth
+  Bluetooth,
+  XCircle
 } from 'lucide-react';
 
 interface ButtonInspectorProps {
@@ -44,6 +45,7 @@ interface ButtonInspectorProps {
   activeRepeatJob?: ActiveRepeatJob | null;
   onUpdateBinding: (binding: ActionBinding) => void;
   onResetSlotToDefault: (slot: HardwareSlotId) => void;
+  onClearSlot?: (slot: HardwareSlotId) => void;
   onUpdateAppearance: (patch: Partial<KeyAppearance>) => void;
   onResetAppearance: () => void;
   onSelectProfile: (id: HardwareProfileId) => void;
@@ -77,6 +79,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   activeRepeatJob,
   onUpdateBinding,
   onResetSlotToDefault,
+  onClearSlot,
   onUpdateAppearance,
   onResetAppearance,
   onSelectProfile,
@@ -265,6 +268,8 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   const isAlreadyFactoryDefault =
     currentTap.value === factoryDefaultAction && !currentTap.repeatConfig;
 
+  const isAlreadyUnassigned = !currentTap.value && !currentTap.repeatConfig;
+
   const categories = [
     'All',
     'Media',
@@ -326,28 +331,43 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           </div>
         </div>
 
-        {/* Control-Scoped Undo & Reset to Default Bar */}
-        <div className="flex items-center gap-2">
+        {/* Control-Scoped Undo, Clear & Reset to Default Bar */}
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             disabled={!canUndoSelection}
             onClick={() => onUpdateBinding(initialBindingOnSelect)}
             title="Restore the value this control had when you selected it"
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Undo2 className="w-3.5 h-3.5" />
+            <Undo2 className="w-3.5 h-3.5 shrink-0" />
             <span>Undo</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isAlreadyUnassigned}
+            onClick={() =>
+              onClearSlot
+                ? onClearSlot(slotId)
+                : onUpdateBinding({ type: 'none', value: '' })
+            }
+            title="Clear this key so pressing it sends nothing"
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <XCircle className="w-3.5 h-3.5 shrink-0" />
+            <span>Clear</span>
           </button>
 
           <button
             type="button"
             disabled={isAlreadyFactoryDefault}
             onClick={() => onResetSlotToDefault(slotId)}
-            title={`Reset to factory default: ${factoryDesc.fullLabel} (${factoryDefaultAction})`}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+            title={`Reset to factory default: ${factoryDesc.fullLabel}`}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset to default</span>
+            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+            <span>Default</span>
           </button>
         </div>
       </div>
