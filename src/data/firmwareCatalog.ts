@@ -28,8 +28,8 @@ export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
   'enc_cw',
   'enc_ccw',
   'dial2',
-  'enc2_cw',
-  'enc2_ccw'
+  'e2_cw',
+  'e2_ccw'
 ] as const;
 
 export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; pin: string }> = {
@@ -41,12 +41,12 @@ export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; 
   b6: { short: 'Key 6', full: 'Key 6 (B6)', pin: '' },
   b7: { short: 'Key 7', full: 'Key 7 (B7)', pin: '' },
   b8: { short: 'Key 8', full: 'Key 8 (B8)', pin: '' },
-  dial: { short: 'K1 Press', full: 'Knob 1 Press (Dial 1)', pin: '' },
-  enc_cw: { short: 'K1 Right', full: 'Knob 1 Turn Right (CW)', pin: '' },
-  enc_ccw: { short: 'K1 Left', full: 'Knob 1 Turn Left (CCW)', pin: '' },
-  dial2: { short: 'K2 Press', full: 'Knob 2 Press (Dial 2)', pin: '' },
-  enc2_cw: { short: 'K2 Right', full: 'Knob 2 Turn Right (CW)', pin: '' },
-  enc2_ccw: { short: 'K2 Left', full: 'Knob 2 Turn Left (CCW)', pin: '' }
+  dial: { short: 'K1 Press', full: 'Knob 1 Press (Dial 1)', pin: 'GPIO 25' },
+  enc_cw: { short: 'K1 Right', full: 'Knob 1 Turn Right (CW)', pin: 'GPIO 32 / 33' },
+  enc_ccw: { short: 'K1 Left', full: 'Knob 1 Turn Left (CCW)', pin: 'GPIO 32 / 33' },
+  dial2: { short: 'K2 Press', full: 'Knob 2 Press (Dial 2)', pin: 'GPIO 15' },
+  e2_cw: { short: 'K2 Right', full: 'Knob 2 Turn Right (CW)', pin: 'GPIO 34 / 35' },
+  e2_ccw: { short: 'K2 Left', full: 'Knob 2 Turn Left (CCW)', pin: 'GPIO 34 / 35' }
 };
 
 export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
@@ -62,8 +62,8 @@ export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
   enc_cw: 'MEDIA:VOL_UP',
   enc_ccw: 'MEDIA:VOL_DOWN',
   dial2: 'MEDIA:PLAY_PAUSE',
-  enc2_cw: 'MEDIA:NEXT',
-  enc2_ccw: 'MEDIA:PREV'
+  e2_cw: 'MEDIA:NEXT',
+  e2_ccw: 'MEDIA:PREV'
 };
 
 export const FACTORY_DEFAULT_SLOTS: Record<
@@ -86,8 +86,8 @@ export const FACTORY_DEFAULT_SLOTS: Record<
     enc_cw: 'TV:VOL_UP',
     enc_ccw: 'TV:VOL_DOWN',
     dial2: 'TV:OK',
-    enc2_cw: 'TV:CH_UP',
-    enc2_ccw: 'TV:CH_DOWN'
+    e2_cw: 'TV:CH_UP',
+    e2_ccw: 'TV:CH_DOWN'
   }
 };
 

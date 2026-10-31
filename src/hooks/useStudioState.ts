@@ -130,16 +130,34 @@ function migrateRepeatConfigs(rawRepeats?: SlotRepeatMap): SlotRepeatMap {
   const next: SlotRepeatMap = {};
   for (const [k, val] of Object.entries(rawRepeats)) {
     if (!val) continue;
-    if (k.startsWith('MAC:')) {
-      const slot = k.slice(4);
-      if (!rawRepeats[`HOST1:${slot}`]) {
-        next[`HOST1:${slot}`] = val;
-      }
-    } else {
-      next[k] = val;
+    let normalizedKey = k;
+    if (normalizedKey.startsWith('MAC:')) {
+      normalizedKey = `HOST1:${normalizedKey.slice(4)}`;
+    }
+    if (normalizedKey.endsWith(':enc2_cw')) {
+      normalizedKey = `${normalizedKey.slice(0, -8)}:e2_cw`;
+    } else if (normalizedKey.endsWith(':enc2_ccw')) {
+      normalizedKey = `${normalizedKey.slice(0, -9)}:e2_ccw`;
+    }
+    if (!next[normalizedKey] || k === normalizedKey) {
+      next[normalizedKey] = val;
     }
   }
   return next;
+}
+
+function migrateStoredSlotRecord(rawObj?: Record<string, any>): Partial<Record<HardwareSlotId, string>> {
+  if (!rawObj || typeof rawObj !== 'object') return {};
+  const out: Record<string, any> = { ...rawObj };
+  if (out.e2_cw === undefined && typeof out.enc2_cw === 'string') {
+    out.e2_cw = out.enc2_cw;
+  }
+  if (out.e2_ccw === undefined && typeof out.enc2_ccw === 'string') {
+    out.e2_ccw = out.enc2_ccw;
+  }
+  delete out.enc2_cw;
+  delete out.enc2_ccw;
+  return out;
 }
 
 function readStoredPadRecord(deviceId: string): StoredPadRecord | null {
@@ -157,20 +175,20 @@ function readStoredPadRecord(deviceId: string): StoredPadRecord | null {
       tv_name: rawProfiles.tv_name || 'TV',
       h1: {
         ...FACTORY_DEFAULT_SLOTS.HOST1,
-        ...(rawProfiles.mac || {}),
-        ...(rawProfiles.h1 || {})
+        ...migrateStoredSlotRecord(rawProfiles.mac),
+        ...migrateStoredSlotRecord(rawProfiles.h1)
       },
       h2: {
         ...FACTORY_DEFAULT_SLOTS.HOST2,
-        ...(rawProfiles.h2 || {})
+        ...migrateStoredSlotRecord(rawProfiles.h2)
       },
       h3: {
         ...FACTORY_DEFAULT_SLOTS.HOST3,
-        ...(rawProfiles.h3 || {})
+        ...migrateStoredSlotRecord(rawProfiles.h3)
       },
       tv: {
         ...FACTORY_DEFAULT_SLOTS.TV,
-        ...(rawProfiles.tv || {})
+        ...migrateStoredSlotRecord(rawProfiles.tv)
       }
     };
     return {
@@ -215,8 +233,8 @@ export function extractProfileSlots(profile: StudioProfile): Record<HardwareSlot
     enc_cw: bindingToFirmwareAction(layer.encoder.cw),
     enc_ccw: bindingToFirmwareAction(layer.encoder.ccw),
     dial2: bindingToFirmwareAction(layer.encoder2.dial),
-    enc2_cw: bindingToFirmwareAction(layer.encoder2.cw),
-    enc2_ccw: bindingToFirmwareAction(layer.encoder2.ccw)
+    e2_cw: bindingToFirmwareAction(layer.encoder2.cw),
+    e2_ccw: bindingToFirmwareAction(layer.encoder2.ccw)
   };
 }
 
@@ -244,10 +262,10 @@ export function extractRepeatMapFromProfiles(
       map[`${prof.id}:dial2`] = layer.encoder2.dial.repeatConfig;
     }
     if (layer.encoder2.cw.repeatConfig) {
-      map[`${prof.id}:enc2_cw`] = layer.encoder2.cw.repeatConfig;
+      map[`${prof.id}:e2_cw`] = layer.encoder2.cw.repeatConfig;
     }
     if (layer.encoder2.ccw.repeatConfig) {
-      map[`${prof.id}:enc2_ccw`] = layer.encoder2.ccw.repeatConfig;
+      map[`${prof.id}:e2_ccw`] = layer.encoder2.ccw.repeatConfig;
     }
   }
   return map;
@@ -269,8 +287,8 @@ export function getBindingForProfileSlot(
   if (slot === 'enc_cw') return layer.encoder.cw;
   if (slot === 'enc_ccw') return layer.encoder.ccw;
   if (slot === 'dial2') return layer.encoder2.dial;
-  if (slot === 'enc2_cw') return layer.encoder2.cw;
-  if (slot === 'enc2_ccw') return layer.encoder2.ccw;
+  if (slot === 'e2_cw') return layer.encoder2.cw;
+  if (slot === 'e2_ccw') return layer.encoder2.ccw;
   return undefined;
 }
 
@@ -340,8 +358,16 @@ export function statusPacketToSerializedProfiles(
         item?.controls?.dial2 ??
         (useMacFallback ? pkt.mac_dial2 : undefined) ??
         defaults.dial2,
-      enc2_cw: item?.controls?.enc2_cw ?? defaults.enc2_cw,
-      enc2_ccw: item?.controls?.enc2_ccw ?? defaults.enc2_ccw
+      e2_cw:
+        item?.controls?.e2_cw ??
+        (item?.controls as any)?.enc2_cw ??
+        (useMacFallback ? (pkt as any).mac_e2_cw : undefined) ??
+        defaults.e2_cw,
+      e2_ccw:
+        item?.controls?.e2_ccw ??
+        (item?.controls as any)?.enc2_ccw ??
+        (useMacFallback ? (pkt as any).mac_e2_ccw : undefined) ??
+        defaults.e2_ccw
     };
   };
 
@@ -370,8 +396,16 @@ export function statusPacketToSerializedProfiles(
       enc_cw: tvItem?.controls?.enc_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc_cw,
       enc_ccw: tvItem?.controls?.enc_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc_ccw,
       dial2: tvItem?.controls?.dial2 ?? pkt.tv_dial2 ?? FACTORY_DEFAULT_SLOTS.TV.dial2,
-      enc2_cw: tvItem?.controls?.enc2_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc2_cw,
-      enc2_ccw: tvItem?.controls?.enc2_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc2_ccw
+      e2_cw:
+        tvItem?.controls?.e2_cw ??
+        (tvItem?.controls as any)?.enc2_cw ??
+        (pkt as any).tv_e2_cw ??
+        FACTORY_DEFAULT_SLOTS.TV.e2_cw,
+      e2_ccw:
+        tvItem?.controls?.e2_ccw ??
+        (tvItem?.controls as any)?.enc2_ccw ??
+        (pkt as any).tv_e2_ccw ??
+        FACTORY_DEFAULT_SLOTS.TV.e2_ccw
     }
   };
 }
@@ -543,8 +577,8 @@ export function buildBackupFromProfiles(
     tv_enc_cw: tv.enc_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc_cw,
     tv_enc_ccw: tv.enc_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc_ccw,
     tv_dial2: tv.dial2 ?? FACTORY_DEFAULT_SLOTS.TV.dial2,
-    tv_enc2_cw: tv.enc2_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc2_cw,
-    tv_enc2_ccw: tv.enc2_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc2_ccw,
+    tv_e2_cw: tv.e2_cw ?? FACTORY_DEFAULT_SLOTS.TV.e2_cw,
+    tv_e2_ccw: tv.e2_ccw ?? FACTORY_DEFAULT_SLOTS.TV.e2_ccw,
     mac_name: h1Name,
     ...Object.fromEntries(
       HARDWARE_SLOTS.map(s => [`mac_${s}`, h1[s] ?? FACTORY_DEFAULT_SLOTS.HOST1[s]])
@@ -1370,6 +1404,8 @@ export function useStudioState(
 
         const isEnc2 =
           rawSlot === 'dial2' ||
+          rawSlot === 'e2_cw' ||
+          rawSlot === 'e2_ccw' ||
           rawSlot === 'enc2_cw' ||
           rawSlot === 'enc2_ccw' ||
           rawSlot === 'cw2' ||
@@ -1379,17 +1415,19 @@ export function useStudioState(
         if (rawSlot in SLOT_TO_ACTION_KEY || rawSlot === 'dial' || rawSlot === 'dial2') {
           hwSlot = rawSlot as HardwareSlotId;
         } else if (
+          rawSlot === 'e2_cw' ||
           rawSlot === 'enc2_cw' ||
           rawSlot === 'cw2' ||
           (isEnc2 && e.event === 'turn' && rawDir !== 'ccw')
         ) {
-          hwSlot = 'enc2_cw';
+          hwSlot = 'e2_cw';
         } else if (
+          rawSlot === 'e2_ccw' ||
           rawSlot === 'enc2_ccw' ||
           rawSlot === 'ccw2' ||
           (isEnc2 && e.event === 'turn' && rawDir === 'ccw')
         ) {
-          hwSlot = 'enc2_ccw';
+          hwSlot = 'e2_ccw';
         } else if (
           rawSlot === 'enc_cw' ||
           rawSlot === 'cw' ||
@@ -2059,10 +2097,10 @@ export function useStudioState(
           };
         }
 
-        if (slot === 'dial2' || slot === 'enc2_cw' || slot === 'enc2_ccw') {
+        if (slot === 'dial2' || slot === 'e2_cw' || slot === 'e2_ccw') {
           const nextEncoder2: EncoderControlConfig = {
             ...layer.encoder2,
-            [slot === 'dial2' ? 'dial' : slot === 'enc2_cw' ? 'cw' : 'ccw']: normalizedBinding
+            [slot === 'dial2' ? 'dial' : slot === 'e2_cw' ? 'cw' : 'ccw']: normalizedBinding
           };
           return {
             ...prof,
@@ -2203,14 +2241,14 @@ export function useStudioState(
           FACTORY_DEFAULT_SLOTS[profileId].enc_ccw,
         dial2:
           partialSlots.dial2 ?? currentSlots.dial2 ?? FACTORY_DEFAULT_SLOTS[profileId].dial2,
-        enc2_cw:
-          partialSlots.enc2_cw ??
-          currentSlots.enc2_cw ??
-          FACTORY_DEFAULT_SLOTS[profileId].enc2_cw,
-        enc2_ccw:
-          partialSlots.enc2_ccw ??
-          currentSlots.enc2_ccw ??
-          FACTORY_DEFAULT_SLOTS[profileId].enc2_ccw
+        e2_cw:
+          partialSlots.e2_cw ??
+          currentSlots.e2_cw ??
+          FACTORY_DEFAULT_SLOTS[profileId].e2_cw,
+        e2_ccw:
+          partialSlots.e2_ccw ??
+          currentSlots.e2_ccw ??
+          FACTORY_DEFAULT_SLOTS[profileId].e2_ccw
       };
 
       const existingRepeats = extractRepeatMapFromProfiles(prevSnap.profiles);
@@ -2628,7 +2666,7 @@ export function useStudioState(
                   }
 
                   const hwSlot2: HardwareSlotId =
-                    encKey === 'dial' ? 'dial2' : encKey === 'cw' ? 'enc2_cw' : 'enc2_ccw';
+                    encKey === 'dial' ? 'dial2' : encKey === 'cw' ? 'e2_cw' : 'e2_ccw';
                   const bind2 = layer.encoder2[encKey];
                   const bindSig2 = getMacroCanonicalSignature(
                     bindingToFirmwareAction(bind2),
@@ -2926,8 +2964,13 @@ export function useStudioState(
         const prevSlots = prevProf ? extractProfileSlots(prevProf) : defaults;
         const out = { ...defaults };
         for (const s of HARDWARE_SLOTS) {
-          const direct = backup[`${prefix}_${s}`];
-          const legacy = allowLegacyMacFallback ? backup[`mac_${s}`] : undefined;
+          const legacySuffix = s === 'e2_cw' ? 'enc2_cw' : s === 'e2_ccw' ? 'enc2_ccw' : null;
+          const direct =
+            backup[`${prefix}_${s}`] ??
+            (legacySuffix ? backup[`${prefix}_${legacySuffix}`] : undefined);
+          const legacy = allowLegacyMacFallback
+            ? backup[`mac_${s}`] ?? (legacySuffix ? backup[`mac_${legacySuffix}`] : undefined)
+            : undefined;
           if (typeof direct === 'string' && isValidSlotAssignment(direct)) {
             out[s] = direct;
           } else if (typeof legacy === 'string' && isValidSlotAssignment(legacy)) {
@@ -3041,8 +3084,8 @@ export function useStudioState(
       tv_enc_cw: payload.tv_enc_cw ?? fallback.tv_enc_cw,
       tv_enc_ccw: payload.tv_enc_ccw ?? fallback.tv_enc_ccw,
       tv_dial2: payload.tv_dial2 ?? fallback.tv_dial2,
-      tv_enc2_cw: payload.tv_enc2_cw ?? fallback.tv_enc2_cw,
-      tv_enc2_ccw: payload.tv_enc2_ccw ?? fallback.tv_enc2_ccw
+      tv_e2_cw: payload.tv_e2_cw ?? (payload as any).tv_enc2_cw ?? fallback.tv_e2_cw,
+      tv_e2_ccw: payload.tv_e2_ccw ?? (payload as any).tv_enc2_ccw ?? fallback.tv_e2_ccw
     };
 
     const blob = new Blob([JSON.stringify(cleanPayload, null, 2)], {

@@ -181,8 +181,8 @@ const ENCODER_2_SLOTS: {
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
   { slot: 'dial2', shortTitle: 'K2 Press', icon: Disc },
-  { slot: 'enc2_ccw', shortTitle: 'K2 Left', icon: RotateCcw },
-  { slot: 'enc2_cw', shortTitle: 'K2 Right', icon: RotateCw }
+  { slot: 'e2_ccw', shortTitle: 'K2 Left', icon: RotateCcw },
+  { slot: 'e2_cw', shortTitle: 'K2 Right', icon: RotateCw }
 ];
 
 const STEP_TYPE_ORDER: MacroStepActionType[] = [

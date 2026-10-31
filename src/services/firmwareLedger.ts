@@ -70,7 +70,8 @@ export function inspectFirmwareBinaryCapabilities(bytes: Uint8Array): {
     const supportsV45Engine =
       latin1.includes('/api/macro/cancel') ||
       latin1.includes('DELAY:') ||
-      latin1.includes('tv_toggle');
+      latin1.includes('tv_toggle') ||
+      latin1.includes('encoder2');
     const jsonFwMatch = latin1.match(
       /"firmware"\s*:\s*"v?(\d+\.\d+(?:\.\d+)?(?:-[A-Za-z0-9._-]+)?)"/
     );

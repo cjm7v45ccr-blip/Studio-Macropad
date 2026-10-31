@@ -277,12 +277,12 @@ export function buildHardwareProfile(
         ),
         encoder2: buildHardwareEncoder(
           slots?.dial2 || '',
-          slots?.enc2_cw || '',
-          slots?.enc2_ccw || '',
+          slots?.e2_cw || '',
+          slots?.e2_ccw || '',
           existingProfile?.layers[0]?.encoder2?.color || (id === 'TV' ? '#38BDF8' : '#10B981'),
           repeatConfigs?.[`${id}:dial2`],
-          repeatConfigs?.[`${id}:enc2_cw`],
-          repeatConfigs?.[`${id}:enc2_ccw`]
+          repeatConfigs?.[`${id}:e2_cw`],
+          repeatConfigs?.[`${id}:e2_ccw`]
         )
       }
     ]

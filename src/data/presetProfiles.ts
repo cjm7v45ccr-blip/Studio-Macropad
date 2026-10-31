@@ -30,8 +30,8 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       enc_cw: 'MEDIA:VOL_UP',
       enc_ccw: 'MEDIA:VOL_DOWN',
       dial2: 'MEDIA:PLAY_PAUSE',
-      enc2_cw: 'MEDIA:NEXT',
-      enc2_ccw: 'MEDIA:PREV'
+      e2_cw: 'MEDIA:NEXT',
+      e2_ccw: 'MEDIA:PREV'
     }
   },
   {
@@ -54,8 +54,8 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       enc_cw: 'MEDIA:VOL_UP',
       enc_ccw: 'MEDIA:VOL_DOWN',
       dial2: 'MACRO:NEW_TAB',
-      enc2_cw: 'SHORTCUT:cmd,shift:]',
-      enc2_ccw: 'SHORTCUT:cmd,shift:['
+      e2_cw: 'SHORTCUT:cmd,shift:]',
+      e2_ccw: 'SHORTCUT:cmd,shift:['
     }
   },
   {
@@ -78,8 +78,8 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       enc_cw: 'MEDIA:NEXT',
       enc_ccw: 'MEDIA:PREV',
       dial2: 'MEDIA:MUTE',
-      enc2_cw: 'MEDIA:VOL_UP',
-      enc2_ccw: 'MEDIA:VOL_DOWN'
+      e2_cw: 'MEDIA:VOL_UP',
+      e2_ccw: 'MEDIA:VOL_DOWN'
     }
   },
   {
@@ -102,8 +102,8 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       enc_cw: 'SHORTCUT::right',
       enc_ccw: 'SHORTCUT::left',
       dial2: 'MEDIA:MUTE',
-      enc2_cw: 'MEDIA:VOL_UP',
-      enc2_ccw: 'MEDIA:VOL_DOWN'
+      e2_cw: 'MEDIA:VOL_UP',
+      e2_ccw: 'MEDIA:VOL_DOWN'
     }
   },
   {
@@ -126,8 +126,8 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       enc_cw: 'SHORTCUT:cmd,shift:]',
       enc_ccw: 'SHORTCUT:cmd,shift:[',
       dial2: 'MEDIA:MUTE',
-      enc2_cw: 'MACRO:REDO',
-      enc2_ccw: 'MACRO:UNDO'
+      e2_cw: 'MACRO:REDO',
+      e2_ccw: 'MACRO:UNDO'
     }
   },
   {
@@ -150,8 +150,8 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       enc_cw: 'TV:VOL_UP',
       enc_ccw: 'TV:VOL_DOWN',
       dial2: 'TV:OK',
-      enc2_cw: 'TV:CH_UP',
-      enc2_ccw: 'TV:CH_DOWN'
+      e2_cw: 'TV:CH_UP',
+      e2_ccw: 'TV:CH_DOWN'
     }
   },
   {
@@ -174,8 +174,8 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       enc_cw: 'TV:CH_UP',
       enc_ccw: 'TV:CH_DOWN',
       dial2: 'TV:INPUT',
-      enc2_cw: 'TV:VOL_UP',
-      enc2_ccw: 'TV:VOL_DOWN'
+      e2_cw: 'TV:VOL_UP',
+      e2_ccw: 'TV:VOL_DOWN'
     }
   }
 ];
