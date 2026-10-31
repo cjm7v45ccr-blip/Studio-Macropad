@@ -149,7 +149,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Profile / Host Switcher (Single-Accent Filled Segmented Control) */}
         <div className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-input)] overflow-x-auto min-w-0">
-          {profiles.map(prof => {
+          {profiles.filter(p => p.id !== 'TV' || connection.telemetry?.tvEnabled !== false).map(prof => {
             const selected = prof.id === activeProfile.id;
             const isLiveOnPad = connection.connected && hwActiveProfile === prof.id;
             const Icon = isBleHostProfile(prof.id) ? Laptop : Tv;

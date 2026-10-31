@@ -601,7 +601,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
           aria-label="Action categories"
           className="w-[116px] sm:w-[124px] shrink-0 flex flex-col gap-0.5 p-1 rounded-xl bg-[var(--bg-input)]"
         >
-          {ACTION_TABS.map(tab => {
+          {ACTION_TABS.filter(t => (connection.telemetry?.tvEnabled !== false) || (t.id !== 'tv' && t.id !== 'tv_app')).map(tab => {
             const Icon = tab.icon;
             const active = !trimmedQuery && activeTab === tab.id;
             return (

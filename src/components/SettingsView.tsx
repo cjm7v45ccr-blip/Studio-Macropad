@@ -1127,6 +1127,65 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
         )}
 
+        {/* TV Mode Toggle Card */}
+        {showWifiTv && (!telemetry?.capabilities || telemetry.capabilities.includes('tv_toggle')) && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+                <Tv className="w-4 h-4 text-purple-400" />
+                <span>TV Mode</span>
+              </div>
+              <div className="font-mono text-[11px] text-[var(--text-secondary)]">
+                {connection.connected && telemetry ? (
+                  telemetry.tvEnabled !== false ? (
+                    <span className="text-emerald-600 dark:text-emerald-400">Enabled</span>
+                  ) : (
+                    <span className="text-amber-700 dark:text-amber-300">Disabled (Off)</span>
+                  )
+                ) : (
+                  <span className="text-[var(--text-muted)]">Pad offline</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+              <div className="space-y-0.5">
+                <div className="text-xs font-semibold text-[var(--text-primary)]">
+                  Enable SmartCast TV profile & remote actions
+                </div>
+                <div className="text-[11px] text-[var(--text-muted)]">
+                  When turned off, TV mode and Wi-Fi pairing are disabled, leaving only Bluetooth hosts.
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={!connection.connected}
+                onClick={async () => {
+                  const nextVal = telemetry?.tvEnabled === false ? true : false;
+                  try {
+                    await usbHardware.setTvEnabled(nextVal);
+                    await usbHardware.call({ path: '/api/status' });
+                    onToast(nextVal ? 'TV mode enabled' : 'TV mode disabled', 'success');
+                  } catch (err: any) {
+                    onToast(err?.message || 'Failed to toggle TV mode', 'error');
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  !connection.connected ? 'opacity-40 cursor-not-allowed' : ''
+                } ${telemetry?.tvEnabled !== false ? 'bg-[var(--accent)]' : 'bg-zinc-600'}`}
+                role="switch"
+                aria-checked={telemetry?.tvEnabled !== false}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    telemetry?.tvEnabled !== false ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 3. Wi-Fi Provisioning Card */}
         {showWifiTv && (
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">

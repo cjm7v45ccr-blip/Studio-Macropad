@@ -501,6 +501,8 @@ export interface HardwareTelemetry {
   tvPaired: boolean;
   tvHost: string;
   tvPort: number;
+  tvEnabled: boolean;
+  capabilities: string[];
   connectionType: string;
 }
 

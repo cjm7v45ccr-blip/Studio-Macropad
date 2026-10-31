@@ -155,6 +155,12 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (connection.telemetry?.tvEnabled === false && studio.activeProfile.id === 'TV') {
+      studio.selectProfile('HOST1');
+    }
+  }, [connection.telemetry?.tvEnabled, studio.activeProfile.id, studio]);
+
   const firmwareUpdater = useFirmwareUpdateCheck({
     connected: connection.connected,
     installedVersion: connection.firmwareVersion,

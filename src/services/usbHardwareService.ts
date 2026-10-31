@@ -67,11 +67,13 @@ export interface FirmwareStatusPacket {
     events_enabled?: boolean;
     setup_mode?: boolean;
   };
+  capabilities?: string[];
   tv?: {
     configured: boolean;
     paired: boolean;
     host: string;
     port: number;
+    enabled?: boolean;
   };
   profiles: {
     active: FirmwareWireProfileId;
@@ -165,6 +167,7 @@ interface VirtualDemoPadState {
   tvPaired: boolean;
   tvHost: string;
   tvPort: number;
+  tvEnabled: boolean;
   httpApiEnabled: boolean;
   eventsEnabled: boolean;
   pairingPendingHost: string;
@@ -757,6 +760,7 @@ class PadLinkService {
         tvPaired: !opts?.setupMode,
         tvHost: opts?.setupMode ? '' : '192.168.1.50',
         tvPort: 7345,
+        tvEnabled: true,
         httpApiEnabled: false,
         eventsEnabled: this.desiredEventsEnabled,
         pairingPendingHost: '',
@@ -969,11 +973,13 @@ class PadLinkService {
         events_enabled: d.eventsEnabled,
         setup_mode: d.setupMode
       },
+      capabilities: ['delay', 'repeat', 'macro_abort', 'macro_trace', 'push_turn', 'encoder_accel', 'diagnostics', 'tv_toggle'],
       tv: {
         configured: d.tvConfigured,
         paired: d.tvPaired,
         host: d.tvHost,
-        port: d.tvPort
+        port: d.tvPort,
+        enabled: d.tvEnabled
       },
       profiles: {
         active: activeProf,
@@ -1071,9 +1077,35 @@ class PadLinkService {
       return reply({ ok: true, message: 'Switching BLE host...' });
     }
 
+    if (path === '/api/tv/enable') {
+      const nextEnabled = Boolean(obj.enabled ?? obj.tv_enabled ?? true);
+      d.tvEnabled = nextEnabled;
+      if (!nextEnabled && d.mode === 'TV') {
+        d.mode = 'MAC';
+      }
+      d.rev += 1;
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      const res = reply({ ok: true, enabled: nextEnabled, rev: d.rev });
+      if (d.eventsEnabled) {
+        const tvEvt: HardwareEventPacket = { event: 'tv', enabled: nextEnabled };
+        this.logSerial('rx', JSON.stringify(tvEvt));
+        this.handleHardwareEvent(tvEvt);
+        if (!nextEnabled) {
+          const profEvt: HardwareEventPacket = { event: 'profile', active: bleSlotToProfileId(d.bleSlot) };
+          this.logSerial('rx', JSON.stringify(profEvt));
+          this.handleHardwareEvent(profEvt);
+        }
+      }
+      return res;
+    }
+
     if (path === '/api/profile/activate') {
       const rawProf = String(obj.profile || '');
-      d.mode = rawProf.toUpperCase() === 'TV' ? 'TV' : 'MAC';
+      const isTvTarget = rawProf.toUpperCase() === 'TV';
+      if (isTvTarget && !d.tvEnabled) {
+        return reply({ ok: false, error: 'tv_disabled', message: 'TV Mode is currently disabled' });
+      }
+      d.mode = isTvTarget ? 'TV' : 'MAC';
       const activeTarget: HardwareProfileId =
         d.mode === 'TV' ? 'TV' : bleSlotToProfileId(d.bleSlot);
       this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
@@ -1284,6 +1316,7 @@ class PadLinkService {
       }
       const isTv = isTvFirmwareAction(act);
       if (isTv) {
+        if (!d.tvEnabled) return reply({ ok: false, error: 'tv_disabled', message: 'TV Mode is currently disabled' });
         if (!d.wifiConnected) return reply({ ok: false, message: 'Pad Wi-Fi is disconnected.' });
         if (!d.tvPaired) return reply({ ok: false, message: 'Vizio TV is not paired.' });
       } else if (!d.bleConnected) {
@@ -2023,6 +2056,18 @@ class PadLinkService {
         lastSyncedAt: new Date().toLocaleTimeString()
       };
       this.emitConnection();
+    } else if (e.event === 'tv' && this.connectionInfo.telemetry) {
+      const nextTvEnabled = Boolean(e.enabled);
+      const wasTv = this.connectionInfo.telemetry.activeProfile === 'TV';
+      this.connectionInfo = {
+        ...this.connectionInfo,
+        telemetry: {
+          ...this.connectionInfo.telemetry,
+          tvEnabled: nextTvEnabled,
+          activeProfile: !nextTvEnabled && wasTv ? bleSlotToProfileId(this.connectionInfo.telemetry.bleActiveHost) : this.connectionInfo.telemetry.activeProfile
+        }
+      };
+      this.emitConnection();
     } else if (e.event === 'ota') {
       this.otaListeners.forEach(fn => fn(e));
     }
@@ -2065,6 +2110,11 @@ class PadLinkService {
         ? pkt.diagnostics.events_enabled
         : this.desiredEventsEnabled;
 
+    const tvEnabled = pkt.tv?.enabled !== false;
+    const capabilities = Array.isArray(pkt.capabilities)
+      ? pkt.capabilities
+      : ['delay', 'repeat', 'macro_abort', 'macro_trace', 'push_turn', 'encoder_accel', 'diagnostics', 'tv_toggle'];
+
     const telemetry: HardwareTelemetry = {
       apiVersion: Number(pkt.api_version ?? 1),
       reportedFirmwareVersion: resolvedFw.reportedVersion || undefined,
@@ -2086,6 +2136,8 @@ class PadLinkService {
       tvPaired: Boolean(pkt.tv?.paired ?? pkt.has_auth),
       tvHost: pkt.tv?.host ?? pkt.tv_ip ?? '',
       tvPort: Number(pkt.tv?.port ?? pkt.tv_port ?? 7345),
+      tvEnabled,
+      capabilities,
       connectionType: pkt.device?.connection_type || (this.demoModeActive ? 'DEMO' : 'USB')
     };
 
@@ -3541,6 +3593,10 @@ class PadLinkService {
         await portToClose.close().catch(() => {});
       }
     } catch (_) {}
+  }
+
+  public async setTvEnabled(enabled: boolean): Promise<any> {
+    return this.call({ path: '/api/tv/enable', enabled });
   }
 
   public async disconnect(markManual = true) {
