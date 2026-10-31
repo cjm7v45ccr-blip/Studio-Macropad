@@ -8,6 +8,7 @@ import {
   HardwareProfileId,
   HardwareSlotId,
   HostOsMap,
+  HostOsType,
   KeyboardLayoutId,
   MacroStepActionType,
   MacroStepConfig,
@@ -36,6 +37,7 @@ import {
   fwKeyToPrintableAscii,
   getActionTestAvailability,
   getMacroCanonicalSignature,
+  getShortcutsForHostOs,
   isGenericMacroName,
   isSupportedFirmwareKey,
   normalizeBrowserKeyToFirmware,
@@ -476,7 +478,11 @@ function serializeDraftSteps(steps: MacroStepConfig[]): string {
     .join('|');
 }
 
-function createDefaultStep(actionType: MacroStepActionType, indexSeed = 0): MacroStepConfig {
+function createDefaultStep(
+  actionType: MacroStepActionType,
+  indexSeed = 0,
+  hostOs: HostOsType = 'mac'
+): MacroStepConfig {
   const id = `step-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${indexSeed}`;
   switch (actionType) {
     case 'shortcut':
@@ -484,7 +490,7 @@ function createDefaultStep(actionType: MacroStepActionType, indexSeed = 0): Macr
         id,
         label: 'Keyboard Shortcut',
         actionType: 'shortcut',
-        value: 'SHORTCUT:cmd,shift:4',
+        value: hostOs === 'mac' ? 'SHORTCUT:cmd,shift:4' : 'SHORTCUT:ctrl:=',
         delayMs: 150,
         repeatCount: 1
       };
@@ -520,7 +526,7 @@ function createDefaultStep(actionType: MacroStepActionType, indexSeed = 0): Macr
         id,
         label: 'System Action',
         actionType: 'os_action',
-        value: 'MACRO:COPY',
+        value: hostOs === 'mac' ? 'MACRO:COPY' : 'WIN:COPY',
         delayMs: 150,
         repeatCount: 1
       };
@@ -1227,8 +1233,12 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     );
   };
 
+  const targetHostOs: HostOsType = isBleHostProfile(targetProfile)
+    ? hostOsMap?.[targetProfile as BleHostProfileId] || 'mac'
+    : 'mac';
+
   const changeStepType = (stepId: string, nextType: MacroStepActionType) => {
-    const template = createDefaultStep(nextType);
+    const template = createDefaultStep(nextType, 0, targetHostOs);
     setRecordingStepId(null);
     setStepRecorderError(null);
     commitSteps(prev =>
@@ -1247,7 +1257,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   };
 
   const appendStep = (type: MacroStepActionType) => {
-    const nextStep = createDefaultStep(type, macroSteps.length + 1);
+    const nextStep = createDefaultStep(type, macroSteps.length + 1, targetHostOs);
     if (type !== 'delay') {
       nextStep.delayMs = 0;
     }
@@ -1267,7 +1277,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     type: MacroStepActionType = 'key',
     valueOverride?: string
   ) => {
-    const inserted = createDefaultStep(type, macroSteps.length + 1);
+    const inserted = createDefaultStep(type, macroSteps.length + 1, targetHostOs);
     if (valueOverride !== undefined) {
       inserted.value = valueOverride;
     }
@@ -1743,24 +1753,35 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     setJustAssignedSlot({ profile: targetProfile, slot: targetSlot });
   };
 
-  const targetHostOs = isBleHostProfile(targetProfile)
-    ? hostOsMap?.[targetProfile as BleHostProfileId] || 'mac'
-    : 'mac';
-
   // Categorized static catalog options (OS-aware for target device)
   const mediaCatalog = useMemo(
     () => FIRMWARE_STATIC_CATALOG.filter(item => item.category === 'media'),
     []
   );
-  const osCatalog = useMemo(
-    () =>
-      FIRMWARE_STATIC_CATALOG.filter(item =>
+  const osCatalog = useMemo(() => {
+    const seen = new Set<string>();
+    const combined: { action: string; label: string }[] = [];
+    for (const s of getShortcutsForHostOs(targetHostOs)) {
+      if (!seen.has(s.action)) {
+        seen.add(s.action);
+        combined.push({
+          action: s.action,
+          label: `${s.label} (${s.shortcutHint})`
+        });
+      }
+    }
+    for (const item of FIRMWARE_STATIC_CATALOG) {
+      const matchesOs =
         targetHostOs === 'mac'
           ? item.category === 'mac_macro'
-          : item.category === 'win_macro'
-      ),
-    [targetHostOs]
-  );
+          : item.category === 'win_macro';
+      if (matchesOs && !seen.has(item.action)) {
+        seen.add(item.action);
+        combined.push({ action: item.action, label: item.label });
+      }
+    }
+    return combined;
+  }, [targetHostOs]);
   const bleCatalog = useMemo(
     () => FIRMWARE_STATIC_CATALOG.filter(item => item.category === 'ble'),
     []

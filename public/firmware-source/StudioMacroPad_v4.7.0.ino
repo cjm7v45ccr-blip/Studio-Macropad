@@ -86,7 +86,8 @@ const char* const DEFAULT_TV_BINDINGS[SLOT_COUNT] = {
 
 const char* const SUPPORTED_ACTIONS[] = {
   "MEDIA:PLAY_PAUSE", "MEDIA:MUTE", "MEDIA:VOL_UP", "MEDIA:VOL_DOWN",
-  "MEDIA:NEXT", "MEDIA:PREV", "KEY:F13", "KEY:F14", "KEY:F15", "KEY:F16",
+  "MEDIA:NEXT", "MEDIA:PREV", "MEDIA:BRIGHT_UP", "MEDIA:BRIGHT_DOWN",
+  "KEY:F13", "KEY:F14", "KEY:F15", "KEY:F16",
   "MACRO:COPY", "MACRO:PASTE", "MACRO:CUT", "MACRO:UNDO", "MACRO:REDO",
   "MACRO:SELECT_ALL", "MACRO:SAVE", "MACRO:SPOTLIGHT", "MACRO:LOCK",
   "MACRO:NEW_TAB", "MACRO:CLOSE_TAB", "TV:POWER", "TV:VOL_UP",
@@ -1014,6 +1015,13 @@ bool executeAction(const String& act) {
   else if (act == "MEDIA:VOL_DOWN") { sendBleMedia(KEY_MEDIA_VOLUME_DOWN); showToast("Vol -"); }
   else if (act == "MEDIA:NEXT") { sendBleMedia(KEY_MEDIA_NEXT_TRACK); showToast("Next Track"); }
   else if (act == "MEDIA:PREV") { sendBleMedia(KEY_MEDIA_PREVIOUS_TRACK); showToast("Prev Track"); }
+#ifdef KEY_MEDIA_BRIGHTNESS_UP
+  else if (act == "MEDIA:BRIGHT_UP") { sendBleMedia(KEY_MEDIA_BRIGHTNESS_UP); showToast("Bright +"); }
+  else if (act == "MEDIA:BRIGHT_DOWN") { sendBleMedia(KEY_MEDIA_BRIGHTNESS_DOWN); showToast("Bright -"); }
+#else
+  else if (act == "MEDIA:BRIGHT_UP") { sendBleKey(KEY_F15); showToast("Bright +"); }
+  else if (act == "MEDIA:BRIGHT_DOWN") { sendBleKey(KEY_F14); showToast("Bright -"); }
+#endif
   else if (act == "KEY:F13") { sendBleKey(KEY_F13); showToast("F13"); }
   else if (act == "KEY:F14") { sendBleKey(KEY_F14); showToast("F14"); }
   else if (act == "KEY:F15") { sendBleKey(KEY_F15); showToast("F15"); }
@@ -1103,7 +1111,7 @@ String buildStatusJson() {
                 ",\"setup_done\":" + String(setup_done ? "true" : "false") + 
                 ",\"setupMode\":" + String(inSetupMode ? "true" : "false") + 
                 ",\"api_version\":" + String(API_VERSION) + ",\"rev\":" + String(config_rev) +
-                ",\"capabilities\":[\"delay\",\"repeat\",\"macro_abort\",\"macro_trace\",\"push_turn\",\"encoder_accel\",\"diagnostics\",\"tv_toggle\"" + String(ENCODER2_ENABLED ? ",\"encoder2\"" : "") + "],";
+                ",\"capabilities\":[\"delay\",\"repeat\",\"macro_abort\",\"macro_trace\",\"push_turn\",\"encoder_accel\",\"diagnostics\",\"tv_toggle\",\"brightness\"" + String(ENCODER2_ENABLED ? ",\"encoder2\"" : "") + "],";
   json += "\"device\":{\"id\":" + jsonQuote(deviceId()) + ",\"name\":\"Studio MacroPad\",\"firmware\":\"" FIRMWARE_VERSION "\",\"connection_type\":" + jsonQuote(wifi ? "USB + Wi-Fi" : "USB") + "},";
   json += "\"connection\":{\"wifi_connected\":" + String(wifi ? "true" : "false") + ",\"ip\":" + jsonQuote(wifi ? WiFi.localIP().toString() : WiFi.softAPIP().toString()) + ",\"ble_connected\":" + String(bleKeyboard.isConnected() ? "true" : "false") + "},";
   json += "\"ble\":{\"active_host\":" + String(currentBleSlot + 1) + ",\"max_hosts\":" + String(MAX_BLE_SLOTS) + ",\"device_name\":" + jsonQuote(bleDeviceName) + "},";
@@ -2025,7 +2033,9 @@ void handleEncoder(int direction) {
 
 // Only repeatable "step" actions accelerate; macros, text and app launches never multiply.
 bool isAcceleratable(const String& a) {
-  return a == "MEDIA:VOL_UP" || a == "MEDIA:VOL_DOWN" || a == "TV:VOL_UP" || a == "TV:VOL_DOWN" ||
+  return a == "MEDIA:VOL_UP" || a == "MEDIA:VOL_DOWN" ||
+         a == "MEDIA:BRIGHT_UP" || a == "MEDIA:BRIGHT_DOWN" ||
+         a == "TV:VOL_UP" || a == "TV:VOL_DOWN" ||
          a == "TV:CH_UP" || a == "TV:CH_DOWN";
 }
 

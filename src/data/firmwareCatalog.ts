@@ -102,13 +102,15 @@ export interface FirmwareActionSpec {
 }
 
 export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
-  // MEDIA:* (6)
+  // MEDIA:* (8)
   { action: 'MEDIA:PLAY_PAUSE', label: 'Play / Pause', shortLabel: 'Play/Pause', description: 'BLE Media Play / Pause toggle', category: 'media', icon: 'play', color: '#38BDF8' },
   { action: 'MEDIA:MUTE', label: 'Mute Audio', shortLabel: 'Mute', description: 'BLE Master speaker mute toggle', category: 'media', icon: 'volume-x', color: '#F87171' },
   { action: 'MEDIA:VOL_UP', label: 'Volume Up', shortLabel: 'Vol +', description: 'BLE Master volume up', category: 'media', icon: 'volume-2', color: '#34D399' },
   { action: 'MEDIA:VOL_DOWN', label: 'Volume Down', shortLabel: 'Vol -', description: 'BLE Master volume down', category: 'media', icon: 'volume-1', color: '#60A5FA' },
   { action: 'MEDIA:NEXT', label: 'Next Track', shortLabel: 'Next', description: 'BLE Skip to next track', category: 'media', icon: 'skip-forward', color: '#A78BFA' },
   { action: 'MEDIA:PREV', label: 'Previous Track', shortLabel: 'Prev', description: 'BLE Return to previous track', category: 'media', icon: 'skip-back', color: '#A78BFA' },
+  { action: 'MEDIA:BRIGHT_UP', label: 'Brightness Up', shortLabel: 'Bright +', description: 'BLE Display brightness up', category: 'media', icon: 'sun', color: '#FBBF24' },
+  { action: 'MEDIA:BRIGHT_DOWN', label: 'Brightness Down', shortLabel: 'Bright -', description: 'BLE Display brightness down', category: 'media', icon: 'sun-dim', color: '#38BDF8' },
 
   // KEY:F13..F16 (4)
   { action: 'KEY:F13', label: 'F13 Function Key', shortLabel: 'F13', description: 'BLE Aux function key F13', category: 'media', icon: 'zap', color: '#A78BFA' },
@@ -215,6 +217,9 @@ const MAC_TO_WIN_ACTION_MAP: Record<string, string> = {
   'MACRO:CLOSE_TAB': 'WIN:CLOSE_TAB',
   'MACRO:SPOTLIGHT': 'WIN:SEARCH',
   'MACRO:LOCK': 'WIN:LOCK',
+  'SHORTCUT:cmd:=': 'SHORTCUT:ctrl:=',
+  'SHORTCUT:cmd:-': 'SHORTCUT:ctrl:-',
+  'SHORTCUT:cmd:0': 'SHORTCUT:ctrl:0',
   'SHORTCUT:cmd,shift:4': 'WIN:SNIP',
   'SHORTCUT:cmd,shift:p': 'SHORTCUT:ctrl,shift:p',
   'SHORTCUT:cmd:r': 'SHORTCUT:ctrl:r',
@@ -236,6 +241,11 @@ export function getShortcutsForHostOs(os: HostOsType): UnifiedShortcutSpec[] {
       { id: 'redo', label: 'Redo', shortcutHint: '⌘⇧Z', action: 'MACRO:REDO', icon: 'redo', color: '#FBBF24', description: 'Redo last change' },
       { id: 'select_all', label: 'Select All', shortcutHint: '⌘A', action: 'MACRO:SELECT_ALL', icon: 'check-square', color: '#A78BFA', description: 'Select all content' },
       { id: 'save', label: 'Save', shortcutHint: '⌘S', action: 'MACRO:SAVE', icon: 'save', color: '#34D399', description: 'Save current file' },
+      { id: 'zoom_in', label: 'Zoom In', shortcutHint: '⌘+', action: 'SHORTCUT:cmd:=', icon: 'zoom-in', color: '#38BDF8', description: 'Zoom in active window or canvas' },
+      { id: 'zoom_out', label: 'Zoom Out', shortcutHint: '⌘-', action: 'SHORTCUT:cmd:-', icon: 'zoom-out', color: '#60A5FA', description: 'Zoom out active window or canvas' },
+      { id: 'zoom_reset', label: 'Reset Zoom', shortcutHint: '⌘0', action: 'SHORTCUT:cmd:0', icon: 'maximize', color: '#A78BFA', description: 'Reset zoom to 100%' },
+      { id: 'bright_up', label: 'Brightness Up', shortcutHint: 'F15 / ☀+', action: 'MEDIA:BRIGHT_UP', icon: 'sun', color: '#FBBF24', description: 'Increase macOS display brightness' },
+      { id: 'bright_down', label: 'Brightness Down', shortcutHint: 'F14 / ☀-', action: 'MEDIA:BRIGHT_DOWN', icon: 'sun-dim', color: '#38BDF8', description: 'Decrease macOS display brightness' },
       { id: 'new_tab', label: 'New Tab', shortcutHint: '⌘T', action: 'MACRO:NEW_TAB', icon: 'globe', color: '#34D399', description: 'Open new browser or editor tab' },
       { id: 'close_tab', label: 'Close Tab', shortcutHint: '⌘W', action: 'MACRO:CLOSE_TAB', icon: 'x', color: '#F87171', description: 'Close active tab or window' },
       { id: 'search', label: 'Spotlight Search', shortcutHint: '⌘Space', action: 'MACRO:SPOTLIGHT', icon: 'search', color: '#38BDF8', description: 'Open macOS Spotlight search' },
@@ -248,7 +258,8 @@ export function getShortcutsForHostOs(os: HostOsType): UnifiedShortcutSpec[] {
     ];
   }
 
-  const superLabel = os === 'linux' ? 'Super' : 'Win';
+  const isLinux = os === 'linux';
+  const superLabel = isLinux ? 'Super' : 'Win';
   return [
     { id: 'copy', label: 'Copy', shortcutHint: 'Ctrl+C', action: 'WIN:COPY', icon: 'copy', color: '#38BDF8', description: 'Copy selection to clipboard' },
     { id: 'paste', label: 'Paste', shortcutHint: 'Ctrl+V', action: 'WIN:PASTE', icon: 'paste', color: '#38BDF8', description: 'Paste from clipboard' },
@@ -257,13 +268,31 @@ export function getShortcutsForHostOs(os: HostOsType): UnifiedShortcutSpec[] {
     { id: 'redo', label: 'Redo', shortcutHint: 'Ctrl+Y', action: 'WIN:REDO', icon: 'redo', color: '#FBBF24', description: 'Redo last change' },
     { id: 'select_all', label: 'Select All', shortcutHint: 'Ctrl+A', action: 'WIN:SELECT_ALL', icon: 'check-square', color: '#A78BFA', description: 'Select all content' },
     { id: 'save', label: 'Save', shortcutHint: 'Ctrl+S', action: 'WIN:SAVE', icon: 'save', color: '#34D399', description: 'Save current file' },
+    { id: 'zoom_in', label: 'Zoom In', shortcutHint: 'Ctrl++', action: 'SHORTCUT:ctrl:=', icon: 'zoom-in', color: '#38BDF8', description: isLinux ? 'Zoom in Linux window, browser, or terminal' : 'Zoom in active window or canvas' },
+    { id: 'zoom_out', label: 'Zoom Out', shortcutHint: 'Ctrl+-', action: 'SHORTCUT:ctrl:-', icon: 'zoom-out', color: '#60A5FA', description: isLinux ? 'Zoom out Linux window, browser, or terminal' : 'Zoom out active window or canvas' },
+    { id: 'zoom_reset', label: 'Reset Zoom', shortcutHint: 'Ctrl+0', action: 'SHORTCUT:ctrl:0', icon: 'maximize', color: '#A78BFA', description: 'Reset zoom to 100%' },
+    { id: 'bright_up', label: 'Brightness Up', shortcutHint: '☀+', action: 'MEDIA:BRIGHT_UP', icon: 'sun', color: '#FBBF24', description: isLinux ? 'Increase Linux display brightness' : 'Increase Windows display brightness' },
+    { id: 'bright_down', label: 'Brightness Down', shortcutHint: '☀-', action: 'MEDIA:BRIGHT_DOWN', icon: 'sun-dim', color: '#38BDF8', description: isLinux ? 'Decrease Linux display brightness' : 'Decrease Windows display brightness' },
+    ...(isLinux
+      ? []
+      : [
+          {
+            id: 'quick_settings',
+            label: 'Quick Settings',
+            shortcutHint: 'Win+A',
+            action: 'SHORTCUT:win:a',
+            icon: 'sliders',
+            color: '#FBBF24',
+            description: 'Open Windows brightness & audio flyout'
+          }
+        ]),
     { id: 'new_tab', label: 'New Tab', shortcutHint: 'Ctrl+T', action: 'WIN:NEW_TAB', icon: 'globe', color: '#34D399', description: 'Open new browser or editor tab' },
     { id: 'close_tab', label: 'Close Tab', shortcutHint: 'Ctrl+W', action: 'WIN:CLOSE_TAB', icon: 'x', color: '#F87171', description: 'Close active tab' },
     { id: 'search', label: 'Search', shortcutHint: `${superLabel}+S`, action: 'WIN:SEARCH', icon: 'search', color: '#38BDF8', description: 'Open system search' },
     { id: 'screenshot', label: 'Screenshot Snip', shortcutHint: `${superLabel}+Shift+S`, action: 'WIN:SNIP', icon: 'camera', color: '#34D399', description: 'Capture screen region' },
     { id: 'lock', label: 'Lock Screen', shortcutHint: `${superLabel}+L`, action: 'WIN:LOCK', icon: 'lock', color: '#F87171', description: 'Lock workstation immediately' },
-    { id: 'explorer', label: 'File Explorer', shortcutHint: `${superLabel}+E`, action: 'WIN:EXPLORER', icon: 'folder', color: '#FBBF24', description: 'Open File Explorer' },
-    { id: 'task_mgr', label: 'Task Manager', shortcutHint: 'Ctrl+Shift+Esc', action: 'WIN:TASK_MGR', icon: 'terminal', color: '#A78BFA', description: 'Open Task Manager' },
+    { id: 'explorer', label: isLinux ? 'Files' : 'File Explorer', shortcutHint: `${superLabel}+E`, action: 'WIN:EXPLORER', icon: 'folder', color: '#FBBF24', description: isLinux ? 'Open file manager' : 'Open File Explorer' },
+    { id: 'task_mgr', label: isLinux ? 'System Monitor' : 'Task Manager', shortcutHint: 'Ctrl+Shift+Esc', action: 'WIN:TASK_MGR', icon: 'terminal', color: '#A78BFA', description: isLinux ? 'Open system monitor' : 'Open Task Manager' },
     { id: 'desktop', label: 'Show Desktop', shortcutHint: `${superLabel}+D`, action: 'WIN:DESKTOP', icon: 'monitor', color: '#60A5FA', description: 'Minimize all windows' },
     { id: 'run', label: 'Run Dialog', shortcutHint: `${superLabel}+R`, action: 'WIN:RUN', icon: 'play-circle', color: '#38BDF8', description: 'Open Run command prompt' }
   ];
@@ -293,9 +322,15 @@ export function inferHostOsFromSlots(
   for (const val of Object.values(slots)) {
     if (!val) continue;
     if (val.includes('MACRO:') || val.includes('SHORTCUT:cmd')) macCount += 1;
-    if (val.includes('WIN:') || val.includes('SHORTCUT:win')) winCount += 1;
+    if (
+      val.includes('WIN:') ||
+      val.includes('SHORTCUT:win') ||
+      (val.includes('SHORTCUT:ctrl') && !val.includes('cmd'))
+    ) {
+      winCount += 1;
+    }
   }
-  if (winCount > macCount) return 'windows';
+  if (winCount > macCount) return fallback === 'linux' ? 'linux' : 'windows';
   if (macCount > winCount) return 'mac';
   return fallback;
 }
@@ -1911,10 +1946,21 @@ export function describeFirmwareAction(
   }
 
   if (trimmed.startsWith('SHORTCUT:')) {
+    const canonShortcut = canonicalizeFirmwareAction(trimmed);
+    const wellKnown = WELL_KNOWN_SHORTCUT_SPECS[canonShortcut];
+    if (wellKnown) {
+      return {
+        shortLabel: wellKnown.shortLabel,
+        fullLabel: matchedCustomName || wellKnown.fullLabel,
+        description: wellKnown.description,
+        icon: wellKnown.icon,
+        color: wellKnown.color
+      };
+    }
     const pretty = formatShortcutPretty(trimmed);
     return {
       shortLabel: pretty.slice(0, 12),
-      fullLabel: pretty,
+      fullLabel: matchedCustomName || pretty,
       description: `BLE Keyboard Shortcut (${pretty})`,
       icon: 'command',
       color: '#38BDF8'
@@ -2210,7 +2256,74 @@ function toTitleWords(raw: string): string {
     .join(' ');
 }
 
+interface WellKnownShortcutSpec {
+  shortLabel: string;
+  fullLabel: string;
+  description: string;
+  icon: string;
+  color: string;
+}
+
+const WELL_KNOWN_SHORTCUT_SPECS: Record<string, WellKnownShortcutSpec> = {
+  'SHORTCUT:cmd:=': {
+    shortLabel: 'Zoom +',
+    fullLabel: 'Zoom In (⌘+)',
+    description: 'macOS Zoom In (Command + Plus)',
+    icon: 'zoom-in',
+    color: '#38BDF8'
+  },
+  'SHORTCUT:cmd:-': {
+    shortLabel: 'Zoom -',
+    fullLabel: 'Zoom Out (⌘-)',
+    description: 'macOS Zoom Out (Command + Minus)',
+    icon: 'zoom-out',
+    color: '#60A5FA'
+  },
+  'SHORTCUT:cmd:0': {
+    shortLabel: 'Zoom 100%',
+    fullLabel: 'Reset Zoom (⌘0)',
+    description: 'macOS Reset Zoom to 100% (Command + 0)',
+    icon: 'maximize',
+    color: '#A78BFA'
+  },
+  'SHORTCUT:ctrl:=': {
+    shortLabel: 'Zoom +',
+    fullLabel: 'Zoom In (Ctrl++)',
+    description: 'Windows / Linux Zoom In (Ctrl + Plus)',
+    icon: 'zoom-in',
+    color: '#38BDF8'
+  },
+  'SHORTCUT:ctrl:-': {
+    shortLabel: 'Zoom -',
+    fullLabel: 'Zoom Out (Ctrl+-)',
+    description: 'Windows / Linux Zoom Out (Ctrl + Minus)',
+    icon: 'zoom-out',
+    color: '#60A5FA'
+  },
+  'SHORTCUT:ctrl:0': {
+    shortLabel: 'Zoom 100%',
+    fullLabel: 'Reset Zoom (Ctrl+0)',
+    description: 'Windows / Linux Reset Zoom to 100% (Ctrl + 0)',
+    icon: 'maximize',
+    color: '#A78BFA'
+  },
+  'SHORTCUT:win:a': {
+    shortLabel: 'Quick Set',
+    fullLabel: 'Quick Settings (Win+A)',
+    description: 'Windows Brightness & Audio Quick Settings',
+    icon: 'sliders',
+    color: '#FBBF24'
+  }
+};
+
 const WELL_KNOWN_SHORTCUT_NAMES: Record<string, string> = {
+  'SHORTCUT:cmd:=': 'Zoom In (⌘+)',
+  'SHORTCUT:cmd:-': 'Zoom Out (⌘-)',
+  'SHORTCUT:cmd:0': 'Reset Zoom (⌘0)',
+  'SHORTCUT:ctrl:=': 'Zoom In (Ctrl++)',
+  'SHORTCUT:ctrl:-': 'Zoom Out (Ctrl+-)',
+  'SHORTCUT:ctrl:0': 'Reset Zoom (Ctrl+0)',
+  'SHORTCUT:win:a': 'Quick Settings (Win+A)',
   'SHORTCUT:cmd,shift:4': 'Screenshot Region (⌘⇧4)',
   'SHORTCUT:cmd,shift:3': 'Full Screenshot (⌘⇧3)',
   'SHORTCUT:cmd,shift:5': 'Screen Capture Bar (⌘⇧5)',
@@ -2751,12 +2864,14 @@ export function parseSingleActionKeyValue(rawToken: string): ParsedActionToken {
         rawAction: trimmed
       };
     }
+    const canonShortcut = canonicalizeFirmwareAction(trimmed);
+    const wellKnown = WELL_KNOWN_SHORTCUT_SPECS[canonShortcut];
     const prettyCombo = formatShortcutPretty(trimmed);
     const strippedShortcut = rest.replace(/^:+/, '');
     return {
       prefix: 'SHORTCUT',
       value: prettyCombo || strippedShortcut,
-      prettyValue: prettyCombo || strippedShortcut,
+      prettyValue: wellKnown ? wellKnown.fullLabel : prettyCombo || strippedShortcut,
       rawAction: trimmed
     };
   }

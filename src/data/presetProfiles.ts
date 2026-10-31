@@ -131,6 +131,30 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     }
   },
   {
+    id: 'design-zoom-display',
+    title: 'Canvas Zoom & Display',
+    subtitle: 'Zoom, Brightness & Creative',
+    mode: 'HOST1',
+    description:
+      'Zoom in/out/100% on keys and Knob 1, screen brightness up/down on Knob 2, plus screenshot, undo/redo, and save.',
+    bindings: {
+      b1: 'SHORTCUT:cmd:=',
+      b2: 'SHORTCUT:cmd:-',
+      b3: 'SHORTCUT:cmd:0',
+      b4: 'SHORTCUT:cmd,shift:4',
+      b5: 'MEDIA:BRIGHT_UP',
+      b6: 'MEDIA:BRIGHT_DOWN',
+      b7: 'MACRO:UNDO',
+      b8: 'MACRO:SAVE',
+      dial: 'SHORTCUT:cmd:0',
+      enc_cw: 'SHORTCUT:cmd:=',
+      enc_ccw: 'SHORTCUT:cmd:-',
+      dial2: 'MEDIA:MUTE',
+      e2_cw: 'MEDIA:BRIGHT_UP',
+      e2_ccw: 'MEDIA:BRIGHT_DOWN'
+    }
+  },
+  {
     id: 'tv-cinema-lounge',
     title: 'SmartCast Streaming Lounge',
     subtitle: '6 Apps, Volume & Channels',

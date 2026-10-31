@@ -138,7 +138,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   const isAlreadyUnassigned = !activeBinding.value && !activeBinding.repeatConfig;
 
   const handleApplyKnobPreset = (
-    presetId: 'volume' | 'track' | 'channel' | 'arrows'
+    presetId: 'volume' | 'zoom' | 'brightness' | 'track' | 'channel' | 'arrows'
   ) => {
     if (presetId === 'volume') {
       if (activeProfileId === 'TV') {
@@ -160,6 +160,30 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
           `Applied Volume preset to Knob ${encoderIndex}`
         );
       }
+      return;
+    }
+
+    if (presetId === 'zoom') {
+      const isMac = activeHostOs === 'mac';
+      onApplyKnobSlots(
+        {
+          [dialSlot]: isMac ? 'SHORTCUT:cmd:0' : 'SHORTCUT:ctrl:0',
+          [cwSlot]: isMac ? 'SHORTCUT:cmd:=' : 'SHORTCUT:ctrl:=',
+          [ccwSlot]: isMac ? 'SHORTCUT:cmd:-' : 'SHORTCUT:ctrl:-'
+        },
+        `Applied Zoom preset to Knob ${encoderIndex}`
+      );
+      return;
+    }
+
+    if (presetId === 'brightness') {
+      onApplyKnobSlots(
+        {
+          [cwSlot]: 'MEDIA:BRIGHT_UP',
+          [ccwSlot]: 'MEDIA:BRIGHT_DOWN'
+        },
+        `Applied Brightness preset to Knob ${encoderIndex}`
+      );
       return;
     }
 
@@ -401,14 +425,12 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
             </button>
           </div>
 
-          <div
-            className={`grid gap-1.5 ${
-              isTvEnabled ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'
-            }`}
-          >
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
             {(
               [
                 { id: 'volume', label: 'Volume' },
+                { id: 'zoom', label: 'Zoom' },
+                { id: 'brightness', label: 'Brightness' },
                 { id: 'track', label: 'Track skip' },
                 ...(isTvEnabled ? ([{ id: 'channel', label: 'Channel' }] as const) : []),
                 { id: 'arrows', label: 'Arrow keys' }

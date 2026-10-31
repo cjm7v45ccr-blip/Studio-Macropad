@@ -145,9 +145,27 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     );
   }, [customMacros, currentSignature]);
 
+  // Per-device OS mapped shortcuts (no duplicate Mac + PC lists!)
+  const osMappedShortcuts = useMemo(
+    () => getShortcutsForHostOs(activeHostOs),
+    [activeHostOs]
+  );
+
+  const isOsMappedAction = useMemo(
+    () =>
+      !binding.repeatConfig &&
+      Boolean(binding.value) &&
+      osMappedShortcuts.some(s => s.action === binding.value),
+    [binding.value, binding.repeatConfig, osMappedShortcuts]
+  );
+
   const deriveTabForBinding = (): PickerCategoryTab => {
     if (matchedSavedMacro) return 'my_macros';
-    if (binding.type === 'mac_macro' || binding.type === 'win_macro') {
+    if (
+      binding.type === 'mac_macro' ||
+      binding.type === 'win_macro' ||
+      (isOsMappedAction && binding.type === 'shortcut')
+    ) {
       return 'os_shortcuts';
     }
     if (!isTvEnabled && (binding.type === 'tv' || binding.type === 'tv_app')) {
@@ -188,7 +206,13 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     } else if (!isTvEnabled && (binding.type === 'tv' || binding.type === 'tv_app')) {
       setActiveTab('os_shortcuts');
     } else if (binding.type !== 'none') {
-      setActiveTab(binding.type);
+      setActiveTab(prev => {
+        if (prev === 'os_shortcuts' && isOsMappedAction) return 'os_shortcuts';
+        if (isOsMappedAction && binding.type === 'shortcut' && prev !== 'shortcut') {
+          return 'os_shortcuts';
+        }
+        return binding.type as PickerCategoryTab;
+      });
     }
 
     if (binding.repeatConfig || binding.value.startsWith('TEXT:')) {
@@ -230,7 +254,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
         }
       }
     }
-  }, [binding.type, binding.value, binding.repeatConfig, matchedSavedMacro, isTvEnabled]);
+  }, [binding.type, binding.value, binding.repeatConfig, matchedSavedMacro, isTvEnabled, isOsMappedAction]);
 
   useEffect(() => {
     if (!isTvEnabled && (activeTab === 'tv' || activeTab === 'tv_app')) {
@@ -443,12 +467,6 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
 
-  // Per-device OS mapped shortcuts (no duplicate Mac + PC lists!)
-  const osMappedShortcuts = useMemo(
-    () => getShortcutsForHostOs(activeHostOs),
-    [activeHostOs]
-  );
-
   const matchingCustomMacros = useMemo(() => {
     if (!trimmedQuery) return customMacros;
     return customMacros.filter(m => {
@@ -485,14 +503,16 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
 
   const searchOtherStaticMatches = useMemo(() => {
     if (!trimmedQuery) return [];
+    const shortcutActions = new Set(searchShortcutMatches.map(s => s.action));
     return nonOsStaticCatalog.filter(
       s =>
-        s.label.toLowerCase().includes(trimmedQuery) ||
-        s.shortLabel.toLowerCase().includes(trimmedQuery) ||
-        s.description.toLowerCase().includes(trimmedQuery) ||
-        s.action.toLowerCase().includes(trimmedQuery)
+        !shortcutActions.has(s.action) &&
+        (s.label.toLowerCase().includes(trimmedQuery) ||
+          s.shortLabel.toLowerCase().includes(trimmedQuery) ||
+          s.description.toLowerCase().includes(trimmedQuery) ||
+          s.action.toLowerCase().includes(trimmedQuery))
     );
-  }, [nonOsStaticCatalog, trimmedQuery]);
+  }, [nonOsStaticCatalog, searchShortcutMatches, trimmedQuery]);
 
   const activeCategoryItems = useMemo(() => {
     if (

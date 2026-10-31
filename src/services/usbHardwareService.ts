@@ -1008,7 +1008,7 @@ class PadLinkService {
         events_enabled: d.eventsEnabled,
         setup_mode: d.setupMode
       },
-      capabilities: ['delay', 'repeat', 'macro_abort', 'macro_trace', 'push_turn', 'encoder_accel', 'diagnostics', 'tv_toggle', 'encoder2'],
+      capabilities: ['delay', 'repeat', 'macro_abort', 'macro_trace', 'push_turn', 'encoder_accel', 'diagnostics', 'tv_toggle', 'encoder2', 'brightness'],
       tv: {
         configured: d.tvConfigured,
         paired: d.tvPaired,
@@ -2388,6 +2388,30 @@ class PadLinkService {
     return res;
   }
 
+  private adaptActionForConnectedFirmware(action: string): string {
+    if (!action || this.demoModeActive) return action;
+    const supportsBrightness = Boolean(
+      this.connectionInfo.telemetry?.capabilities?.includes('brightness')
+    );
+    if (supportsBrightness) return action;
+    if (action.includes('||')) {
+      return action
+        .split('||')
+        .map(part => {
+          if (part.startsWith('TEXT:')) return part;
+          const trimmed = part.trim();
+          if (trimmed === 'MEDIA:BRIGHT_UP') return 'KEY:F15';
+          if (trimmed === 'MEDIA:BRIGHT_DOWN') return 'KEY:F14';
+          return trimmed;
+        })
+        .join('||');
+    }
+    const trimmed = action.startsWith('TEXT:') ? action : action.trim();
+    if (trimmed === 'MEDIA:BRIGHT_UP') return 'KEY:F15';
+    if (trimmed === 'MEDIA:BRIGHT_DOWN') return 'KEY:F14';
+    return action;
+  }
+
   public async saveSlotBinding(
     profile: HardwareProfileId,
     slot: HardwareSlotId,
@@ -2396,6 +2420,7 @@ class PadLinkService {
     if (!isValidSlotAssignment(action)) {
       throw new Error(`Unsupported firmware action: ${action}`);
     }
+    const wireAction = this.adaptActionForConnectedFirmware(action);
     const isEncoder2Slot = slot === 'dial2' || slot === 'e2_cw' || slot === 'e2_ccw';
     const supportsDualEnc = Boolean(
       this.connectionInfo.telemetry?.capabilities?.includes('encoder2')
@@ -2404,7 +2429,7 @@ class PadLinkService {
       path: '/api/customizer/save',
       profile,
       slot,
-      action
+      action: wireAction
     });
     if (!res?.ok) {
       if (!this.demoModeActive && isEncoder2Slot && !supportsDualEnc) {
@@ -2429,23 +2454,23 @@ class PadLinkService {
     const baseReqObj = {
       path: '/api/profile/save',
       profile,
-      b1: slots.b1,
-      b2: slots.b2,
-      b3: slots.b3,
-      b4: slots.b4,
-      b5: slots.b5,
-      b6: slots.b6,
-      b7: slots.b7,
-      b8: slots.b8,
-      dial: slots.dial,
-      enc_cw: slots.enc_cw,
-      enc_ccw: slots.enc_ccw
+      b1: this.adaptActionForConnectedFirmware(slots.b1),
+      b2: this.adaptActionForConnectedFirmware(slots.b2),
+      b3: this.adaptActionForConnectedFirmware(slots.b3),
+      b4: this.adaptActionForConnectedFirmware(slots.b4),
+      b5: this.adaptActionForConnectedFirmware(slots.b5),
+      b6: this.adaptActionForConnectedFirmware(slots.b6),
+      b7: this.adaptActionForConnectedFirmware(slots.b7),
+      b8: this.adaptActionForConnectedFirmware(slots.b8),
+      dial: this.adaptActionForConnectedFirmware(slots.dial),
+      enc_cw: this.adaptActionForConnectedFirmware(slots.enc_cw),
+      enc_ccw: this.adaptActionForConnectedFirmware(slots.enc_ccw)
     };
     const reqObj = {
       ...baseReqObj,
-      dial2: slots.dial2,
-      e2_cw: slots.e2_cw,
-      e2_ccw: slots.e2_ccw
+      dial2: this.adaptActionForConnectedFirmware(slots.dial2),
+      e2_cw: this.adaptActionForConnectedFirmware(slots.e2_cw),
+      e2_ccw: this.adaptActionForConnectedFirmware(slots.e2_ccw)
     };
 
     // ESP32 v4.7+ Serial RX line buffer accepts up to 8192 bytes, and /api/profile/save allows
@@ -2753,9 +2778,10 @@ class PadLinkService {
       return lastRes;
     }
 
+    const wireAction = this.adaptActionForConnectedFirmware(action);
     const res = await this.call({
       path: '/api/test/action',
-      action
+      action: wireAction
     });
     if (isTvDisabledResponse(res)) {
       return {

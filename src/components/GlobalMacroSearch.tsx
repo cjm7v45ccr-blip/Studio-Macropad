@@ -465,7 +465,9 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
     // 4. Per-Device OS Mapped Shortcuts + Non-OS Static Actions (no duplicate Mac + PC rows!)
     const mappedShortcuts = getShortcutsForHostOs(activeHostOs);
+    const mappedShortcutActions = new Set<string>();
     mappedShortcuts.forEach(spec => {
+      mappedShortcutActions.add(spec.action);
       const binding = firmwareActionToBinding(spec.action);
       results.push({
         id: `catalog-os-${spec.id}`,
@@ -473,7 +475,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         filterGroup: 'catalog',
         title: spec.label,
         metaParts: [`Shortcut (${hostOsFullLabel(activeHostOs)})`, spec.shortcutHint],
-        searchBlob: `${spec.label} ${spec.shortcutHint} ${spec.description} ${spec.action} shortcut`.toLowerCase(),
+        searchBlob: `${spec.label} ${spec.shortcutHint} ${spec.description} ${spec.action} ${hostOsFullLabel(activeHostOs)} shortcut`.toLowerCase(),
         icon: spec.icon,
         iconColor: spec.color,
         action: spec.action,
@@ -483,6 +485,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
     FIRMWARE_STATIC_CATALOG.filter(
       spec =>
+        !mappedShortcutActions.has(spec.action) &&
         spec.category !== 'mac_macro' &&
         spec.category !== 'win_macro' &&
         (isTvEnabled || (spec.category !== 'tv' && spec.category !== 'tv_app'))
