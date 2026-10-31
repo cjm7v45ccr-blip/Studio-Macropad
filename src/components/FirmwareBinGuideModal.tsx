@@ -49,7 +49,7 @@ export const FirmwareBinGuideModal: React.FC<FirmwareBinGuideModalProps> = ({
               To ensure version detection and SHA-256 integrity verification work seamlessly, name your compiled ESP32 firmware binary using semantic versioning:
             </p>
             <div className="p-2.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-strong)] font-mono text-[11px] text-[var(--accent)]">
-              StudioMacroPad_v4.6.0.bin
+              StudioMacroPad_v4.7.0.bin
             </div>
             <p className="text-[11px] text-[var(--text-muted)]">
               (You can also include edition suffixes like <code className="text-[var(--text-primary)]">_PRO.bin</code> or <code className="text-[var(--text-primary)]">_STABLE.bin</code>).

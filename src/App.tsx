@@ -389,8 +389,8 @@ export default function App() {
   const isEncoder2Selected =
     selectedControl === 'encoder2' ||
     selectedControl === 'dial2' ||
-    selectedControl === 'enc2_cw' ||
-    selectedControl === 'enc2_ccw';
+    selectedControl === 'e2_cw' ||
+    selectedControl === 'e2_ccw';
 
   const isEncoderControlSelected =
     isEncoder2Selected ||
@@ -402,10 +402,10 @@ export default function App() {
   const selectedEncoderIndex: EncoderIndex = isEncoder2Selected ? 2 : 1;
 
   const selectedEncoderSubControl: EncoderSubControlId = isEncoder2Selected
-    ? selectedControl === 'enc2_cw'
-      ? 'enc2_cw'
-      : selectedControl === 'enc2_ccw'
-      ? 'enc2_ccw'
+    ? selectedControl === 'e2_cw'
+      ? 'e2_cw'
+      : selectedControl === 'e2_ccw'
+      ? 'e2_ccw'
       : 'dial2'
     : selectedControl === 'enc_cw'
     ? 'enc_cw'
@@ -468,8 +468,8 @@ export default function App() {
         slot === 'enc_cw' ||
         slot === 'enc_ccw' ||
         slot === 'dial2' ||
-        slot === 'enc2_cw' ||
-        slot === 'enc2_ccw'
+        slot === 'e2_cw' ||
+        slot === 'e2_ccw'
       ) {
         setSelectedControl(slot);
       } else {
@@ -644,16 +644,16 @@ export default function App() {
                 onSelectEncoder={idx => {
                   const isCw =
                     selectedEncoderSubControl === 'enc_cw' ||
-                    selectedEncoderSubControl === 'enc2_cw';
+                    selectedEncoderSubControl === 'e2_cw';
                   const isCcw =
                     selectedEncoderSubControl === 'enc_ccw' ||
-                    selectedEncoderSubControl === 'enc2_ccw';
+                    selectedEncoderSubControl === 'e2_ccw';
                   setSelectedControl(
                     idx === 2
                       ? isCw
-                        ? 'enc2_cw'
+                        ? 'e2_cw'
                         : isCcw
-                        ? 'enc2_ccw'
+                        ? 'e2_ccw'
                         : 'dial2'
                       : isCw
                       ? 'enc_cw'
@@ -715,7 +715,7 @@ export default function App() {
                     selectedEncoderSubControl === 'dial2'
                       ? activeEnc.dial
                       : selectedEncoderSubControl === 'enc_cw' ||
-                        selectedEncoderSubControl === 'enc2_cw'
+                        selectedEncoderSubControl === 'e2_cw'
                       ? activeEnc.cw
                       : activeEnc.ccw;
                   handleOpenMacroBuilderForSlot(selectedEncoderSubControl, activeBind);

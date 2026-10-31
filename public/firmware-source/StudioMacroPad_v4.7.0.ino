@@ -10,24 +10,12 @@
 #include <Adafruit_SSD1306.h>
 #include <Update.h>
 #include "mbedtls/base64.h"
+#include <esp_ota_ops.h>
+#include <vector>
 
 // -----------------------------------------------------------------------------
-// Studio MacroPad Pro — Flagship ESP32 Firmware v4.5.0
+// Lightweight NimBLE Engine
 // -----------------------------------------------------------------------------
-// What's New in v4.5.0:
-// 1. Native DELAY:<1..60000> validation & NVS persistence (10 bytes for up to 60s
-//    multi-screen login + 2FA waits, zero USB tethering required).
-// 2. Full 512-byte payload parity across USB Serial /api/customizer/save,
-//    /api/test/action, and /api/config/import (TV + all 3 BLE Hosts).
-// 3. Exact whitespace & trailing '\n' preservation inside '||' TEXT: macro steps.
-// 4. Panic-Cancel running macros: press any physical button mid-wait (or send
-//    /api/macro/cancel) to abort cleanly, release modifiers, & notify Web App.
-// 5. Radio-safe USB OTA streaming (cleanly disables NimBLE & Wi-Fi prior to flash
-//    sector erases) with a live 128x64 OLED progress bar.
-// 6. Custom Host Name & Live Link HUD bar on the 128x64 OLED ([H1]..[H3] / [TV]).
-// 7. Smart Rotary Encoder Velocity Acceleration (2x/3x on fast volume spins).
-// -----------------------------------------------------------------------------
-
 #define USE_NIMBLE
 #include <NimBLEDevice.h>
 #include <BleKeyboard.h>
@@ -35,35 +23,65 @@
 #include "config.h"
 #include "bitmaps.h"
 
+// Firmware Versioning & Defaults
+// -----------------------------------------------------------------------------
 #ifndef API_VERSION
 #define API_VERSION 2
 #endif
-#ifdef FIRMWARE_VERSION
-#undef FIRMWARE_VERSION
+#ifndef FIRMWARE_VERSION
+#define FIRMWARE_VERSION "4.7.0"
 #endif
-#define FIRMWARE_VERSION "4.5.0"
 #ifndef SETUP_AP_PREFIX
 #define SETUP_AP_PREFIX "MacroPad"
 #endif
 
 #define MAX_BLE_SLOTS 3
-#define MAX_ACTION_LEN 512
+#define BASE_SLOT_COUNT 11   // original controls: b1..b8, dial, enc_cw, enc_ccw
+#define SLOT_COUNT 16        // + push_cw, push_ccw (hold the dial and turn) + dial2, e2_cw, e2_ccw (second encoder)
+
+// Second rotary encoder. Any of these can be overridden in config.h.
+#ifndef ENCODER2_ENABLED
+#define ENCODER2_ENABLED 1   // 0 = build without the second encoder
+#endif
+#ifndef PIN_ENC2_CLK
+#define PIN_ENC2_CLK 34      // input-only pin: needs an EXTERNAL pull-up to 3.3 V
+#endif
+#ifndef PIN_ENC2_DT
+#define PIN_ENC2_DT  35      // input-only pin: needs an EXTERNAL pull-up to 3.3 V
+#endif
+#ifndef PIN_ENC2_SW
+#define PIN_ENC2_SW  15      // strapping pin, internal pull-up is fine; switch to GND
+#endif
+
+enum SlotIndex { SLOT_DIAL = 8, SLOT_ENC_CW = 9, SLOT_ENC_CCW = 10, SLOT_PUSH_CW = 11, SLOT_PUSH_CCW = 12,
+                 SLOT_DIAL2 = 13, SLOT_E2_CW = 14, SLOT_E2_CCW = 15 };
+#define MAX_REPEAT_DEPTH 2   // REPEAT blocks may nest this deep
+#define MAX_REPEAT_COUNT 250
+#define MAX_MACRO_STEPS 5000 // hard ceiling on executed steps per macro run
+#define MAX_ACTION_LEN 512   // max bytes in one binding / multi-step macro (HTTP, USB and backup import)
+#define MAX_DELAY_MS 10000   // longest single DELAY:<ms> step
+#define OTA_IDLE_TIMEOUT_MS 30000UL // abort a stalled USB stream flash and reboot
 
 // -----------------------------------------------------------------------------
-// Hardware Slot Definitions (11 Slots per Host Profile)
+// Hardware Slot Definitions (11 Slots per Device Profile)
 // -----------------------------------------------------------------------------
-const char* const SLOT_IDS[11] = {
-  "b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8", "dial", "enc_cw", "enc_ccw"
+const char* const SLOT_IDS[SLOT_COUNT] = { 
+  "b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8", "dial", "enc_cw", "enc_ccw",
+  "push_cw", "push_ccw",
+  "dial2", "e2_cw", "e2_ccw"
 };
 
-const char* const DEFAULT_BLANK_BINDINGS[11] = {
-  "", "", "", "", "", "", "", "", "", "", ""
+// All Bluetooth slots start blank out of the box until mapped on the website
+const char* const DEFAULT_BLANK_BINDINGS[SLOT_COUNT] = {
+  "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
 };
 
-const char* const DEFAULT_TV_BINDINGS[11] = {
+// Default TV Controls (Wi-Fi Vizio)
+const char* const DEFAULT_TV_BINDINGS[SLOT_COUNT] = {
   "TV:POWER", "APP:YOUTUBE", "APP:DISNEY", "APP:TUBI",
   "APP:NETFLIX", "APP:PRIME", "TV:INFO", "TV:HOME",
-  "TV:MUTE", "TV:VOL_UP", "TV:VOL_DOWN"
+  "TV:MUTE", "TV:VOL_UP", "TV:VOL_DOWN",
+  "", "", "", "", ""
 };
 
 const char* const SUPPORTED_ACTIONS[] = {
@@ -93,33 +111,42 @@ String stored_pass = "";
 String stored_tv_ip = DEFAULT_TV_IP;
 String stored_tv_auth = DEFAULT_TV_AUTH;
 String api_token = "";
-uint32_t config_rev = 0;
-bool events_enabled = false;
+uint32_t config_rev = 0;      
+bool events_enabled = false;  
 int stored_tv_port = DEFAULT_TV_PORT;
 int pairingReqToken = 0;
 
-// 3 Independent Host Profiles + TV Profile
-String dev_names[3] = { "Host 1", "Host 2", "Host 3" };
-String dev_bindings[3][11];
+// 3 Separate Profiles for Device 1, Device 2, Device 3 + TV Profile
+String dev_names[3] = { "Device 1", "Device 2", "Device 3" };
+String dev_bindings[3][SLOT_COUNT];
 String tv_name = "TV";
-String tv_bindings[11];
+String tv_bindings[SLOT_COUNT];
 
 PadMode currentMode = MODE_BLE;
-uint8_t currentBleSlot = 0; // 0 = Host 1, 1 = Host 2, 2 = Host 3
+uint8_t currentBleSlot = 0; // 0 = Device 1, 1 = Device 2, 2 = Device 3
 String bleDeviceName = "Studio Pad 1";
 
 bool inSetupMode = false;
 bool setup_done = false;
 bool mdnsStarted = false;
 
-// Macro Execution & Panic-Cancel State
-bool macroRunning = false;
-volatile bool macroAbortRequested = false;
-
 // OTA Stream Flash Tracking
 size_t otaTotalSize = 0;
 size_t otaBytesWritten = 0;
-int otaLastPercent = -1;
+bool otaActive = false;               // true between /api/ota/begin and /api/ota/end
+bool inputLockout = false;            // swallow button events after a macro abort until everything is released
+bool encPressArmed = false;           // dial click fires on release, unless it became a push-turn chord
+bool encChordUsed = false;
+bool encoderAccelEnabled = true;      // velocity-scaled volume / channel steps
+bool tv_enabled = true;               // false = TV mode fully off (Mode key, TV profile, TV/APP actions)
+unsigned long lastEncAccelTime = 0;
+unsigned long lastEnc2AccelTime = 0;
+String bootReason = "";
+String lastAbnormalReset = "";
+uint32_t abnormalResets = 0;
+unsigned long otaLastActivity = 0;
+String setupSsid = "";
+String setupPass = "";
 
 Preferences prefs;
 WebServer server(80);
@@ -145,7 +172,6 @@ unsigned long toastExpiry = 0;
 bool screenDirty = true;
 const unsigned long DEBOUNCE_TIME = 35;
 unsigned long modeBtnPressStart = 0;
-unsigned long lastEncoderTurnMs = 0;
 
 // -----------------------------------------------------------------------------
 // Buxton State-Table Encoder
@@ -167,6 +193,19 @@ void IRAM_ATTR isrEncoder() {
   else if (result == 0x20) encoderDelta--;
 }
 
+#if ENCODER2_ENABLED
+volatile int encoderDelta2 = 0;
+volatile uint8_t encState2 = 0;
+
+void IRAM_ATTR isrEncoder2() {
+  uint8_t pinstate = (digitalRead(PIN_ENC2_CLK) << 1) | digitalRead(PIN_ENC2_DT);
+  encState2 = ttable[encState2 & 0x0F][pinstate];
+  uint8_t result = encState2 & 0x30;
+  if (result == 0x10) encoderDelta2++;
+  else if (result == 0x20) encoderDelta2--;
+}
+#endif
+
 struct Button {
   uint8_t pin;
   bool currentState;
@@ -179,14 +218,16 @@ Button buttons[] = {
   { PIN_BTN5, HIGH, HIGH, 0 }, { PIN_BTN6, HIGH, HIGH, 0 },
   { PIN_BTN7, HIGH, HIGH, 0 }, { PIN_BTN8, HIGH, HIGH, 0 },
   { PIN_BTN_MODE, HIGH, HIGH, 0 }, { PIN_ENC_SW, HIGH, HIGH, 0 }
+#if ENCODER2_ENABLED
+  , { PIN_ENC2_SW, HIGH, HIGH, 0 }
+#endif
 };
-const size_t BUTTON_COUNT = sizeof(buttons) / sizeof(buttons[0]);
 
 // -----------------------------------------------------------------------------
-// Virtual MAC & Multi-Host Easy-Switch
+// Logitech M720-Style Virtual MAC & Multi-Host Switching
 // -----------------------------------------------------------------------------
 void setSlotMacAddress(uint8_t slot) {
-  if (slot == 0) return;
+  if (slot == 0) return; // Slot 0 uses default factory eFuse MAC
   uint64_t efuse = ESP.getEfuseMac();
   uint8_t baseMac[6];
   baseMac[0] = (uint8_t)(efuse);
@@ -195,7 +236,7 @@ void setSlotMacAddress(uint8_t slot) {
   baseMac[3] = (uint8_t)(efuse >> 24);
   baseMac[4] = (uint8_t)(efuse >> 32);
   baseMac[5] = (uint8_t)((efuse >> 40) + (slot * 4));
-  baseMac[0] &= ~0x01;
+  baseMac[0] &= ~0x01; // Ensure unicast
   esp_base_mac_addr_set(baseMac);
 }
 
@@ -207,7 +248,6 @@ void switchBleDevice(uint8_t newSlot) {
     char msg[24];
     snprintf(msg, sizeof(msg), "%s Active", dev_names[currentBleSlot].c_str());
     strncpy(toastMessage, msg, sizeof(toastMessage) - 1);
-    toastMessage[sizeof(toastMessage) - 1] = '\0';
     toastExpiry = millis() + 700;
     renderScreen();
     return;
@@ -220,17 +260,16 @@ void switchBleDevice(uint8_t newSlot) {
   char msg[24];
   snprintf(msg, sizeof(msg), "%s...", dev_names[newSlot].c_str());
   strncpy(toastMessage, msg, sizeof(toastMessage) - 1);
-  toastMessage[sizeof(toastMessage) - 1] = '\0';
   toastExpiry = millis() + 1500;
   renderScreen();
   delay(350);
-  ESP.restart();
+  ESP.restart(); // Reboots into the new Bluetooth identity & profile
 }
 
 // -----------------------------------------------------------------------------
-// Bounded JSON & String Helpers
+// Bounded JSON Helpers
 // -----------------------------------------------------------------------------
-const size_t MAX_REQUEST_BODY = 4096;
+const size_t MAX_REQUEST_BODY = 8192; // a full profile of long macros can exceed 4 KB
 
 String jsonQuote(const String& value) {
   String result = "\"";
@@ -329,51 +368,89 @@ bool jsonInt(const String& body, const char* key, int& out) {
   return true;
 }
 
-// Preserves trailing spaces and '\n' inside TEXT: payloads while trimming other tokens
-String trimSegmentPreservingText(const String& rawSeg) {
-  int lead = 0;
-  while (lead < (int)rawSeg.length() && isspace((unsigned char)rawSeg[lead])) ++lead;
-  String rest = rawSeg.substring(lead);
-  if (rest.startsWith("TEXT:")) {
-    return rest;
+// Reads a boolean sent as true/false or 1/0
+bool jsonFlag(const String& body, const char* key, bool& out) {
+  int v = 0;
+  if (jsonInt(body, key, v)) { out = (v != 0); return true; }
+  String needle = "\"" + String(key) + "\"";
+  int k = body.indexOf(needle);
+  if (k < 0) return false;
+  int colon = body.indexOf(':', k + needle.length());
+  if (colon < 0) return false;
+  int pos = colon + 1;
+  while (pos < (int)body.length() && isspace((unsigned char)body[pos])) ++pos;
+  if (body.startsWith("true", pos))  { out = true;  return true; }
+  if (body.startsWith("false", pos)) { out = false; return true; }
+  return false;
+}
+
+// Trims one "||" macro segment. TEXT: steps keep their trailing spaces / newlines
+// (only leading whitespace before the TEXT: keyword is removed).
+String trimMacroStep(const String& raw) {
+  unsigned int s = 0;
+  while (s < raw.length() && isspace((unsigned char)raw[s])) ++s;
+  String step = raw.substring(s);
+  if (!step.startsWith("TEXT:")) step.trim();
+  return step;
+}
+
+// DELAY:<ms>, digits only, 0..MAX_DELAY_MS
+bool parseDelayMs(const String& action, int& msOut) {
+  if (!action.startsWith("DELAY:")) return false;
+  String num = action.substring(6);
+  num.trim();
+  if (num.length() < 1 || num.length() > 5) return false;
+  for (size_t i = 0; i < num.length(); ++i) if (!isdigit((unsigned char)num[i])) return false;
+  int ms = num.toInt();
+  if (ms < 0 || ms > MAX_DELAY_MS) return false;
+  msOut = ms;
+  return true;
+}
+
+// REPEAT:<n> opens a loop block (1..MAX_REPEAT_COUNT) that is closed by END, e.g.
+//   REPEAT:3||MEDIA:NEXT||DELAY:200||END
+bool parseRepeat(const String& s, int& countOut) {
+  if (!s.startsWith("REPEAT:")) return false;
+  String num = s.substring(7);
+  num.trim();
+  if (num.length() < 1 || num.length() > 3) return false;
+  for (size_t i = 0; i < num.length(); ++i) if (!isdigit((unsigned char)num[i])) return false;
+  int n = num.toInt();
+  if (n < 1 || n > MAX_REPEAT_COUNT) return false;
+  countOut = n;
+  return true;
+}
+
+void splitMacro(const String& act, std::vector<String>& out) {
+  int start = 0;
+  while (start < (int)act.length()) {
+    int idx = act.indexOf("||", start);
+    out.push_back(trimMacroStep(idx >= 0 ? act.substring(start, idx) : act.substring(start)));
+    if (idx < 0) break;
+    start = idx + 2;
   }
-  rest.trim();
-  return rest;
 }
 
 bool isSupportedAction(const String& action) {
-  if (action == "" || action == "NONE") return true;
+  if (action == "" || action == "NONE") return true; // Unassigned is valid
   if (action.length() < 3 || action.length() > MAX_ACTION_LEN) return false;
 
-  // Validate multi-step macros recursively without stripping TEXT: trailing whitespace/newlines
+  // Validate multi-step macros (REPEAT/END blocks must be balanced)
   if (action.indexOf("||") >= 0) {
-    int start = 0;
-    while (start < (int)action.length()) {
-      int idx = action.indexOf("||", start);
-      String rawSub = (idx >= 0) ? action.substring(start, idx) : action.substring(start);
-      String sub = trimSegmentPreservingText(rawSub);
+    std::vector<String> steps;
+    splitMacro(action, steps);
+    int depth = 0, n = 0;
+    for (size_t k = 0; k < steps.size(); ++k) {
+      const String& sub = steps[k];
+      if (parseRepeat(sub, n)) { if (++depth > MAX_REPEAT_DEPTH) return false; continue; }
+      if (sub == "END") { if (depth == 0) return false; --depth; continue; }
       if (!isSupportedAction(sub)) return false;
-      if (idx < 0) break;
-      start = idx + 2;
     }
-    return true;
+    return depth == 0;
   }
 
-  // Native DELAY:<1..60000> support (up to 60 seconds per wait step in 10 bytes)
-  if (action.startsWith("DELAY:")) {
-    String rawMs = action.substring(6);
-    rawMs.trim();
-    if (rawMs.length() == 0 || rawMs.length() > 5) return false;
-    for (size_t i = 0; i < rawMs.length(); ++i) {
-      if (!isdigit((unsigned char)rawMs[i])) return false;
-    }
-    long ms = rawMs.toInt();
-    return (ms >= 1 && ms <= 60000);
-  }
-
-  for (size_t i = 0; i < SUPPORTED_ACTION_COUNT; ++i) {
-    if (action == SUPPORTED_ACTIONS[i]) return true;
-  }
+  if (action.startsWith("DELAY:")) { int ms = 0; return parseDelayMs(action, ms); }
+  for (size_t i = 0; i < SUPPORTED_ACTION_COUNT; ++i) if (action == SUPPORTED_ACTIONS[i]) return true;
   if (action.startsWith("SHORTCUT:")) {
     int firstColon = action.indexOf(':');
     int secondColon = action.indexOf(':', firstColon + 1);
@@ -398,22 +475,23 @@ bool jsonHasKey(const String& body, const char* key) {
 }
 
 int slotIndex(const String& slot) {
-  for (int i = 0; i < 11; ++i) if (slot == SLOT_IDS[i]) return i;
+  for (int i = 0; i < SLOT_COUNT; ++i) if (slot == SLOT_IDS[i]) return i;
   return -1;
 }
 
+// Routes profile IDs to the appropriate device slot index
 int profileToHostIndex(const String& profile) {
   if (profile == "HOST1" || profile == "H1" || profile == "DEV1" || profile == "D1") return 0;
   if (profile == "HOST2" || profile == "H2" || profile == "DEV2" || profile == "D2") return 1;
   if (profile == "HOST3" || profile == "H3" || profile == "DEV3" || profile == "D3") return 2;
-  return currentBleSlot;
+  return currentBleSlot; // "MAC" maps to the currently active device
 }
 
-bool validProfile(const String& profile) {
-  return profile == "MAC" || profile == "TV" ||
+bool validProfile(const String& profile) { 
+  return profile == "MAC" || profile == "TV" || 
          profile == "HOST1" || profile == "HOST2" || profile == "HOST3" ||
          profile == "H1" || profile == "H2" || profile == "H3" ||
-         profile == "DEV1" || profile == "DEV2" || profile == "DEV3";
+         profile == "DEV1" || profile == "DEV2" || profile == "DEV3"; 
 }
 
 bool validAlias(const String& value) {
@@ -443,17 +521,17 @@ bool validPin(const String& value) {
   return true;
 }
 
-String& profileName(const String& profile) {
+String& profileName(const String& profile) { 
   if (profile == "TV") return tv_name;
   return dev_names[profileToHostIndex(profile)];
 }
 
-String* profileBindings(const String& profile) {
+String* profileBindings(const String& profile) { 
   if (profile == "TV") return tv_bindings;
   return dev_bindings[profileToHostIndex(profile)];
 }
 
-const char* profilePrefix(const String& profile) {
+const char* profilePrefix(const String& profile) { 
   if (profile == "TV") return "t_";
   int idx = profileToHostIndex(profile);
   if (idx == 0) return "d1_";
@@ -469,7 +547,7 @@ String deviceId() {
 }
 
 void emitEvent(const String& json) {
-  if (events_enabled) Serial.println(json);
+  if (events_enabled && !otaActive) Serial.println(json);
 }
 
 void bumpRev() {
@@ -482,9 +560,8 @@ void saveProfile(const String& profile) {
   String* bindings = profileBindings(profile);
   prefs.begin("matrix", false);
   prefs.putString((String(profilePrefix(profile)) + "name").c_str(), profileName(profile));
-  for (int i = 0; i < 11; ++i) prefs.putString((String(profilePrefix(profile)) + SLOT_IDS[i]).c_str(), bindings[i]);
+  for (int i = 0; i < SLOT_COUNT; ++i) prefs.putString((String(profilePrefix(profile)) + SLOT_IDS[i]).c_str(), bindings[i]);
   prefs.end();
-  screenDirty = true;
   bumpRev();
 }
 
@@ -500,12 +577,12 @@ void saveBinding(const String& profile, int index, const String& action) {
 void resetProfile(const String& profile) {
   String* bindings = profileBindings(profile);
   const char* const* defaults = (profile == "TV" ? DEFAULT_TV_BINDINGS : DEFAULT_BLANK_BINDINGS);
-  for (int i = 0; i < 11; ++i) bindings[i] = defaults[i];
+  for (int i = 0; i < SLOT_COUNT; ++i) bindings[i] = defaults[i];
   if (profile == "TV") {
     tv_name = "TV";
   } else {
     int idx = profileToHostIndex(profile);
-    dev_names[idx] = String("Host ") + String(idx + 1);
+    dev_names[idx] = String("Device ") + String(idx + 1);
   }
   saveProfile(profile);
 }
@@ -513,8 +590,51 @@ void resetProfile(const String& profile) {
 bool tvIsConfigured() { return stored_tv_ip.length() > 0 || stored_tv_auth.length() > 0; }
 
 // -----------------------------------------------------------------------------
-// Low-Latency BLE Keystrokes, Panic-Cancel Wait & Media Controls
+// Low-Latency BLE Keystrokes & Media Controls
 // -----------------------------------------------------------------------------
+const char* resetReasonName(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON:   return "power_on";
+    case ESP_RST_EXT:       return "external";
+    case ESP_RST_SW:        return "software";
+    case ESP_RST_PANIC:     return "panic";
+    case ESP_RST_INT_WDT:   return "int_wdt";
+    case ESP_RST_TASK_WDT:  return "task_wdt";
+    case ESP_RST_WDT:       return "wdt";
+    case ESP_RST_DEEPSLEEP: return "deep_sleep";
+    case ESP_RST_BROWNOUT:  return "brownout";
+    default:                return "unknown";
+  }
+}
+
+// Remembers why the pad rebooted. Crashes, watchdog resets and brown-outs are counted in NVS.
+void recordBootReason() {
+  esp_reset_reason_t r = esp_reset_reason();
+  bootReason = resetReasonName(r);
+  bool abnormal = (r == ESP_RST_PANIC || r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT || r == ESP_RST_WDT || r == ESP_RST_BROWNOUT);
+  prefs.begin("diag", false);
+  abnormalResets = prefs.getUInt("abn_cnt", 0);
+  lastAbnormalReset = prefs.getString("abn_last", "");
+  if (abnormal) {
+    abnormalResets++;
+    lastAbnormalReset = bootReason;
+    prefs.putUInt("abn_cnt", abnormalResets);
+    prefs.putString("abn_last", lastAbnormalReset);
+  }
+  prefs.end();
+}
+
+void clearDiagnosticsLog() {
+  prefs.begin("diag", false); prefs.clear(); prefs.end();
+  abnormalResets = 0; lastAbnormalReset = "";
+}
+
+void setEncoderAccel(bool on) {
+  encoderAccelEnabled = on;
+  prefs.begin("config", false); prefs.putBool("enc_accel", on); prefs.end();
+  emitEvent(String("{\"event\":\"encoder\",\"accel\":") + (on ? "true" : "false") + "}");
+}
+
 void showToast(const char* msg, unsigned long durationMs = 1000) {
   strncpy(toastMessage, msg, sizeof(toastMessage) - 1);
   toastMessage[sizeof(toastMessage) - 1] = '\0';
@@ -523,13 +643,33 @@ void showToast(const char* msg, unsigned long durationMs = 1000) {
 }
 
 void setActiveMode(PadMode mode) {
+  if (mode == MODE_TV && !tv_enabled) { showToast("TV Mode Off", 800); return; }
   currentMode = mode;
   prefs.begin("config", false); prefs.putUChar("mode", mode == MODE_TV ? 1 : 0); prefs.end();
-  String toast = (mode == MODE_BLE ? dev_names[currentBleSlot] : tv_name);
+  String toast = (mode == MODE_BLE ? dev_names[currentBleSlot] : "Profile: TV");
   showToast(toast.c_str(), 800);
   screenDirty = true;
-  String activeTag = (mode == MODE_BLE ? (String("HOST") + String(currentBleSlot + 1)) : String("TV"));
-  emitEvent(String("{\"event\":\"profile\",\"active\":\"") + activeTag + "\"}");
+  emitEvent(String("{\"event\":\"profile\",\"active\":\"") + (mode == MODE_BLE ? "MAC" : "TV") + "\"}");
+}
+
+const char* tvUnavailableMsg() {
+  return tv_enabled ? "Connect Wi-Fi and configure the TV before testing this action."
+                    : "TV mode is turned off on the pad.";
+}
+
+// Turns TV mode on/off. Turning it off while the TV profile is active falls back to the current host.
+// TV bindings, Wi-Fi and pairing data are kept, so switching it back on restores everything.
+void setTvEnabled(bool on) {
+  tv_enabled = on;
+  prefs.begin("config", false);
+  prefs.putBool("tv_enabled", on);
+  bool fellBack = (!on && currentMode == MODE_TV);
+  if (fellBack) { currentMode = MODE_BLE; prefs.putUChar("mode", 0); }
+  prefs.end();
+  showToast(on ? "TV Mode On" : "TV Mode Off", 800);
+  screenDirty = true;
+  emitEvent(String("{\"event\":\"tv\",\"enabled\":") + (on ? "true" : "false") + "}");
+  if (fellBack) emitEvent("{\"event\":\"profile\",\"active\":\"MAC\"}");
 }
 
 void sendBleMedia(const MediaKeyReport key) {
@@ -538,45 +678,6 @@ void sendBleMedia(const MediaKeyReport key) {
 
 void sendBleKey(uint8_t key) {
   bleKeyboard.press(key); delay(10); bleKeyboard.release(key);
-}
-
-// Polls physical buttons & USB serial cancel command during long macro waits so
-// pressing any physical key immediately aborts runaway sequences safely.
-bool smartDelayMs(unsigned long durationMs) {
-  unsigned long start = millis();
-  // Brief guard after initial press so the triggering button's bounce doesn't self-cancel
-  while (millis() - start < durationMs) {
-    if (macroAbortRequested) return false;
-    server.handleClient();
-
-    if (Serial.available()) {
-      String peekLine = Serial.readStringUntil('\n');
-      peekLine.trim();
-      if (peekLine.indexOf("/api/macro/cancel") >= 0) {
-        macroAbortRequested = true;
-        Serial.println("{\"ok\":true,\"message\":\"Macro cancelled.\"}");
-        return false;
-      }
-    }
-
-    unsigned long now = millis();
-    for (size_t i = 0; i < BUTTON_COUNT; ++i) {
-      int reading = digitalRead(buttons[i].pin);
-      if (reading != buttons[i].lastState) buttons[i].lastDebounceTime = now;
-      if (now - buttons[i].lastDebounceTime > DEBOUNCE_TIME && reading != buttons[i].currentState) {
-        buttons[i].currentState = reading;
-        if (reading == LOW && (now - start > 160)) {
-          macroAbortRequested = true;
-          buttons[i].lastState = reading;
-          return false;
-        }
-      }
-      buttons[i].lastState = reading;
-    }
-    if (screenDirty) renderScreen();
-    delay(4);
-  }
-  return !macroAbortRequested;
 }
 
 // -----------------------------------------------------------------------------
@@ -650,12 +751,14 @@ void vizioWorkerTask(void*) {
 }
 
 bool dispatchKey(int codeset, int code) {
+  if (!tv_enabled) return false;
   VizioCommand cmd = {};
   cmd.type = CMD_KEY; cmd.codeset = codeset; cmd.code = code;
   return xQueueSend(vizioQueue, &cmd, 0) == pdTRUE;
 }
 
 bool dispatchApp(const char* appId, int nameSpace, const char* message) {
+  if (!tv_enabled) return false;
   VizioCommand cmd = {};
   cmd.type = CMD_APP; cmd.nameSpace = nameSpace;
   snprintf(cmd.appId, sizeof(cmd.appId), "%s", appId);
@@ -755,9 +858,80 @@ bool executeTvApp(const String& act) {
   return dispatchApp(appId.c_str(), nameSpace, url.c_str());
 }
 
+// -----------------------------------------------------------------------------
+// Macro runtime: abort-on-keypress, scoped state, step tracing
+// -----------------------------------------------------------------------------
+static const size_t kButtonCount = sizeof(buttons) / sizeof(buttons[0]);
+static bool macroActive = false;
+static bool macroAborted = false;
+static bool macroSnapDown[16];
+static unsigned long macroLowSince[16];
+
+void macroBegin() {
+  macroActive = true;
+  macroAborted = false;
+  for (size_t i = 0; i < kButtonCount; ++i) {
+    macroSnapDown[i] = (digitalRead(buttons[i].pin) == LOW); // held at start (e.g. the trigger key) never aborts
+    macroLowSince[i] = 0;
+  }
+}
+
+// A NEW press on any pad button (key, Mode or dial) while a macro runs stops it.
+bool macroPollAbort() {
+  if (!macroActive) return false;
+  if (macroAborted) return true;
+  unsigned long now = millis();
+  for (size_t i = 0; i < kButtonCount; ++i) {
+    if (digitalRead(buttons[i].pin) != LOW) { macroSnapDown[i] = false; macroLowSince[i] = 0; continue; }
+    if (macroSnapDown[i]) continue;
+    if (macroLowSince[i] == 0) macroLowSince[i] = now;
+    else if (now - macroLowSince[i] >= 15) { macroAborted = true; return true; } // 15 ms debounce
+  }
+  return false;
+}
+
+void macroEnd() {
+  if (macroAborted) {
+    bleKeyboard.releaseAll();      // never leave Ctrl/Shift/Alt/Cmd stuck
+    inputLockout = true;           // the aborting press must not trigger anything else
+    showToast("Macro stopped", 900);
+    emitEvent("{\"event\":\"macro\",\"state\":\"aborted\"}");
+  }
+  macroActive = false;
+}
+
+// Opens a macro context for the outermost action only (nested calls reuse it).
+struct MacroScope {
+  bool owner;
+  MacroScope() : owner(!macroActive) { if (owner) macroBegin(); }
+  ~MacroScope() { if (owner) macroEnd(); }
+};
+
+// delay() that notices an abort press within ~5 ms
+void interruptibleDelay(unsigned long ms) {
+  if (!macroActive) { delay(ms); return; }
+  unsigned long end = millis() + ms;
+  while (!macroAborted) {
+    if (macroPollAbort()) break;
+    long rem = (long)(end - millis());
+    if (rem <= 0) break;
+    delay(rem > 5 ? (unsigned long)5 : (unsigned long)rem);
+  }
+}
+
+String actionKind(const String& s) {   // "TEXT:secret" -> "TEXT" (never leaks typed content)
+  int c = s.indexOf(':');
+  return (c > 0) ? s.substring(0, c) : s;
+}
+
 bool executeText(const String& act) {
-  String text = act.substring(5);
-  bleKeyboard.print(text);
+  MacroScope scope;
+  for (size_t i = 5; i < act.length(); ++i) {
+    if (macroPollAbort()) break;
+    char c = act[i];
+    if (c == '\r') continue;
+    bleKeyboard.write((uint8_t)c);
+  }
   return true;
 }
 
@@ -772,65 +946,55 @@ bool isTvAction(const String& action) {
          action.startsWith("TVKEY:") || action.startsWith("TVAPP:");
 }
 
-bool isVelocityAcceleratable(const String& act) {
-  return act == "MEDIA:VOL_UP" || act == "MEDIA:VOL_DOWN" ||
-         act == "TV:VOL_UP" || act == "TV:VOL_DOWN";
-}
-
 bool executeAction(const String& act) {
-  if (act == "" || act == "NONE") return true;
+  if (otaActive) return false; // radios and key handling are stopped during stream flashing
+  // If button is unassigned/blank, do nothing safely
+  if (act == "" || act == "NONE") return true; 
 
-  // Multi-Step Macros (action1||DELAY:2500||action2) with Panic-Cancel support
+  // --- Handle Multi-Step Macros (action1||action2||action3, with REPEAT:n ... END blocks) ---
   if (act.indexOf("||") >= 0) {
-    bool isTopLevel = !macroRunning;
-    if (isTopLevel) {
-      macroRunning = true;
-      macroAbortRequested = false;
-    }
-
-    int start = 0;
-    while (start < (int)act.length()) {
-      if (macroAbortRequested) break;
-      int idx = act.indexOf("||", start);
-      String rawSub = (idx >= 0) ? act.substring(start, idx) : act.substring(start);
-      String sub = trimSegmentPreservingText(rawSub);
-      if (sub.length() > 0) {
-        executeAction(sub);
-        if (renderScreen, screenDirty) renderScreen();
-        if (idx >= 0 && !smartDelayMs(50)) break;
+    std::vector<String> steps;
+    splitMacro(act, steps);
+    MacroScope scope;
+    struct Frame { size_t start; int remaining; } stack[MAX_REPEAT_DEPTH];
+    int depth = 0, executed = 0, n = 0;
+    const size_t total = steps.size();
+    if (events_enabled) emitEvent(String("{\"event\":\"macro\",\"state\":\"start\",\"steps\":") + String((unsigned)total) + "}");
+    size_t i = 0;
+    while (i < total && !macroAborted) {
+      if (macroPollAbort()) break;
+      const String& s = steps[i];
+      if (parseRepeat(s, n)) {
+        if (depth < MAX_REPEAT_DEPTH) { stack[depth].start = i + 1; stack[depth].remaining = n; ++depth; }
+        ++i; continue;
       }
-      if (idx < 0) break;
-      start = idx + 2;
-    }
-
-    if (isTopLevel) {
-      bool wasAborted = macroAbortRequested;
-      macroRunning = false;
-      macroAbortRequested = false;
-      if (wasAborted) {
-        if (bleKeyboard.isConnected()) bleKeyboard.releaseAll();
-        showToast("Macro Cancelled", 900);
-        renderScreen();
-        emitEvent("{\"event\":\"macro_cancel\"}");
-        return false;
+      if (s == "END") {
+        if (depth > 0) {
+          if (--stack[depth - 1].remaining > 0) { i = stack[depth - 1].start; continue; }
+          --depth;
+        }
+        ++i; continue;
       }
+      if (s.length() > 0) {
+        if (++executed > MAX_MACRO_STEPS) break;
+        if (events_enabled) emitEvent(String("{\"event\":\"macro\",\"state\":\"step\",\"step\":") + String((unsigned)(i + 1)) +
+                                      ",\"of\":" + String((unsigned)total) + ",\"kind\":" + jsonQuote(actionKind(s)) + "}");
+        executeAction(s);
+        interruptibleDelay(50); // Pause between macro steps
+      }
+      ++i;
     }
+    if (events_enabled && !macroAborted) emitEvent("{\"event\":\"macro\",\"state\":\"end\"}");
     return true;
   }
+  // ------------------------------------------------------------
 
-  // Native custom delay step (e.g., DELAY:2500 for 2.5s multi-screen login/2FA wait)
+  // Support for custom delay step if specified by web app (e.g., DELAY:200)
   if (act.startsWith("DELAY:")) {
-    long ms = act.substring(6).toInt();
-    if (ms > 0) {
-      if (ms >= 500) {
-        char waitMsg[24];
-        if (ms >= 1000) snprintf(waitMsg, sizeof(waitMsg), "Wait %ld.%lds...", ms / 1000, (ms % 1000) / 100);
-        else snprintf(waitMsg, sizeof(waitMsg), "Wait %ldms...", ms);
-        showToast(waitMsg, (unsigned long)ms);
-        renderScreen();
-      }
-      smartDelayMs((unsigned long)ms);
-    }
+    int ms = 0;
+    if (!parseDelayMs(act, ms)) return false;
+    MacroScope scope;
+    if (ms > 0) interruptibleDelay(ms);
     return true;
   }
 
@@ -841,6 +1005,7 @@ bool executeAction(const String& act) {
   else if (act == "BLE:NEXT_HOST") { switchBleDevice((currentBleSlot + 1) % MAX_BLE_SLOTS); return true; }
 
   if (isBleAction(act) && !bleKeyboard.isConnected()) { showToast("BLE Disconnected", 700); return false; }
+  if (isTvAction(act) && !tv_enabled) { showToast("TV Mode Off", 700); return false; }
   if (isTvAction(act) && (WiFi.status() != WL_CONNECTED || !tvIsConfigured())) { showToast("TV Unavailable", 700); return false; }
 
   if (act == "MEDIA:PLAY_PAUSE") { sendBleMedia(KEY_MEDIA_PLAY_PAUSE); showToast("Play/Pause"); }
@@ -925,7 +1090,7 @@ bool executeAction(const String& act) {
 String profileJson(const String& id) {
   String* bindings = profileBindings(id);
   String json = "{\"id\":" + jsonQuote(id) + ",\"name\":" + jsonQuote(profileName(id)) + ",\"controls\":{";
-  for (int i = 0; i < 11; ++i) {
+  for (int i = 0; i < SLOT_COUNT; ++i) {
     if (i) json += ',';
     json += jsonQuote(SLOT_IDS[i]) + ":" + jsonQuote(bindings[i]);
   }
@@ -934,21 +1099,27 @@ String profileJson(const String& id) {
 
 String buildStatusJson() {
   const bool wifi = WiFi.status() == WL_CONNECTED;
-  String json = "{\"ok\":true,\"setup_mode\":" + String(inSetupMode ? "true" : "false") +
-                ",\"setup_done\":" + String(setup_done ? "true" : "false") +
-                ",\"setupMode\":" + String(inSetupMode ? "true" : "false") +
-                ",\"api_version\":" + String(API_VERSION) + ",\"rev\":" + String(config_rev) + ",";
+  String json = "{\"ok\":true,\"setup_mode\":" + String(inSetupMode ? "true" : "false") + 
+                ",\"setup_done\":" + String(setup_done ? "true" : "false") + 
+                ",\"setupMode\":" + String(inSetupMode ? "true" : "false") + 
+                ",\"api_version\":" + String(API_VERSION) + ",\"rev\":" + String(config_rev) +
+                ",\"capabilities\":[\"delay\",\"repeat\",\"macro_abort\",\"macro_trace\",\"push_turn\",\"encoder_accel\",\"diagnostics\",\"tv_toggle\"" + String(ENCODER2_ENABLED ? ",\"encoder2\"" : "") + "],";
   json += "\"device\":{\"id\":" + jsonQuote(deviceId()) + ",\"name\":\"Studio MacroPad\",\"firmware\":\"" FIRMWARE_VERSION "\",\"connection_type\":" + jsonQuote(wifi ? "USB + Wi-Fi" : "USB") + "},";
   json += "\"connection\":{\"wifi_connected\":" + String(wifi ? "true" : "false") + ",\"ip\":" + jsonQuote(wifi ? WiFi.localIP().toString() : WiFi.softAPIP().toString()) + ",\"ble_connected\":" + String(bleKeyboard.isConnected() ? "true" : "false") + "},";
   json += "\"ble\":{\"active_host\":" + String(currentBleSlot + 1) + ",\"max_hosts\":" + String(MAX_BLE_SLOTS) + ",\"device_name\":" + jsonQuote(bleDeviceName) + "},";
-  json += "\"diagnostics\":{\"free_heap\":" + String(ESP.getFreeHeap()) + ",\"http_api_enabled\":" + String(api_token.length() > 0 ? "true" : "false") + ",\"events_enabled\":" + String(events_enabled ? "true" : "false") + "},";
-  json += "\"tv\":{\"configured\":" + String(tvIsConfigured() ? "true" : "false") + ",\"paired\":" + String(stored_tv_auth.length() > 0 ? "true" : "false") + ",\"host\":" + jsonQuote(stored_tv_ip) + ",\"port\":" + String(stored_tv_port) + "},";
-
-  json += "\"profiles\":{\"active\":" + jsonQuote(currentMode == MODE_BLE ? (String("HOST") + String(currentBleSlot + 1)) : "TV") +
+  json += "\"diagnostics\":{\"free_heap\":" + String(ESP.getFreeHeap()) + ",\"http_api_enabled\":" + String(api_token.length() > 0 ? "true" : "false") + ",\"events_enabled\":" + String(events_enabled ? "true" : "false") +
+          ",\"boot_reason\":" + jsonQuote(bootReason) + ",\"abnormal_resets\":" + String(abnormalResets) +
+          ",\"last_abnormal_reset\":" + jsonQuote(lastAbnormalReset) + ",\"min_free_heap\":" + String(ESP.getMinFreeHeap()) +
+          ",\"uptime_s\":" + String((unsigned long)(millis() / 1000)) + "},\"encoder\":{\"accel\":" + String(encoderAccelEnabled ? "true" : "false") + "},";
+  json += "\"tv\":{\"enabled\":" + String(tv_enabled ? "true" : "false") + ",\"configured\":" + String(tvIsConfigured() ? "true" : "false") + ",\"paired\":" + String(stored_tv_auth.length() > 0 ? "true" : "false") + ",\"host\":" + jsonQuote(stored_tv_ip) + ",\"port\":" + String(stored_tv_port) + "},";
+  
+  // Returns all 4 profiles (Host 1, Host 2, Host 3, TV)
+  json += "\"profiles\":{\"active\":" + jsonQuote(currentMode == MODE_BLE ? (String("HOST") + String(currentBleSlot + 1)) : "TV") + 
           ",\"items\":[" + profileJson("HOST1") + "," + profileJson("HOST2") + "," + profileJson("HOST3") + "," + profileJson("TV") + "]},";
-
+  
   json += "\"ble_slot\":" + String(currentBleSlot + 1) + ",\"wifi_connected\":" + String(wifi ? "true" : "false") + ",\"ip\":" + jsonQuote(wifi ? WiFi.localIP().toString() : WiFi.softAPIP().toString()) + ",\"heap\":" + String(ESP.getFreeHeap()) + ",\"ssid\":" + jsonQuote(stored_ssid) + ",\"tv_ip\":" + jsonQuote(stored_tv_ip) + ",\"tv_port\":" + String(stored_tv_port) + ",\"has_auth\":" + String(stored_tv_auth.length() > 0 ? "true" : "false") + ",";
 
+  // Flat structure for website backwards compatibility:
   for (int i = 0; i < 8; ++i) {
     json += "\"mac_" + String(SLOT_IDS[i]) + "\":" + jsonQuote(dev_bindings[currentBleSlot][i]) + ",";
   }
@@ -966,9 +1137,12 @@ void sendStatus() {
   sendJson(200, buildStatusJson());
 }
 
-bool readProfilePayload(const String& body, String& profile, String values[11]) {
+bool readProfilePayload(const String& body, String& profile, String values[SLOT_COUNT]) {
   if (!jsonString(body, "profile", profile, 6) || !validProfile(profile)) return false;
-  for (int i = 0; i < 11; ++i) {
+  String* current = profileBindings(profile);
+  for (int i = 0; i < SLOT_COUNT; ++i) {
+    // push_cw / push_ccw are optional so older web-app builds don't wipe them
+    if (i >= BASE_SLOT_COUNT && !jsonHasKey(body, SLOT_IDS[i])) { values[i] = current[i]; continue; }
     if (!jsonString(body, SLOT_IDS[i], values[i], MAX_ACTION_LEN) || !isSupportedAction(values[i])) return false;
   }
   return true;
@@ -977,10 +1151,10 @@ bool readProfilePayload(const String& body, String& profile, String values[11]) 
 void handleSaveBinding() {
   String body, profile, slot, action;
   if (!requestBody(body)) return;
-  if (!jsonString(body, "profile", profile, 6) || !validProfile(profile) ||
-      !jsonString(body, "slot", slot, 8) || slotIndex(slot) < 0 ||
+  if (!jsonString(body, "profile", profile, 6) || !validProfile(profile) || 
+      !jsonString(body, "slot", slot, 8) || slotIndex(slot) < 0 || 
       !jsonString(body, "action", action, MAX_ACTION_LEN) || !isSupportedAction(action)) {
-    sendError(422, "invalid_assignment", "Use a supported profile, control, and action.");
+    sendError(422, "invalid_assignment", "Use a supported profile, control, and action."); 
     return;
   }
   saveBinding(profile, slotIndex(slot), action);
@@ -988,100 +1162,114 @@ void handleSaveBinding() {
     setup_done = true;
     prefs.begin("config", false); prefs.putBool("setup_done", true); prefs.end();
   }
-  sendJson(200, "{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Assignment saved to the device.\"}");
+  sendJson(200, "{\"ok\":true,\"message\":\"Assignment saved to the device.\"}");
 }
 
 void handleSaveProfile() {
-  String body, profile, values[11];
+  String body, profile, values[SLOT_COUNT];
   if (!requestBody(body)) return;
   if (!readProfilePayload(body, profile, values)) {
     sendError(422, "invalid_profile", "Submit all supported controls with valid actions.");
     return;
   }
   String* bindings = profileBindings(profile);
-  for (int i = 0; i < 11; ++i) bindings[i] = values[i];
+  for (int i = 0; i < SLOT_COUNT; ++i) bindings[i] = values[i];
   saveProfile(profile);
-  sendJson(200, "{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Profile saved to the device.\"}");
+  sendJson(200, "{\"ok\":true,\"message\":\"Profile saved to the device.\"}");
 }
 
 void handleRenameProfile() {
   String body, profile, name;
   if (!requestBody(body)) return;
   if (!jsonString(body, "profile", profile, 6) || !validProfile(profile) || !jsonString(body, "name", name, 20) || !validAlias(name)) {
-    sendError(422, "invalid_name", "Names use 1-20 letters, numbers, spaces, hyphens, or underscores."); return;
+    sendError(422, "invalid_name", "Names use 1–20 letters, numbers, spaces, hyphens, or underscores."); return;
   }
-  profileName(profile) = name;
+  profileName(profile) = name; 
   saveProfile(profile);
-  sendJson(200, "{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Profile renamed.\"}");
+  sendJson(200, "{\"ok\":true,\"message\":\"Profile renamed.\"}");
 }
 
 void handleCopyProfile() {
   String body, source, target;
   if (!requestBody(body)) return;
   if (!jsonString(body, "source", source, 6) || !jsonString(body, "target", target, 6) || !validProfile(source) || !validProfile(target) || source == target) {
-    sendError(422, "invalid_copy", "Choose two different supported host profiles."); return;
+    sendError(422, "invalid_copy", "Choose two different supported device profiles."); return;
   }
   String* from = profileBindings(source); String* to = profileBindings(target);
-  for (int i = 0; i < 11; ++i) to[i] = from[i];
+  for (int i = 0; i < SLOT_COUNT; ++i) to[i] = from[i];
   saveProfile(target);
-  sendJson(200, "{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Assignments copied to the target profile.\"}");
+  sendJson(200, "{\"ok\":true,\"message\":\"Assignments copied to the target profile.\"}");
 }
 
-void handleExportConfig() {
-  if (!requireAuth()) return;
+String buildExportJson() {
   String json = "{\"schema\":\"studio-pad-config\",\"version\":2,\"tv_name\":" + jsonQuote(tv_name);
   for (int h = 0; h < 3; ++h) {
     String pfx = "h" + String(h + 1) + "_";
     json += ",\"" + pfx + "name\":" + jsonQuote(dev_names[h]);
-    for (int i = 0; i < 11; ++i) {
+    for (int i = 0; i < SLOT_COUNT; ++i) {
       json += ",\"" + pfx + String(SLOT_IDS[i]) + "\":" + jsonQuote(dev_bindings[h][i]);
     }
   }
-  for (int i = 0; i < 11; ++i) {
+  for (int i = 0; i < SLOT_COUNT; ++i) {
     json += ",\"tv_" + String(SLOT_IDS[i]) + "\":" + jsonQuote(tv_bindings[i]);
   }
   json += ",\"mac_name\":" + jsonQuote(dev_names[currentBleSlot]);
-  for (int i = 0; i < 11; ++i) {
+  for (int i = 0; i < SLOT_COUNT; ++i) {
     json += ",\"mac_" + String(SLOT_IDS[i]) + "\":" + jsonQuote(dev_bindings[currentBleSlot][i]);
   }
   json += "}";
-  server.sendHeader("Content-Disposition", "attachment; filename=studio-pad-backup.json");
-  sendJson(200, json);
+  return json;
 }
 
-void handleImportConfig() {
-  String body, schema;
-  if (!requestBody(body)) return;
+// Reads one binding from a backup. Missing keys are ignored; oversized or unsupported
+// values are skipped (the current assignment is kept) instead of being stored and then
+// wiped by loadConfiguration() on the next boot.
+void importBinding(const String& body, const String& key, String& dest, int& skipped) {
+  if (!jsonHasKey(body, key.c_str())) return;
+  String value;
+  if (jsonString(body, key.c_str(), value, MAX_ACTION_LEN) && isSupportedAction(value)) dest = value;
+  else skipped++;
+}
+
+bool applyConfigImport(const String& body, int& skipped) {
+  String schema;
   int version = 0;
-  if (!jsonString(body, "schema", schema, 32) || schema != "studio-pad-config" || !jsonInt(body, "version", version)) {
-    sendError(422, "incompatible_backup", "This is not a compatible Studio Pad configuration backup."); return;
-  }
+  skipped = 0;
+  if (!jsonString(body, "schema", schema, 32) || schema != "studio-pad-config" || !jsonInt(body, "version", version)) return false;
+
+  // Restore TV
   String impTvName;
   if (jsonString(body, "tv_name", impTvName, 20) && validAlias(impTvName)) tv_name = impTvName;
-  for (int i = 0; i < 11; ++i) {
-    String tvKey = String("tv_") + SLOT_IDS[i];
-    String candidate;
-    if (jsonHasKey(body, tvKey.c_str()) && jsonString(body, tvKey.c_str(), candidate, MAX_ACTION_LEN) && isSupportedAction(candidate)) {
-      tv_bindings[i] = candidate;
-    }
-  }
+  for (int i = 0; i < SLOT_COUNT; ++i) importBinding(body, String("tv_") + SLOT_IDS[i], tv_bindings[i], skipped);
   saveProfile("TV");
 
+  // Restore 3 Devices
   for (int h = 0; h < 3; ++h) {
     String pfx = "h" + String(h + 1) + "_";
     String hName;
     if (jsonString(body, (pfx + "name").c_str(), hName, 20) && validAlias(hName)) dev_names[h] = hName;
-    for (int i = 0; i < 11; ++i) {
-      String key = pfx + SLOT_IDS[i];
-      String candidate;
-      if (jsonHasKey(body, key.c_str()) && jsonString(body, key.c_str(), candidate, MAX_ACTION_LEN) && isSupportedAction(candidate)) {
-        dev_bindings[h][i] = candidate;
-      }
-    }
-    String hTag = String("HOST") + String(h + 1);
-    saveProfile(hTag);
+    for (int i = 0; i < SLOT_COUNT; ++i) importBinding(body, pfx + SLOT_IDS[i], dev_bindings[h][i], skipped);
+    saveProfile(String("HOST") + String(h + 1));
   }
-  sendJson(200, "{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Configuration restored to the device.\"}");
+  return true;
+}
+
+void handleExportConfig() {
+  if (!requireAuth()) return;
+  server.sendHeader("Content-Disposition", "attachment; filename=studio-pad-backup.json");
+  sendJson(200, buildExportJson());
+}
+
+void handleImportConfig() {
+  String body;
+  if (!requestBody(body)) return;
+  int skipped = 0;
+  if (!applyConfigImport(body, skipped)) {
+    sendError(422, "incompatible_backup", "This is not a compatible Studio Pad configuration backup."); return;
+  }
+  String msg = "Configuration restored to the device.";
+  if (skipped > 0) msg += " " + String(skipped) + " unsupported assignment(s) were skipped.";
+  sendJson(200, "{\"ok\":true,\"message\":" + jsonQuote(msg) + "}");
 }
 
 void handleSaveWifi() {
@@ -1110,6 +1298,7 @@ void handleSaveTvConfig() {
 }
 
 void handleTvTest() {
+  if (!tv_enabled) { sendError(409, "tv_disabled", "TV mode is turned off on the pad."); return; }
   if (WiFi.status() != WL_CONNECTED || !tvIsConfigured()) { sendError(409, "tv_unavailable", "Connect Wi-Fi and configure the TV before testing it."); return; }
   String response = sendVizioRequestRaw("GET", "/state/device/power_mode", "");
   if (response.indexOf("200 OK") != -1 || response.indexOf("\"ITEMS\"") != -1) sendJson(200, "{\"ok\":true,\"message\":\"The TV responded.\"}");
@@ -1135,7 +1324,7 @@ void handlePairStart() {
 void handlePairSubmit() {
   String body, pin;
   if (!requestBody(body)) return;
-  if (!jsonString(body, "pin", pin, 8) || !validPin(pin) || pairingReqToken == 0) { sendError(422, "invalid_pin", "Request a pairing PIN first, then enter the 4-8 digit value from the TV."); return; }
+  if (!jsonString(body, "pin", pin, 8) || !validPin(pin) || pairingReqToken == 0) { sendError(422, "invalid_pin", "Request a pairing PIN first, then enter the 4–8 digit value from the TV."); return; }
   char payload[256];
   snprintf(payload, sizeof(payload), "{\"DEVICE_ID\":\"esp32_macropad\",\"CHALLENGE_TYPE\":1,\"RESPONSE_VALUE\":\"%s\",\"PAIRING_REQ_TOKEN\":%d}", pin.c_str(), pairingReqToken);
   String response = sendVizioRequestRaw("PUT", "/pairing/pair", payload);
@@ -1161,24 +1350,25 @@ void handleResetDeviceSettings() {
   String body, confirm;
   if (!requestBody(body)) return;
   if (!jsonString(body, "confirm", confirm, 8) || confirm != "RESET") { sendError(422, "confirmation_required", "Type the confirmation value before restoring profile defaults."); return; }
-  resetProfile("HOST1");
-  resetProfile("HOST2");
-  resetProfile("HOST3");
+  resetProfile("HOST1"); 
+  resetProfile("HOST2"); 
+  resetProfile("HOST3"); 
   resetProfile("TV");
-  sendJson(200, "{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"All profiles restored to defaults.\"}");
+  sendJson(200, "{\"ok\":true,\"message\":\"All profiles restored to blank defaults.\"}");
 }
 
 void handleTestAction() {
   String body, action;
   if (!requestBody(body)) return;
   if (!jsonString(body, "action", action, MAX_ACTION_LEN) || !isSupportedAction(action)) { sendError(422, "unsupported_action", "That action is not available on this firmware."); return; }
-  if (!executeAction(action)) { sendError(409, "action_unavailable", isBleAction(action) ? "Connect Bluetooth before testing this action." : "Connect Wi-Fi and configure the TV before testing this action."); return; }
+  if (!executeAction(action)) { sendError(409, "action_unavailable", isBleAction(action) ? "Connect Bluetooth before testing this action." : tvUnavailableMsg()); return; }
   sendJson(202, "{\"ok\":true,\"message\":\"Action accepted by Studio Pad.\"}");
 }
 
 void handleTestKey() {
   String body; int codeset = 0, code = 0;
   if (!requestBody(body)) return;
+  if (!tv_enabled) { sendError(409, "tv_disabled", "TV mode is turned off on the pad."); return; }
   if (!jsonInt(body, "codeset", codeset) || !jsonInt(body, "code", code) || !tvIsConfigured() || WiFi.status() != WL_CONNECTED) { sendError(422, "invalid_tv_command", "Configure the TV and send a supported key command."); return; }
   if (!dispatchKey(codeset, code)) { sendError(503, "queue_full", "The TV command queue is busy. Try again."); return; }
   sendJson(202, "{\"ok\":true,\"message\":\"TV key queued.\"}");
@@ -1198,22 +1388,38 @@ void handleTestApp() {
     else if (appId == "128") action = "APP:APPLETV";
   }
   if (!isSupportedAction(action) || !action.startsWith("APP:")) { sendError(422, "invalid_app", "Send a supported APP action."); return; }
-  if (!executeAction(action)) { sendError(409, "action_unavailable", "Connect Wi-Fi and configure the TV before testing this action."); return; }
+  if (!executeAction(action)) { sendError(409, "action_unavailable", tvUnavailableMsg()); return; }
   sendJson(202, "{\"ok\":true,\"message\":\"Streaming app launch queued.\"}");
 }
 
 void handleActivateProfile() {
   String body, profile;
   if (!requestBody(body)) return;
-  if (!jsonString(body, "profile", profile, 6) || !validProfile(profile)) { sendError(422, "invalid_profile", "Use HOST1, HOST2, HOST3, MAC, or TV."); return; }
+  if (!jsonString(body, "profile", profile, 6) || !validProfile(profile)) { sendError(422, "invalid_profile", "Use MAC or TV."); return; }
+  if (profile == "TV" && !tv_enabled) { sendError(409, "tv_disabled", "TV mode is turned off on the pad."); return; }
   setActiveMode(profile == "TV" ? MODE_TV : MODE_BLE);
   sendJson(200, "{\"ok\":true,\"message\":\"Profile activated.\"}");
 }
 
-void emitSetupStatus();
+void handleTvEnable() {
+  String body; bool on = true;
+  if (!requestBody(body)) return;
+  if (!jsonFlag(body, "enabled", on)) { sendError(422, "invalid_tv_enable", "Send enabled as true or false."); return; }
+  setTvEnabled(on);
+  sendJson(200, String("{\"ok\":true,\"enabled\":") + (tv_enabled ? "true" : "false") + ",\"message\":" +
+                jsonQuote(tv_enabled ? "TV mode enabled." : "TV mode disabled.") + "}");
+}
+
+void handleEncoderSettings() {
+  String body; int accel = 1;
+  if (!requestBody(body)) return;
+  if (!jsonInt(body, "accel", accel)) { sendError(422, "invalid_encoder", "Send accel as 1 or 0."); return; }
+  setEncoderAccel(accel != 0);
+  sendJson(200, "{\"ok\":true,\"message\":\"Encoder settings saved.\"}");
+}
 
 void setupWebServer() {
-  server.on("/", HTTP_GET, []() { server.send(200, "text/plain", "Studio Pad Pro v" FIRMWARE_VERSION ": Web portal available or use USB Web Serial."); });
+  server.on("/", HTTP_GET, []() { server.send(200, "text/plain", "Studio Pad Pro: Web portal available or use USB Web Serial."); });
   server.on("/api/status", HTTP_GET, sendStatus);
   server.on("/api/device", HTTP_GET, sendStatus);
   server.on("/api/customizer/save", HTTP_POST, handleSaveBinding);
@@ -1233,14 +1439,16 @@ void setupWebServer() {
   server.on("/api/test/action", HTTP_POST, handleTestAction);
   server.on("/api/test/key", HTTP_POST, handleTestKey);
   server.on("/api/test/app", HTTP_POST, handleTestApp);
+  server.on("/api/encoder/set", HTTP_POST, handleEncoderSettings);
+  server.on("/api/tv/enable", HTTP_POST, handleTvEnable);
 
   server.on("/api/setup/complete", HTTP_POST, []() {
     int doneVal = 1;
     if (server.hasArg("plain")) jsonInt(server.arg("plain"), "setup_done", doneVal);
     setup_done = (doneVal != 0);
     inSetupMode = false;
-    prefs.begin("config", false);
-    prefs.putBool("setup_done", setup_done);
+    prefs.begin("config", false); 
+    prefs.putBool("setup_done", setup_done); 
     prefs.end();
     screenDirty = true;
     showToast("Setup Saved", 1000);
@@ -1253,8 +1461,8 @@ void setupWebServer() {
     if (server.hasArg("plain")) jsonInt(server.arg("plain"), "setup_done", doneVal);
     setup_done = (doneVal != 0);
     inSetupMode = true;
-    prefs.begin("config", false);
-    prefs.putBool("setup_done", setup_done);
+    prefs.begin("config", false); 
+    prefs.putBool("setup_done", setup_done); 
     prefs.end();
     screenDirty = true;
     emitSetupStatus();
@@ -1283,28 +1491,6 @@ void setupWebServer() {
   server.begin();
 }
 
-void drawOtaProgressScreen(int percent, const char* subtitle) {
-  int clamped = max(0, min(100, percent));
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(10, 8);
-  display.print("FIRMWARE UPDATE");
-  display.setCursor(10, 22);
-  display.print(subtitle);
-
-  // Progress bar frame (108px wide)
-  display.drawRect(10, 36, 108, 10, SSD1306_WHITE);
-  int fillW = (104 * clamped) / 100;
-  if (fillW > 0) {
-    display.fillRect(12, 38, fillW, 6, SSD1306_WHITE);
-  }
-  display.setCursor(48, 50);
-  display.print(clamped);
-  display.print("%");
-  display.display();
-}
-
 // -----------------------------------------------------------------------------
 // USB Web Serial Command Processor
 // -----------------------------------------------------------------------------
@@ -1317,45 +1503,70 @@ void processSerialPacket(const String& body) {
     return;
   }
 
-  if (path == "/api/macro/cancel") {
-    macroAbortRequested = true;
-    if (bleKeyboard.isConnected()) bleKeyboard.releaseAll();
-    showToast("Macro Cancelled", 900);
-    Serial.println("{\"ok\":true,\"message\":\"Macro cancelled.\"}");
-    return;
-  }
-
-  // --- Radio-Safe USB Serial Stream Flash Handlers ---
+  // --- USB Serial Stream Flash Handlers ---
   if (path == "/api/ota/begin") {
     int size = 0;
     jsonInt(body, "size", size);
     otaTotalSize = (size > 0) ? (size_t)size : UPDATE_SIZE_UNKNOWN;
     otaBytesWritten = 0;
-    otaLastPercent = -1;
 
-    // Safely quiesce BLE & Wi-Fi radios before erasing SPI flash sectors
-    if (bleKeyboard.isConnected()) bleKeyboard.releaseAll();
-    if (NimBLEDevice::getInitialized()) {
-      NimBLEDevice::getAdvertising()->stop();
+    // Restarting a transfer: drop any half-finished update first
+    if (otaActive) { Update.abort(); otaActive = false; }
+
+    // Check the partition layout BEFORE shutting the radios down. "Huge APP / No OTA"
+    // layouts have no spare app slot; those boards must use the esptool-js USB flasher.
+    const esp_partition_t* target = esp_ota_get_next_update_partition(NULL);
+    if (target == NULL) {
+      Serial.println("{\"ok\":false,\"message\":\"No OTA partition in this board's layout. Use the direct USB flasher instead.\"}");
+      return;
     }
+    if (size > 0 && (size_t)size > target->size) {
+      Serial.println("{\"ok\":false,\"message\":\"Firmware image is larger than the OTA partition.\"}");
+      return;
+    }
+
+    if (bleKeyboard.isConnected()) bleKeyboard.releaseAll();
+
+    // Show visual status on OLED
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(14, 16);
+    display.println("UPDATING FIRMWARE");
+    display.setCursor(10, 36);
+    display.println("Streaming via USB...");
+    display.display();
+
+    // Quiet everything that can touch flash/cache while sectors are being erased:
+    // buttons/encoder/web server are frozen by loop(), Wi-Fi and BLE are shut down.
+    otaActive = true;
+    otaLastActivity = millis();
     server.stop();
     tvClient.stop();
     WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    delay(40);
-
-    drawOtaProgressScreen(0, "Erasing partition...");
+    NimBLEDevice::deinit(true);
+    delay(100);
 
     if (Update.begin(otaTotalSize, U_FLASH)) {
       Serial.println("{\"ok\":true,\"message\":\"OTA begin ready.\"}");
     } else {
-      Serial.println("{\"ok\":false,\"message\":\"Update.begin failed.\"}");
+      Serial.println("{\"ok\":false,\"message\":\"Update.begin failed: " + String(Update.errorString()) + ". Rebooting to restore Bluetooth and Wi-Fi.\"}");
+      Serial.flush();
+      delay(300);
+      ESP.restart();
     }
     return;
   }
 
   if (path == "/api/ota/chunk") {
+    if (!otaActive) {
+      Serial.println("{\"ok\":false,\"message\":\"OTA not started. Send /api/ota/begin first.\"}");
+      return;
+    }
+    otaLastActivity = millis();
+
     String b64 = "";
+    // Accepts either "data" or "chunk" keys
     if (!jsonString(body, "data", b64, 3500)) {
       jsonString(body, "chunk", b64, 3500);
     }
@@ -1365,7 +1576,8 @@ void processSerialPacket(const String& body) {
       return;
     }
 
-    uint8_t decodeBuf[2560];
+    // Decode base64 stream directly to buffer (3500 base64 chars -> 2625 bytes max)
+    static uint8_t decodeBuf[2640];
     size_t outLen = 0;
     int ret = mbedtls_base64_decode(decodeBuf, sizeof(decodeBuf), &outLen,
                                     (const unsigned char*)b64.c_str(), b64.length());
@@ -1378,31 +1590,40 @@ void processSerialPacket(const String& body) {
     size_t written = Update.write(decodeBuf, outLen);
     if (written == outLen) {
       otaBytesWritten += written;
-      if (otaTotalSize > 0 && otaTotalSize != UPDATE_SIZE_UNKNOWN) {
-        int pct = (int)((otaBytesWritten * 100ULL) / otaTotalSize);
-        if (pct - otaLastPercent >= 5 || pct == 100) {
-          otaLastPercent = pct;
-          drawOtaProgressScreen(pct, "Streaming USB...");
-        }
-      }
       Serial.println("{\"ok\":true,\"written\":" + String(written) + ",\"total\":" + String(otaBytesWritten) + "}");
     } else {
-      Serial.println("{\"ok\":false,\"message\":\"Flash write failed.\"}");
+      Serial.println("{\"ok\":false,\"message\":\"Flash write failed: " + String(Update.errorString()) + "\"}");
     }
     return;
   }
 
   if (path == "/api/ota/end") {
+    if (!otaActive) {
+      Serial.println("{\"ok\":false,\"message\":\"OTA not started.\"}");
+      return;
+    }
     if (Update.end(true)) {
       Serial.println("{\"ok\":true,\"message\":\"Firmware flashed successfully. Rebooting...\"}");
       Serial.flush();
 
-      drawOtaProgressScreen(100, "Complete! Rebooting");
+      // Display completion notice
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setTextColor(SSD1306_WHITE);
+      display.setCursor(16, 20);
+      display.println("UPDATE COMPLETE!");
+      display.setCursor(28, 38);
+      display.println("Rebooting...");
+      display.display();
+
       delay(700);
       ESP.restart();
       return;
     } else {
-      Serial.println("{\"ok\":false,\"message\":\"Update failed: " + String(Update.errorString()) + "\"}");
+      Serial.println("{\"ok\":false,\"message\":\"Update failed: " + String(Update.errorString()) + ". Rebooting to restore Bluetooth and Wi-Fi.\"}");
+      Serial.flush();
+      delay(300);
+      ESP.restart();
       return;
     }
   }
@@ -1413,8 +1634,8 @@ void processSerialPacket(const String& body) {
     jsonInt(body, "setup_done", doneVal);
     setup_done = (doneVal != 0);
     inSetupMode = false;
-    prefs.begin("config", false);
-    prefs.putBool("setup_done", setup_done);
+    prefs.begin("config", false); 
+    prefs.putBool("setup_done", setup_done); 
     prefs.end();
     screenDirty = true;
     showToast("Setup Saved", 1000);
@@ -1428,20 +1649,19 @@ void processSerialPacket(const String& body) {
     jsonInt(body, "setup_done", doneVal);
     setup_done = (doneVal != 0);
     inSetupMode = true;
-    prefs.begin("config", false);
-    prefs.putBool("setup_done", setup_done);
+    prefs.begin("config", false); 
+    prefs.putBool("setup_done", setup_done); 
     prefs.end();
     screenDirty = true;
     emitSetupStatus();
     Serial.println("{\"ok\":true,\"message\":\"Entered setup mode.\"}");
     return;
   }
-
+  
   if (path == "/api/ble/switch") {
     int slot = 0;
     if (jsonInt(body, "slot", slot) && slot >= 1 && slot <= MAX_BLE_SLOTS) {
       Serial.println("{\"ok\":true,\"message\":\"Switching BLE host...\"}");
-      Serial.flush();
       switchBleDevice(slot - 1);
       return;
     }
@@ -1455,11 +1675,7 @@ void processSerialPacket(const String& body) {
         jsonString(body, "slot", slot, 8) && slotIndex(slot) >= 0 &&
         jsonString(body, "action", action, MAX_ACTION_LEN) && isSupportedAction(action)) {
       saveBinding(profile, slotIndex(slot), action);
-      if (!setup_done) {
-        setup_done = true;
-        prefs.begin("config", false); prefs.putBool("setup_done", true); prefs.end();
-      }
-      Serial.println("{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Assignment saved.\"}");
+      Serial.println("{\"ok\":true,\"message\":\"Assignment saved.\"}");
     } else {
       Serial.println("{\"ok\":false,\"message\":\"Invalid assignment.\"}");
     }
@@ -1467,16 +1683,12 @@ void processSerialPacket(const String& body) {
   }
 
   if (path == "/api/profile/save") {
-    String profile, values[11];
+    String profile, values[SLOT_COUNT];
     if (readProfilePayload(body, profile, values)) {
       String* bindings = profileBindings(profile);
-      for (int i = 0; i < 11; ++i) bindings[i] = values[i];
+      for (int i = 0; i < SLOT_COUNT; ++i) bindings[i] = values[i];
       saveProfile(profile);
-      if (!setup_done) {
-        setup_done = true;
-        prefs.begin("config", false); prefs.putBool("setup_done", true); prefs.end();
-      }
-      Serial.println("{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Profile saved to device.\"}");
+      Serial.println("{\"ok\":true,\"message\":\"Profile saved to device.\"}");
     } else {
       Serial.println("{\"ok\":false,\"message\":\"Invalid profile payload.\"}");
     }
@@ -1489,7 +1701,7 @@ void processSerialPacket(const String& body) {
         jsonString(body, "name", name, 20) && validAlias(name)) {
       profileName(profile) = name;
       saveProfile(profile);
-      Serial.println("{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Profile renamed.\"}");
+      Serial.println("{\"ok\":true,\"message\":\"Profile renamed.\"}");
     } else {
       Serial.println("{\"ok\":false,\"message\":\"Invalid profile name.\"}");
     }
@@ -1502,9 +1714,9 @@ void processSerialPacket(const String& body) {
         validProfile(source) && validProfile(target) && source != target) {
       String* from = profileBindings(source);
       String* to = profileBindings(target);
-      for (int i = 0; i < 11; ++i) to[i] = from[i];
+      for (int i = 0; i < SLOT_COUNT; ++i) to[i] = from[i];
       saveProfile(target);
-      Serial.println("{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Assignments copied.\"}");
+      Serial.println("{\"ok\":true,\"message\":\"Assignments copied.\"}");
     } else {
       Serial.println("{\"ok\":false,\"message\":\"Invalid copy parameters.\"}");
     }
@@ -1512,59 +1724,18 @@ void processSerialPacket(const String& body) {
   }
 
   if (path == "/api/config/export") {
-    String json = "{\"schema\":\"studio-pad-config\",\"version\":2,\"tv_name\":" + jsonQuote(tv_name);
-    for (int h = 0; h < 3; ++h) {
-      String pfx = "h" + String(h + 1) + "_";
-      json += ",\"" + pfx + "name\":" + jsonQuote(dev_names[h]);
-      for (int i = 0; i < 11; ++i) {
-        json += ",\"" + pfx + String(SLOT_IDS[i]) + "\":" + jsonQuote(dev_bindings[h][i]);
-      }
-    }
-    for (int i = 0; i < 11; ++i) {
-      json += ",\"tv_" + String(SLOT_IDS[i]) + "\":" + jsonQuote(tv_bindings[i]);
-    }
-    json += ",\"mac_name\":" + jsonQuote(dev_names[currentBleSlot]);
-    for (int i = 0; i < 11; ++i) {
-      json += ",\"mac_" + String(SLOT_IDS[i]) + "\":" + jsonQuote(dev_bindings[currentBleSlot][i]);
-    }
-    json += "}";
-    Serial.println(json);
+    Serial.println(buildExportJson());
     return;
   }
 
   if (path == "/api/config/import") {
-    String schema;
-    int version = 0;
-    if (jsonString(body, "schema", schema, 32) && schema == "studio-pad-config" && jsonInt(body, "version", version)) {
-      String impTvName;
-      if (jsonString(body, "tv_name", impTvName, 20) && validAlias(impTvName)) tv_name = impTvName;
-      for (int i = 0; i < 11; ++i) {
-        String tvKey = String("tv_") + SLOT_IDS[i];
-        String candidate;
-        if (jsonHasKey(body, tvKey.c_str()) && jsonString(body, tvKey.c_str(), candidate, MAX_ACTION_LEN) && isSupportedAction(candidate)) {
-          tv_bindings[i] = candidate;
-        }
-      }
-      saveProfile("TV");
-
-      for (int h = 0; h < 3; ++h) {
-        String pfx = "h" + String(h + 1) + "_";
-        String hName;
-        if (jsonString(body, (pfx + "name").c_str(), hName, 20) && validAlias(hName)) dev_names[h] = hName;
-        for (int i = 0; i < 11; ++i) {
-          String key = pfx + SLOT_IDS[i];
-          String candidate;
-          if (jsonHasKey(body, key.c_str()) && jsonString(body, key.c_str(), candidate, MAX_ACTION_LEN) && isSupportedAction(candidate)) {
-            dev_bindings[h][i] = candidate;
-          }
-        }
-        String hTag = String("HOST") + String(h + 1);
-        saveProfile(hTag);
-      }
-      Serial.println("{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Configuration restored to the device.\"}");
-      return;
+    int skipped = 0;
+    if (applyConfigImport(body, skipped)) {
+      Serial.println(skipped > 0 ? "{\"ok\":true,\"message\":\"Configuration restored (some unsupported assignments were skipped).\"}"
+                                 : "{\"ok\":true,\"message\":\"Configuration restored to the device.\"}");
+    } else {
+      Serial.println("{\"ok\":false,\"message\":\"Incompatible backup configuration.\"}");
     }
-    Serial.println("{\"ok\":false,\"message\":\"Incompatible backup configuration.\"}");
     return;
   }
 
@@ -1596,6 +1767,10 @@ void processSerialPacket(const String& body) {
   }
 
   if (path == "/api/tv/test") {
+    if (!tv_enabled) {
+      Serial.println("{\"ok\":false,\"message\":\"TV mode is turned off on the pad.\"}");
+      return;
+    }
     if (WiFi.status() != WL_CONNECTED || !tvIsConfigured()) {
       Serial.println("{\"ok\":false,\"message\":\"Connect Wi-Fi and configure TV first.\"}");
       return;
@@ -1664,7 +1839,7 @@ void processSerialPacket(const String& body) {
     String confirm;
     if (jsonString(body, "confirm", confirm, 8) && confirm == "RESET") {
       resetProfile("HOST1"); resetProfile("HOST2"); resetProfile("HOST3"); resetProfile("TV");
-      Serial.println("{\"ok\":true,\"rev\":" + String(config_rev) + ",\"message\":\"Profiles restored to defaults.\"}");
+      Serial.println("{\"ok\":true,\"message\":\"Profiles restored to blank defaults.\"}");
       return;
     }
     Serial.println("{\"ok\":false,\"message\":\"Confirmation required to reset profiles.\"}");
@@ -1674,8 +1849,12 @@ void processSerialPacket(const String& body) {
   if (path == "/api/test/action") {
     String action;
     if (jsonString(body, "action", action, MAX_ACTION_LEN) && isSupportedAction(action)) {
-      executeAction(action);
-      Serial.println("{\"ok\":true,\"message\":\"Action dispatched.\"}");
+      if (executeAction(action)) {
+        Serial.println("{\"ok\":true,\"message\":\"Action dispatched.\"}");
+      } else {
+        if (isBleAction(action)) Serial.println("{\"ok\":false,\"message\":\"Connect Bluetooth before testing this action.\"}");
+        else Serial.println(String("{\"ok\":false,\"message\":") + jsonQuote(tvUnavailableMsg()) + "}");
+      }
     } else {
       Serial.println("{\"ok\":false,\"message\":\"Unsupported action.\"}");
     }
@@ -1709,12 +1888,43 @@ void processSerialPacket(const String& body) {
 
   if (path == "/api/profile/activate") {
     String profile;
-    if (jsonString(body, "profile", profile, 6) && validProfile(profile)) {
+    if (jsonString(body, "profile", profile, 6) && validProfile(profile) && profile == "TV" && !tv_enabled) {
+      Serial.println("{\"ok\":false,\"message\":\"TV mode is turned off on the pad.\"}");
+    } else if (jsonString(body, "profile", profile, 6) && validProfile(profile)) {
       setActiveMode(profile == "TV" ? MODE_TV : MODE_BLE);
       Serial.println("{\"ok\":true,\"message\":\"Profile activated.\"}");
     } else {
       Serial.println("{\"ok\":false,\"message\":\"Invalid profile.\"}");
     }
+    return;
+  }
+
+  if (path == "/api/tv/enable") {
+    bool on = true;
+    if (jsonFlag(body, "enabled", on)) {
+      setTvEnabled(on);
+      Serial.println(String("{\"ok\":true,\"enabled\":") + (tv_enabled ? "true" : "false") +
+                     ",\"message\":" + jsonQuote(tv_enabled ? "TV mode enabled." : "TV mode disabled.") + "}");
+    } else {
+      Serial.println("{\"ok\":false,\"message\":\"Send enabled as true or false.\"}");
+    }
+    return;
+  }
+
+  if (path == "/api/encoder/set") {
+    int accel = 1;
+    if (jsonInt(body, "accel", accel)) {
+      setEncoderAccel(accel != 0);
+      Serial.println("{\"ok\":true,\"message\":\"Encoder settings saved.\"}");
+    } else {
+      Serial.println("{\"ok\":false,\"message\":\"Send accel as 1 or 0.\"}");
+    }
+    return;
+  }
+
+  if (path == "/api/diagnostics/clear") {
+    clearDiagnosticsLog();
+    Serial.println("{\"ok\":true,\"message\":\"Reset log cleared.\"}");
     return;
   }
 
@@ -1748,7 +1958,7 @@ bool isDeviceConfigured() {
   if (setup_done) return true;
   if (stored_ssid.length() > 0) return true;
   for (int h = 0; h < 3; ++h) {
-    for (int i = 0; i < 11; ++i) {
+    for (int i = 0; i < SLOT_COUNT; ++i) {
       if (dev_bindings[h][i].length() > 0) return true;
     }
   }
@@ -1757,6 +1967,7 @@ bool isDeviceConfigured() {
 
 void emitSetupStatus() {
   if (inSetupMode) {
+    // Matches the web app's contract triggers
     Serial.println("{\"event\":\"setup\",\"setup_mode\":true,\"mode\":\"setup\"}");
   } else {
     Serial.println("{\"event\":\"setup\",\"setup_mode\":false,\"mode\":\"normal\"}");
@@ -1769,9 +1980,6 @@ void startSetupPortal() {
   emitSetupStatus();
 }
 
-// -----------------------------------------------------------------------------
-// 128x64 OLED HUD Renderer (Custom Host Name + Link Status + Action Toast)
-// -----------------------------------------------------------------------------
 void renderScreen() {
   display.clearDisplay();
   if (inSetupMode) {
@@ -1780,91 +1988,66 @@ void renderScreen() {
     display.setTextColor(SSD1306_WHITE); display.setCursor(0, 18);
     display.println("1. Connect USB cable");
     display.println("2. Open Web App");
-    display.println("3. Click 'Connect'");
+    display.println("3. Click 'Connect USB'");
     display.setCursor(0, 54);
     display.println("(Press Mode to exit)");
     display.display(); screenDirty = false; return;
   }
 
-  const bool bleOk = bleKeyboard.isConnected();
-  const bool wifiOk = (WiFi.status() == WL_CONNECTED);
-
   if (currentMode == MODE_BLE) {
     display.drawBitmap(0, 0, bitmap_mode_mac, 128, 64, SSD1306_WHITE);
-
-    // Clean top HUD bar showing user's custom Host alias + [H1..H3] badge
-    display.fillRect(0, 0, 128, 11, SSD1306_BLACK);
-    display.drawFastHLine(0, 10, 128, SSD1306_WHITE);
-    String alias = dev_names[currentBleSlot];
-    if (alias.length() > 14) alias = alias.substring(0, 14);
-    display.setTextColor(SSD1306_WHITE);
-    display.setTextSize(1);
-    display.setCursor(2, 1);
-    display.print(alias);
-
-    // Inverted solid badge when BLE connected, outlined when advertising
-    if (bleOk) {
-      display.fillRect(104, 0, 24, 9, SSD1306_WHITE);
-      display.setTextColor(SSD1306_BLACK);
-    } else {
-      display.drawRect(104, 0, 24, 9, SSD1306_WHITE);
-      display.setTextColor(SSD1306_WHITE);
-    }
-    display.setCursor(110, 1);
-    display.print("H");
-    display.print(currentBleSlot + 1);
+    // Upper-right badge: shows [D1], [D2], or [D3] for active device
+    display.fillRect(104, 1, 23, 9, SSD1306_BLACK);
+    display.drawRect(104, 1, 23, 9, SSD1306_WHITE);
+    display.setTextColor(SSD1306_WHITE); display.setTextSize(1); display.setCursor(108, 2);
+    display.print("D"); display.print(currentBleSlot + 1);
   } else {
     display.drawBitmap(0, 0, bitmap_mode_tv, 128, 64, SSD1306_WHITE);
-
-    display.fillRect(0, 0, 128, 11, SSD1306_BLACK);
-    display.drawFastHLine(0, 10, 128, SSD1306_WHITE);
-    String alias = tv_name;
-    if (alias.length() > 14) alias = alias.substring(0, 14);
-    display.setTextColor(SSD1306_WHITE);
-    display.setTextSize(1);
-    display.setCursor(2, 1);
-    display.print(alias);
-
-    if (wifiOk) {
-      display.fillRect(104, 0, 24, 9, SSD1306_WHITE);
-      display.setTextColor(SSD1306_BLACK);
-    } else {
-      display.drawRect(104, 0, 24, 9, SSD1306_WHITE);
-      display.setTextColor(SSD1306_WHITE);
-    }
-    display.setCursor(110, 1);
-    display.print("TV");
   }
 
   if (millis() < toastExpiry) {
-    int width = min(120, (int)strlen(toastMessage) * 6 + 12);
-    int x = (128 - width) / 2;
-    display.fillRect(x, 46, width, 15, SSD1306_BLACK);
-    display.drawRect(x, 46, width, 15, SSD1306_WHITE);
-    display.setTextColor(SSD1306_WHITE);
-    display.setTextSize(1);
-    display.setCursor(x + 6, 50);
-    display.print(toastMessage);
+    int width = min(116, (int)strlen(toastMessage) * 6 + 12); int x = (128 - width) / 2;
+    display.fillRect(x, 46, width, 15, SSD1306_BLACK); display.drawRect(x, 46, width, 15, SSD1306_WHITE);
+    display.setTextColor(SSD1306_WHITE); display.setTextSize(1); display.setCursor(x + 6, 50); display.print(toastMessage);
   }
-  display.display();
-  screenDirty = false;
+  display.display(); screenDirty = false;
 }
 
-void handleEncoder(int direction, int accelMultiplier = 1) {
-  int slot = (direction > 0) ? 9 : 10;
+void fireEncoderSlot(int slot) {
+  emitEvent(String("{\"event\":\"turn\",\"slot\":\"") + SLOT_IDS[slot] + "\"}");
   String action = (currentMode == MODE_BLE ? dev_bindings[currentBleSlot][slot] : tv_bindings[slot]);
-  int effectiveReps = isVelocityAcceleratable(action) ? max(1, accelMultiplier) : 1;
+  executeAction(action);
+}
 
-  emitEvent(String("{\"event\":\"turn\",\"slot\":\"") + SLOT_IDS[slot] + "\",\"accel\":" + String(effectiveReps) + "}");
-  for (int r = 0; r < effectiveReps; ++r) {
-    executeAction(action);
+void handleEncoder(int direction) {
+  fireEncoderSlot(direction > 0 ? 9 : 10);
+}
+
+// Only repeatable "step" actions accelerate; macros, text and app launches never multiply.
+bool isAcceleratable(const String& a) {
+  return a == "MEDIA:VOL_UP" || a == "MEDIA:VOL_DOWN" || a == "TV:VOL_UP" || a == "TV:VOL_DOWN" ||
+         a == "TV:CH_UP" || a == "TV:CH_DOWN";
+}
+
+// Detents to emit for this batch. Slow turns stay 1:1; fast spins scale up to 4x (max 12).
+int encoderSteps(int detents, const String& action, unsigned long now, unsigned long& lastTime) {
+  int steps = min(detents, 8);
+  if (encoderAccelEnabled && isAcceleratable(action)) {
+    unsigned long dt = now - lastTime;
+    if (dt < 1) dt = 1;
+    unsigned long rate = ((unsigned long)detents * 1000UL) / dt;   // detents per second
+    int mult = (rate >= 40) ? 4 : (rate >= 25) ? 3 : (rate >= 12) ? 2 : 1;
+    steps = min(detents * mult, 12);
   }
+  lastTime = now;
+  return steps;
 }
 
 void handleButtonPress(uint8_t pin) {
   if (pin == PIN_BTN_MODE) {
     if (inSetupMode) { inSetupMode = false; screenDirty = true; return; }
     emitEvent("{\"event\":\"press\",\"slot\":\"mode\"}");
+    if (!tv_enabled) { showToast(dev_names[currentBleSlot].c_str(), 800); return; } // only Bluetooth profiles exist
     setActiveMode(currentMode == MODE_BLE ? MODE_TV : MODE_BLE);
     return;
   }
@@ -1877,7 +2060,8 @@ void handleButtonPress(uint8_t pin) {
   else if (pin == PIN_BTN6) index = 5;
   else if (pin == PIN_BTN7) index = 6;
   else if (pin == PIN_BTN8) index = 7;
-  else if (pin == PIN_ENC_SW) index = 8;
+  else if (pin == PIN_ENC_SW) index = SLOT_DIAL;
+  else if (pin == PIN_ENC2_SW) index = SLOT_DIAL2;
   if (index >= 0) {
     emitEvent(String("{\"event\":\"press\",\"slot\":\"") + SLOT_IDS[index] + "\"}");
     String action = (currentMode == MODE_BLE ? dev_bindings[currentBleSlot][index] : tv_bindings[index]);
@@ -1887,36 +2071,41 @@ void handleButtonPress(uint8_t pin) {
 
 void loadConfiguration() {
   prefs.begin("config", true);
-  stored_ssid = prefs.getString("ssid", "");
+  stored_ssid = prefs.getString("ssid", ""); 
   stored_pass = prefs.getString("pass", "");
-  stored_tv_ip = prefs.getString("tv_ip", DEFAULT_TV_IP);
-  stored_tv_port = prefs.getInt("tv_port", DEFAULT_TV_PORT);
-  stored_tv_auth = prefs.getString("tv_auth", DEFAULT_TV_AUTH);
-  api_token = prefs.getString("api_token", "");
-  config_rev = prefs.getUInt("rev", 0);
+  stored_tv_ip = prefs.getString("tv_ip", DEFAULT_TV_IP); 
+  stored_tv_port = prefs.getInt("tv_port", DEFAULT_TV_PORT); 
+  stored_tv_auth = prefs.getString("tv_auth", DEFAULT_TV_AUTH); 
+  api_token = prefs.getString("api_token", ""); 
+  config_rev = prefs.getUInt("rev", 0); 
   currentMode = prefs.getUChar("mode", 0) == 1 ? MODE_TV : MODE_BLE;
   currentBleSlot = prefs.getUChar("ble_slot", 0);
   if (currentBleSlot >= MAX_BLE_SLOTS) currentBleSlot = 0;
   setup_done = prefs.getBool("setup_done", false);
+  encoderAccelEnabled = prefs.getBool("enc_accel", true);
+  tv_enabled = prefs.getBool("tv_enabled", true);
+  if (!tv_enabled && currentMode == MODE_TV) currentMode = MODE_BLE;
   prefs.end();
   stored_tv_auth.trim();
 
   prefs.begin("matrix", true);
+  // TV Profile
   tv_name = prefs.getString("t_name", "TV");
-  for (int i = 0; i < 11; ++i) {
+  for (int i = 0; i < SLOT_COUNT; ++i) {
     tv_bindings[i] = prefs.getString((String("t_") + SLOT_IDS[i]).c_str(), DEFAULT_TV_BINDINGS[i]);
     if (!isSupportedAction(tv_bindings[i])) tv_bindings[i] = DEFAULT_TV_BINDINGS[i];
   }
   if (!validAlias(tv_name)) tv_name = "TV";
 
-  const char* const defNames[3] = { "Host 1", "Host 2", "Host 3" };
+  // Load 3 Independent Device Profiles
+  const char* const defNames[3] = { "Device 1", "Device 2", "Device 3" };
   for (int h = 0; h < 3; ++h) {
     String pfx = String("d") + String(h + 1) + "_";
     String legacyPfx = String("h") + String(h + 1) + "_";
     dev_names[h] = prefs.getString((pfx + "name").c_str(), prefs.getString((legacyPfx + "name").c_str(), defNames[h]));
     if (!validAlias(dev_names[h])) dev_names[h] = defNames[h];
 
-    for (int i = 0; i < 11; ++i) {
+    for (int i = 0; i < SLOT_COUNT; ++i) {
       String key = pfx + SLOT_IDS[i];
       String legacyKey = legacyPfx + SLOT_IDS[i];
       dev_bindings[h][i] = prefs.getString(key.c_str(), prefs.getString(legacyKey.c_str(), DEFAULT_BLANK_BINDINGS[i]));
@@ -1929,22 +2118,41 @@ void loadConfiguration() {
 }
 
 // -----------------------------------------------------------------------------
-// Setup & Main Loop
+// Setup & Loop
 // -----------------------------------------------------------------------------
 void setup() {
-  Serial.begin(115200); delay(100);
+  Serial.setRxBufferSize(8192); // must precede begin(); OTA chunks and long macro saves arrive as single lines
+  Serial.begin(115200);
+  Serial.setTimeout(2000);
+  recordBootReason();
+  delay(100);
   pinMode(PIN_LED_BT, OUTPUT); pinMode(PIN_LED_WIFI, OUTPUT);
-  for (size_t i = 0; i < BUTTON_COUNT; ++i) pinMode(buttons[i].pin, INPUT_PULLUP);
+  for (size_t i = 0; i < sizeof(buttons) / sizeof(buttons[0]); ++i) pinMode(buttons[i].pin, INPUT_PULLUP);
   pinMode(PIN_ENC_CLK, INPUT_PULLUP); pinMode(PIN_ENC_DT, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PIN_ENC_CLK), isrEncoder, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_ENC_DT), isrEncoder, CHANGE);
+#if ENCODER2_ENABLED
+  // GPIO34-39 are input-only and have no internal pull-ups, so CLK/DT there must be pulled up externally
+  pinMode(PIN_ENC2_CLK, (PIN_ENC2_CLK >= 34 && PIN_ENC2_CLK <= 39) ? INPUT : INPUT_PULLUP);
+  pinMode(PIN_ENC2_DT,  (PIN_ENC2_DT  >= 34 && PIN_ENC2_DT  <= 39) ? INPUT : INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENC2_CLK), isrEncoder2, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENC2_DT), isrEncoder2, CHANGE);
+#endif
   Wire.begin(OLED_SDA, OLED_SCL); Wire.setClock(400000); display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   display.clearDisplay(); display.display();
 
   delay(10);
+  // Enter Setup Mode if Mode button is held down during boot
+  if (digitalRead(PIN_BTN_MODE) == LOW) {
+    inSetupMode = true;
+  }
+
   loadConfiguration();
 
-  if (digitalRead(PIN_BTN_MODE) == LOW || !isDeviceConfigured()) {
+  // Only enter setup mode if Mode button is held on boot, or if completely brand new
+  if (digitalRead(PIN_BTN_MODE) == LOW) {
+    inSetupMode = true;
+  } else if (!isDeviceConfigured()) {
     inSetupMode = true;
   } else {
     inSetupMode = false;
@@ -1954,12 +2162,13 @@ void setup() {
     emitSetupStatus();
   }
 
+  // Set Virtual MAC and Device Name for active slot
   setSlotMacAddress(currentBleSlot);
   bleDeviceName = "Studio Pad " + String(currentBleSlot + 1);
   bleKeyboard.setName(bleDeviceName.c_str());
 
-  NimBLEDevice::setSecurityAuth(true, false, true);
-  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
+  NimBLEDevice::setSecurityAuth(true, false, true); 
+  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT); 
   bleKeyboard.begin();
 
   WiFi.mode(WIFI_STA);
@@ -1970,7 +2179,7 @@ void setup() {
   tvMutex = xSemaphoreCreateMutex();
   vizioQueue = xQueueCreate(20, sizeof(VizioCommand));
   xTaskCreatePinnedToCore(vizioWorkerTask, "VizioWorker", 8192, NULL, 1, NULL, 0);
-  setupWebServer();
+  setupWebServer(); 
 
   char readyMsg[24];
   snprintf(readyMsg, sizeof(readyMsg), "%s Ready", dev_names[currentBleSlot].c_str());
@@ -1978,8 +2187,9 @@ void setup() {
 }
 
 void loop() {
-  server.handleClient();
+  if (!otaActive) server.handleClient();
 
+  // Web Serial listener for index.html / web app over USB
   if (Serial.available()) {
     String line = Serial.readStringUntil('\n');
     line.trim();
@@ -1990,15 +2200,20 @@ void loop() {
     }
   }
 
-  const bool wifi = WiFi.status() == WL_CONNECTED;
-  const bool ble = bleKeyboard.isConnected();
-  digitalWrite(PIN_LED_BT, ble ? HIGH : LOW);
-  digitalWrite(PIN_LED_WIFI, wifi ? HIGH : LOW);
+  // During a USB stream flash only the serial link is serviced. Buttons, encoder, display
+  // and radios stay frozen, and a stalled transfer reboots the pad instead of leaving it stuck.
+  if (otaActive) {
+    if (millis() - otaLastActivity > OTA_IDLE_TIMEOUT_MS) { Update.abort(); ESP.restart(); }
+    delay(1);
+    return;
+  }
 
+  const bool wifi = WiFi.status() == WL_CONNECTED;
+  digitalWrite(PIN_LED_BT, bleKeyboard.isConnected() ? HIGH : LOW); digitalWrite(PIN_LED_WIFI, wifi ? HIGH : LOW);
   static bool lastBle = false, lastWifi = false;
+  const bool ble = bleKeyboard.isConnected();
   if (ble != lastBle || wifi != lastWifi) {
     lastBle = ble; lastWifi = wifi;
-    screenDirty = true;
     emitEvent(String("{\"event\":\"connection\",\"ble\":") + (ble ? "true" : "false") + ",\"wifi\":" + (wifi ? "true" : "false") + "}");
   }
   if (wifi && !mdnsStarted) mdnsStarted = MDNS.begin("macropad");
@@ -2006,47 +2221,72 @@ void loop() {
   if (encoderDelta != 0) {
     noInterrupts(); int delta = encoderDelta; encoderDelta = 0; interrupts();
 
+    // Mode button held while rotating dial: cycle Device 1 -> 2 -> 3
     if (digitalRead(PIN_BTN_MODE) == LOW) {
-      modeBtnPressStart = 0;
+      modeBtnPressStart = 0; // Prevent entering setup portal on release
       int newSlot = (currentBleSlot + (delta > 0 ? 1 : (MAX_BLE_SLOTS - 1))) % MAX_BLE_SLOTS;
       switchBleDevice(newSlot);
     } else {
-      unsigned long nowEnc = millis();
-      unsigned long dt = nowEnc - lastEncoderTurnMs;
-      lastEncoderTurnMs = nowEnc;
-      int accel = (dt > 0 && dt < 28) ? 3 : ((dt > 0 && dt < 55) ? 2 : 1);
-
-      int steps = min(abs(delta), 8);
-      for (int s = 0; s < steps; ++s) {
-        handleEncoder(delta > 0 ? 1 : -1, accel);
+      const bool cw = delta > 0;
+      int slot = cw ? 9 : 10;
+      // Dial held down while turning: use the push_cw / push_ccw binding when one is set
+      if (digitalRead(PIN_ENC_SW) == LOW) {
+        int chordSlot = cw ? 11 : 12;
+        const String& chordAction = (currentMode == MODE_BLE ? dev_bindings[currentBleSlot][chordSlot] : tv_bindings[chordSlot]);
+        if (chordAction.length() > 0 && chordAction != "NONE") { slot = chordSlot; encChordUsed = true; }
       }
+      const String& turnAction = (currentMode == MODE_BLE ? dev_bindings[currentBleSlot][slot] : tv_bindings[slot]);
+      int steps = encoderSteps(abs(delta), turnAction, millis(), lastEncAccelTime);
+      for (int s = 0; s < steps; ++s) fireEncoderSlot(slot);
     }
   }
 
+#if ENCODER2_ENABLED
+  if (encoderDelta2 != 0) {
+    noInterrupts(); int delta2 = encoderDelta2; encoderDelta2 = 0; interrupts();
+    const int slot2 = (delta2 > 0) ? SLOT_E2_CW : SLOT_E2_CCW;
+    const String& turnAction2 = (currentMode == MODE_BLE ? dev_bindings[currentBleSlot][slot2] : tv_bindings[slot2]);
+    int steps2 = encoderSteps(abs(delta2), turnAction2, millis(), lastEnc2AccelTime);
+    for (int s = 0; s < steps2; ++s) fireEncoderSlot(slot2);
+  }
+#endif
+
   unsigned long now = millis();
-  for (size_t i = 0; i < BUTTON_COUNT; ++i) {
+  for (size_t i = 0; i < sizeof(buttons) / sizeof(buttons[0]); ++i) {
     int reading = digitalRead(buttons[i].pin);
     if (reading != buttons[i].lastState) buttons[i].lastDebounceTime = now;
     if (now - buttons[i].lastDebounceTime > DEBOUNCE_TIME && reading != buttons[i].currentState) {
       buttons[i].currentState = reading;
       if (buttons[i].pin == PIN_BTN_MODE) {
-        if (reading == LOW) modeBtnPressStart = now;
+        if (reading == LOW) { if (!inputLockout) modeBtnPressStart = now; }  // short press fires on release
         else if (modeBtnPressStart > 0) { modeBtnPressStart = 0; handleButtonPress(PIN_BTN_MODE); }
-      } else if (reading == LOW) {
+      } else if (buttons[i].pin == PIN_ENC_SW) {
+        // Dial click fires on release so "hold + turn" can act as a chord instead
+        if (reading == LOW) encPressArmed = !inputLockout;
+        else { if (encPressArmed && !encChordUsed) handleButtonPress(PIN_ENC_SW); encPressArmed = false; encChordUsed = false; }
+      } else if (reading == LOW && !inputLockout) {
         handleButtonPress(buttons[i].pin);
       }
     }
+    if (buttons[i].pin == PIN_ENC_SW && reading == HIGH && buttons[i].currentState == HIGH) encChordUsed = false;
     buttons[i].lastState = reading;
   }
 
-  if (modeBtnPressStart > 0 && now - modeBtnPressStart > 3000) {
-    startSetupPortal();
-    modeBtnPressStart = 0;
-    screenDirty = true;
+  // After a macro abort, ignore the pad until every button has been released
+  if (inputLockout) {
+    bool anyDown = false;
+    for (size_t i = 0; i < sizeof(buttons) / sizeof(buttons[0]); ++i) if (buttons[i].currentState == LOW) anyDown = true;
+    if (!anyDown) inputLockout = false;
   }
-  if (toastExpiry > 0 && now >= toastExpiry) {
-    toastExpiry = 0;
-    screenDirty = true;
+
+  if (modeBtnPressStart > 0 && now - modeBtnPressStart > 3000) { 
+    startSetupPortal(); 
+    modeBtnPressStart = 0; 
+    screenDirty = true; 
+  }
+  if (toastExpiry > 0 && now >= toastExpiry) { 
+    toastExpiry = 0; 
+    screenDirty = true; 
   }
   if (screenDirty) renderScreen();
   delay(1);

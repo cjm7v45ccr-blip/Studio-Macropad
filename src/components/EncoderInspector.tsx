@@ -96,13 +96,13 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
 }) => {
   const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
   const dialSlot: EncoderSubControlId = encoderIndex === 2 ? 'dial2' : 'dial';
-  const cwSlot: EncoderSubControlId = encoderIndex === 2 ? 'enc2_cw' : 'enc_cw';
-  const ccwSlot: EncoderSubControlId = encoderIndex === 2 ? 'enc2_ccw' : 'enc_ccw';
+  const cwSlot: EncoderSubControlId = encoderIndex === 2 ? 'e2_cw' : 'enc_cw';
+  const ccwSlot: EncoderSubControlId = encoderIndex === 2 ? 'e2_ccw' : 'enc_ccw';
 
   const activeBinding =
     selectedSubControl === 'dial' || selectedSubControl === 'dial2'
       ? encoder.dial
-      : selectedSubControl === 'enc_cw' || selectedSubControl === 'enc2_cw'
+      : selectedSubControl === 'enc_cw' || selectedSubControl === 'e2_cw'
       ? encoder.cw
       : encoder.ccw;
 
@@ -263,8 +263,9 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
               <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
                 {slotMeta.full}
               </h2>
-              <p className="text-xs text-[var(--text-muted)] truncate">
+              <p className="text-xs text-[var(--text-muted)] truncate tabular-nums">
                 {activeProfileName} · {profileShortTag(activeProfileId)} · {slotMeta.short}
+                {slotMeta.pin ? ` · ${slotMeta.pin}` : ''}
               </p>
             </div>
           </div>

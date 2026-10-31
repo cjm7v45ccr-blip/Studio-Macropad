@@ -84,8 +84,8 @@ const HOST_PRESET_SLOTS: Record<Exclude<HostOsPresetId, 'keep'>, Record<Hardware
     enc_cw: 'MEDIA:VOL_UP',
     enc_ccw: 'MEDIA:VOL_DOWN',
     dial2: 'MEDIA:PLAY_PAUSE',
-    enc2_cw: 'MEDIA:NEXT',
-    enc2_ccw: 'MEDIA:PREV'
+    e2_cw: 'MEDIA:NEXT',
+    e2_ccw: 'MEDIA:PREV'
   },
   macos: {
     b1: 'MEDIA:PLAY_PAUSE',
@@ -100,8 +100,8 @@ const HOST_PRESET_SLOTS: Record<Exclude<HostOsPresetId, 'keep'>, Record<Hardware
     enc_cw: 'MEDIA:VOL_UP',
     enc_ccw: 'MEDIA:VOL_DOWN',
     dial2: 'MEDIA:PLAY_PAUSE',
-    enc2_cw: 'MEDIA:NEXT',
-    enc2_ccw: 'MEDIA:PREV'
+    e2_cw: 'MEDIA:NEXT',
+    e2_ccw: 'MEDIA:PREV'
   },
   linux: {
     b1: 'MEDIA:PLAY_PAUSE',
@@ -116,8 +116,8 @@ const HOST_PRESET_SLOTS: Record<Exclude<HostOsPresetId, 'keep'>, Record<Hardware
     enc_cw: 'MEDIA:VOL_UP',
     enc_ccw: 'MEDIA:VOL_DOWN',
     dial2: 'MEDIA:PLAY_PAUSE',
-    enc2_cw: 'MEDIA:NEXT',
-    enc2_ccw: 'MEDIA:PREV'
+    e2_cw: 'MEDIA:NEXT',
+    e2_ccw: 'MEDIA:PREV'
   }
 };
 
@@ -135,8 +135,8 @@ const TV_PRESET_SLOTS: Record<Exclude<TvPresetChoiceId, 'keep'>, Record<Hardware
     enc_cw: 'TV:VOL_UP',
     enc_ccw: 'TV:VOL_DOWN',
     dial2: 'TV:OK',
-    enc2_cw: 'TV:CH_UP',
-    enc2_ccw: 'TV:CH_DOWN'
+    e2_cw: 'TV:CH_UP',
+    e2_ccw: 'TV:CH_DOWN'
   },
   live_tv: {
     b1: 'TV:POWER',
@@ -151,8 +151,8 @@ const TV_PRESET_SLOTS: Record<Exclude<TvPresetChoiceId, 'keep'>, Record<Hardware
     enc_cw: 'TV:CH_UP',
     enc_ccw: 'TV:CH_DOWN',
     dial2: 'TV:INPUT',
-    enc2_cw: 'TV:VOL_UP',
-    enc2_ccw: 'TV:VOL_DOWN'
+    e2_cw: 'TV:VOL_UP',
+    e2_ccw: 'TV:VOL_DOWN'
   }
 };
 
@@ -550,8 +550,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
           tv_enc_cw: tvSlots.enc_cw,
           tv_enc_ccw: tvSlots.enc_ccw,
           tv_dial2: tvSlots.dial2,
-          tv_enc2_cw: tvSlots.enc2_cw,
-          tv_enc2_ccw: tvSlots.enc2_ccw
+          tv_e2_cw: tvSlots.e2_cw,
+          tv_e2_ccw: tvSlots.e2_ccw
         };
 
         await onCompleteSetup({

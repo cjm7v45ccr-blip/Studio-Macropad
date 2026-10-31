@@ -59,8 +59,8 @@ const KNOB_2_SLOTS: {
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
   { slot: 'dial2', label: 'K2 Press', icon: Disc },
-  { slot: 'enc2_ccw', label: 'K2 Left', icon: RotateCcw },
-  { slot: 'enc2_cw', label: 'K2 Right', icon: RotateCw }
+  { slot: 'e2_ccw', label: 'K2 Left', icon: RotateCcw },
+  { slot: 'e2_cw', label: 'K2 Right', icon: RotateCw }
 ];
 
 export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({

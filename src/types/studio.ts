@@ -1,7 +1,7 @@
 export type KeyId = 'k1' | 'k2' | 'k3' | 'k4' | 'k5' | 'k6' | 'k7' | 'k8' | 'k9';
 export type EncoderIndex = 1 | 2;
 export type Encoder1SubControlId = 'dial' | 'enc_cw' | 'enc_ccw';
-export type Encoder2SubControlId = 'dial2' | 'enc2_cw' | 'enc2_ccw';
+export type Encoder2SubControlId = 'dial2' | 'e2_cw' | 'e2_ccw';
 export type EncoderSubControlId = Encoder1SubControlId | Encoder2SubControlId;
 export type ControlId = KeyId | 'encoder' | 'encoder2' | EncoderSubControlId;
 
@@ -91,8 +91,8 @@ export type HardwareSlotId =
   | 'enc_cw'
   | 'enc_ccw'
   | 'dial2'
-  | 'enc2_cw'
-  | 'enc2_ccw';
+  | 'e2_cw'
+  | 'e2_ccw';
 export type HardwareFlashSlot = HardwareSlotId | 'mode';
 
 export type SyncStatusPill = 'Synced' | 'Saving' | 'Out of sync' | 'Disconnected';
@@ -324,8 +324,8 @@ export interface HardwareBackupPayload {
   h1_enc_cw?: string;
   h1_enc_ccw?: string;
   h1_dial2?: string;
-  h1_enc2_cw?: string;
-  h1_enc2_ccw?: string;
+  h1_e2_cw?: string;
+  h1_e2_ccw?: string;
   h2_b1?: string;
   h2_b2?: string;
   h2_b3?: string;
@@ -338,8 +338,8 @@ export interface HardwareBackupPayload {
   h2_enc_cw?: string;
   h2_enc_ccw?: string;
   h2_dial2?: string;
-  h2_enc2_cw?: string;
-  h2_enc2_ccw?: string;
+  h2_e2_cw?: string;
+  h2_e2_ccw?: string;
   h3_b1?: string;
   h3_b2?: string;
   h3_b3?: string;
@@ -352,8 +352,8 @@ export interface HardwareBackupPayload {
   h3_enc_cw?: string;
   h3_enc_ccw?: string;
   h3_dial2?: string;
-  h3_enc2_cw?: string;
-  h3_enc2_ccw?: string;
+  h3_e2_cw?: string;
+  h3_e2_ccw?: string;
   mac_name?: string;
   mac_b1?: string;
   mac_b2?: string;
@@ -367,8 +367,8 @@ export interface HardwareBackupPayload {
   mac_enc_cw?: string;
   mac_enc_ccw?: string;
   mac_dial2?: string;
-  mac_enc2_cw?: string;
-  mac_enc2_ccw?: string;
+  mac_e2_cw?: string;
+  mac_e2_ccw?: string;
   tv_b1: string;
   tv_b2: string;
   tv_b3: string;
@@ -381,8 +381,8 @@ export interface HardwareBackupPayload {
   tv_enc_cw?: string;
   tv_enc_ccw?: string;
   tv_dial2?: string;
-  tv_enc2_cw?: string;
-  tv_enc2_ccw?: string;
+  tv_e2_cw?: string;
+  tv_e2_ccw?: string;
   [key: string]: any;
 }
 

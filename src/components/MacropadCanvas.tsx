@@ -310,6 +310,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       const macros = customMacrosRef.current;
       const isEnc2 =
         rawSlot === 'dial2' ||
+        rawSlot === 'e2_cw' ||
+        rawSlot === 'e2_ccw' ||
         rawSlot === 'enc2_cw' ||
         rawSlot === 'enc2_ccw' ||
         rawSlot === 'cw2' ||
@@ -320,6 +322,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         e.event === 'turn' ||
         rawSlot === 'enc_cw' ||
         rawSlot === 'enc_ccw' ||
+        rawSlot === 'e2_cw' ||
+        rawSlot === 'e2_ccw' ||
         rawSlot === 'enc2_cw' ||
         rawSlot === 'enc2_ccw' ||
         rawSlot === 'cw' ||
@@ -330,6 +334,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         const encIdx: EncoderIndex = isEnc2 ? 2 : 1;
         const isCcw =
           rawSlot === 'enc_ccw' ||
+          rawSlot === 'e2_ccw' ||
           rawSlot === 'enc2_ccw' ||
           rawSlot === 'ccw' ||
           rawSlot === 'ccw2' ||
@@ -337,8 +342,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         const flashId: HardwareFlashSlot =
           encIdx === 2
             ? isCcw
-              ? 'enc2_ccw'
-              : 'enc2_cw'
+              ? 'e2_ccw'
+              : 'e2_cw'
             : isCcw
             ? 'enc_ccw'
             : 'enc_cw';
@@ -562,7 +567,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     dir: 'cw' | 'ccw',
     holdModeCombo = false
   ) => {
-    if (viewMode === 'test' && (holdModeCombo || pressedKey === 'k9')) {
+    if (viewMode === 'test' && encoderIndex === 1 && (holdModeCombo || pressedKey === 'k9')) {
       await triggerModePlusDialHostSwitch(dir, encoderIndex);
       return;
     }
@@ -570,8 +575,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const subId: HardwareFlashSlot & ControlId =
       encoderIndex === 2
         ? dir === 'cw'
-          ? 'enc2_cw'
-          : 'enc2_ccw'
+          ? 'e2_cw'
+          : 'e2_ccw'
         : dir === 'cw'
         ? 'enc_cw'
         : 'enc_ccw';
@@ -664,9 +669,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const encCfg = encoderIndex === 2 ? layer.encoder2 : layer.encoder;
     const dialId: HardwareFlashSlot & ControlId = encoderIndex === 2 ? 'dial2' : 'dial';
     const cwId: HardwareFlashSlot & ControlId =
-      encoderIndex === 2 ? 'enc2_cw' : 'enc_cw';
+      encoderIndex === 2 ? 'e2_cw' : 'enc_cw';
     const ccwId: HardwareFlashSlot & ControlId =
-      encoderIndex === 2 ? 'enc2_ccw' : 'enc_ccw';
+      encoderIndex === 2 ? 'e2_ccw' : 'enc_ccw';
     const rootControlId: ControlId = encoderIndex === 2 ? 'encoder2' : 'encoder';
 
     const angle = encoderIndex === 2 ? knob2Angle : knobAngle;
@@ -1314,8 +1319,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                           { slot: 'enc_ccw', label: 'K1 Left' },
                           { slot: 'enc_cw', label: 'K1 Right' },
                           { slot: 'dial2', label: 'Knob 2' },
-                          { slot: 'enc2_ccw', label: 'K2 Left' },
-                          { slot: 'enc2_cw', label: 'K2 Right' },
+                          { slot: 'e2_ccw', label: 'K2 Left' },
+                          { slot: 'e2_cw', label: 'K2 Right' },
                           { slot: 'mode', label: 'Mode' }
                         ] as const
                       ).map(btn => (

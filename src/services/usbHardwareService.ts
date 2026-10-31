@@ -733,10 +733,23 @@ class PadLinkService {
             h2Name = p.h2_name || 'Host 2';
             h3Name = p.h3_name || 'Host 3';
             tvName = p.tv_name || 'TV';
-            initialH1 = { ...initialH1, ...(p.h1 || p.mac || {}) };
-            initialH2 = { ...initialH2, ...(p.h2 || {}) };
-            initialH3 = { ...initialH3, ...(p.h3 || {}) };
-            initialTv = { ...initialTv, ...(p.tv || {}) };
+            const migrateEnc2 = (rawObj?: Record<string, any>) => {
+              if (!rawObj || typeof rawObj !== 'object') return {};
+              const out: Record<string, any> = { ...rawObj };
+              if (out.e2_cw === undefined && typeof out.enc2_cw === 'string') {
+                out.e2_cw = out.enc2_cw;
+              }
+              if (out.e2_ccw === undefined && typeof out.enc2_ccw === 'string') {
+                out.e2_ccw = out.enc2_ccw;
+              }
+              delete out.enc2_cw;
+              delete out.enc2_ccw;
+              return out;
+            };
+            initialH1 = { ...initialH1, ...migrateEnc2(p.h1 || p.mac) };
+            initialH2 = { ...initialH2, ...migrateEnc2(p.h2) };
+            initialH3 = { ...initialH3, ...migrateEnc2(p.h3) };
+            initialTv = { ...initialTv, ...migrateEnc2(p.tv) };
           }
           if (typeof parsed.tvEnabled === 'boolean') {
             initialTvEnabled = parsed.tvEnabled;
@@ -749,7 +762,7 @@ class PadLinkService {
 
       this.demoPad = {
         rev,
-        firmware: '4.6.1',
+        firmware: '4.7.0',
         setupMode: Boolean(opts?.setupMode),
         mode,
         h1Name,
@@ -937,8 +950,8 @@ class PadLinkService {
     if (
       slot === 'enc_cw' ||
       slot === 'enc_ccw' ||
-      slot === 'enc2_cw' ||
-      slot === 'enc2_ccw'
+      slot === 'e2_cw' ||
+      slot === 'e2_ccw'
     ) {
       const turnEvt: HardwareEventPacket = {
         event: 'turn',
@@ -975,7 +988,7 @@ class PadLinkService {
       device: {
         id: 'demo-pad',
         name: 'Studio MacroPad (Demo)',
-        firmware: d.firmware || '4.5.0',
+        firmware: d.firmware || '4.7.0',
         connection_type: 'DEMO',
         setup_mode: d.setupMode
       },
@@ -995,7 +1008,7 @@ class PadLinkService {
         events_enabled: d.eventsEnabled,
         setup_mode: d.setupMode
       },
-      capabilities: ['delay', 'repeat', 'macro_abort', 'macro_trace', 'push_turn', 'encoder_accel', 'diagnostics', 'tv_toggle', 'dual_encoder'],
+      capabilities: ['delay', 'repeat', 'macro_abort', 'macro_trace', 'push_turn', 'encoder_accel', 'diagnostics', 'tv_toggle', 'encoder2'],
       tv: {
         configured: d.tvConfigured,
         paired: d.tvPaired,
@@ -1189,8 +1202,8 @@ class PadLinkService {
         enc_cw: String(obj.enc_cw ?? ''),
         enc_ccw: String(obj.enc_ccw ?? ''),
         dial2: String(obj.dial2 ?? ''),
-        enc2_cw: String(obj.enc2_cw ?? ''),
-        enc2_ccw: String(obj.enc2_ccw ?? '')
+        e2_cw: String(obj.e2_cw ?? obj.enc2_cw ?? ''),
+        e2_ccw: String(obj.e2_ccw ?? obj.enc2_ccw ?? '')
       };
       this.setDemoProfileSlots(d, prof, nextSlots);
       d.rev += 1;
@@ -1248,8 +1261,8 @@ class PadLinkService {
         h1_enc_cw: d.h1.enc_cw,
         h1_enc_ccw: d.h1.enc_ccw,
         h1_dial2: d.h1.dial2,
-        h1_enc2_cw: d.h1.enc2_cw,
-        h1_enc2_ccw: d.h1.enc2_ccw,
+        h1_e2_cw: d.h1.e2_cw,
+        h1_e2_ccw: d.h1.e2_ccw,
         h2_b1: d.h2.b1,
         h2_b2: d.h2.b2,
         h2_b3: d.h2.b3,
@@ -1262,8 +1275,8 @@ class PadLinkService {
         h2_enc_cw: d.h2.enc_cw,
         h2_enc_ccw: d.h2.enc_ccw,
         h2_dial2: d.h2.dial2,
-        h2_enc2_cw: d.h2.enc2_cw,
-        h2_enc2_ccw: d.h2.enc2_ccw,
+        h2_e2_cw: d.h2.e2_cw,
+        h2_e2_ccw: d.h2.e2_ccw,
         h3_b1: d.h3.b1,
         h3_b2: d.h3.b2,
         h3_b3: d.h3.b3,
@@ -1276,8 +1289,8 @@ class PadLinkService {
         h3_enc_cw: d.h3.enc_cw,
         h3_enc_ccw: d.h3.enc_ccw,
         h3_dial2: d.h3.dial2,
-        h3_enc2_cw: d.h3.enc2_cw,
-        h3_enc2_ccw: d.h3.enc2_ccw,
+        h3_e2_cw: d.h3.e2_cw,
+        h3_e2_ccw: d.h3.e2_ccw,
         tv_b1: d.tv.b1,
         tv_b2: d.tv.b2,
         tv_b3: d.tv.b3,
@@ -1290,8 +1303,8 @@ class PadLinkService {
         tv_enc_cw: d.tv.enc_cw,
         tv_enc_ccw: d.tv.enc_ccw,
         tv_dial2: d.tv.dial2,
-        tv_enc2_cw: d.tv.enc2_cw,
-        tv_enc2_ccw: d.tv.enc2_ccw,
+        tv_e2_cw: d.tv.e2_cw,
+        tv_e2_ccw: d.tv.e2_ccw,
         mac_name: activeHostName,
         mac_b1: activeHostSlots.b1,
         mac_b2: activeHostSlots.b2,
@@ -1305,8 +1318,8 @@ class PadLinkService {
         mac_enc_cw: activeHostSlots.enc_cw,
         mac_enc_ccw: activeHostSlots.enc_ccw,
         mac_dial2: activeHostSlots.dial2,
-        mac_enc2_cw: activeHostSlots.enc2_cw,
-        mac_enc2_ccw: activeHostSlots.enc2_ccw
+        mac_e2_cw: activeHostSlots.e2_cw,
+        mac_e2_ccw: activeHostSlots.e2_ccw
       };
       return reply(payload);
     }
@@ -1321,20 +1334,26 @@ class PadLinkService {
       d.h3Name = sanitizeFirmwareAlias(String(obj.h3_name || d.h3Name), 'HOST3');
 
       for (const s of HARDWARE_SLOTS) {
-        if (typeof obj[`h1_${s}`] === 'string' && isValidSlotAssignment(obj[`h1_${s}`])) {
-          d.h1[s] = obj[`h1_${s}`];
-        } else if (typeof obj[`mac_${s}`] === 'string' && isValidSlotAssignment(obj[`mac_${s}`])) {
-          d.h1[s] = obj[`mac_${s}`];
+        const legacySuffix = s === 'e2_cw' ? 'enc2_cw' : s === 'e2_ccw' ? 'enc2_ccw' : null;
+        const h1Val = obj[`h1_${s}`] ?? (legacySuffix ? obj[`h1_${legacySuffix}`] : undefined);
+        const macVal = obj[`mac_${s}`] ?? (legacySuffix ? obj[`mac_${legacySuffix}`] : undefined);
+        if (typeof h1Val === 'string' && isValidSlotAssignment(h1Val)) {
+          d.h1[s] = h1Val;
+        } else if (typeof macVal === 'string' && isValidSlotAssignment(macVal)) {
+          d.h1[s] = macVal;
         }
 
-        if (typeof obj[`h2_${s}`] === 'string' && isValidSlotAssignment(obj[`h2_${s}`])) {
-          d.h2[s] = obj[`h2_${s}`];
+        const h2Val = obj[`h2_${s}`] ?? (legacySuffix ? obj[`h2_${legacySuffix}`] : undefined);
+        if (typeof h2Val === 'string' && isValidSlotAssignment(h2Val)) {
+          d.h2[s] = h2Val;
         }
-        if (typeof obj[`h3_${s}`] === 'string' && isValidSlotAssignment(obj[`h3_${s}`])) {
-          d.h3[s] = obj[`h3_${s}`];
+        const h3Val = obj[`h3_${s}`] ?? (legacySuffix ? obj[`h3_${legacySuffix}`] : undefined);
+        if (typeof h3Val === 'string' && isValidSlotAssignment(h3Val)) {
+          d.h3[s] = h3Val;
         }
-        if (typeof obj[`tv_${s}`] === 'string' && isValidSlotAssignment(obj[`tv_${s}`])) {
-          d.tv[s] = obj[`tv_${s}`];
+        const tvVal = obj[`tv_${s}`] ?? (legacySuffix ? obj[`tv_${legacySuffix}`] : undefined);
+        if (typeof tvVal === 'string' && isValidSlotAssignment(tvVal)) {
+          d.tv[s] = tvVal;
         }
       }
       d.rev += 1;
@@ -1554,7 +1573,7 @@ class PadLinkService {
             'MacroPad Wi-Fi is offline. Connect Wi-Fi first or use USB Serial Stream / Local .bin Flash.'
         });
       }
-      const nextVersion = String(obj.version || d.firmware || '4.5.0').replace(/^[vV]/, '');
+      const nextVersion = String(obj.version || d.firmware || '4.7.0').replace(/^[vV]/, '');
       window.setTimeout(() => {
         if (!this.demoModeActive || !this.demoPad) return;
         const stages: { phase: string; percent: number; message: string; delay: number }[] = [
@@ -1632,7 +1651,7 @@ class PadLinkService {
     }
 
     if (path === '/api/ota/end') {
-      const nextVersion = String(obj.version || d.firmware || '4.5.0').replace(/^[vV]/, '');
+      const nextVersion = String(obj.version || d.firmware || '4.7.0').replace(/^[vV]/, '');
       d.firmware = nextVersion;
       this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       const doneEvt: HardwareEventPacket = {
@@ -2250,8 +2269,8 @@ class PadLinkService {
         }
 
         const encodedLine = JSON.stringify(obj) + '\n';
-        if (encodedLine.length > 1536) {
-          reject(new Error('Serial JSON packet exceeds 1536-byte firmware limit.'));
+        if (encodedLine.length > 8192) {
+          reject(new Error('Serial JSON packet exceeds 8192-byte firmware limit.'));
           return;
         }
 
@@ -2377,9 +2396,9 @@ class PadLinkService {
     if (!isValidSlotAssignment(action)) {
       throw new Error(`Unsupported firmware action: ${action}`);
     }
-    const isEncoder2Slot = slot === 'dial2' || slot === 'enc2_cw' || slot === 'enc2_ccw';
+    const isEncoder2Slot = slot === 'dial2' || slot === 'e2_cw' || slot === 'e2_ccw';
     const supportsDualEnc = Boolean(
-      this.connectionInfo.telemetry?.capabilities?.includes('dual_encoder')
+      this.connectionInfo.telemetry?.capabilities?.includes('encoder2')
     );
     const res = await this.call({
       path: '/api/customizer/save',
@@ -2425,20 +2444,20 @@ class PadLinkService {
     const reqObj = {
       ...baseReqObj,
       dial2: slots.dial2,
-      enc2_cw: slots.enc2_cw,
-      enc2_ccw: slots.enc2_ccw
+      e2_cw: slots.e2_cw,
+      e2_ccw: slots.e2_ccw
     };
 
-    // ESP32 Serial RX line buffer accepts up to 4096 bytes, and /api/profile/save allows
+    // ESP32 v4.7+ Serial RX line buffer accepts up to 8192 bytes, and /api/profile/save allows
     // up to 512 bytes per slot (whereas /api/customizer/save caps single-slot saves at 128 bytes).
     const serializedLen = JSON.stringify(reqObj).length + 1;
-    if (!this.demoModeActive && serializedLen > 3900) {
+    if (!this.demoModeActive && serializedLen > 7800) {
       const hasLongSlot = HARDWARE_SLOTS.some(
         slotId => slots[slotId].length > MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES
       );
       if (hasLongSlot) {
         throw new Error(
-          `Profile ${profile} payload (${serializedLen} B) exceeds the 4 KB USB serial line buffer. Shorten one or more multi-step macros on this host.`
+          `Profile ${profile} payload (${serializedLen} B) exceeds the 8 KB USB serial line buffer. Shorten one or more multi-step macros on this host.`
         );
       }
       let lastRes: { ok: boolean; rev?: number; message?: string } = { ok: true };
@@ -2451,7 +2470,7 @@ class PadLinkService {
     const res = await this.call(reqObj);
     if (!res?.ok) {
       const supportsDualEnc = Boolean(
-        this.connectionInfo.telemetry?.capabilities?.includes('dual_encoder')
+        this.connectionInfo.telemetry?.capabilities?.includes('encoder2')
       );
       if (!this.demoModeActive && !supportsDualEnc) {
         const fallbackRes = await this.call(baseReqObj);
@@ -2524,8 +2543,13 @@ class PadLinkService {
     ): Record<HardwareSlotId, string> => {
       const slots = { ...defaults };
       for (const s of HARDWARE_SLOTS) {
-        const direct = backup[`${prefix}_${s}`];
-        const legacy = allowLegacyMacFallback ? backup[`mac_${s}`] : undefined;
+        const legacySuffix = s === 'e2_cw' ? 'enc2_cw' : s === 'e2_ccw' ? 'enc2_ccw' : null;
+        const direct =
+          backup[`${prefix}_${s}`] ??
+          (legacySuffix ? backup[`${prefix}_${legacySuffix}`] : undefined);
+        const legacy = allowLegacyMacFallback
+          ? backup[`mac_${s}`] ?? (legacySuffix ? backup[`mac_${legacySuffix}`] : undefined)
+          : undefined;
         if (typeof direct === 'string' && isValidSlotAssignment(direct)) {
           slots[s] = direct;
         } else if (typeof legacy === 'string' && isValidSlotAssignment(legacy)) {

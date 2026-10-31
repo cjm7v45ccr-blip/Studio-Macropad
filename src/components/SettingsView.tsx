@@ -471,22 +471,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { id: 'light', label: 'Light', icon: Sun }
   ];
 
-  const handleDownloadV45Source = async () => {
+  const handleDownloadV47Source = async () => {
     setSourceBusy(true);
     try {
-      const res = await fetch('/firmware-source/StudioMacroPad_v4.5.0.ino');
+      const res = await fetch('/firmware-source/StudioMacroPad_v4.7.0.ino');
       if (!res.ok) throw new Error('Could not load firmware source sketch');
       const code = await res.text();
       const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'StudioMacroPad_v4.5.0.ino';
+      a.download = 'StudioMacroPad_v4.7.0.ino';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      onToast('Downloaded StudioMacroPad_v4.5.0.ino');
+      onToast('Downloaded StudioMacroPad_v4.7.0.ino');
     } catch (err: any) {
       onToast(err?.message || 'Failed to download C++ sketch', 'error');
     } finally {
@@ -494,14 +494,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleCopyV45Source = async () => {
+  const handleCopyV47Source = async () => {
     setSourceBusy(true);
     try {
-      const res = await fetch('/firmware-source/StudioMacroPad_v4.5.0.ino');
+      const res = await fetch('/firmware-source/StudioMacroPad_v4.7.0.ino');
       if (!res.ok) throw new Error('Could not load firmware source sketch');
       const code = await res.text();
       await navigator.clipboard.writeText(code);
-      onToast('Copied StudioMacroPad_v4.5.0.ino to clipboard');
+      onToast('Copied StudioMacroPad_v4.7.0.ino to clipboard');
     } catch (err: any) {
       onToast(err?.message || 'Could not copy C++ sketch', 'error');
     } finally {
@@ -922,7 +922,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         firmwareVersion:
                           connection.firmwareVersion === 'v1.0.0' ||
                           connection.firmwareVersion === '1.0.0'
-                            ? '4.5.0'
+                            ? '4.7.0'
                             : '1.0.0'
                       })
                     }
@@ -932,7 +932,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     Simulate FW (
                     {connection.firmwareVersion === 'v1.0.0' ||
                     connection.firmwareVersion === '1.0.0'
-                      ? 'Restore 4.5.0'
+                      ? 'Restore 4.7.0'
                       : 'Set 1.0.0'}
                     )
                   </button>
@@ -942,7 +942,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* 1B. MacroPad Firmware Updates + v4.5.0 Source Studio */}
+        {/* 1B. MacroPad Firmware Updates + v4.7.0 Source Studio */}
         {showFirmware && (
           <>
             <FirmwareUpdaterCard
@@ -966,18 +966,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
                     <Code2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                    <span>ESP32 Firmware v4.5.0 Source Studio</span>
+                    <span>ESP32 Firmware v4.7.0 Source Studio</span>
                     <span className="font-mono text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                       · Arduino / PlatformIO
                     </span>
                   </div>
                   <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                    Complete C++ sketch engineered for your 9-button + rotary dial ESP32 MacroPad with standalone multi-screen macro delays and hardware safety upgrades.
+                    Complete C++ sketch engineered for your 9-button + dual rotary encoder ESP32 MacroPad with TV mode toggle, standalone macro delays, and hardware safety upgrades.
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                   <button
+                  <button
                     type="button"
                     onClick={() => setFirmwareBinGuideOpen(true)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
@@ -988,7 +988,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     disabled={sourceBusy}
-                    onClick={handleCopyV45Source}
+                    onClick={handleCopyV47Source}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
@@ -997,46 +997,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     disabled={sourceBusy}
-                    onClick={handleDownloadV45Source}
+                    onClick={handleDownloadV47Source}
                     className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Download StudioMacroPad_v4.5.0.ino</span>
+                    <span>Download StudioMacroPad_v4.7.0.ino</span>
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[var(--text-secondary)]">
-                <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+              <div className="pt-3.5 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-xs text-[var(--text-secondary)]">
+                <div>
                   <div className="font-semibold text-[var(--text-primary)]">
-                    Native DELAY:&lt;ms&gt; Engine
+                    Dual Rotary Encoders &amp; GPIO Pinout
                   </div>
-                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    Runs up to 10 s per DELAY step (chainable for longer waits) completely unplugged in &lt;80 bytes.
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums">
+                    Knob 1 on GPIO 32 / 33 / 25 · Knob 2 on CLK GPIO 34, DT GPIO 35 (external 3.3V pull-ups), SW GPIO 15 (internal pull-up).
                   </div>
                 </div>
-                <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <div>
                   <div className="font-semibold text-[var(--text-primary)]">
-                    512-Byte Slot & Whitespace Parity
+                    Native DELAY:&lt;ms&gt; &amp; 8 KB Serial Buffer
                   </div>
-                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    Matches single-slot saves and live tests to 512 B and preserves leading/trailing spaces in TEXT steps.
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums">
+                    Runs up to 10 s per DELAY step unplugged, with 512 B per-slot NVS storage and 8,192 B JSON frames.
                   </div>
                 </div>
-                <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <div>
                   <div className="font-semibold text-[var(--text-primary)]">
-                    Hardware Panic-Cancel & Velocity Dial
+                    Hardware Panic-Cancel &amp; Velocity Dials
                   </div>
                   <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    Tap any physical key during a wait to abort a running macro; fast knob spins step 2×–3×.
+                    Tap any physical key during a wait to abort a running macro; fast spins accelerate both knobs 2×–3×.
                   </div>
                 </div>
-                <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <div>
                   <div className="font-semibold text-[var(--text-primary)]">
-                    Radio-Safe USB OTA + OLED Progress
+                    TV Mode Toggle &amp; Radio-Safe USB OTA
                   </div>
                   <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    Quiesces BLE/Wi-Fi radios before flash writes and renders a live progress bar on the 128×64 OLED.
+                    Switch TV mode on/off in NVS without losing bindings, plus BLE/Wi-Fi quiescing during 128×64 OLED OTA flashes.
                   </div>
                 </div>
               </div>
