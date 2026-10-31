@@ -5,6 +5,7 @@ import {
   CustomMacroItem,
   DeviceConnectionInfo,
   EncoderControlConfig,
+  EncoderIndex,
   EncoderSubControlId,
   HardwareProfileId,
   HardwareSlotId,
@@ -32,6 +33,10 @@ import {
 
 interface EncoderInspectorProps {
   encoder: EncoderControlConfig;
+  encoderIndex: EncoderIndex;
+  encoder1Color: string;
+  encoder2Color: string;
+  onSelectEncoder: (index: EncoderIndex) => void;
   selectedSubControl: EncoderSubControlId;
   onSelectSubControl: (sub: EncoderSubControlId) => void;
   activeProfileId: HardwareProfileId;
@@ -63,6 +68,10 @@ const RING_COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899', '#06
 
 export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   encoder,
+  encoderIndex,
+  encoder1Color,
+  encoder2Color,
+  onSelectEncoder,
   selectedSubControl,
   onSelectSubControl,
   activeProfileId,
@@ -86,10 +95,14 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   onOpenMacroBuilder
 }) => {
   const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
+  const dialSlot: EncoderSubControlId = encoderIndex === 2 ? 'dial2' : 'dial';
+  const cwSlot: EncoderSubControlId = encoderIndex === 2 ? 'enc2_cw' : 'enc_cw';
+  const ccwSlot: EncoderSubControlId = encoderIndex === 2 ? 'enc2_ccw' : 'enc_ccw';
+
   const activeBinding =
-    selectedSubControl === 'dial'
+    selectedSubControl === 'dial' || selectedSubControl === 'dial2'
       ? encoder.dial
-      : selectedSubControl === 'enc_cw'
+      : selectedSubControl === 'enc_cw' || selectedSubControl === 'enc2_cw'
       ? encoder.cw
       : encoder.ccw;
 
@@ -131,20 +144,20 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
       if (activeProfileId === 'TV') {
         onApplyKnobSlots(
           {
-            dial: 'TV:MUTE',
-            enc_cw: 'TV:VOL_UP',
-            enc_ccw: 'TV:VOL_DOWN'
+            [dialSlot]: 'TV:MUTE',
+            [cwSlot]: 'TV:VOL_UP',
+            [ccwSlot]: 'TV:VOL_DOWN'
           },
-          'Applied TV Volume knob preset'
+          `Applied TV Volume preset to Knob ${encoderIndex}`
         );
       } else {
         onApplyKnobSlots(
           {
-            dial: 'MEDIA:MUTE',
-            enc_cw: 'MEDIA:VOL_UP',
-            enc_ccw: 'MEDIA:VOL_DOWN'
+            [dialSlot]: 'MEDIA:MUTE',
+            [cwSlot]: 'MEDIA:VOL_UP',
+            [ccwSlot]: 'MEDIA:VOL_DOWN'
           },
-          'Applied Volume knob preset'
+          `Applied Volume preset to Knob ${encoderIndex}`
         );
       }
       return;
@@ -153,11 +166,11 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
     if (presetId === 'track') {
       onApplyKnobSlots(
         {
-          dial: 'MEDIA:PLAY_PAUSE',
-          enc_cw: 'MEDIA:NEXT',
-          enc_ccw: 'MEDIA:PREV'
+          [dialSlot]: 'MEDIA:PLAY_PAUSE',
+          [cwSlot]: 'MEDIA:NEXT',
+          [ccwSlot]: 'MEDIA:PREV'
         },
-        'Applied Track skip knob preset'
+        `Applied Track skip preset to Knob ${encoderIndex}`
       );
       return;
     }
@@ -165,45 +178,45 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
     if (presetId === 'channel') {
       onApplyKnobSlots(
         {
-          enc_cw: 'TV:CH_UP',
-          enc_ccw: 'TV:CH_DOWN'
+          [cwSlot]: 'TV:CH_UP',
+          [ccwSlot]: 'TV:CH_DOWN'
         },
-        'Applied Channel knob preset'
+        `Applied Channel preset to Knob ${encoderIndex}`
       );
       return;
     }
 
     onApplyKnobSlots(
       {
-        enc_cw: 'SHORTCUT::right',
-        enc_ccw: 'SHORTCUT::left'
+        [cwSlot]: 'SHORTCUT::right',
+        [ccwSlot]: 'SHORTCUT::left'
       },
-      'Applied Arrow keys knob preset'
+      `Applied Arrow keys preset to Knob ${encoderIndex}`
     );
   };
 
   const handleSwapDirections = () => {
     const cwAct =
       bindingToFirmwareAction(encoder.cw) ||
-      FACTORY_DEFAULT_SLOTS[activeProfileId].enc_cw;
+      FACTORY_DEFAULT_SLOTS[activeProfileId][cwSlot];
     const ccwAct =
       bindingToFirmwareAction(encoder.ccw) ||
-      FACTORY_DEFAULT_SLOTS[activeProfileId].enc_ccw;
+      FACTORY_DEFAULT_SLOTS[activeProfileId][ccwSlot];
 
     const repeatOverrides: SlotRepeatMap = {};
     if (encoder.ccw.repeatConfig) {
-      repeatOverrides[`${activeProfileId}:enc_cw`] = encoder.ccw.repeatConfig;
+      repeatOverrides[`${activeProfileId}:${cwSlot}`] = encoder.ccw.repeatConfig;
     }
     if (encoder.cw.repeatConfig) {
-      repeatOverrides[`${activeProfileId}:enc_ccw`] = encoder.cw.repeatConfig;
+      repeatOverrides[`${activeProfileId}:${ccwSlot}`] = encoder.cw.repeatConfig;
     }
 
     onApplyKnobSlots(
       {
-        enc_cw: ccwAct,
-        enc_ccw: cwAct
+        [cwSlot]: ccwAct,
+        [ccwSlot]: cwAct
       },
-      'Swapped knob Turn Left & Turn Right directions',
+      `Swapped Knob ${encoderIndex} Turn Left & Turn Right directions`,
       repeatOverrides
     );
   };
@@ -215,19 +228,19 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
     binding: ActionBinding;
   }[] = [
     {
-      id: 'dial',
+      id: dialSlot,
       title: 'Press',
       icon: Disc,
       binding: encoder.dial
     },
     {
-      id: 'enc_cw',
+      id: cwSlot,
       title: 'Turn Right',
       icon: RotateCw,
       binding: encoder.cw
     },
     {
-      id: 'enc_ccw',
+      id: ccwSlot,
       title: 'Turn Left',
       icon: RotateCcw,
       binding: encoder.ccw
@@ -296,6 +309,37 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
           </div>
         </div>
 
+        {/* Knob 1 / Knob 2 Selector */}
+        <div
+          role="group"
+          aria-label="Select rotary encoder"
+          className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[var(--bg-input)]"
+        >
+          {([1, 2] as const).map(idx => {
+            const active = encoderIndex === idx;
+            const ringColor = idx === 2 ? encoder2Color : encoder1Color;
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onSelectEncoder(idx)}
+                className={`flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                  active
+                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className="w-2.5 h-2.5 rounded-full border-2 shrink-0"
+                  style={{ borderColor: ringColor }}
+                />
+                <span>Knob {idx}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* 3 Real Hardware Encoder Controls Selector */}
         <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[var(--bg-input)]">
           {slotCards.map(card => {
@@ -343,13 +387,13 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
         <div className="p-3 rounded-xl bg-[var(--bg-input)] space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-medium text-[var(--text-muted)]">
-              Knob Presets
+              Knob {encoderIndex} Presets
             </span>
             <button
               type="button"
               onClick={handleSwapDirections}
               className="flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--bg-elevated)] text-[10px] font-semibold text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors cursor-pointer whitespace-nowrap"
-              title="Swap Turn Left and Turn Right actions"
+              title={`Swap Knob ${encoderIndex} Turn Left and Turn Right actions`}
             >
               <ArrowLeftRight className="w-3 h-3 text-[var(--accent)]" />
               <span>Swap directions</span>
@@ -403,7 +447,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
         {/* Dial Ring Accent */}
         <div className="space-y-2 pt-3 border-t border-[var(--border-subtle)]">
           <label className="text-xs font-medium text-[var(--text-secondary)]">
-            Dial Ring Accent
+            Knob {encoderIndex} Ring Accent
           </label>
           <div className="flex items-center gap-2 flex-wrap">
             {RING_COLORS.map(hex => {
@@ -412,7 +456,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                 <button
                   key={hex}
                   type="button"
-                  aria-label={`Select ring accent ${hex}`}
+                  aria-label={`Select Knob ${encoderIndex} ring accent ${hex}`}
                   onClick={() => onUpdateColor(hex)}
                   className={`w-6 h-6 rounded-full border transition-transform cursor-pointer ${
                     active

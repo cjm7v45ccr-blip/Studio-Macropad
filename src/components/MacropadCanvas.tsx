@@ -7,6 +7,7 @@ import {
   ControlId,
   CustomMacroItem,
   DeviceConnectionInfo,
+  EncoderIndex,
   EncoderPlacement,
   HardwareEventPacket,
   HardwareFlashSlot,
@@ -112,6 +113,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [knobAngle, setKnobAngle] = useState(0);
   const [knobPressed, setKnobPressed] = useState(false);
   const [knobAccel, setKnobAccel] = useState<1 | 2 | 3>(1);
+  const [knob2Angle, setKnob2Angle] = useState(0);
+  const [knob2Pressed, setKnob2Pressed] = useState(false);
+  const [knob2Accel, setKnob2Accel] = useState<1 | 2 | 3>(1);
   const [oledToast, setOledToast] = useState<{
     title: string;
     subtitle?: string;
@@ -133,6 +137,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const knobAccelTimerRef = useRef<number | null>(null);
   const pendingAngleDeltaRef = useRef<number>(0);
   const angleRafRef = useRef<number | null>(null);
+  const lastKnob2TurnMsRef = useRef<number>(0);
+  const knob2AccelTimerRef = useRef<number | null>(null);
+  const pendingAngle2DeltaRef = useRef<number>(0);
+  const angle2RafRef = useRef<number | null>(null);
   const layerRef = useRef(layer);
   layerRef.current = layer;
   const customMacrosRef = useRef(customMacros);
@@ -151,10 +159,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }, durationMs);
   };
 
-  const recordKnobVelocity = (explicitAccel?: number): 1 | 2 | 3 => {
+  const recordKnobVelocity = (
+    encoderIndex: EncoderIndex = 1,
+    explicitAccel?: number
+  ): 1 | 2 | 3 => {
     const now = performance.now();
-    const delta = now - lastKnobTurnMsRef.current;
-    lastKnobTurnMsRef.current = now;
+    const lastRef = encoderIndex === 2 ? lastKnob2TurnMsRef : lastKnobTurnMsRef;
+    const timerRef = encoderIndex === 2 ? knob2AccelTimerRef : knobAccelTimerRef;
+    const setAccel = encoderIndex === 2 ? setKnob2Accel : setKnobAccel;
+
+    const delta = now - lastRef.current;
+    lastRef.current = now;
 
     let mult: 1 | 2 | 3 = 1;
     if (explicitAccel && explicitAccel >= 3) {
@@ -167,20 +182,35 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       mult = 2;
     }
 
-    setKnobAccel(mult);
-    if (knobAccelTimerRef.current !== null) {
-      window.clearTimeout(knobAccelTimerRef.current);
+    setAccel(mult);
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
     }
     if (mult > 1) {
-      knobAccelTimerRef.current = window.setTimeout(() => {
-        knobAccelTimerRef.current = null;
-        setKnobAccel(1);
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
+        setAccel(1);
       }, 650);
     }
     return mult;
   };
 
-  const queueKnobAngleDelta = (deltaDeg: number) => {
+  const queueKnobAngleDelta = (encoderIndex: EncoderIndex, deltaDeg: number) => {
+    if (encoderIndex === 2) {
+      pendingAngle2DeltaRef.current += deltaDeg;
+      if (angle2RafRef.current === null) {
+        angle2RafRef.current = window.requestAnimationFrame(() => {
+          const d = pendingAngle2DeltaRef.current;
+          pendingAngle2DeltaRef.current = 0;
+          angle2RafRef.current = null;
+          if (d !== 0) {
+            setKnob2Angle(a => a + d);
+          }
+        });
+      }
+      return;
+    }
+
     pendingAngleDeltaRef.current += deltaDeg;
     if (angleRafRef.current === null) {
       angleRafRef.current = window.requestAnimationFrame(() => {
@@ -278,24 +308,48 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       const rawDir = String(e.dir || '').toLowerCase();
       const currLayer = layerRef.current;
       const macros = customMacrosRef.current;
+      const isEnc2 =
+        rawSlot === 'dial2' ||
+        rawSlot === 'enc2_cw' ||
+        rawSlot === 'enc2_ccw' ||
+        rawSlot === 'cw2' ||
+        rawSlot === 'ccw2' ||
+        e.encoder === 2;
 
       if (
         e.event === 'turn' ||
         rawSlot === 'enc_cw' ||
         rawSlot === 'enc_ccw' ||
+        rawSlot === 'enc2_cw' ||
+        rawSlot === 'enc2_ccw' ||
         rawSlot === 'cw' ||
-        rawSlot === 'ccw'
+        rawSlot === 'ccw' ||
+        rawSlot === 'cw2' ||
+        rawSlot === 'ccw2'
       ) {
+        const encIdx: EncoderIndex = isEnc2 ? 2 : 1;
         const isCcw =
-          rawSlot === 'enc_ccw' || rawSlot === 'ccw' || rawDir === 'ccw';
-        const flashId: HardwareFlashSlot = isCcw ? 'enc_ccw' : 'enc_cw';
-        const mult = recordKnobVelocity(e.accel);
+          rawSlot === 'enc_ccw' ||
+          rawSlot === 'enc2_ccw' ||
+          rawSlot === 'ccw' ||
+          rawSlot === 'ccw2' ||
+          rawDir === 'ccw';
+        const flashId: HardwareFlashSlot =
+          encIdx === 2
+            ? isCcw
+              ? 'enc2_ccw'
+              : 'enc2_cw'
+            : isCcw
+            ? 'enc_ccw'
+            : 'enc_cw';
+        const mult = recordKnobVelocity(encIdx, e.accel);
 
-        queueKnobAngleDelta((isCcw ? -24 : 24) * mult);
+        queueKnobAngleDelta(encIdx, (isCcw ? -24 : 24) * mult);
         soundEngine.playDialTick();
         triggerSlotFlash(flashId);
 
-        const binding = isCcw ? currLayer.encoder.ccw : currLayer.encoder.cw;
+        const encCfg = encIdx === 2 ? currLayer.encoder2 : currLayer.encoder;
+        const binding = isCcw ? encCfg.ccw : encCfg.cw;
         const actionDesc = binding.repeatConfig
           ? summarizeAction(binding, macros)
           : e.action
@@ -305,11 +359,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           ? describeFirmwareAction(e.action, undefined, macros).shortLabel
           : describeFirmwareAction(binding.value, binding.repeatConfig, macros).shortLabel;
         triggerOledToast(
-          `${isCcw ? 'CCW' : 'CW'}${mult > 1 ? ` ${mult}x` : ''}`,
+          `${isCcw ? 'CCW' : 'CW'}${encIdx}${mult > 1 ? ` ${mult}x` : ''}`,
           shortToast
         );
         pushLog(
-          isCcw ? 'Turn Left' : 'Turn Right',
+          `Knob ${encIdx} ${isCcw ? 'Left' : 'Right'}`,
           mult > 1 ? `${isCcw ? 'CCW' : 'CW'} ${mult}×` : isCcw ? 'CCW' : 'CW',
           actionDesc,
           'hardware'
@@ -317,10 +371,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         return;
       }
 
-      if (rawSlot === 'dial') {
+      if (rawSlot === 'dial' || rawSlot === 'dial2') {
+        const encIdx: EncoderIndex = rawSlot === 'dial2' ? 2 : 1;
+        const flashId: HardwareFlashSlot = encIdx === 2 ? 'dial2' : 'dial';
         soundEngine.playKeyClick();
-        triggerSlotFlash('dial');
-        const dialBinding = currLayer.encoder.dial;
+        triggerSlotFlash(flashId);
+        const dialBinding =
+          encIdx === 2 ? currLayer.encoder2.dial : currLayer.encoder.dial;
         const actionDesc = dialBinding.repeatConfig
           ? summarizeAction(dialBinding, macros)
           : e.action
@@ -330,8 +387,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           ? describeFirmwareAction(e.action, undefined, macros).shortLabel
           : describeFirmwareAction(dialBinding.value, dialBinding.repeatConfig, macros)
               .shortLabel;
-        triggerOledToast('DIAL', shortToast);
-        pushLog('Knob Press', 'Press', actionDesc, 'hardware');
+        triggerOledToast(`DIAL ${encIdx}`, shortToast);
+        pushLog(`Knob ${encIdx} Press`, 'Press', actionDesc, 'hardware');
         return;
       }
 
@@ -359,11 +416,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       if (angleRafRef.current !== null) {
         window.cancelAnimationFrame(angleRafRef.current);
       }
+      if (angle2RafRef.current !== null) {
+        window.cancelAnimationFrame(angle2RafRef.current);
+      }
       if (oledToastTimerRef.current !== null) {
         window.clearTimeout(oledToastTimerRef.current);
       }
       if (knobAccelTimerRef.current !== null) {
         window.clearTimeout(knobAccelTimerRef.current);
+      }
+      if (knob2AccelTimerRef.current !== null) {
+        window.clearTimeout(knob2AccelTimerRef.current);
       }
       Object.values(flashTimersRef.current).forEach(id => window.clearTimeout(id));
     };
@@ -456,8 +519,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     : viewedBleHost ?? offlineBleHost;
   const oledBadgeHost: BleHostSlot = viewedBleHost ?? activeBleHost;
 
-  const triggerModePlusDialHostSwitch = async (dir: 'cw' | 'ccw') => {
-    queueKnobAngleDelta(dir === 'cw' ? 24 : -24);
+  const triggerModePlusDialHostSwitch = async (
+    dir: 'cw' | 'ccw',
+    encoderIndex: EncoderIndex = 1
+  ) => {
+    queueKnobAngleDelta(encoderIndex, dir === 'cw' ? 24 : -24);
     soundEngine.playDialTick();
 
     const delta = dir === 'cw' ? 1 : -1;
@@ -491,16 +557,27 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
   };
 
-  const triggerEncoderSpin = async (dir: 'cw' | 'ccw', holdModeCombo = false) => {
+  const triggerEncoderSpin = async (
+    encoderIndex: EncoderIndex,
+    dir: 'cw' | 'ccw',
+    holdModeCombo = false
+  ) => {
     if (viewMode === 'test' && (holdModeCombo || pressedKey === 'k9')) {
-      await triggerModePlusDialHostSwitch(dir);
+      await triggerModePlusDialHostSwitch(dir, encoderIndex);
       return;
     }
 
-    const subId: ControlId = dir === 'cw' ? 'enc_cw' : 'enc_ccw';
+    const subId: HardwareFlashSlot & ControlId =
+      encoderIndex === 2
+        ? dir === 'cw'
+          ? 'enc2_cw'
+          : 'enc2_ccw'
+        : dir === 'cw'
+        ? 'enc_cw'
+        : 'enc_ccw';
 
     if (viewMode === 'edit') {
-      queueKnobAngleDelta(dir === 'cw' ? 24 : -24);
+      queueKnobAngleDelta(encoderIndex, dir === 'cw' ? 24 : -24);
       soundEngine.playDialTick();
       onSelectControl(subId);
       return;
@@ -511,20 +588,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       return;
     }
 
-    const mult = recordKnobVelocity();
-    queueKnobAngleDelta((dir === 'cw' ? 24 : -24) * mult);
+    const mult = recordKnobVelocity(encoderIndex);
+    queueKnobAngleDelta(encoderIndex, (dir === 'cw' ? 24 : -24) * mult);
     soundEngine.playDialTick();
 
-    const binding = dir === 'cw' ? layer.encoder.cw : layer.encoder.ccw;
+    const encCfg = encoderIndex === 2 ? layer.encoder2 : layer.encoder;
+    const binding = dir === 'cw' ? encCfg.cw : encCfg.ccw;
     const summary = summarizeAction(binding, customMacros);
     const shortToast = describeFirmwareAction(
       binding.value,
       binding.repeatConfig,
       customMacros
     ).shortLabel;
-    const label = dir === 'cw' ? 'Turn Right' : 'Turn Left';
+    const label = `Knob ${encoderIndex} ${dir === 'cw' ? 'Right' : 'Left'}`;
     triggerOledToast(
-      `${dir.toUpperCase()}${mult > 1 ? ` ${mult}x` : ''}`,
+      `${dir.toUpperCase()}${encoderIndex}${mult > 1 ? ` ${mult}x` : ''}`,
       shortToast
     );
 
@@ -546,121 +624,144 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
   };
 
-  const handleEncoderWheel = (e: React.WheelEvent) => {
+  const handleEncoderWheel = (encoderIndex: EncoderIndex, e: React.WheelEvent) => {
     e.preventDefault();
-    triggerEncoderSpin(e.deltaY > 0 ? 'cw' : 'ccw', e.shiftKey);
+    triggerEncoderSpin(encoderIndex, e.deltaY > 0 ? 'cw' : 'ccw', e.shiftKey);
   };
 
-  const activateDialPush = async () => {
+  const activateDialPush = async (encoderIndex: EncoderIndex) => {
     soundEngine.playKeyClick();
+    const dialSlot: HardwareFlashSlot & ControlId =
+      encoderIndex === 2 ? 'dial2' : 'dial';
     if (viewMode === 'edit') {
-      onSelectControl('dial');
+      onSelectControl(dialSlot);
       return;
     }
 
     if (connection.transport === 'demo') {
-      usbHardware.simulateDemoPadInput('dial');
+      usbHardware.simulateDemoPadInput(dialSlot);
       return;
     }
 
-    const binding = layer.encoder.dial;
+    const encCfg = encoderIndex === 2 ? layer.encoder2 : layer.encoder;
+    const binding = encCfg.dial;
     const summary = summarizeAction(binding, customMacros);
     const shortToast = describeFirmwareAction(
       binding.value,
       binding.repeatConfig,
       customMacros
     ).shortLabel;
-    triggerOledToast('DIAL', shortToast);
+    triggerOledToast(`DIAL ${encoderIndex}`, shortToast);
     if (connection.connected && binding.value) {
       const sent = await onExecuteHardwareBinding(binding);
-      pushLog('Knob Press', 'Press', summary, sent ? 'usb-test' : 'sim');
+      pushLog(`Knob ${encoderIndex} Press`, 'Press', summary, sent ? 'usb-test' : 'sim');
     } else {
-      pushLog('Knob Press', 'Press', summary, 'sim');
+      pushLog(`Knob ${encoderIndex} Press`, 'Press', summary, 'sim');
     }
   };
 
-  const renderEncoderUnit = () => {
-    const isDialSelected =
-      (selectedControl === 'dial' || selectedControl === 'encoder') && viewMode === 'edit';
-    const isCwSelected = selectedControl === 'enc_cw' && viewMode === 'edit';
-    const isCcwSelected = selectedControl === 'enc_ccw' && viewMode === 'edit';
+  const renderEncoderUnit = (encoderIndex: EncoderIndex) => {
+    const encCfg = encoderIndex === 2 ? layer.encoder2 : layer.encoder;
+    const dialId: HardwareFlashSlot & ControlId = encoderIndex === 2 ? 'dial2' : 'dial';
+    const cwId: HardwareFlashSlot & ControlId =
+      encoderIndex === 2 ? 'enc2_cw' : 'enc_cw';
+    const ccwId: HardwareFlashSlot & ControlId =
+      encoderIndex === 2 ? 'enc2_ccw' : 'enc_ccw';
+    const rootControlId: ControlId = encoderIndex === 2 ? 'encoder2' : 'encoder';
 
-    const isDialFlashed = flashedSlots.has('dial');
-    const isCwFlashed = flashedSlots.has('enc_cw');
-    const isCcwFlashed = flashedSlots.has('enc_ccw');
+    const angle = encoderIndex === 2 ? knob2Angle : knobAngle;
+    const isPressed = encoderIndex === 2 ? knob2Pressed : knobPressed;
+    const setPressed = encoderIndex === 2 ? setKnob2Pressed : setKnobPressed;
+    const accel = encoderIndex === 2 ? knob2Accel : knobAccel;
+
+    const isDialSelected =
+      (selectedControl === dialId || selectedControl === rootControlId) &&
+      viewMode === 'edit';
+    const isCwSelected = selectedControl === cwId && viewMode === 'edit';
+    const isCcwSelected = selectedControl === ccwId && viewMode === 'edit';
+
+    const isDialFlashed = flashedSlots.has(dialId);
+    const isCwFlashed = flashedSlots.has(cwId);
+    const isCcwFlashed = flashedSlots.has(ccwId);
+
+    const dialConflict = hasConflict(dialId);
+    const cwConflict = hasConflict(cwId);
+    const ccwConflict = hasConflict(ccwId);
 
     const dialInfo = describeFirmwareAction(
-      layer.encoder.dial.value,
-      layer.encoder.dial.repeatConfig,
+      encCfg.dial.value,
+      encCfg.dial.repeatConfig,
       customMacros
     );
     const cwInfo = describeFirmwareAction(
-      layer.encoder.cw.value,
-      layer.encoder.cw.repeatConfig,
+      encCfg.cw.value,
+      encCfg.cw.repeatConfig,
       customMacros
     );
     const ccwInfo = describeFirmwareAction(
-      layer.encoder.ccw.value,
-      layer.encoder.ccw.repeatConfig,
+      encCfg.ccw.value,
+      encCfg.ccw.repeatConfig,
       customMacros
     );
 
-    const isDialUnassigned = !layer.encoder.dial.value;
-    const isCwUnassigned = !layer.encoder.cw.value;
-    const isCcwUnassigned = !layer.encoder.ccw.value;
+    const isDialUnassigned = !encCfg.dial.value;
+    const isCwUnassigned = !encCfg.cw.value;
+    const isCcwUnassigned = !encCfg.ccw.value;
 
     return (
-      <div className="flex flex-col items-center justify-center gap-2">
-        <div className="relative flex items-center justify-center gap-1.5 sm:gap-2">
-          {knobAccel > 1 && (
+      <div className="flex flex-col items-center justify-center gap-1.5">
+        <div className="relative flex items-center justify-center gap-1.5">
+          {accel > 1 && (
             <span
-              title={`Smart Knob velocity acceleration (${knobAccel}× step)`}
+              title={`Knob ${encoderIndex} velocity acceleration (${accel}× step)`}
               className="absolute -top-2.5 right-6 z-10 px-1.5 py-0.5 rounded-md bg-sky-500/20 border border-sky-400/60 font-mono text-[9px] font-bold text-sky-300 tabular-nums pointer-events-none"
             >
-              {knobAccel}×
+              {accel}×
             </span>
           )}
 
-          {/* Prominent Clickable Turn Left (`enc_ccw`) Arrow Button */}
+          {/* Clickable Turn Left Arrow Button */}
           <button
             type="button"
-            aria-label={`Turn Left: ${ccwInfo.fullLabel}`}
+            aria-label={`Knob ${encoderIndex} Turn Left: ${ccwInfo.fullLabel}`}
             onClick={e => {
               e.stopPropagation();
-              triggerEncoderSpin('ccw');
+              triggerEncoderSpin(encoderIndex, 'ccw');
             }}
-            title={`Turn Left (${ccwInfo.fullLabel}) — click to ${
+            title={`Knob ${encoderIndex} Turn Left (${ccwInfo.fullLabel}) — click to ${
               viewMode === 'edit' ? 'configure' : 'trigger'
             }`}
-            className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
+            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
               isCcwFlashed
                 ? 'bg-sky-500/35 ring-2 ring-sky-400 text-sky-200 scale-110'
                 : isCcwSelected
                 ? 'bg-[rgba(var(--accent-rgb),0.28)] ring-2 ring-[var(--accent)] text-white shadow-[0_0_16px_rgba(var(--accent-rgb),0.45)]'
+                : ccwConflict
+                ? 'bg-amber-500/15 ring-1 ring-amber-400/70 text-amber-200 hover:bg-amber-500/25'
                 : `bg-white/[0.06] hover:bg-white/[0.15] text-zinc-300 hover:text-white ${
                     isCcwUnassigned ? 'opacity-45 hover:opacity-85' : ''
                   }`
             }`}
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
-          {/* Larger Physical Rotary Knob (`dial`) */}
+          {/* Physical Rotary Knob (`dial` / `dial2`) */}
           <button
             type="button"
-            aria-label={`Knob Press: ${dialInfo.fullLabel}`}
-            onWheel={handleEncoderWheel}
-            onMouseDown={() => setKnobPressed(true)}
-            onMouseUp={() => setKnobPressed(false)}
-            onMouseLeave={() => setKnobPressed(false)}
-            onClick={activateDialPush}
+            aria-label={`Knob ${encoderIndex} Press: ${dialInfo.fullLabel}`}
+            onWheel={e => handleEncoderWheel(encoderIndex, e)}
+            onMouseDown={() => setPressed(true)}
+            onMouseUp={() => setPressed(false)}
+            onMouseLeave={() => setPressed(false)}
+            onClick={() => activateDialPush(encoderIndex)}
             onKeyDown={e => {
               if (e.key === 'ArrowRight') {
                 e.preventDefault();
-                triggerEncoderSpin('cw');
+                triggerEncoderSpin(encoderIndex, 'cw');
               } else if (e.key === 'ArrowLeft') {
                 e.preventDefault();
-                triggerEncoderSpin('ccw');
+                triggerEncoderSpin(encoderIndex, 'ccw');
               }
             }}
             style={{
@@ -668,18 +769,20 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 ? '#38BDF8'
                 : isDialSelected
                 ? 'var(--accent)'
+                : dialConflict
+                ? '#F59E0B'
                 : 'rgba(255,255,255,0.14)',
               boxShadow: isDialFlashed
                 ? '0 0 0 4px rgba(56, 189, 248, 0.45), 0 0 26px rgba(56, 189, 248, 0.35)'
                 : undefined
             }}
-            className={`w-22 h-22 sm:w-28 sm:h-28 xl:w-30 xl:h-30 rounded-full bg-gradient-to-b from-[#282C37] to-[#171A21] border-2 flex items-center justify-center transition-all duration-150 cursor-pointer select-none ${
+            className={`w-20 h-20 sm:w-24 sm:h-24 xl:w-26 xl:h-26 rounded-full bg-gradient-to-b from-[#282C37] to-[#171A21] border-2 flex items-center justify-center transition-all duration-150 cursor-pointer select-none ${
               isDialSelected && !isDialFlashed
                 ? 'encoder-ring-selected'
                 : !isDialFlashed
                 ? 'shadow-[0_10px_22px_rgba(0,0,0,0.48),inset_0_1px_1px_rgba(255,255,255,0.09)]'
                 : ''
-            } ${knobPressed || isDialFlashed ? 'scale-95' : 'hover:scale-[1.02]'} ${
+            } ${isPressed || isDialFlashed ? 'scale-95' : 'hover:scale-[1.02]'} ${
               isDialUnassigned && !isDialSelected && !isDialFlashed
                 ? 'opacity-55 hover:opacity-85'
                 : ''
@@ -687,53 +790,55 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           >
             <span
               style={{
-                borderColor: isDialFlashed ? '#38BDF8' : layer.encoder.color,
-                transform: `rotate(${knobAngle}deg)`
+                borderColor: isDialFlashed ? '#38BDF8' : encCfg.color,
+                transform: `rotate(${angle}deg)`
               }}
-              className="w-15 h-15 sm:w-20 sm:h-20 xl:w-21 xl:h-21 rounded-full bg-[#12141A] border-2 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner"
+              className="w-14 h-14 sm:w-17 sm:h-17 xl:w-18 xl:h-18 rounded-full bg-[#12141A] border-2 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner"
             >
               <span
-                className="w-1.5 h-3 rounded-full absolute top-1.5"
+                className="w-1.5 h-2.5 rounded-full absolute top-1.5"
                 style={{
-                  backgroundColor: isDialFlashed ? '#38BDF8' : layer.encoder.color
+                  backgroundColor: isDialFlashed ? '#38BDF8' : encCfg.color
                 }}
               />
-              <span className="font-mono text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-300">
-                KNOB
+              <span className="font-mono text-[8px] sm:text-[9px] font-semibold uppercase tracking-wider text-zinc-200 tabular-nums">
+                KNOB {encoderIndex}
               </span>
             </span>
           </button>
 
-          {/* Prominent Clickable Turn Right (`enc_cw`) Arrow Button */}
+          {/* Clickable Turn Right Arrow Button */}
           <button
             type="button"
-            aria-label={`Turn Right: ${cwInfo.fullLabel}`}
+            aria-label={`Knob ${encoderIndex} Turn Right: ${cwInfo.fullLabel}`}
             onClick={e => {
               e.stopPropagation();
-              triggerEncoderSpin('cw');
+              triggerEncoderSpin(encoderIndex, 'cw');
             }}
-            title={`Turn Right (${cwInfo.fullLabel}) — click to ${
+            title={`Knob ${encoderIndex} Turn Right (${cwInfo.fullLabel}) — click to ${
               viewMode === 'edit' ? 'configure' : 'trigger'
             }`}
-            className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
+            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
               isCwFlashed
                 ? 'bg-sky-500/35 ring-2 ring-sky-400 text-sky-200 scale-110'
                 : isCwSelected
                 ? 'bg-[rgba(var(--accent-rgb),0.28)] ring-2 ring-[var(--accent)] text-white shadow-[0_0_16px_rgba(var(--accent-rgb),0.45)]'
+                : cwConflict
+                ? 'bg-amber-500/15 ring-1 ring-amber-400/70 text-amber-200 hover:bg-amber-500/25'
                 : `bg-white/[0.06] hover:bg-white/[0.15] text-zinc-300 hover:text-white ${
                     isCwUnassigned ? 'opacity-45 hover:opacity-85' : ''
                   }`
             }`}
           >
-            <RotateCw className="w-4 h-4" />
+            <RotateCw className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-zinc-400 text-center max-w-[165px] truncate">
+        <div className="flex items-center gap-1 text-[10px] text-zinc-400 text-center max-w-[164px] truncate">
           <button
             type="button"
-            onClick={() => triggerEncoderSpin('ccw')}
-            title={`Turn Left: ${ccwInfo.fullLabel}`}
+            onClick={() => triggerEncoderSpin(encoderIndex, 'ccw')}
+            title={`Knob ${encoderIndex} Turn Left: ${ccwInfo.fullLabel}`}
             className={`hover:text-white transition-colors cursor-pointer truncate ${
               isCcwSelected ? 'text-sky-300 font-semibold' : ''
             }`}
@@ -745,8 +850,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </span>
           <button
             type="button"
-            onClick={activateDialPush}
-            title={`Knob Press: ${dialInfo.fullLabel}`}
+            onClick={() => activateDialPush(encoderIndex)}
+            title={`Knob ${encoderIndex} Press: ${dialInfo.fullLabel}`}
             className={`hover:text-white transition-colors cursor-pointer truncate ${
               isDialSelected ? 'text-sky-300 font-semibold' : ''
             }`}
@@ -758,8 +863,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </span>
           <button
             type="button"
-            onClick={() => triggerEncoderSpin('cw')}
-            title={`Turn Right: ${cwInfo.fullLabel}`}
+            onClick={() => triggerEncoderSpin(encoderIndex, 'cw')}
+            title={`Knob ${encoderIndex} Turn Right: ${cwInfo.fullLabel}`}
             className={`hover:text-white transition-colors cursor-pointer truncate ${
               isCwSelected ? 'text-sky-300 font-semibold' : ''
             }`}
@@ -932,7 +1037,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
-              Side Knob
+              Side Knobs
             </button>
             <button
               type="button"
@@ -943,7 +1048,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
-              Top Crown
+              Top Dials
             </button>
           </div>
         </div>
@@ -1138,7 +1243,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
           {encoderPlacement === 'top' ? (
             <div className="flex flex-col items-center gap-5 sm:gap-6">
-              {renderEncoderUnit()}
+              <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+                {renderEncoderUnit(1)}
+                {renderEncoderUnit(2)}
+              </div>
               <div className="grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center shrink-0">
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
@@ -1148,8 +1256,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               <div className="order-2 @[580px]:order-1 grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center shrink-0">
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
-              <div className="order-1 @[580px]:order-2 shrink-0 flex flex-col items-center justify-center @[580px]:pl-6 @[580px]:border-l @[580px]:border-white/10 @[580px]:self-stretch">
-                {renderEncoderUnit()}
+              <div className="order-1 @[580px]:order-2 shrink-0 flex flex-row flex-wrap @[580px]:flex-col items-center justify-center gap-4 sm:gap-5 @[580px]:pl-6 @[580px]:border-l @[580px]:border-white/10 @[580px]:self-stretch">
+                {renderEncoderUnit(1)}
+                {renderEncoderUnit(2)}
               </div>
             </div>
           )}
@@ -1201,9 +1310,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                           { slot: 'b6', label: 'Key 6' },
                           { slot: 'b7', label: 'Key 7' },
                           { slot: 'b8', label: 'Key 8' },
-                          { slot: 'dial', label: 'Knob', icon: Disc },
-                          { slot: 'enc_ccw', label: 'Turn Left' },
-                          { slot: 'enc_cw', label: 'Turn Right' },
+                          { slot: 'dial', label: 'Knob 1' },
+                          { slot: 'enc_ccw', label: 'K1 Left' },
+                          { slot: 'enc_cw', label: 'K1 Right' },
+                          { slot: 'dial2', label: 'Knob 2' },
+                          { slot: 'enc2_ccw', label: 'K2 Left' },
+                          { slot: 'enc2_cw', label: 'K2 Right' },
                           { slot: 'mode', label: 'Mode' }
                         ] as const
                       ).map(btn => (
@@ -1233,7 +1345,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
               {testLog.length === 0 ? (
                 <p className="text-xs text-[var(--text-muted)] py-1.5">
-                  Press keys or click the knob and its left/right arrows above to see live events.
+                  Press keys or click the knobs and their left/right arrows above to see live events.
                 </p>
               ) : (
                 <div className="max-h-32 overflow-y-auto space-y-1 font-mono text-[11px] tabular-nums">

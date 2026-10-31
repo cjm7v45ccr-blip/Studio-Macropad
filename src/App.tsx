@@ -7,6 +7,7 @@ import {
   CanvasViewMode,
   ControlId,
   DeviceConnectionInfo,
+  EncoderIndex,
   EncoderSubControlId,
   HardwareProfileId,
   HardwareSlotId,
@@ -229,7 +230,7 @@ export default function App() {
       setConnectModalError(null);
       await usbHardware.connectDemoMode();
       setConnectModalOpen(false);
-      showToast('Started Demo Mode — all 11 controls and settings are active');
+      showToast('Started Demo Mode — all 14 controls and settings are active');
     } catch (err: any) {
       showToast(err?.message || 'Could not start Demo Mode', 'error');
     }
@@ -385,18 +386,32 @@ export default function App() {
     [connection.connected, showToast, studio]
   );
 
+  const isEncoder2Selected =
+    selectedControl === 'encoder2' ||
+    selectedControl === 'dial2' ||
+    selectedControl === 'enc2_cw' ||
+    selectedControl === 'enc2_ccw';
+
   const isEncoderControlSelected =
+    isEncoder2Selected ||
     selectedControl === 'encoder' ||
     selectedControl === 'dial' ||
     selectedControl === 'enc_cw' ||
     selectedControl === 'enc_ccw';
 
-  const selectedEncoderSubControl: EncoderSubControlId =
-    selectedControl === 'enc_cw'
-      ? 'enc_cw'
-      : selectedControl === 'enc_ccw'
-      ? 'enc_ccw'
-      : 'dial';
+  const selectedEncoderIndex: EncoderIndex = isEncoder2Selected ? 2 : 1;
+
+  const selectedEncoderSubControl: EncoderSubControlId = isEncoder2Selected
+    ? selectedControl === 'enc2_cw'
+      ? 'enc2_cw'
+      : selectedControl === 'enc2_ccw'
+      ? 'enc2_ccw'
+      : 'dial2'
+    : selectedControl === 'enc_cw'
+    ? 'enc_cw'
+    : selectedControl === 'enc_ccw'
+    ? 'enc_ccw'
+    : 'dial';
 
   const selectedKeyConfig = !isEncoderControlSelected
     ? studio.activeLayer.keys[selectedControl as KeyId] ||
@@ -448,7 +463,14 @@ export default function App() {
   const handleJumpToSlotControl = useCallback(
     (profileId: HardwareProfileId, slot: HardwareSlotId) => {
       studio.selectProfile(profileId);
-      if (slot === 'dial' || slot === 'enc_cw' || slot === 'enc_ccw') {
+      if (
+        slot === 'dial' ||
+        slot === 'enc_cw' ||
+        slot === 'enc_ccw' ||
+        slot === 'dial2' ||
+        slot === 'enc2_cw' ||
+        slot === 'enc2_ccw'
+      ) {
         setSelectedControl(slot);
       } else {
         setSelectedControl(SLOT_TO_ACTION_KEY[slot as ButtonSlotId] || 'k1');
@@ -611,7 +633,35 @@ export default function App() {
 
             {isEncoderControlSelected ? (
               <EncoderInspector
-                encoder={studio.activeLayer.encoder}
+                encoder={
+                  selectedEncoderIndex === 2
+                    ? studio.activeLayer.encoder2
+                    : studio.activeLayer.encoder
+                }
+                encoderIndex={selectedEncoderIndex}
+                encoder1Color={studio.activeLayer.encoder.color}
+                encoder2Color={studio.activeLayer.encoder2.color}
+                onSelectEncoder={idx => {
+                  const isCw =
+                    selectedEncoderSubControl === 'enc_cw' ||
+                    selectedEncoderSubControl === 'enc2_cw';
+                  const isCcw =
+                    selectedEncoderSubControl === 'enc_ccw' ||
+                    selectedEncoderSubControl === 'enc2_ccw';
+                  setSelectedControl(
+                    idx === 2
+                      ? isCw
+                        ? 'enc2_cw'
+                        : isCcw
+                        ? 'enc2_ccw'
+                        : 'dial2'
+                      : isCw
+                      ? 'enc_cw'
+                      : isCcw
+                      ? 'enc_ccw'
+                      : 'dial'
+                  );
+                }}
                 selectedSubControl={selectedEncoderSubControl}
                 onSelectSubControl={sub => setSelectedControl(sub)}
                 activeProfileId={studio.activeProfile.id}
@@ -648,18 +698,26 @@ export default function App() {
                     repeatOverrides
                   )
                 }
-                onUpdateColor={studio.updateEncoderColor}
+                onUpdateColor={color =>
+                  studio.updateEncoderColor(color, selectedEncoderIndex)
+                }
                 onTestBinding={binding => {
                   handleExecuteHardwareBinding(binding);
                 }}
                 onStopRepeat={handleStopRepeat}
                 onOpenMacroBuilder={() => {
+                  const activeEnc =
+                    selectedEncoderIndex === 2
+                      ? studio.activeLayer.encoder2
+                      : studio.activeLayer.encoder;
                   const activeBind =
-                    selectedEncoderSubControl === 'dial'
-                      ? studio.activeLayer.encoder.dial
-                      : selectedEncoderSubControl === 'enc_cw'
-                      ? studio.activeLayer.encoder.cw
-                      : studio.activeLayer.encoder.ccw;
+                    selectedEncoderSubControl === 'dial' ||
+                    selectedEncoderSubControl === 'dial2'
+                      ? activeEnc.dial
+                      : selectedEncoderSubControl === 'enc_cw' ||
+                        selectedEncoderSubControl === 'enc2_cw'
+                      ? activeEnc.cw
+                      : activeEnc.ccw;
                   handleOpenMacroBuilderForSlot(selectedEncoderSubControl, activeBind);
                 }}
               />
@@ -780,6 +838,8 @@ export default function App() {
             profiles={studio.profiles}
             settings={studio.settings}
             connection={connection}
+            tvEnabled={studio.tvEnabled}
+            onSyncTvEnabled={studio.setOfflineTvEnabled}
             syncStatus={studio.syncStatus}
             currentRev={studio.currentRev}
             currentDeviceId={studio.currentDeviceId}
@@ -860,7 +920,7 @@ export default function App() {
         }
         description={
           pendingCopyLabels
-            ? `All 11 controls on ${pendingCopyLabels.tgtLabel} will be overwritten with ${pendingCopyLabels.srcLabel}'s bindings.`
+            ? `All 14 controls on ${pendingCopyLabels.tgtLabel} will be overwritten with ${pendingCopyLabels.srcLabel}'s bindings.`
             : ''
         }
         confirmLabel={

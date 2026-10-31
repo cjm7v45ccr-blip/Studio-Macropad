@@ -57,6 +57,8 @@ interface SettingsViewProps {
   profiles: StudioProfile[];
   settings: StudioSettings;
   connection: DeviceConnectionInfo;
+  tvEnabled?: boolean;
+  onSyncTvEnabled?: (enabled: boolean) => void;
   syncStatus: SyncStatusPill;
   currentRev: number;
   currentDeviceId: string | null;
@@ -130,6 +132,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   profiles,
   settings,
   connection,
+  tvEnabled,
+  onSyncTvEnabled,
   syncStatus,
   currentRev,
   currentDeviceId,
@@ -212,7 +216,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     !telemetry ||
     telemetry.capabilities.includes('tv_toggle');
   const isTvModeEnabled =
-    connection.connected && telemetry ? telemetry.tvEnabled !== false : false;
+    connection.connected && telemetry
+      ? telemetry.tvEnabled !== false
+      : tvEnabled ?? true;
 
   // Populate live pad-only fields strictly from live `/api/status` telemetry
   useEffect(() => {
@@ -355,12 +361,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleToggleTvMode = async () => {
     if (!connection.connected || tvModeBusy) return;
-    const nextEnabled = telemetry?.tvEnabled === false;
+    const nextEnabled = !isTvModeEnabled;
     setTvModeBusy(true);
     try {
       const res = await usbHardware.setTvEnabled(nextEnabled);
       const refreshed = await usbHardware.fetchStatus();
       const confirmedEnabled = refreshed.tv?.enabled !== false;
+      onSyncTvEnabled?.(confirmedEnabled);
       onToast(
         res?.message || (confirmedEnabled ? 'TV mode enabled.' : 'TV mode disabled.'),
         'success'
@@ -1216,7 +1223,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         ? isTvModeEnabled
                           ? 'On'
                           : 'Off'
-                        : 'Pad disconnected'}
+                        : `${isTvModeEnabled ? 'On' : 'Off'} · Pad disconnected`}
                     </span>
                   </div>
                   <p className="text-xs text-[var(--text-muted)] leading-relaxed">
@@ -1897,7 +1904,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <DiffConfirmModal
         isOpen={resetProfilesModalOpen}
         title="Reset all 4 profiles to universal defaults?"
-        description="All 44 controls across Host 1, Host 2, Host 3, and TV will be restored to universal factory actions. Wi-Fi and TV pairing remain untouched."
+        description="All 56 controls across Host 1, Host 2, Host 3, and TV will be restored to universal factory actions. Wi-Fi and TV pairing remain untouched."
         confirmLabel="Reset All 4 Profiles"
         tone="danger"
         requireWord="RESET"

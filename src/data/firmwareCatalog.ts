@@ -26,7 +26,10 @@ export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
   'b8',
   'dial',
   'enc_cw',
-  'enc_ccw'
+  'enc_ccw',
+  'dial2',
+  'enc2_cw',
+  'enc2_ccw'
 ] as const;
 
 export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; pin: string }> = {
@@ -38,9 +41,12 @@ export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; 
   b6: { short: 'Key 6', full: 'Key 6 (B6)', pin: '' },
   b7: { short: 'Key 7', full: 'Key 7 (B7)', pin: '' },
   b8: { short: 'Key 8', full: 'Key 8 (B8)', pin: '' },
-  dial: { short: 'Knob Press', full: 'Knob Press (Dial)', pin: '' },
-  enc_cw: { short: 'Turn Right', full: 'Turn Right (CW)', pin: '' },
-  enc_ccw: { short: 'Turn Left', full: 'Turn Left (CCW)', pin: '' }
+  dial: { short: 'K1 Press', full: 'Knob 1 Press (Dial 1)', pin: '' },
+  enc_cw: { short: 'K1 Right', full: 'Knob 1 Turn Right (CW)', pin: '' },
+  enc_ccw: { short: 'K1 Left', full: 'Knob 1 Turn Left (CCW)', pin: '' },
+  dial2: { short: 'K2 Press', full: 'Knob 2 Press (Dial 2)', pin: '' },
+  enc2_cw: { short: 'K2 Right', full: 'Knob 2 Turn Right (CW)', pin: '' },
+  enc2_ccw: { short: 'K2 Left', full: 'Knob 2 Turn Left (CCW)', pin: '' }
 };
 
 export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
@@ -54,7 +60,10 @@ export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
   b8: 'BLE:NEXT_HOST',
   dial: 'MEDIA:MUTE',
   enc_cw: 'MEDIA:VOL_UP',
-  enc_ccw: 'MEDIA:VOL_DOWN'
+  enc_ccw: 'MEDIA:VOL_DOWN',
+  dial2: 'MEDIA:PLAY_PAUSE',
+  enc2_cw: 'MEDIA:NEXT',
+  enc2_ccw: 'MEDIA:PREV'
 };
 
 export const FACTORY_DEFAULT_SLOTS: Record<
@@ -75,7 +84,10 @@ export const FACTORY_DEFAULT_SLOTS: Record<
     b8: 'TV:HOME',
     dial: 'TV:MUTE',
     enc_cw: 'TV:VOL_UP',
-    enc_ccw: 'TV:VOL_DOWN'
+    enc_ccw: 'TV:VOL_DOWN',
+    dial2: 'TV:OK',
+    enc2_cw: 'TV:CH_UP',
+    enc2_ccw: 'TV:CH_DOWN'
   }
 };
 
@@ -2150,7 +2162,7 @@ export function getMacroCanonicalSignature(
 }
 
 /**
- * Computes a canonical 11-slot layout signature for a profile so duplicate presets are detected.
+ * Computes a canonical 14-slot layout signature for a profile so duplicate presets are detected.
  */
 export function getProfilePresetSignature(
   slots: Record<HardwareSlotId, string>,

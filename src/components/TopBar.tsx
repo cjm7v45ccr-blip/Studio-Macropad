@@ -153,27 +153,41 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Profile / Host Switcher (Single-Accent Filled Segmented Control) */}
         <div className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-input)] overflow-x-auto min-w-0">
-          {profiles.filter(p => p.id !== 'TV' || isTvEnabled).map(prof => {
-            const selected = prof.id === activeProfile.id;
-            const isLiveOnPad = connection.connected && hwActiveProfile === prof.id;
+          {profiles.map(prof => {
+            const isTvDisabledTab = prof.id === 'TV' && !isTvEnabled;
+            const selected = !isTvDisabledTab && prof.id === activeProfile.id;
+            const isLiveOnPad =
+              !isTvDisabledTab && connection.connected && hwActiveProfile === prof.id;
             const Icon = isBleHostProfile(prof.id) ? Laptop : Tv;
             const shortTag = profileShortTag(prof.id);
             const profOsLabel = isBleHostProfile(prof.id)
               ? ` · ${hostOsShortLabel(hostOsMap[prof.id])}`
               : '';
+            const tabLabel = isTvDisabledTab
+              ? prof.name.trim().toUpperCase() === 'TV'
+                ? 'TV (off)'
+                : `${prof.name} (off)`
+              : prof.name;
 
             return (
               <button
                 key={prof.id}
                 type="button"
+                aria-disabled={isTvDisabledTab || undefined}
                 onClick={() => onSelectProfile(prof.id)}
-                title={`${prof.name} (${shortTag}${profOsLabel})${
-                  isLiveOnPad ? ' — Active on hardware' : ''
-                }`}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer whitespace-nowrap shrink-0 min-w-0 ${
-                  selected
-                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-2xs font-semibold'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium'
+                title={
+                  isTvDisabledTab
+                    ? `${tabLabel} — TV mode is off in Settings`
+                    : `${prof.name} (${shortTag}${profOsLabel})${
+                        isLiveOnPad ? ' — Active on hardware' : ''
+                      }`
+                }
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all whitespace-nowrap shrink-0 min-w-0 ${
+                  isTvDisabledTab
+                    ? 'text-[var(--text-muted)] opacity-60 hover:opacity-80 font-medium cursor-not-allowed'
+                    : selected
+                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-2xs font-semibold cursor-pointer'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium cursor-pointer'
                 }`}
               >
                 <Icon
@@ -181,8 +195,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                     selected ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
                   }`}
                 />
-                <span className="truncate max-w-[88px] sm:max-w-[116px] tabular-nums">
-                  {prof.name}
+                <span className="truncate max-w-[96px] sm:max-w-[128px] tabular-nums">
+                  {tabLabel}
                 </span>
                 {isLiveOnPad && (
                   <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium shrink-0">
@@ -331,6 +345,12 @@ export const TopBar: React.FC<TopBarProps> = ({
                   .filter(p => p.id !== activeProfile.id)
                   .map(target => {
                     const TargetIcon = isBleHostProfile(target.id) ? Laptop : Tv;
+                    const targetLabel =
+                      target.id === 'TV' && !isTvEnabled
+                        ? target.name.trim().toUpperCase() === 'TV'
+                          ? 'TV (off)'
+                          : `${target.name} (off)`
+                        : target.name;
                     return (
                       <button
                         key={target.id}
@@ -343,7 +363,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                       >
                         <span className="flex items-center gap-2 min-w-0">
                           <TargetIcon className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" />
-                          <span className="truncate font-medium">{target.name}</span>
+                          <span className="truncate font-medium">{targetLabel}</span>
                         </span>
                         <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">
                           {profileShortTag(target.id)}
