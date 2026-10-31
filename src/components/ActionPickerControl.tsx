@@ -238,6 +238,11 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     }
   }, [isTvEnabled, activeTab]);
 
+  const effectiveTab: PickerCategoryTab =
+    !isTvEnabled && (activeTab === 'tv' || activeTab === 'tv_app')
+      ? 'os_shortcuts'
+      : activeTab;
+
   // Live Keyboard Shortcut Recorder normalized to ESP32 pressKey() tokens
   useEffect(() => {
     if (!isRecording) return;
@@ -491,15 +496,15 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
 
   const activeCategoryItems = useMemo(() => {
     if (
-      activeTab === 'my_macros' ||
-      activeTab === 'os_shortcuts' ||
-      activeTab === 'shortcut' ||
-      activeTab === 'text'
+      effectiveTab === 'my_macros' ||
+      effectiveTab === 'os_shortcuts' ||
+      effectiveTab === 'shortcut' ||
+      effectiveTab === 'text'
     ) {
       return [];
     }
-    return nonOsStaticCatalog.filter(s => s.category === activeTab);
-  }, [activeTab, nonOsStaticCatalog]);
+    return nonOsStaticCatalog.filter(s => s.category === effectiveTab);
+  }, [effectiveTab, nonOsStaticCatalog]);
 
   const renderMacroSummaryMeta = (macro: CustomMacroItem): React.ReactNode => {
     const parsedCfg = parseTextConfigFromFirmwareAction(macro.action, macro.repeatConfig);
@@ -644,7 +649,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
         >
           {ACTION_TABS.filter(t => isTvEnabled || (t.id !== 'tv' && t.id !== 'tv_app')).map(tab => {
             const Icon = tab.icon;
-            const active = !trimmedQuery && activeTab === tab.id;
+            const active = !trimmedQuery && effectiveTab === tab.id;
             return (
               <button
                 key={tab.id}
@@ -869,7 +874,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 </>
               )}
             </div>
-          ) : activeTab === 'my_macros' ? (
+          ) : effectiveTab === 'my_macros' ? (
             /* Single Macro Library Category */
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2 px-0.5">
@@ -959,7 +964,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 </div>
               )}
             </div>
-          ) : activeTab === 'os_shortcuts' ? (
+          ) : effectiveTab === 'os_shortcuts' ? (
             /* Per-Device OS Mapped Shortcuts */
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2 px-0.5">
@@ -1092,7 +1097,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               )}
 
               {/* Multi-Host BLE Context Note */}
-              {activeTab === 'ble' && (
+              {effectiveTab === 'ble' && (
                 <div className="p-2.5 rounded-xl bg-[var(--bg-input)] flex items-center justify-between gap-2 text-[11px] text-[var(--text-secondary)]">
                   <div className="min-w-0">
                     Hold <span className="font-semibold text-[var(--text-primary)]">Mode</span> + turn the dial on hardware to switch Bluetooth hosts anytime.
@@ -1106,7 +1111,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               )}
 
               {/* Custom BLE Shortcut Builder */}
-              {activeTab === 'shortcut' && (
+              {effectiveTab === 'shortcut' && (
                 <div className="space-y-3 p-3 rounded-xl bg-[var(--bg-input)]">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
@@ -1144,7 +1149,10 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                     </button>
                   </div>
 
-                  {equivalentBuiltIn && (
+                  {equivalentBuiltIn &&
+                    (isTvEnabled ||
+                      (equivalentBuiltIn.category !== 'tv' &&
+                        equivalentBuiltIn.category !== 'tv_app')) && (
                     <div className="p-2 rounded-lg bg-[var(--bg-elevated)] flex items-center justify-between gap-2 text-[11px]">
                       <div className="flex items-center gap-1.5 min-w-0 truncate text-[var(--text-secondary)]">
                         <span>Matches</span>
@@ -1220,7 +1228,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               )}
 
               {/* Type Text + Follow-up Key + Clamped Delay Builder */}
-              {activeTab === 'text' && (
+              {effectiveTab === 'text' && (
                 <div className="space-y-3 p-3 rounded-xl bg-[var(--bg-input)]">
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
@@ -1451,7 +1459,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               )}
 
               {/* Custom SmartCast TVKEY:<codeset>:<code> */}
-              {activeTab === 'tv' && (
+              {isTvEnabled && effectiveTab === 'tv' && (
                 <div className="p-3 rounded-xl bg-[var(--bg-input)] space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-medium text-[var(--text-muted)]">
@@ -1516,7 +1524,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               )}
 
               {/* Custom SmartCast TVAPP:<id>:<ns>:<url> */}
-              {activeTab === 'tv_app' && (
+              {isTvEnabled && effectiveTab === 'tv_app' && (
                 <div className="p-3 rounded-xl bg-[var(--bg-input)] space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-medium text-[var(--text-muted)]">

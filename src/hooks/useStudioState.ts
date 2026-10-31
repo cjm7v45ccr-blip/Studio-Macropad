@@ -6,6 +6,8 @@ import {
   ConflictWarning,
   CustomMacroItem,
   EncoderControlConfig,
+  EncoderIndex,
+  EncoderSubControlId,
   HARDWARE_PROFILE_IDS,
   HardwareBackupPayload,
   HardwareEventPacket,
@@ -211,7 +213,10 @@ export function extractProfileSlots(profile: StudioProfile): Record<HardwareSlot
     b8: bindingToFirmwareAction(layer.keys.k8.triggers.tap),
     dial: bindingToFirmwareAction(layer.encoder.dial),
     enc_cw: bindingToFirmwareAction(layer.encoder.cw),
-    enc_ccw: bindingToFirmwareAction(layer.encoder.ccw)
+    enc_ccw: bindingToFirmwareAction(layer.encoder.ccw),
+    dial2: bindingToFirmwareAction(layer.encoder2.dial),
+    enc2_cw: bindingToFirmwareAction(layer.encoder2.cw),
+    enc2_ccw: bindingToFirmwareAction(layer.encoder2.ccw)
   };
 }
 
@@ -235,6 +240,15 @@ export function extractRepeatMapFromProfiles(
     if (layer.encoder.ccw.repeatConfig) {
       map[`${prof.id}:enc_ccw`] = layer.encoder.ccw.repeatConfig;
     }
+    if (layer.encoder2.dial.repeatConfig) {
+      map[`${prof.id}:dial2`] = layer.encoder2.dial.repeatConfig;
+    }
+    if (layer.encoder2.cw.repeatConfig) {
+      map[`${prof.id}:enc2_cw`] = layer.encoder2.cw.repeatConfig;
+    }
+    if (layer.encoder2.ccw.repeatConfig) {
+      map[`${prof.id}:enc2_ccw`] = layer.encoder2.ccw.repeatConfig;
+    }
   }
   return map;
 }
@@ -254,6 +268,9 @@ export function getBindingForProfileSlot(
   if (slot === 'dial') return layer.encoder.dial;
   if (slot === 'enc_cw') return layer.encoder.cw;
   if (slot === 'enc_ccw') return layer.encoder.ccw;
+  if (slot === 'dial2') return layer.encoder2.dial;
+  if (slot === 'enc2_cw') return layer.encoder2.cw;
+  if (slot === 'enc2_ccw') return layer.encoder2.ccw;
   return undefined;
 }
 
@@ -318,7 +335,13 @@ export function statusPacketToSerializedProfiles(
       dial:
         item?.controls?.dial ?? (useMacFallback ? pkt.mac_dial : undefined) ?? defaults.dial,
       enc_cw: item?.controls?.enc_cw ?? defaults.enc_cw,
-      enc_ccw: item?.controls?.enc_ccw ?? defaults.enc_ccw
+      enc_ccw: item?.controls?.enc_ccw ?? defaults.enc_ccw,
+      dial2:
+        item?.controls?.dial2 ??
+        (useMacFallback ? pkt.mac_dial2 : undefined) ??
+        defaults.dial2,
+      enc2_cw: item?.controls?.enc2_cw ?? defaults.enc2_cw,
+      enc2_ccw: item?.controls?.enc2_ccw ?? defaults.enc2_ccw
     };
   };
 
@@ -345,7 +368,10 @@ export function statusPacketToSerializedProfiles(
       b8: tvItem?.controls?.b8 ?? pkt.tv_b8 ?? FACTORY_DEFAULT_SLOTS.TV.b8,
       dial: tvItem?.controls?.dial ?? pkt.tv_dial ?? FACTORY_DEFAULT_SLOTS.TV.dial,
       enc_cw: tvItem?.controls?.enc_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc_cw,
-      enc_ccw: tvItem?.controls?.enc_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc_ccw
+      enc_ccw: tvItem?.controls?.enc_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc_ccw,
+      dial2: tvItem?.controls?.dial2 ?? pkt.tv_dial2 ?? FACTORY_DEFAULT_SLOTS.TV.dial2,
+      enc2_cw: tvItem?.controls?.enc2_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc2_cw,
+      enc2_ccw: tvItem?.controls?.enc2_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc2_ccw
     }
   };
 }
@@ -516,6 +542,9 @@ export function buildBackupFromProfiles(
     tv_dial: tv.dial ?? FACTORY_DEFAULT_SLOTS.TV.dial,
     tv_enc_cw: tv.enc_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc_cw,
     tv_enc_ccw: tv.enc_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc_ccw,
+    tv_dial2: tv.dial2 ?? FACTORY_DEFAULT_SLOTS.TV.dial2,
+    tv_enc2_cw: tv.enc2_cw ?? FACTORY_DEFAULT_SLOTS.TV.enc2_cw,
+    tv_enc2_ccw: tv.enc2_ccw ?? FACTORY_DEFAULT_SLOTS.TV.enc2_ccw,
     mac_name: h1Name,
     ...Object.fromEntries(
       HARDWARE_SLOTS.map(s => [`mac_${s}`, h1[s] ?? FACTORY_DEFAULT_SLOTS.HOST1[s]])
@@ -827,6 +856,11 @@ export function useStudioState(
       ? usbHardware.info.telemetry.tvEnabled !== false
       : bootPadData.tvEnabled
   );
+  const [liveTvEnabled, setLiveTvEnabled] = useState<boolean | null>(() =>
+    usbHardware.info.connected && usbHardware.info.telemetry
+      ? usbHardware.info.telemetry.tvEnabled !== false
+      : null
+  );
   const [conflictPrompt, setConflictPrompt] = useState<SyncConflictState | null>(null);
 
   const [appearanceOverrides, setAppearanceOverrides] = useState<Record<string, KeyAppearance>>(
@@ -858,9 +892,7 @@ export function useStudioState(
   const cachedTvEnabledRef = useRef(cachedTvEnabled);
   cachedTvEnabledRef.current = cachedTvEnabled;
   const tvEnabled =
-    isConnected && usbHardware.info.telemetry
-      ? usbHardware.info.telemetry.tvEnabled !== false
-      : cachedTvEnabled;
+    isConnected && liveTvEnabled !== null ? liveTvEnabled : cachedTvEnabled;
   const tvEnabledRef = useRef(tvEnabled);
   tvEnabledRef.current = tvEnabled;
   const latestConfigEventRevRef = useRef<number | null>(null);
@@ -912,6 +944,7 @@ export function useStudioState(
       setIsConnected(info.connected);
       if (info.connected && info.telemetry) {
         const liveTv = info.telemetry.tvEnabled !== false;
+        setLiveTvEnabled(liveTv);
         setCachedTvEnabled(liveTv);
         cachedTvEnabledRef.current = liveTv;
         const devId = info.deviceId || deviceIdRef.current;
@@ -947,6 +980,7 @@ export function useStudioState(
         );
       }
       if (!info.connected) {
+        setLiveTvEnabled(null);
         setSavingCount(0);
         setConflictPrompt(null);
       }
@@ -968,6 +1002,7 @@ export function useStudioState(
           : usbHardware.info.telemetry
           ? usbHardware.info.telemetry.tvEnabled !== false
           : cachedTvEnabledRef.current;
+      setLiveTvEnabled(usbHardware.info.connected ? resolvedTvEnabled : null);
       setCachedTvEnabled(resolvedTvEnabled);
       cachedTvEnabledRef.current = resolvedTvEnabled;
 
@@ -1298,6 +1333,7 @@ export function useStudioState(
 
       if (e.event === 'tv') {
         const nextTv = Boolean(e.enabled);
+        setLiveTvEnabled(nextTv);
         setCachedTvEnabled(nextTv);
         cachedTvEnabledRef.current = nextTv;
         const fallbackHost = bleSlotToProfileId(
@@ -1332,8 +1368,28 @@ export function useStudioState(
         const rawDir = String(e.dir || '').toLowerCase();
         let hwSlot: HardwareSlotId | null = null;
 
-        if (rawSlot in SLOT_TO_ACTION_KEY || rawSlot === 'dial') {
+        const isEnc2 =
+          rawSlot === 'dial2' ||
+          rawSlot === 'enc2_cw' ||
+          rawSlot === 'enc2_ccw' ||
+          rawSlot === 'cw2' ||
+          rawSlot === 'ccw2' ||
+          e.encoder === 2;
+
+        if (rawSlot in SLOT_TO_ACTION_KEY || rawSlot === 'dial' || rawSlot === 'dial2') {
           hwSlot = rawSlot as HardwareSlotId;
+        } else if (
+          rawSlot === 'enc2_cw' ||
+          rawSlot === 'cw2' ||
+          (isEnc2 && e.event === 'turn' && rawDir !== 'ccw')
+        ) {
+          hwSlot = 'enc2_cw';
+        } else if (
+          rawSlot === 'enc2_ccw' ||
+          rawSlot === 'ccw2' ||
+          (isEnc2 && e.event === 'turn' && rawDir === 'ccw')
+        ) {
+          hwSlot = 'enc2_ccw';
         } else if (
           rawSlot === 'enc_cw' ||
           rawSlot === 'cw' ||
@@ -1840,11 +1896,17 @@ export function useStudioState(
   }, [selectProfile, onToast]);
 
   const setOfflineTvEnabled = useCallback((enabled: boolean) => {
+    if (usbHardware.info.connected) {
+      setLiveTvEnabled(enabled);
+    }
     setCachedTvEnabled(enabled);
     cachedTvEnabledRef.current = enabled;
+    const fallbackHost = bleSlotToProfileId(
+      usbHardware.info.telemetry?.bleActiveHost ?? 1
+    );
     const nextActive: HardwareProfileId =
       !enabled && snapshotRef.current.activeProfileId === 'TV'
-        ? 'HOST1'
+        ? fallbackHost
         : snapshotRef.current.activeProfileId;
     const nextSnap: WorkspaceSnapshot =
       nextActive !== snapshotRef.current.activeProfileId
@@ -1997,6 +2059,22 @@ export function useStudioState(
           };
         }
 
+        if (slot === 'dial2' || slot === 'enc2_cw' || slot === 'enc2_ccw') {
+          const nextEncoder2: EncoderControlConfig = {
+            ...layer.encoder2,
+            [slot === 'dial2' ? 'dial' : slot === 'enc2_cw' ? 'cw' : 'ccw']: normalizedBinding
+          };
+          return {
+            ...prof,
+            layers: [
+              {
+                ...layer,
+                encoder2: nextEncoder2
+              }
+            ] as [typeof layer]
+          };
+        }
+
         const nextEncoder: EncoderControlConfig = {
           ...layer.encoder,
           [slot === 'dial' ? 'dial' : slot === 'enc_cw' ? 'cw' : 'ccw']: normalizedBinding
@@ -2122,7 +2200,17 @@ export function useStudioState(
         enc_ccw:
           partialSlots.enc_ccw ??
           currentSlots.enc_ccw ??
-          FACTORY_DEFAULT_SLOTS[profileId].enc_ccw
+          FACTORY_DEFAULT_SLOTS[profileId].enc_ccw,
+        dial2:
+          partialSlots.dial2 ?? currentSlots.dial2 ?? FACTORY_DEFAULT_SLOTS[profileId].dial2,
+        enc2_cw:
+          partialSlots.enc2_cw ??
+          currentSlots.enc2_cw ??
+          FACTORY_DEFAULT_SLOTS[profileId].enc2_cw,
+        enc2_ccw:
+          partialSlots.enc2_ccw ??
+          currentSlots.enc2_ccw ??
+          FACTORY_DEFAULT_SLOTS[profileId].enc2_ccw
       };
 
       const existingRepeats = extractRepeatMapFromProfiles(prevSnap.profiles);
@@ -2312,26 +2400,27 @@ export function useStudioState(
   );
 
   const updateEncoderSlot = useCallback(
-    (slot: 'dial' | 'enc_cw' | 'enc_ccw', binding: ActionBinding) => {
+    (slot: EncoderSubControlId, binding: ActionBinding) => {
       assignSlotAction(activeProfile.id, slot, binding);
     },
     [activeProfile.id, assignSlotAction]
   );
 
   const updateEncoderColor = useCallback(
-    (color: string) => {
+    (color: string, encoderIndex: EncoderIndex = 1) => {
       setSnapshot(prev => ({
         ...prev,
         profiles: prev.profiles.map(prof => {
           if (prof.id !== activeProfile.id) return prof;
           const layer = prof.layers[0];
+          const targetKey = encoderIndex === 2 ? 'encoder2' : 'encoder';
           return {
             ...prof,
             layers: [
               {
                 ...layer,
-                encoder: {
-                  ...layer.encoder,
+                [targetKey]: {
+                  ...layer[targetKey],
                   color
                 }
               }
@@ -2521,6 +2610,7 @@ export function useStudioState(
               });
 
               const nextEncoder: EncoderControlConfig = { ...layer.encoder };
+              const nextEncoder2: EncoderControlConfig = { ...layer.encoder2 };
               if (actionChanged) {
                 (['dial', 'cw', 'ccw'] as const).forEach(encKey => {
                   const hwSlot: HardwareSlotId =
@@ -2536,6 +2626,20 @@ export function useStudioState(
                     slotsToPush.push({ profileId: prof.id, slot: hwSlot });
                     nextEncoder[encKey] = updatedBinding;
                   }
+
+                  const hwSlot2: HardwareSlotId =
+                    encKey === 'dial' ? 'dial2' : encKey === 'cw' ? 'enc2_cw' : 'enc2_ccw';
+                  const bind2 = layer.encoder2[encKey];
+                  const bindSig2 = getMacroCanonicalSignature(
+                    bindingToFirmwareAction(bind2),
+                    bind2.repeatConfig
+                  );
+                  if (bindSig2 && bindSig2 === oldSig) {
+                    profChanged = true;
+                    updatedSlotCount += 1;
+                    slotsToPush.push({ profileId: prof.id, slot: hwSlot2 });
+                    nextEncoder2[encKey] = updatedBinding;
+                  }
                 });
               }
 
@@ -2546,7 +2650,8 @@ export function useStudioState(
                   {
                     ...layer,
                     keys: nextKeys,
-                    encoder: nextEncoder
+                    encoder: nextEncoder,
+                    encoder2: nextEncoder2
                   }
                 ] as [typeof layer]
               };
@@ -2934,7 +3039,10 @@ export function useStudioState(
       tv_b8: payload.tv_b8 ?? fallback.tv_b8,
       tv_dial: payload.tv_dial ?? fallback.tv_dial,
       tv_enc_cw: payload.tv_enc_cw ?? fallback.tv_enc_cw,
-      tv_enc_ccw: payload.tv_enc_ccw ?? fallback.tv_enc_ccw
+      tv_enc_ccw: payload.tv_enc_ccw ?? fallback.tv_enc_ccw,
+      tv_dial2: payload.tv_dial2 ?? fallback.tv_dial2,
+      tv_enc2_cw: payload.tv_enc2_cw ?? fallback.tv_enc2_cw,
+      tv_enc2_ccw: payload.tv_enc2_ccw ?? fallback.tv_enc2_ccw
     };
 
     const blob = new Blob([JSON.stringify(cleanPayload, null, 2)], {

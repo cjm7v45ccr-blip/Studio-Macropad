@@ -16,7 +16,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: 'OS-Neutral Media & Host Cycle',
     mode: 'HOST1',
     description:
-      'OS-neutral consumer media transport, F13–F15 macro triggers, 1-tap Next BLE Host switching on Button 8, and rotary volume.',
+      'OS-neutral consumer media transport, F13–F15 macro triggers, 1-tap Next BLE Host switching, plus dual knobs for volume and track skip.',
     bindings: {
       b1: 'MEDIA:PLAY_PAUSE',
       b2: 'MEDIA:NEXT',
@@ -28,7 +28,10 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       b8: 'BLE:NEXT_HOST',
       dial: 'MEDIA:MUTE',
       enc_cw: 'MEDIA:VOL_UP',
-      enc_ccw: 'MEDIA:VOL_DOWN'
+      enc_ccw: 'MEDIA:VOL_DOWN',
+      dial2: 'MEDIA:PLAY_PAUSE',
+      enc2_cw: 'MEDIA:NEXT',
+      enc2_ccw: 'MEDIA:PREV'
     }
   },
   {
@@ -37,7 +40,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: 'Media, Clipboard & Spotlight',
     mode: 'HOST1',
     description:
-      'Play/pause, track transport, Spotlight search, copy/paste/undo, Mac lock, and smooth speaker volume on the knob.',
+      'Play/pause, track transport, Spotlight search, copy/paste/undo, Mac lock, speaker volume on Knob 1, and tab cycling on Knob 2.',
     bindings: {
       b1: 'MEDIA:PLAY_PAUSE',
       b2: 'MEDIA:PREV',
@@ -49,16 +52,19 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       b8: 'MACRO:LOCK',
       dial: 'MEDIA:MUTE',
       enc_cw: 'MEDIA:VOL_UP',
-      enc_ccw: 'MEDIA:VOL_DOWN'
+      enc_ccw: 'MEDIA:VOL_DOWN',
+      dial2: 'MACRO:NEW_TAB',
+      enc2_cw: 'SHORTCUT:cmd,shift:]',
+      enc2_ccw: 'SHORTCUT:cmd,shift:['
     }
   },
   {
     id: 'win-creator-desk',
     title: 'Windows Creator Desk',
-    subtitle: 'Snip, Explorer & Track Skip',
+    subtitle: 'Snip, Explorer & Dual Audio',
     mode: 'HOST2',
     description:
-      'Screen snip, File Explorer, Task Manager, desktop toggle, Windows copy/paste/undo, PC lock, and media track skipping.',
+      'Screen snip, File Explorer, Task Manager, desktop toggle, Windows copy/paste/undo, PC lock, track skip on Knob 1, and volume on Knob 2.',
     bindings: {
       b1: 'WIN:SNIP',
       b2: 'WIN:EXPLORER',
@@ -70,16 +76,19 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       b8: 'WIN:LOCK',
       dial: 'MEDIA:PLAY_PAUSE',
       enc_cw: 'MEDIA:NEXT',
-      enc_ccw: 'MEDIA:PREV'
+      enc_ccw: 'MEDIA:PREV',
+      dial2: 'MEDIA:MUTE',
+      enc2_cw: 'MEDIA:VOL_UP',
+      enc2_ccw: 'MEDIA:VOL_DOWN'
     }
   },
   {
     id: 'mac-pro-editor',
     title: 'Video & Timeline Editor',
-    subtitle: 'Cut, Edit & Frame Scrubbing',
+    subtitle: 'Cut, Scrub & Monitor Volume',
     mode: 'HOST1',
     description:
-      'Cut, copy, paste, select all, undo/redo, marker F13, quick save, and left/right arrow frame stepping on the rotary knob.',
+      'Cut, copy, paste, select all, undo/redo, marker F13, quick save, frame scrubbing on Knob 1, and monitor volume on Knob 2.',
     bindings: {
       b1: 'MACRO:CUT',
       b2: 'MACRO:COPY',
@@ -91,7 +100,10 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       b8: 'MACRO:SAVE',
       dial: 'MEDIA:PLAY_PAUSE',
       enc_cw: 'SHORTCUT::right',
-      enc_ccw: 'SHORTCUT::left'
+      enc_ccw: 'SHORTCUT::left',
+      dial2: 'MEDIA:MUTE',
+      enc2_cw: 'MEDIA:VOL_UP',
+      enc2_ccw: 'MEDIA:VOL_DOWN'
     }
   },
   {
@@ -100,7 +112,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: 'Code, Snip & Tab Cycling',
     mode: 'HOST3',
     description:
-      'Copy/paste, open/close tabs, undo/redo, Spotlight, screenshot snip, save on knob press, and tab cycling on knob turns.',
+      'Copy/paste, open/close tabs, undo/redo, Spotlight, screenshot snip, tab cycling on Knob 1, and history/audio control on Knob 2.',
     bindings: {
       b1: 'MACRO:COPY',
       b2: 'MACRO:PASTE',
@@ -112,16 +124,19 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       b8: 'SHORTCUT:cmd,shift:4',
       dial: 'MACRO:SAVE',
       enc_cw: 'SHORTCUT:cmd,shift:]',
-      enc_ccw: 'SHORTCUT:cmd,shift:['
+      enc_ccw: 'SHORTCUT:cmd,shift:[',
+      dial2: 'MEDIA:MUTE',
+      enc2_cw: 'MACRO:REDO',
+      enc2_ccw: 'MACRO:UNDO'
     }
   },
   {
     id: 'tv-cinema-lounge',
     title: 'SmartCast Streaming Lounge',
-    subtitle: '6 Apps, Navigation & Volume',
+    subtitle: '6 Apps, Volume & Channels',
     mode: 'TV',
     description:
-      'TV power toggle, YouTube, Netflix, Disney+, Prime Video, Apple TV+, Home, and Back with TV mute and volume knob.',
+      'TV power toggle, YouTube, Netflix, Disney+, Prime Video, Apple TV+, Home, and Back with TV volume on Knob 1 and channels on Knob 2.',
     bindings: {
       b1: 'TV:POWER',
       b2: 'APP:YOUTUBE',
@@ -133,16 +148,19 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       b8: 'TV:BACK',
       dial: 'TV:MUTE',
       enc_cw: 'TV:VOL_UP',
-      enc_ccw: 'TV:VOL_DOWN'
+      enc_ccw: 'TV:VOL_DOWN',
+      dial2: 'TV:OK',
+      enc2_cw: 'TV:CH_UP',
+      enc2_ccw: 'TV:CH_DOWN'
     }
   },
   {
     id: 'tv-sports-cable',
     title: 'Live TV & Channel Surfer',
-    subtitle: 'Guide, Captions & Channels',
+    subtitle: 'Guide, Channels & Volume',
     mode: 'TV',
     description:
-      'Power, program guide, HDMI input cycle, last channel, closed captions, info banner, OK, Exit, and rotary channel surfing.',
+      'Power, program guide, HDMI input cycle, last channel, closed captions, info banner, OK, Exit, channel surf on Knob 1, and volume on Knob 2.',
     bindings: {
       b1: 'TV:POWER',
       b2: 'TV:GUIDE',
@@ -154,7 +172,10 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       b8: 'TV:EXIT',
       dial: 'TV:MUTE',
       enc_cw: 'TV:CH_UP',
-      enc_ccw: 'TV:CH_DOWN'
+      enc_ccw: 'TV:CH_DOWN',
+      dial2: 'TV:INPUT',
+      enc2_cw: 'TV:VOL_UP',
+      enc2_ccw: 'TV:VOL_DOWN'
     }
   }
 ];

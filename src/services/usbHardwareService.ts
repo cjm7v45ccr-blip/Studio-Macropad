@@ -100,6 +100,7 @@ export interface FirmwareStatusPacket {
   mac_b7?: string;
   mac_b8?: string;
   mac_dial?: string;
+  mac_dial2?: string;
   tv_b1?: string;
   tv_b2?: string;
   tv_b3?: string;
@@ -109,6 +110,7 @@ export interface FirmwareStatusPacket {
   tv_b7?: string;
   tv_b8?: string;
   tv_dial?: string;
+  tv_dial2?: string;
 }
 
 export interface SetupModeSignal {
@@ -932,11 +934,16 @@ class PadLinkService {
     }
     if (!this.demoPad.eventsEnabled) return;
 
-    if (slot === 'enc_cw' || slot === 'enc_ccw') {
+    if (
+      slot === 'enc_cw' ||
+      slot === 'enc_ccw' ||
+      slot === 'enc2_cw' ||
+      slot === 'enc2_ccw'
+    ) {
       const turnEvt: HardwareEventPacket = {
         event: 'turn',
         slot,
-        dir: slot === 'enc_cw' ? 'cw' : 'ccw',
+        dir: slot.endsWith('_cw') ? 'cw' : 'ccw',
         action
       };
       this.logSerial('rx', JSON.stringify(turnEvt));
@@ -988,7 +995,7 @@ class PadLinkService {
         events_enabled: d.eventsEnabled,
         setup_mode: d.setupMode
       },
-      capabilities: ['delay', 'repeat', 'macro_abort', 'macro_trace', 'push_turn', 'encoder_accel', 'diagnostics', 'tv_toggle'],
+      capabilities: ['delay', 'repeat', 'macro_abort', 'macro_trace', 'push_turn', 'encoder_accel', 'diagnostics', 'tv_toggle', 'dual_encoder'],
       tv: {
         configured: d.tvConfigured,
         paired: d.tvPaired,
@@ -1030,6 +1037,7 @@ class PadLinkService {
       mac_b7: activeHostSlots.b7,
       mac_b8: activeHostSlots.b8,
       mac_dial: activeHostSlots.dial,
+      mac_dial2: activeHostSlots.dial2,
       tv_b1: d.tv.b1,
       tv_b2: d.tv.b2,
       tv_b3: d.tv.b3,
@@ -1038,7 +1046,8 @@ class PadLinkService {
       tv_b6: d.tv.b6,
       tv_b7: d.tv.b7,
       tv_b8: d.tv.b8,
-      tv_dial: d.tv.dial
+      tv_dial: d.tv.dial,
+      tv_dial2: d.tv.dial2
     };
   }
 
@@ -1178,7 +1187,10 @@ class PadLinkService {
         b8: String(obj.b8 ?? ''),
         dial: String(obj.dial ?? ''),
         enc_cw: String(obj.enc_cw ?? ''),
-        enc_ccw: String(obj.enc_ccw ?? '')
+        enc_ccw: String(obj.enc_ccw ?? ''),
+        dial2: String(obj.dial2 ?? ''),
+        enc2_cw: String(obj.enc2_cw ?? ''),
+        enc2_ccw: String(obj.enc2_ccw ?? '')
       };
       this.setDemoProfileSlots(d, prof, nextSlots);
       d.rev += 1;
@@ -1235,6 +1247,9 @@ class PadLinkService {
         h1_dial: d.h1.dial,
         h1_enc_cw: d.h1.enc_cw,
         h1_enc_ccw: d.h1.enc_ccw,
+        h1_dial2: d.h1.dial2,
+        h1_enc2_cw: d.h1.enc2_cw,
+        h1_enc2_ccw: d.h1.enc2_ccw,
         h2_b1: d.h2.b1,
         h2_b2: d.h2.b2,
         h2_b3: d.h2.b3,
@@ -1246,6 +1261,9 @@ class PadLinkService {
         h2_dial: d.h2.dial,
         h2_enc_cw: d.h2.enc_cw,
         h2_enc_ccw: d.h2.enc_ccw,
+        h2_dial2: d.h2.dial2,
+        h2_enc2_cw: d.h2.enc2_cw,
+        h2_enc2_ccw: d.h2.enc2_ccw,
         h3_b1: d.h3.b1,
         h3_b2: d.h3.b2,
         h3_b3: d.h3.b3,
@@ -1257,6 +1275,9 @@ class PadLinkService {
         h3_dial: d.h3.dial,
         h3_enc_cw: d.h3.enc_cw,
         h3_enc_ccw: d.h3.enc_ccw,
+        h3_dial2: d.h3.dial2,
+        h3_enc2_cw: d.h3.enc2_cw,
+        h3_enc2_ccw: d.h3.enc2_ccw,
         tv_b1: d.tv.b1,
         tv_b2: d.tv.b2,
         tv_b3: d.tv.b3,
@@ -1268,6 +1289,9 @@ class PadLinkService {
         tv_dial: d.tv.dial,
         tv_enc_cw: d.tv.enc_cw,
         tv_enc_ccw: d.tv.enc_ccw,
+        tv_dial2: d.tv.dial2,
+        tv_enc2_cw: d.tv.enc2_cw,
+        tv_enc2_ccw: d.tv.enc2_ccw,
         mac_name: activeHostName,
         mac_b1: activeHostSlots.b1,
         mac_b2: activeHostSlots.b2,
@@ -1279,7 +1303,10 @@ class PadLinkService {
         mac_b8: activeHostSlots.b8,
         mac_dial: activeHostSlots.dial,
         mac_enc_cw: activeHostSlots.enc_cw,
-        mac_enc_ccw: activeHostSlots.enc_ccw
+        mac_enc_ccw: activeHostSlots.enc_ccw,
+        mac_dial2: activeHostSlots.dial2,
+        mac_enc2_cw: activeHostSlots.enc2_cw,
+        mac_enc2_ccw: activeHostSlots.enc2_ccw
       };
       return reply(payload);
     }
@@ -2350,6 +2377,10 @@ class PadLinkService {
     if (!isValidSlotAssignment(action)) {
       throw new Error(`Unsupported firmware action: ${action}`);
     }
+    const isEncoder2Slot = slot === 'dial2' || slot === 'enc2_cw' || slot === 'enc2_ccw';
+    const supportsDualEnc = Boolean(
+      this.connectionInfo.telemetry?.capabilities?.includes('dual_encoder')
+    );
     const res = await this.call({
       path: '/api/customizer/save',
       profile,
@@ -2357,6 +2388,9 @@ class PadLinkService {
       action
     });
     if (!res?.ok) {
+      if (!this.demoModeActive && isEncoder2Slot && !supportsDualEnc) {
+        return { ok: true, rev: this.connectionInfo.rev };
+      }
       throw new Error(res?.message || 'Device rejected slot assignment.');
     }
     return res;
@@ -2373,7 +2407,7 @@ class PadLinkService {
         );
       }
     }
-    const reqObj = {
+    const baseReqObj = {
       path: '/api/profile/save',
       profile,
       b1: slots.b1,
@@ -2387,6 +2421,12 @@ class PadLinkService {
       dial: slots.dial,
       enc_cw: slots.enc_cw,
       enc_ccw: slots.enc_ccw
+    };
+    const reqObj = {
+      ...baseReqObj,
+      dial2: slots.dial2,
+      enc2_cw: slots.enc2_cw,
+      enc2_ccw: slots.enc2_ccw
     };
 
     // ESP32 Serial RX line buffer accepts up to 4096 bytes, and /api/profile/save allows
@@ -2410,6 +2450,15 @@ class PadLinkService {
 
     const res = await this.call(reqObj);
     if (!res?.ok) {
+      const supportsDualEnc = Boolean(
+        this.connectionInfo.telemetry?.capabilities?.includes('dual_encoder')
+      );
+      if (!this.demoModeActive && !supportsDualEnc) {
+        const fallbackRes = await this.call(baseReqObj);
+        if (fallbackRes?.ok) {
+          return fallbackRes;
+        }
+      }
       throw new Error(res?.message || 'Device rejected profile payload.');
     }
     return res;

@@ -170,9 +170,19 @@ const ENCODER_SLOTS: {
   shortTitle: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { slot: 'dial', shortTitle: 'Press', icon: Disc },
-  { slot: 'enc_ccw', shortTitle: 'Turn L', icon: RotateCcw },
-  { slot: 'enc_cw', shortTitle: 'Turn R', icon: RotateCw }
+  { slot: 'dial', shortTitle: 'K1 Press', icon: Disc },
+  { slot: 'enc_ccw', shortTitle: 'K1 Left', icon: RotateCcw },
+  { slot: 'enc_cw', shortTitle: 'K1 Right', icon: RotateCw }
+];
+
+const ENCODER_2_SLOTS: {
+  slot: HardwareSlotId;
+  shortTitle: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { slot: 'dial2', shortTitle: 'K2 Press', icon: Disc },
+  { slot: 'enc2_ccw', shortTitle: 'K2 Left', icon: RotateCcw },
+  { slot: 'enc2_cw', shortTitle: 'K2 Right', icon: RotateCw }
 ];
 
 const STEP_TYPE_ORDER: MacroStepActionType[] = [
@@ -1564,8 +1574,12 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     if (!isSingleNativeStep || !macroSteps[0] || macroSteps[0].actionType !== 'shortcut') {
       return null;
     }
-    return findEquivalentBuiltInSpec(macroSteps[0].value);
-  }, [isSingleNativeStep, macroSteps]);
+    const found = findEquivalentBuiltInSpec(macroSteps[0].value);
+    if (!isTvEnabled && found && (found.category === 'tv' || found.category === 'tv_app')) {
+      return null;
+    }
+    return found;
+  }, [isSingleNativeStep, macroSteps, isTvEnabled]);
 
   // Map canonical signatures to all bound hardware slots across Host 1–3 + TV
   const signatureSlotUsageMap = useMemo(() => {
@@ -3226,6 +3240,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                   {stepTag.value}
                                 </span>
                               )}
+                              {!isTvEnabled && step.actionType === 'tv' && (
+                                <span className="text-[11px] text-amber-600 dark:text-amber-300 shrink-0">
+                                  · TV off
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -3764,7 +3783,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             </div>
                           )}
 
-                          {step.actionType === 'tv' && (
+                          {step.actionType === 'tv' && !isTvEnabled && (
+                            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                              TV mode is off in Settings — this step stays saved in your macro and will be skipped until TV mode is turned back on.
+                            </p>
+                          )}
+
+                          {step.actionType === 'tv' && isTvEnabled && (
                             <div className="space-y-2.5">
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <span className="text-xs text-[var(--text-secondary)]">
@@ -4341,9 +4366,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 </div>
               </div>
 
-              {/* Mini Physical Layout: 2x4 Keys + 3 Rotary Knob Slots */}
+              {/* Mini Physical Layout: 2x4 Keys + Dual Rotary Knob Slots */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                <div className="sm:col-span-8 grid grid-cols-4 gap-1.5">
+                <div className="sm:col-span-7 grid grid-cols-4 gap-1.5">
                   {BUTTON_GRID_SLOTS.map((slot, i) => {
                     const act = targetProfileSlots[slot];
                     const slotBind = getBindingForProfileSlot(
@@ -4386,51 +4411,55 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   })}
                 </div>
 
-                {/* 3 Rotary Encoder Actions */}
-                <div className="sm:col-span-4 flex sm:flex-col gap-1.5">
-                  {ENCODER_SLOTS.map(({ slot, shortTitle, icon: KnobIcon }) => {
-                    const act = targetProfileSlots[slot];
-                    const slotBind = getBindingForProfileSlot(
-                      profiles,
-                      targetProfile,
-                      slot
-                    );
-                    const isSelected = targetSlot === slot;
-                    return (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => setTargetSlot(slot)}
-                        className={`flex-1 px-2.5 py-1.5 rounded-lg border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer min-w-0 ${
-                          isSelected
-                            ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
-                            : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <KnobIcon className="w-3 h-3 text-[var(--text-muted)]" />
-                          <span className="font-mono text-[10px] text-[var(--text-muted)] whitespace-nowrap">
-                            {shortTitle}
-                          </span>
-                        </div>
-                        <div className="min-w-0 truncate">
-                          {act ? (
-                            <ParsedActionBadge
-                              action={act}
-                              repeatConfig={slotBind?.repeatConfig}
-                              maxSteps={1}
-                              showRawId={showAdvancedIds}
-                              customMacros={customMacros}
-                            />
-                          ) : (
-                            <span className="text-[10px] font-mono text-[var(--text-muted)]">
-                              Empty
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
+                {/* 6 Dual Rotary Encoder Actions (Knob 1 & Knob 2) */}
+                <div className="sm:col-span-5 grid grid-cols-2 gap-1.5">
+                  {[ENCODER_SLOTS, ENCODER_2_SLOTS].map((group, groupIdx) => (
+                    <div key={groupIdx} className="flex flex-col gap-1.5 min-w-0">
+                      {group.map(({ slot, shortTitle, icon: KnobIcon }) => {
+                        const act = targetProfileSlots[slot];
+                        const slotBind = getBindingForProfileSlot(
+                          profiles,
+                          targetProfile,
+                          slot
+                        );
+                        const isSelected = targetSlot === slot;
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            onClick={() => setTargetSlot(slot)}
+                            className={`flex-1 px-2 py-1.5 rounded-lg border text-left flex items-center justify-between gap-1.5 transition-colors cursor-pointer min-w-0 ${
+                              isSelected
+                                ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                                : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1 shrink-0">
+                              <KnobIcon className="w-3 h-3 text-[var(--text-muted)]" />
+                              <span className="font-mono text-[10px] text-[var(--text-muted)] whitespace-nowrap">
+                                {shortTitle}
+                              </span>
+                            </div>
+                            <div className="min-w-0 truncate">
+                              {act ? (
+                                <ParsedActionBadge
+                                  action={act}
+                                  repeatConfig={slotBind?.repeatConfig}
+                                  maxSteps={1}
+                                  showRawId={showAdvancedIds}
+                                  customMacros={customMacros}
+                                />
+                              ) : (
+                                <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                                  Empty
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

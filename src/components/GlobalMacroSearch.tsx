@@ -130,6 +130,9 @@ function controlToHardwareSlot(control: ControlId): HardwareSlotId {
   if (control === 'enc_cw') return 'enc_cw';
   if (control === 'enc_ccw') return 'enc_ccw';
   if (control === 'dial' || control === 'encoder') return 'dial';
+  if (control === 'enc2_cw') return 'enc2_cw';
+  if (control === 'enc2_ccw') return 'enc2_ccw';
+  if (control === 'dial2' || control === 'encoder2') return 'dial2';
   return 'b1';
 }
 
@@ -137,6 +140,9 @@ function hardwareSlotToControl(slot: HardwareSlotId): ControlId {
   if (slot === 'dial') return 'dial';
   if (slot === 'enc_cw') return 'enc_cw';
   if (slot === 'enc_ccw') return 'enc_ccw';
+  if (slot === 'dial2') return 'dial2';
+  if (slot === 'enc2_cw') return 'enc2_cw';
+  if (slot === 'enc2_ccw') return 'enc2_ccw';
   return SLOT_TO_ACTION_KEY[slot as ButtonSlotId];
 }
 
@@ -347,7 +353,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         const slotLabel = SLOT_LABELS[slot].short;
 
         const keyCfg =
-          slot !== 'dial' && slot !== 'enc_cw' && slot !== 'enc_ccw'
+          slot in SLOT_TO_ACTION_KEY
             ? prof.layers[0].keys[controlId as ActionKeyId]
             : null;
 

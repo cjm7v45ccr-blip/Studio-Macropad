@@ -274,6 +274,15 @@ export function buildHardwareProfile(
           repeatConfigs?.[`${id}:dial`],
           repeatConfigs?.[`${id}:enc_cw`],
           repeatConfigs?.[`${id}:enc_ccw`]
+        ),
+        encoder2: buildHardwareEncoder(
+          slots?.dial2 || '',
+          slots?.enc2_cw || '',
+          slots?.enc2_ccw || '',
+          existingProfile?.layers[0]?.encoder2?.color || (id === 'TV' ? '#38BDF8' : '#10B981'),
+          repeatConfigs?.[`${id}:dial2`],
+          repeatConfigs?.[`${id}:enc2_cw`],
+          repeatConfigs?.[`${id}:enc2_ccw`]
         )
       }
     ]

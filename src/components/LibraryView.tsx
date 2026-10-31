@@ -422,7 +422,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               Profiles &amp; Presets
             </h1>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Apply 11-control layouts across Devices 1–3 and Smart TV, save snapshots, or clone profiles.
+              Apply 14-control layouts across Devices 1–3 and Smart TV, save snapshots, or clone profiles.
             </p>
           </div>
 
@@ -611,7 +611,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 Saved Snapshots ({filteredUserPresets.length})
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Save any profile&apos;s 11 controls so you can switch or reapply layouts anytime.
+                Save any profile&apos;s 14 controls so you can switch or reapply layouts anytime.
               </p>
             </div>
 
@@ -660,7 +660,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <div className="text-[11px] text-amber-700 dark:text-amber-300">
                   {matchingExistingPreset.reason === 'identical_layout'
                     ? `Matches "${matchingExistingPreset.preset.name}" — saving updates it in place`
-                    : `"${matchingExistingPreset.preset.name}" already exists — saving updates its 11 bindings`}
+                    : `"${matchingExistingPreset.preset.name}" already exists — saving updates its 14 bindings`}
                 </div>
               )}
             </div>
@@ -721,7 +721,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               key={s}
                               className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-2 min-w-0"
                             >
-                              <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums w-8">
+                              <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums whitespace-nowrap">
                                 {SLOT_LABELS[s].short}
                               </span>
                               <ParsedActionBadge
@@ -788,7 +788,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               Starter Presets ({filteredCuratedPresets.length})
             </h2>
             <p className="text-xs text-[var(--text-muted)]">
-              Preview all 11 control changes before applying a layout to Device 1, Device 2, Device 3, or Smart TV.
+              Preview all 14 control changes before applying a layout to Device 1, Device 2, Device 3, or Smart TV.
             </p>
           </div>
 
@@ -842,7 +842,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             key={slot}
                             className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-1.5 min-w-0"
                           >
-                            <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums w-8">
+                            <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums whitespace-nowrap">
                               {SLOT_LABELS[slot].short}
                             </span>
                             <ParsedActionBadge
@@ -893,7 +893,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <span>Clone Bindings Between Profiles</span>
             </div>
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              Copy all 11 button and rotary dial assignments from one profile onto another with a diff preview before writing.
+              Copy all 14 button and dual rotary dial assignments from one profile onto another with a diff preview before writing.
             </p>
           </div>
 
@@ -990,17 +990,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         }
         description={
           pendingAction?.kind === 'curated_preset' || pendingAction?.kind === 'my_preset'
-            ? `Review the 11 control changes that will be written to ${formatProfileLabel(pendingAction.targetProfile)}.`
+            ? `Review the 14 control changes that will be written to ${formatProfileLabel(pendingAction.targetProfile)}.`
             : pendingAction?.kind === 'copy_profile'
-            ? `All 11 controls on ${formatProfileLabel(pendingAction.target)} will be overwritten with ${formatProfileLabel(pendingAction.source)}'s bindings.`
-            : 'This restores all 44 controls across Device 1, Device 2, Device 3, and Smart TV to factory defaults. Wi-Fi and TV pairing are preserved.'
+            ? `All 14 controls on ${formatProfileLabel(pendingAction.target)} will be overwritten with ${formatProfileLabel(pendingAction.source)}'s bindings.`
+            : 'This restores all 56 controls across Device 1, Device 2, Device 3, and Smart TV to factory defaults. Wi-Fi and TV pairing are preserved.'
         }
         confirmLabel={
           pendingAction?.kind === 'reset_all'
             ? 'Reset All 4 Profiles'
             : pendingAction?.kind === 'copy_profile'
             ? `Copy ${profileShortTag(pendingAction.source)} → ${profileShortTag(pendingAction.target)}`
-            : 'Apply Preset (11 Controls)'
+            : 'Apply Preset (14 Controls)'
         }
         tone={pendingAction?.kind === 'reset_all' ? 'danger' : 'accent'}
         requireWord={pendingAction?.kind === 'reset_all' ? 'RESET' : undefined}

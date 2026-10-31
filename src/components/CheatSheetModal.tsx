@@ -6,7 +6,7 @@ import {
   isBleHostProfile,
   profileShortTag
 } from '../types/studio';
-import { SLOT_LABELS } from '../data/firmwareCatalog';
+import { HARDWARE_SLOTS, SLOT_LABELS } from '../data/firmwareCatalog';
 import {
   extractProfileSlots,
   getBindingForProfileSlot
@@ -43,14 +43,24 @@ const KEY_SLOTS: readonly HardwareSlotId[] = [
   'b8'
 ] as const;
 
-const KNOB_SLOTS: {
+const KNOB_1_SLOTS: {
   slot: HardwareSlotId;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { slot: 'dial', label: 'Knob Press', icon: Disc },
-  { slot: 'enc_ccw', label: 'Turn Left', icon: RotateCcw },
-  { slot: 'enc_cw', label: 'Turn Right', icon: RotateCw }
+  { slot: 'dial', label: 'K1 Press', icon: Disc },
+  { slot: 'enc_ccw', label: 'K1 Left', icon: RotateCcw },
+  { slot: 'enc_cw', label: 'K1 Right', icon: RotateCw }
+];
+
+const KNOB_2_SLOTS: {
+  slot: HardwareSlotId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { slot: 'dial2', label: 'K2 Press', icon: Disc },
+  { slot: 'enc2_ccw', label: 'K2 Left', icon: RotateCcw },
+  { slot: 'enc2_cw', label: 'K2 Right', icon: RotateCw }
 ];
 
 export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
@@ -103,7 +113,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                 All-Host Desk Reference
               </h2>
               <p className="text-xs text-[var(--text-muted)] truncate tabular-nums">
-                4 profiles · 44 programmable controls · Click any slot to configure on canvas
+                4 profiles · 56 programmable controls · Click any slot to configure on canvas
               </p>
             </div>
           </div>
@@ -165,9 +175,9 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
             const isBle = isBleHostProfile(prof.id);
             const ProfileIcon = isBle ? Bluetooth : Tv;
             const isActive = prof.id === activeProfileId;
-            const assignedCount = (
-              [...KEY_SLOTS, 'dial', 'enc_cw', 'enc_ccw'] as HardwareSlotId[]
-            ).filter(s => Boolean(slots[s])).length;
+            const assignedCount = HARDWARE_SLOTS.filter(s =>
+              Boolean(slots[s])
+            ).length;
 
             return (
               <section
@@ -202,7 +212,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                       </span>
                     )}
                     <span className="text-[var(--text-muted)]">
-                      {assignedCount}/11 mapped
+                      {assignedCount}/14 mapped
                     </span>
                   </div>
                 </div>
@@ -239,37 +249,44 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                   })}
                 </div>
 
-                {/* 3 Rotary Dial Controls */}
-                <div className="pt-2 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-                  {KNOB_SLOTS.map(({ slot, label, icon: KnobIcon }) => {
-                    const act = slots[slot];
-                    const bind = getBindingForProfileSlot(profiles, prof.id, slot);
-                    return (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => {
-                          onJumpToControl(prof.id, slot);
-                          onClose();
-                        }}
-                        title={`Configure ${prof.name} · ${label}`}
-                        className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
-                      >
-                        <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
-                          <KnobIcon className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{label}</span>
-                        </div>
-                        <div className="min-w-0 overflow-hidden">
-                          <ParsedActionBadge
-                            action={act}
-                            repeatConfig={bind?.repeatConfig}
-                            labelMode={labelMode}
-                            maxSteps={1}
-                          />
-                        </div>
-                      </button>
-                    );
-                  })}
+                {/* Dual Rotary Dial Controls (Knob 1 & Knob 2) */}
+                <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1.5">
+                  {[KNOB_1_SLOTS, KNOB_2_SLOTS].map((knobGroup, groupIdx) => (
+                    <div
+                      key={groupIdx}
+                      className="grid grid-cols-1 sm:grid-cols-3 gap-1.5"
+                    >
+                      {knobGroup.map(({ slot, label, icon: KnobIcon }) => {
+                        const act = slots[slot];
+                        const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            onClick={() => {
+                              onJumpToControl(prof.id, slot);
+                              onClose();
+                            }}
+                            title={`Configure ${prof.name} · ${SLOT_LABELS[slot].full}`}
+                            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
+                          >
+                            <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
+                              <KnobIcon className="w-3 h-3 shrink-0" />
+                              <span className="truncate">{label}</span>
+                            </div>
+                            <div className="min-w-0 overflow-hidden">
+                              <ParsedActionBadge
+                                action={act}
+                                repeatConfig={bind?.repeatConfig}
+                                labelMode={labelMode}
+                                maxSteps={1}
+                              />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
               </section>
             );
