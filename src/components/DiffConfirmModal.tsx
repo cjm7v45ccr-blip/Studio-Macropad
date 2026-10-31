@@ -64,8 +64,12 @@ export const DiffConfirmModal: React.FC<DiffConfirmModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="diff-confirm-modal-title"
+      onClick={onCancel}
     >
-      <div className="w-full max-w-lg rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl overflow-hidden">
+      <div
+        className="w-full max-w-lg rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
@@ -150,7 +154,7 @@ export const DiffConfirmModal: React.FC<DiffConfirmModalProps> = ({
                         <span
                           className={`px-2 py-0.5 rounded truncate max-w-[175px] inline-flex items-center ${
                             row.changed
-                              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold'
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold'
                               : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
                           }`}
                         >

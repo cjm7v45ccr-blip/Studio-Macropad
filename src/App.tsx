@@ -156,10 +156,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (connection.telemetry?.tvEnabled === false && studio.activeProfile.id === 'TV') {
-      studio.selectProfile('HOST1');
+    if (!studio.tvEnabled && studio.activeProfile.id === 'TV') {
+      const fallbackSlot = connection.telemetry?.bleActiveHost ?? 1;
+      studio.selectProfile(bleSlotToProfileId(fallbackSlot));
     }
-  }, [connection.telemetry?.tvEnabled, studio.activeProfile.id, studio]);
+  }, [studio.tvEnabled, studio.activeProfile.id, connection.telemetry?.bleActiveHost, studio]);
 
   const firmwareUpdater = useFirmwareUpdateCheck({
     connected: connection.connected,
@@ -345,6 +346,10 @@ export default function App() {
 
       try {
         const res = await usbHardware.testAction(binding.value);
+        if ((res as any)?.tvDisabled) {
+          showToast(res.message || 'TV mode is turned off on the pad.');
+          return false;
+        }
         showToast(
           res.message ||
             `Fired ${describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel}`
@@ -516,6 +521,7 @@ export default function App() {
         onSaveToDevice={handleSaveToDevice}
         onSwitchBleHost={handleSwitchBleHost}
         onOpenSetupWizard={handleOpenSetupWizard}
+        tvEnabled={studio.tvEnabled}
         searchSlot={
           <GlobalMacroSearch
             profiles={studio.profiles}
@@ -524,6 +530,7 @@ export default function App() {
             customMacros={studio.customMacros}
             connection={connection}
             activeHostOs={activeHostOs}
+            tvEnabled={studio.tvEnabled}
             showAdvancedIds={studio.settings.showAdvancedIds}
             onSaveMacro={studio.saveCustomMacro}
             onAssignSlot={studio.assignSlotAction}
@@ -584,6 +591,7 @@ export default function App() {
               conflicts={studio.conflicts}
               customMacros={studio.customMacros}
               connection={connection}
+              tvEnabled={studio.tvEnabled}
               isSyncedWithHardware={studio.isSyncedWithHardware}
               onSelectControl={setSelectedControl}
               onChangeViewMode={setViewMode}
@@ -613,6 +621,7 @@ export default function App() {
                 connection={connection}
                 activeRepeatJob={activeRepeatJob}
                 activeHostOs={activeHostOs}
+                tvEnabled={studio.tvEnabled}
                 onChangeHostOs={
                   isBleHostProfile(studio.activeProfile.id)
                     ? os => studio.setHostOs(studio.activeProfile.id as BleHostProfileId, os)
@@ -666,6 +675,7 @@ export default function App() {
                   connection={connection}
                   activeRepeatJob={activeRepeatJob}
                   activeHostOs={activeHostOs}
+                  tvEnabled={studio.tvEnabled}
                   onChangeHostOs={
                     isBleHostProfile(studio.activeProfile.id)
                       ? os => studio.setHostOs(studio.activeProfile.id as BleHostProfileId, os)
@@ -725,6 +735,7 @@ export default function App() {
             externalTarget={externalMacroTarget}
             initialTargetSlot={selectedHardwareSlot}
             hostOsMap={studio.settings.hostOsMap}
+            tvEnabled={studio.tvEnabled}
             showAdvancedIds={studio.settings.showAdvancedIds}
             onSaveMacro={studio.saveCustomMacro}
             onDeleteMacro={studio.deleteCustomMacro}
@@ -829,6 +840,8 @@ export default function App() {
         connection={connection}
         profiles={studio.profiles}
         keyboardLayout={studio.settings.keyboardLayout}
+        tvEnabled={studio.tvEnabled}
+        onSetOfflineTvEnabled={studio.setOfflineTvEnabled}
         onClose={() => setSetupWizardOpen(false)}
         onConnectUsbPad={handleConnectUsbPad}
         onStartDemoSetup={handleStartDemoSetup}
@@ -879,6 +892,7 @@ export default function App() {
         isOpen={cheatSheetOpen}
         profiles={studio.profiles}
         activeProfileId={studio.activeProfile.id}
+        tvEnabled={studio.tvEnabled}
         onClose={() => setCheatSheetOpen(false)}
         onJumpToControl={handleJumpToSlotControl}
       />
@@ -920,7 +934,7 @@ export default function App() {
             type="button"
             onClick={handleStopRepeat}
             title="Stop macro sequence immediately (Esc)"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 font-semibold transition-colors cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-700 dark:text-rose-300 font-semibold transition-colors cursor-pointer shrink-0 whitespace-nowrap"
           >
             <Square className="w-3 h-3 fill-current" />
             <span>Stop (Esc)</span>
@@ -935,14 +949,14 @@ export default function App() {
           aria-live="polite"
           className={`fixed bottom-16 sm:bottom-5 right-3 sm:right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border shadow-2xl text-xs font-medium max-w-[92vw] sm:max-w-md ${
             toast.variant === 'error'
-              ? 'border-rose-500/45 text-rose-200'
+              ? 'border-rose-500/45 text-rose-700 dark:text-rose-200'
               : 'border-[var(--border-strong)] text-[var(--text-primary)]'
           }`}
         >
           {toast.variant === 'error' ? (
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
           ) : (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           )}
           <span className="leading-snug">{toast.message}</span>
         </div>

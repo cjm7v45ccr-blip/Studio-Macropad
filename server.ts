@@ -1,12 +1,27 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
-import { buildPublicFirmwareCatalogJson } from './serverFirmwareCatalog';
+import { buildPublicFirmwareCatalogJson } from './serverFirmwareCatalog.ts';
 
 dotenv.config();
+
+function getGenAiClient(): GoogleGenAI {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Studio Sense AI requires GEMINI_API_KEY to be configured on the server.');
+  }
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+}
 
 async function startServer() {
   const app = express();
@@ -23,20 +38,12 @@ async function startServer() {
     res.send(buildPublicFirmwareCatalogJson(scanDir));
   });
 
-  const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      }
-    }
-  });
-
   // Studio Sense AI analysis endpoint
   app.post('/api/studio-sense/analyze', async (req, res) => {
     try {
+      const ai = getGenAiClient();
       const { macros, userContext } = req.body || {};
-      
+
       const prompt = `You are Studio Sense, an expert macro automation and firmware engineering assistant for the ESP32 Studio MacroPad.
 Analyze the following user macros and suggest 3 high-value workflow optimizations, missing steps (such as auto-fill login sequences, 2FA timing delays, clipboard pasting, or multi-step shortcuts), and macro improvements.
 
@@ -44,40 +51,58 @@ User Macros:
 ${JSON.stringify(macros || [], null, 2)}
 
 User Context:
-${userContext || 'No additional context provided.'}
-
-Return valid JSON with the following structure:
-{
-  "summary": "Short 1-2 sentence assessment of the user's macro suite.",
-  "suggestions": [
-    {
-      "id": "suggestion_1",
-      "title": "Short catchy title",
-      "category": "Security / Efficiency / Workflow",
-      "description": "Detailed explanation of why this optimization helps.",
-      "recommendedActions": [
-        { "type": "TEXT", "value": "example_value" },
-        { "type": "DELAY", "value": "500" }
-      ]
-    }
-  ]
-}`;
+${userContext || 'No additional context provided.'}`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
-          systemInstruction: 'You are Studio Sense, an expert hardware controller and macro workflow optimization assistant. Always return valid JSON matching the requested schema.'
+          systemInstruction:
+            'You are Studio Sense, an expert hardware controller and macro workflow optimization assistant. Return concise, practical macro automation recommendations matching the requested schema.',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              summary: {
+                type: Type.STRING,
+                description: "Short 1-2 sentence assessment of the user's macro suite."
+              },
+              suggestions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    title: { type: Type.STRING },
+                    category: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    recommendedActions: {
+                      type: Type.ARRAY,
+                      items: {
+                        type: Type.OBJECT,
+                        properties: {
+                          type: { type: Type.STRING },
+                          value: { type: Type.STRING }
+                        },
+                        required: ['type', 'value']
+                      }
+                    }
+                  },
+                  required: ['id', 'title', 'category', 'description', 'recommendedActions']
+                }
+              }
+            },
+            required: ['summary', 'suggestions']
+          }
         }
       });
 
-      const text = response.text || '{}';
+      const text = (response.text || '{}').trim();
       let parsed;
       try {
         parsed = JSON.parse(text);
       } catch {
-        parsed = { summary: "Analysis completed.", suggestions: [] };
+        parsed = { summary: 'Analysis completed.', suggestions: [] };
       }
 
       res.json(parsed);

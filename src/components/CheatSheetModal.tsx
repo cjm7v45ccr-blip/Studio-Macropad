@@ -27,6 +27,7 @@ interface CheatSheetModalProps {
   isOpen: boolean;
   profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
+  tvEnabled?: boolean;
   onClose: () => void;
   onJumpToControl: (profileId: HardwareProfileId, slot: HardwareSlotId) => void;
 }
@@ -56,6 +57,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
   isOpen,
   profiles,
   activeProfileId,
+  tvEnabled = true,
   onClose,
   onJumpToControl
 }) => {
@@ -179,7 +181,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                 {/* Profile Header */}
                 <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-[var(--border-subtle)]">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-strong)] font-mono text-[11px] font-bold text-sky-400 tabular-nums shrink-0">
+                    <span className="px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-strong)] font-mono text-[11px] font-bold text-sky-600 dark:text-sky-400 tabular-nums shrink-0">
                       [{profileShortTag(prof.id)}]
                     </span>
                     <ProfileIcon className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
@@ -189,6 +191,11 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 font-mono text-[10px] tabular-nums">
+                    {prof.id === 'TV' && !tvEnabled && (
+                      <span className="px-1.5 py-0.5 rounded bg-amber-500/12 border border-amber-500/35 text-amber-700 dark:text-amber-300 font-semibold print:hidden">
+                        TV off
+                      </span>
+                    )}
                     {isActive && (
                       <span className="px-1.5 py-0.5 rounded bg-[var(--accent)]/15 border border-[var(--accent)]/40 text-[var(--text-primary)] font-semibold print:hidden">
                         Active
@@ -274,7 +281,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
           <div className="flex items-center gap-3 flex-wrap">
             <span>
               <strong className="font-mono text-[var(--text-primary)]">Key 9 (Mode):</strong>{' '}
-              Tap to toggle BLE Host ↔ TV
+              {tvEnabled ? 'Tap to toggle BLE Host ↔ TV' : 'Tap to flash active Host (TV off)'}
             </span>
             <span aria-hidden="true" className="text-[var(--text-muted)]">
               ·

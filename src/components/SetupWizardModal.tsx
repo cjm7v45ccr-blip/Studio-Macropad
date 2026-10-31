@@ -59,6 +59,8 @@ interface SetupWizardModalProps {
   connection: DeviceConnectionInfo;
   profiles: StudioProfile[];
   keyboardLayout: KeyboardLayoutId;
+  tvEnabled?: boolean;
+  onSetOfflineTvEnabled?: (enabled: boolean) => void;
   onClose: () => void;
   onConnectUsbPad: () => Promise<void> | void;
   onStartDemoSetup: () => Promise<void> | void;
@@ -162,6 +164,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
   connection,
   profiles,
   keyboardLayout,
+  tvEnabled = true,
+  onSetOfflineTvEnabled,
   onClose,
   onConnectUsbPad,
   onStartDemoSetup,
@@ -197,7 +201,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
   const [tvPin, setTvPin] = useState('');
   const [pairingActive, setPairingActive] = useState(false);
   const [tvBusy, setTvBusy] = useState(false);
+  const [tvModeBusy, setTvModeBusy] = useState(false);
   const [tvBanner, setTvBanner] = useState<{ ok: boolean; text: string } | null>(null);
+  const [wizardTvEnabled, setWizardTvEnabled] = useState<boolean>(tvEnabled);
 
   // Step 4: Live hardware input check & saving state
   const [detectedInput, setDetectedInput] = useState<{
@@ -209,6 +215,21 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
   const telemetry = connection.telemetry;
   const isDemo = connection.transport === 'demo';
+  const supportsWizardTvToggle =
+    !connection.connected ||
+    !telemetry ||
+    telemetry.capabilities.includes('tv_toggle');
+
+  const visibleWizardSteps = useMemo(() => {
+    if (wizardTvEnabled) {
+      return WIZARD_STEPS;
+    }
+    return [
+      { index: 0, code: '01', title: 'Devices & OS' },
+      { index: 1, code: '02', title: 'Bluetooth' },
+      { index: 3, code: '03', title: 'Verify & Save' }
+    ] as const;
+  }, [wizardTvEnabled]);
 
   // Hydrate initial names and live connection fields when modal opens
   useEffect(() => {
@@ -220,6 +241,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
     setPairingActive(false);
     setWifiPass('');
     setTvPin('');
+    setWizardTvEnabled(
+      connection.connected && telemetry ? telemetry.tvEnabled !== false : tvEnabled
+    );
 
     const p1 = profiles.find(p => p.id === 'HOST1');
     const p2 = profiles.find(p => p.id === 'HOST2');
@@ -248,10 +272,18 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
   useEffect(() => {
     if (!isOpen || !connection.connected || !telemetry) return;
+    setWizardTvEnabled(telemetry.tvEnabled !== false);
     if (telemetry.ssid && !wifiSsid) setWifiSsid(telemetry.ssid);
     if (telemetry.tvHost && !tvIp) setTvIp(telemetry.tvHost);
     if (telemetry.tvPort) setTvPort(String(telemetry.tvPort));
-  }, [isOpen, connection.connected, telemetry?.ssid, telemetry?.tvHost, telemetry?.tvPort]);
+  }, [
+    isOpen,
+    connection.connected,
+    telemetry?.tvEnabled,
+    telemetry?.ssid,
+    telemetry?.tvHost,
+    telemetry?.tvPort
+  ]);
 
   // Escape key closes modal when not mid-save
   useEffect(() => {
@@ -327,6 +359,31 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
       await onSwitchBleHost(slot);
     } finally {
       setBleBusy(false);
+    }
+  };
+
+  const handleToggleWizardTvMode = async () => {
+    if (tvModeBusy) return;
+    const nextEnabled = !wizardTvEnabled;
+    if (!connection.connected) {
+      setWizardTvEnabled(nextEnabled);
+      onSetOfflineTvEnabled?.(nextEnabled);
+      return;
+    }
+    setTvModeBusy(true);
+    try {
+      const res = await usbHardware.setTvEnabled(nextEnabled);
+      const refreshed = await usbHardware.fetchStatus();
+      const confirmed = refreshed.tv?.enabled !== false;
+      setWizardTvEnabled(confirmed);
+      onToast(
+        res?.message || (confirmed ? 'TV mode enabled.' : 'TV mode disabled.'),
+        'success'
+      );
+    } catch (err: any) {
+      onToast(err?.message || 'Could not update TV mode on MacroPad', 'error');
+    } finally {
+      setTvModeBusy(false);
     }
   };
 
@@ -430,11 +487,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
       const cleanH3Name = sanitizeFirmwareAlias(h3Name, 'HOST3');
       const cleanTvName = sanitizeFirmwareAlias(tvName, 'TV');
 
+      const effectiveTvPreset: TvPresetChoiceId = wizardTvEnabled ? tvPreset : 'keep';
       const allKeep =
         h1Preset === 'keep' &&
         h2Preset === 'keep' &&
         h3Preset === 'keep' &&
-        tvPreset === 'keep';
+        effectiveTvPreset === 'keep';
 
       if (allKeep) {
         await onCompleteSetup({
@@ -451,7 +509,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         const h1Slots = resolveHostSlots(h1Preset, p1, FACTORY_DEFAULT_SLOTS.HOST1);
         const h2Slots = resolveHostSlots(h2Preset, p2, FACTORY_DEFAULT_SLOTS.HOST2);
         const h3Slots = resolveHostSlots(h3Preset, p3, FACTORY_DEFAULT_SLOTS.HOST3);
-        const tvSlots = resolveTvSlots(tvPreset, pTv);
+        const tvSlots = resolveTvSlots(effectiveTvPreset, pTv);
 
         const backupPayload: HardwareBackupPayload = {
           schema: 'studio-pad-config',
@@ -558,7 +616,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
         {/* Step Navigation Bar */}
         <div className="px-5 py-2.5 bg-[var(--bg-input)] border-b border-[var(--border-subtle)] flex items-center gap-1.5 overflow-x-auto shrink-0">
-          {WIZARD_STEPS.map(s => {
+          {visibleWizardSteps.map(s => {
             const active = step === s.index;
             const completed = step > s.index;
             return (
@@ -821,6 +879,46 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     ))}
                   </select>
                 </div>
+
+                {supportsWizardTvToggle && (
+                  <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-4">
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Tv className="w-4 h-4 text-purple-400 shrink-0" />
+                        <span
+                          id="wizard-tv-mode-label"
+                          className="text-xs font-semibold text-[var(--text-primary)]"
+                        >
+                          TV mode
+                        </span>
+                        <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                          · {wizardTvEnabled ? 'On' : 'Off'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                        Turn off if you only use Bluetooth hosts — setup will skip Wi-Fi and SmartCast TV pairing. You can turn TV mode back on anytime in Settings.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-labelledby="wizard-tv-mode-label"
+                      aria-checked={wizardTvEnabled}
+                      disabled={tvModeBusy}
+                      onClick={handleToggleWizardTvMode}
+                      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                        tvModeBusy ? 'opacity-45 cursor-not-allowed' : 'cursor-pointer'
+                      } ${wizardTvEnabled ? 'bg-[var(--accent)]' : 'bg-zinc-600'}`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          wizardTvEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1153,7 +1251,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
             <div className="space-y-5">
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                  04. Verify Hardware & Save to Pad
+                  {wizardTvEnabled ? '04' : '03'}. Verify Hardware & Save to Pad
                 </h3>
                 <p className="text-xs text-[var(--text-muted)]">
                   Press any physical key or turn the knob on your MacroPad to verify live communication, then save your setup to non-volatile memory.
@@ -1223,17 +1321,22 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">TV Profile</span>
+                  <span className="text-[var(--text-muted)]">TV Mode</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
-                    {sanitizeFirmwareAlias(tvName, 'TV')} · {tvPresetLabel(tvPreset)}
+                    {wizardTvEnabled
+                      ? `${sanitizeFirmwareAlias(tvName, 'TV')} · ${tvPresetLabel(tvPreset)}`
+                      : 'Off · Bluetooth hosts only'}
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
                   <span className="text-[var(--text-muted)]">Wireless Links</span>
                   <span className="font-mono text-[var(--text-secondary)] tabular-nums text-right">
-                    BLE {telemetry?.bleConnected ? 'Connected' : 'Standby'} · Wi-Fi{' '}
-                    {telemetry?.wifiConnected ? telemetry.ip : 'Not set'} · TV{' '}
-                    {telemetry?.tvPaired ? 'Paired' : 'Unpaired'}
+                    BLE {telemetry?.bleConnected ? 'Connected' : 'Standby'}
+                    {wizardTvEnabled
+                      ? ` · Wi-Fi ${telemetry?.wifiConnected ? telemetry.ip : 'Not set'} · TV ${
+                          telemetry?.tvPaired ? 'Paired' : 'Unpaired'
+                        }`
+                      : ''}
                   </span>
                 </div>
               </div>
@@ -1248,7 +1351,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
               <button
                 type="button"
                 disabled={finishing}
-                onClick={() => setStep(s => Math.max(0, s - 1))}
+                onClick={() =>
+                  setStep(s => (s === 3 && !wizardTvEnabled ? 1 : Math.max(0, s - 1)))
+                }
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
@@ -1267,7 +1372,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {step === 2 && (
+            {step === 2 && wizardTvEnabled && (
               <button
                 type="button"
                 onClick={() => setStep(3)}
@@ -1285,7 +1390,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     onToast('Profile names must be 1–20 letters, numbers, spaces, - or _', 'error');
                     return;
                   }
-                  setStep(s => Math.min(3, s + 1));
+                  setStep(s => (s === 1 && !wizardTvEnabled ? 3 : Math.min(3, s + 1)));
                 }}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
               >

@@ -579,6 +579,12 @@ export function getActionTestAvailability(
   const needsBleHid = realParts.some(p => !isTvFirmwareAction(p) && !p.startsWith('BLE:'));
 
   if (needsTv) {
+    if (tel.tvEnabled === false) {
+      return {
+        canTest: true,
+        reason: 'TV mode is turned off on the pad.'
+      };
+    }
     if (!tel.wifiConnected) {
       return {
         canTest: false,
@@ -608,6 +614,34 @@ export function getActionTestAvailability(
   }
 
   return { canTest: true, reason: null };
+}
+
+export function actionContainsTvSteps(
+  actionStr?: string | null,
+  repeatConfig?: TextMacroRepeatConfig
+): boolean {
+  if (repeatConfig?.steps && repeatConfig.steps.length > 0) {
+    if (
+      repeatConfig.steps.some(
+        s => s.actionType === 'tv' || isTvFirmwareAction(stepToFirmwareAction(s))
+      )
+    ) {
+      return true;
+    }
+  }
+  if (!actionStr) return false;
+  const parts = actionStr.includes('||')
+    ? actionStr.split('||').map(p => (p.startsWith('TEXT:') ? p : p.trim()))
+    : [actionStr];
+  return parts.some(
+    p =>
+      Boolean(p) &&
+      p !== 'NONE' &&
+      !p.startsWith('DELAY:') &&
+      !p.startsWith('REPEAT:') &&
+      p !== 'END' &&
+      isTvFirmwareAction(p)
+  );
 }
 
 const CODE_PUNCTUATION_MAP: Record<string, string> = {

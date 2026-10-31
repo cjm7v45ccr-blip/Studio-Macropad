@@ -16,6 +16,7 @@ import {
   FIRMWARE_STATIC_CATALOG,
   FIRMWARE_SUPPORTED_KEYS,
   MAX_FIRMWARE_DELAY_STEP_MS,
+  actionContainsTvSteps,
   buildFirmwareActionFromTextConfig,
   buildFirmwareShortcut,
   calculateStepsTiming,
@@ -70,6 +71,7 @@ interface ActionPickerControlProps {
   connection: DeviceConnectionInfo;
   activeProfileId?: HardwareProfileId;
   activeHostOs?: HostOsType;
+  tvEnabled?: boolean;
   onChangeHostOs?: (os: HostOsType) => void;
   showAdvancedIds?: boolean;
   onToggleAdvancedIds?: () => void;
@@ -120,6 +122,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
   connection,
   activeProfileId = 'HOST1',
   activeHostOs = 'mac',
+  tvEnabled,
   onChangeHostOs,
   showAdvancedIds = false,
   onToggleAdvancedIds,
@@ -128,6 +131,8 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
   onStopRepeat,
   onOpenMacroBuilder
 }) => {
+  const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
+
   const currentSignature = useMemo(
     () => getMacroCanonicalSignature(binding.value, binding.repeatConfig),
     [binding.value, binding.repeatConfig]
@@ -145,8 +150,11 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     if (binding.type === 'mac_macro' || binding.type === 'win_macro') {
       return 'os_shortcuts';
     }
+    if (!isTvEnabled && (binding.type === 'tv' || binding.type === 'tv_app')) {
+      return 'os_shortcuts';
+    }
     if (binding.type === 'none') {
-      return activeProfileId === 'TV' ? 'tv' : 'os_shortcuts';
+      return activeProfileId === 'TV' && isTvEnabled ? 'tv' : 'os_shortcuts';
     }
     return binding.type;
   };
@@ -176,6 +184,8 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     if (matchedSavedMacro) {
       setActiveTab('my_macros');
     } else if (binding.type === 'mac_macro' || binding.type === 'win_macro') {
+      setActiveTab('os_shortcuts');
+    } else if (!isTvEnabled && (binding.type === 'tv' || binding.type === 'tv_app')) {
       setActiveTab('os_shortcuts');
     } else if (binding.type !== 'none') {
       setActiveTab(binding.type);
@@ -220,7 +230,13 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
         }
       }
     }
-  }, [binding.type, binding.value, binding.repeatConfig, matchedSavedMacro]);
+  }, [binding.type, binding.value, binding.repeatConfig, matchedSavedMacro, isTvEnabled]);
+
+  useEffect(() => {
+    if (!isTvEnabled && (activeTab === 'tv' || activeTab === 'tv_app')) {
+      setActiveTab('os_shortcuts');
+    }
+  }, [isTvEnabled, activeTab]);
 
   // Live Keyboard Shortcut Recorder normalized to ESP32 pressKey() tokens
   useEffect(() => {
@@ -443,9 +459,12 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
   const nonOsStaticCatalog = useMemo(
     () =>
       FIRMWARE_STATIC_CATALOG.filter(
-        s => s.category !== 'mac_macro' && s.category !== 'win_macro'
+        s =>
+          s.category !== 'mac_macro' &&
+          s.category !== 'win_macro' &&
+          (isTvEnabled || (s.category !== 'tv' && s.category !== 'tv_app'))
       ),
-    []
+    [isTvEnabled]
   );
 
   const searchShortcutMatches = useMemo(() => {
@@ -482,20 +501,32 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     return nonOsStaticCatalog.filter(s => s.category === activeTab);
   }, [activeTab, nonOsStaticCatalog]);
 
-  const renderMacroSummaryMeta = (macro: CustomMacroItem) => {
+  const renderMacroSummaryMeta = (macro: CustomMacroItem): React.ReactNode => {
     const parsedCfg = parseTextConfigFromFirmwareAction(macro.action, macro.repeatConfig);
     const steps = parsedCfg.steps || [];
     const timing = calculateStepsTiming(steps);
     const stepCount = Math.max(1, steps.length);
+    const hasTvOff = !isTvEnabled && actionContainsTvSteps(macro.action, macro.repeatConfig);
+    let baseText: string;
     if (showAdvancedIds) {
-      return macro.action;
-    }
-    if (stepCount > 1 || timing.totalDelayMs > 0) {
-      return `${stepCount} ${stepCount === 1 ? 'step' : 'steps'} · ~${formatDurationCompact(
+      baseText = macro.action;
+    } else if (stepCount > 1 || timing.totalDelayMs > 0) {
+      baseText = `${stepCount} ${stepCount === 1 ? 'step' : 'steps'} · ~${formatDurationCompact(
         timing.estimatedRunMs
       )}`;
+    } else {
+      baseText = describeFirmwareAction(macro.action, macro.repeatConfig).fullLabel;
     }
-    return describeFirmwareAction(macro.action, macro.repeatConfig).fullLabel;
+    if (!hasTvOff) return baseText;
+    return (
+      <>
+        <span>{baseText}</span>
+        <span className="text-amber-600 dark:text-amber-400 font-sans font-medium">
+          {' '}
+          · TV off
+        </span>
+      </>
+    );
   };
 
   return (
@@ -522,7 +553,13 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
           </div>
           {binding.value && (
             <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
-              {showAdvancedIds ? binding.value : currentInfo.fullLabel}
+              <span>{showAdvancedIds ? binding.value : currentInfo.fullLabel}</span>
+              {!isTvEnabled && actionContainsTvSteps(binding.value, binding.repeatConfig) && (
+                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  {' '}
+                  · TV off
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -578,7 +615,11 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
           type="text"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
-          placeholder="Search shortcuts, macros, media, or TV actions…"
+          placeholder={
+            isTvEnabled
+              ? 'Search shortcuts, macros, media, or TV actions…'
+              : 'Search shortcuts, macros, or media actions…'
+          }
           aria-label="Search actions"
           className="w-full pl-8 pr-8 py-2 rounded-xl bg-[var(--bg-input)] border border-transparent focus:border-[var(--accent)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-colors"
         />
@@ -601,7 +642,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
           aria-label="Action categories"
           className="w-[116px] sm:w-[124px] shrink-0 flex flex-col gap-0.5 p-1 rounded-xl bg-[var(--bg-input)]"
         >
-          {ACTION_TABS.filter(t => (connection.telemetry?.tvEnabled !== false) || (t.id !== 'tv' && t.id !== 'tv_app')).map(tab => {
+          {ACTION_TABS.filter(t => isTvEnabled || (t.id !== 'tv' && t.id !== 'tv_app')).map(tab => {
             const Icon = tab.icon;
             const active = !trimmedQuery && activeTab === tab.id;
             return (
@@ -776,7 +817,8 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                   {searchOtherStaticMatches.length > 0 && (
                     <div className="space-y-1.5">
                       <div className="text-[11px] font-medium text-[var(--text-muted)] px-0.5">
-                        System, Media & TV · {searchOtherStaticMatches.length}
+                        {isTvEnabled ? 'System, Media & TV' : 'System & Media'} ·{' '}
+                        {searchOtherStaticMatches.length}
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                         {searchOtherStaticMatches.map(spec => {

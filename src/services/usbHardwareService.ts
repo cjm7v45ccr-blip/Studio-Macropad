@@ -706,6 +706,7 @@ class PadLinkService {
       let mode: 'MAC' | 'TV' = 'MAC';
       let bleSlot: BleHostSlot = 1;
       let rev = 1;
+      let initialTvEnabled = true;
 
       try {
         const raw = localStorage.getItem('pad:demo-pad');
@@ -735,12 +736,18 @@ class PadLinkService {
             initialH3 = { ...initialH3, ...(p.h3 || {}) };
             initialTv = { ...initialTv, ...(p.tv || {}) };
           }
+          if (typeof parsed.tvEnabled === 'boolean') {
+            initialTvEnabled = parsed.tvEnabled;
+            if (!initialTvEnabled && mode === 'TV') {
+              mode = 'MAC';
+            }
+          }
         }
       } catch {}
 
       this.demoPad = {
         rev,
-        firmware: '4.5.0',
+        firmware: '4.6.1',
         setupMode: Boolean(opts?.setupMode),
         mode,
         h1Name,
@@ -760,7 +767,7 @@ class PadLinkService {
         tvPaired: !opts?.setupMode,
         tvHost: opts?.setupMode ? '' : '192.168.1.50',
         tvPort: 7345,
-        tvEnabled: true,
+        tvEnabled: initialTvEnabled,
         httpApiEnabled: false,
         eventsEnabled: this.desiredEventsEnabled,
         pairingPendingHost: '',
@@ -890,6 +897,14 @@ class PadLinkService {
   public simulateDemoPadInput(slot: HardwareFlashSlot) {
     if (!this.demoModeActive || !this.demoPad) return;
     if (slot === 'mode') {
+      if (!this.demoPad.tvEnabled) {
+        if (this.demoPad.eventsEnabled) {
+          const pressEvt: HardwareEventPacket = { event: 'press', slot: 'mode' };
+          this.logSerial('rx', JSON.stringify(pressEvt));
+          this.handleHardwareEvent(pressEvt);
+        }
+        return;
+      }
       this.demoPad.mode = this.demoPad.mode === 'MAC' ? 'TV' : 'MAC';
       const activeProf: HardwareProfileId =
         this.demoPad.mode === 'TV' ? 'TV' : bleSlotToProfileId(this.demoPad.bleSlot);
@@ -1078,20 +1093,26 @@ class PadLinkService {
     }
 
     if (path === '/api/tv/enable') {
-      const nextEnabled = Boolean(obj.enabled ?? obj.tv_enabled ?? true);
+      const rawEnabled = obj.enabled ?? obj.tv_enabled;
+      const nextEnabled = rawEnabled === undefined ? true : Boolean(rawEnabled);
+      const wasTv = d.mode === 'TV';
       d.tvEnabled = nextEnabled;
-      if (!nextEnabled && d.mode === 'TV') {
+      if (!nextEnabled && wasTv) {
         d.mode = 'MAC';
       }
-      d.rev += 1;
       this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
-      const res = reply({ ok: true, enabled: nextEnabled, rev: d.rev });
+      const res = reply({
+        ok: true,
+        enabled: nextEnabled,
+        rev: d.rev,
+        message: nextEnabled ? 'TV mode enabled.' : 'TV mode disabled.'
+      });
       if (d.eventsEnabled) {
         const tvEvt: HardwareEventPacket = { event: 'tv', enabled: nextEnabled };
         this.logSerial('rx', JSON.stringify(tvEvt));
         this.handleHardwareEvent(tvEvt);
-        if (!nextEnabled) {
-          const profEvt: HardwareEventPacket = { event: 'profile', active: bleSlotToProfileId(d.bleSlot) };
+        if (!nextEnabled && wasTv) {
+          const profEvt: HardwareEventPacket = { event: 'profile', active: 'MAC' };
           this.logSerial('rx', JSON.stringify(profEvt));
           this.handleHardwareEvent(profEvt);
         }
@@ -1103,7 +1124,11 @@ class PadLinkService {
       const rawProf = String(obj.profile || '');
       const isTvTarget = rawProf.toUpperCase() === 'TV';
       if (isTvTarget && !d.tvEnabled) {
-        return reply({ ok: false, error: 'tv_disabled', message: 'TV Mode is currently disabled' });
+        return reply({
+          ok: false,
+          error: 'tv_disabled',
+          message: 'TV mode is turned off on the pad.'
+        });
       }
       d.mode = isTvTarget ? 'TV' : 'MAC';
       const activeTarget: HardwareProfileId =
@@ -1316,7 +1341,13 @@ class PadLinkService {
       }
       const isTv = isTvFirmwareAction(act);
       if (isTv) {
-        if (!d.tvEnabled) return reply({ ok: false, error: 'tv_disabled', message: 'TV Mode is currently disabled' });
+        if (!d.tvEnabled) {
+          return reply({
+            ok: false,
+            error: 'tv_disabled',
+            message: 'TV mode is turned off on the pad.'
+          });
+        }
         if (!d.wifiConnected) return reply({ ok: false, message: 'Pad Wi-Fi is disconnected.' });
         if (!d.tvPaired) return reply({ ok: false, message: 'Vizio TV is not paired.' });
       } else if (!d.bleConnected) {
@@ -1389,6 +1420,13 @@ class PadLinkService {
     }
 
     if (path === '/api/tv/test') {
+      if (!d.tvEnabled) {
+        return reply({
+          ok: false,
+          error: 'tv_disabled',
+          message: 'TV mode is turned off on the pad.'
+        });
+      }
       if (!d.wifiConnected) {
         return reply({ ok: false, message: 'Pad is offline — connect Wi-Fi first.' });
       }
@@ -2111,9 +2149,7 @@ class PadLinkService {
         : this.desiredEventsEnabled;
 
     const tvEnabled = pkt.tv?.enabled !== false;
-    const capabilities = Array.isArray(pkt.capabilities)
-      ? pkt.capabilities
-      : ['delay', 'repeat', 'macro_abort', 'macro_trace', 'push_turn', 'encoder_accel', 'diagnostics', 'tv_toggle'];
+    const capabilities = Array.isArray(pkt.capabilities) ? pkt.capabilities : [];
 
     const telemetry: HardwareTelemetry = {
       apiVersion: Number(pkt.api_version ?? 1),
@@ -2266,13 +2302,31 @@ class PadLinkService {
 
   public async activateProfile(
     profile: HardwareProfileId
-  ): Promise<{ ok: boolean; rev?: number; active?: HardwareProfileId; message?: string }> {
+  ): Promise<{
+    ok: boolean;
+    rev?: number;
+    active?: HardwareProfileId;
+    error?: string;
+    tvDisabled?: boolean;
+    message?: string;
+  }> {
     const wireProfile = profile === 'TV' ? 'TV' : 'MAC';
     const res = await this.call({
       path: '/api/profile/activate',
       profile: wireProfile
     });
-    if (res?.ok && this.connectionInfo.telemetry) {
+    if (isTvDisabledResponse(res)) {
+      return {
+        ok: false,
+        tvDisabled: true,
+        error: 'tv_disabled',
+        message: res?.message || 'TV mode is turned off on the pad.'
+      };
+    }
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Could not switch profile on MacroPad.');
+    }
+    if (this.connectionInfo.telemetry) {
       const currentHost = this.connectionInfo.telemetry.bleActiveHost ?? 1;
       const effectiveActive: HardwareProfileId =
         profile === 'TV' ? 'TV' : bleSlotToProfileId(currentHost);
@@ -2562,7 +2616,9 @@ class PadLinkService {
     }
   }
 
-  public async testAction(action: string): Promise<{ ok: boolean; message?: string }> {
+  public async testAction(
+    action: string
+  ): Promise<{ ok: boolean; message?: string; tvDisabled?: boolean; error?: string }> {
     if (!isValidFirmwareAction(action)) {
       throw new Error('Assign a valid firmware action first.');
     }
@@ -2597,7 +2653,9 @@ class PadLinkService {
         .split('||')
         .map(p => (p.startsWith('TEXT:') ? p : p.trim()))
         .filter(Boolean);
-      let lastRes: { ok: boolean; message?: string } = { ok: true };
+      let lastRes: { ok: boolean; message?: string; tvDisabled?: boolean; error?: string } = {
+        ok: true
+      };
       for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
         if (seg === 'NONE') {
@@ -2626,6 +2684,14 @@ class PadLinkService {
       path: '/api/test/action',
       action
     });
+    if (isTvDisabledResponse(res)) {
+      return {
+        ok: false,
+        tvDisabled: true,
+        error: 'tv_disabled',
+        message: res?.message || 'TV mode is turned off on the pad.'
+      };
+    }
     if (!res?.ok) {
       throw new Error(res?.message || 'Device could not execute test action.');
     }
@@ -3595,8 +3661,17 @@ class PadLinkService {
     } catch (_) {}
   }
 
-  public async setTvEnabled(enabled: boolean): Promise<any> {
-    return this.call({ path: '/api/tv/enable', enabled });
+  public async setTvEnabled(
+    enabled: boolean
+  ): Promise<{ ok: boolean; enabled: boolean; rev?: number; message?: string }> {
+    const res = await this.call({
+      path: '/api/tv/enable',
+      enabled: Boolean(enabled)
+    });
+    if (!res || res.ok === false) {
+      throw new Error(res?.message || 'Could not update TV mode on MacroPad.');
+    }
+    return res;
   }
 
   public async disconnect(markManual = true) {
@@ -3606,6 +3681,13 @@ class PadLinkService {
     await this.cleanupPort();
     this.markDisconnected();
   }
+}
+
+export function isTvDisabledResponse(res: any): boolean {
+  if (!res || typeof res !== 'object') return false;
+  if (res.error === 'tv_disabled' || res.tvDisabled === true) return true;
+  const msg = String(res.message || '');
+  return /tv mode is (?:turned )?off|tv_disabled|tv mode.*disabled/i.test(msg);
 }
 
 export const usbHardware = new PadLinkService();

@@ -52,6 +52,7 @@ interface TopBarProps {
   onSaveToDevice: () => void;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   onOpenSetupWizard?: () => void;
+  tvEnabled?: boolean;
   searchSlot?: React.ReactNode;
 }
 
@@ -75,6 +76,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onUndo,
   onRedo,
   onSaveToDevice,
+  tvEnabled,
   searchSlot
 }) => {
   const [renamingId, setRenamingId] = useState<HardwareProfileId | null>(null);
@@ -131,6 +133,8 @@ export const TopBar: React.FC<TopBarProps> = ({
     ? hostOsMap[activeProfile.id]
     : 'mac';
 
+  const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
+
   return (
     <header className="shrink-0 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] px-3.5 py-2 flex items-center justify-between gap-4 select-none z-40">
       {/* Left: Brand + Profile Tabs + Grouped Profile Actions */}
@@ -149,7 +153,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Profile / Host Switcher (Single-Accent Filled Segmented Control) */}
         <div className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-input)] overflow-x-auto min-w-0">
-          {profiles.filter(p => p.id !== 'TV' || connection.telemetry?.tvEnabled !== false).map(prof => {
+          {profiles.filter(p => p.id !== 'TV' || isTvEnabled).map(prof => {
             const selected = prof.id === activeProfile.id;
             const isLiveOnPad = connection.connected && hwActiveProfile === prof.id;
             const Icon = isBleHostProfile(prof.id) ? Laptop : Tv;

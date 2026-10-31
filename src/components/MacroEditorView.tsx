@@ -22,6 +22,7 @@ import {
   HARDWARE_SLOTS,
   MAX_FIRMWARE_DELAY_STEP_MS,
   SLOT_LABELS,
+  actionContainsTvSteps,
   actionToMacroSteps,
   analyzeMacroOptimizations,
   buildFirmwareShortcut,
@@ -119,6 +120,7 @@ interface MacroEditorViewProps {
   externalTarget?: MacroEditorExternalTarget | null;
   initialTargetSlot?: HardwareSlotId;
   hostOsMap?: HostOsMap;
+  tvEnabled?: boolean;
   showAdvancedIds?: boolean;
   onSaveMacro: (
     macro: CustomMacroItem,
@@ -572,6 +574,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   externalTarget,
   initialTargetSlot = 'b1',
   hostOsMap,
+  tvEnabled,
   showAdvancedIds = false,
   onSaveMacro,
   onDeleteMacro,
@@ -585,6 +588,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   onJumpToControl,
   onToast = () => {}
 }) => {
+  const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
+  const visibleStepTypes = useMemo(
+    () => (isTvEnabled ? STEP_TYPE_ORDER : STEP_TYPE_ORDER.filter(t => t !== 'tv')),
+    [isTvEnabled]
+  );
   const initialHydratedSteps = useMemo(
     () =>
       STARTER_TEMPLATES[0].steps.map((s, idx) => ({
@@ -742,9 +750,17 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   const [targetSlot, setTargetSlot] = useState<HardwareSlotId>(initialTargetSlot);
 
   useEffect(() => {
-    setTargetProfile(activeProfileId);
-    setImportProfileId(activeProfileId);
-  }, [activeProfileId]);
+    setTargetProfile(activeProfileId === 'TV' && !isTvEnabled ? 'HOST1' : activeProfileId);
+    setImportProfileId(activeProfileId === 'TV' && !isTvEnabled ? 'HOST1' : activeProfileId);
+  }, [activeProfileId, isTvEnabled]);
+
+  useEffect(() => {
+    if (!isTvEnabled) {
+      if (recipeCategoryFilter === 'tv') setRecipeCategoryFilter('all');
+      if (targetProfile === 'TV') setTargetProfile('HOST1');
+      if (importProfileId === 'TV') setImportProfileId('HOST1');
+    }
+  }, [isTvEnabled, recipeCategoryFilter, targetProfile, importProfileId]);
 
   useEffect(() => {
     setTargetSlot(initialTargetSlot);
@@ -1756,6 +1772,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
   const filteredTemplates = useMemo(() => {
     return STARTER_TEMPLATES.filter(tpl => {
+      if (!isTvEnabled && tpl.category === 'tv') {
+        return false;
+      }
       if (recipeCategoryFilter !== 'all' && tpl.category !== recipeCategoryFilter) {
         return false;
       }
@@ -1769,7 +1788,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
         )
       );
     });
-  }, [normalizedQuery, recipeCategoryFilter]);
+  }, [normalizedQuery, recipeCategoryFilter, isTvEnabled]);
 
   const activeTargetProfileObj =
     profiles.find(p => p.id === targetProfile) || profiles[0];
@@ -1946,6 +1965,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                 Unassigned
                               </span>
                             )}
+                            {!isTvEnabled && actionContainsTvSteps(m.action, m.repeatConfig) && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="text-amber-600 dark:text-amber-400 font-sans font-medium">
+                                  TV off
+                                </span>
+                              </>
+                            )}
                           </div>
                         </button>
                         <div className="flex items-center gap-0.5 shrink-0 opacity-65 group-hover:opacity-100 transition-opacity">
@@ -2010,7 +2037,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     { id: 'forms', label: 'Login' },
                     { id: 'dev', label: 'Dev' },
                     { id: 'stream', label: 'Stream' },
-                    { id: 'tv', label: 'TV' }
+                    ...(isTvEnabled ? ([{ id: 'tv', label: 'TV' }] as const) : [])
                   ] as const
                 ).map(cat => (
                   <button
@@ -2106,7 +2133,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               <div className="space-y-2.5 pt-1">
                 <div className="flex items-center justify-between gap-1.5">
                   <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex-1 min-w-0">
-                    {profiles.map(p => (
+                    {profiles.filter(p => p.id !== 'TV' || isTvEnabled).map(p => (
                       <button
                         key={p.id}
                         type="button"
@@ -2410,6 +2437,16 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       </span>
                       <span className="text-amber-700 dark:text-amber-300 font-medium">
                         USB Assisted
+                      </span>
+                    </>
+                  )}
+                  {!isTvEnabled && actionContainsTvSteps(builtAction, builtRepeatConfig) && (
+                    <>
+                      <span className="text-[var(--text-muted)]" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="text-amber-600 dark:text-amber-400 font-medium">
+                        TV off
                       </span>
                     </>
                   )}
@@ -3365,7 +3402,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
                           {/* Action Type Selector */}
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {STEP_TYPE_ORDER.map(typeKey => {
+                            {visibleStepTypes.map(typeKey => {
                               const meta = STEP_TYPE_META[typeKey];
                               const Icon = meta.icon;
                               const isTypeSelected = step.actionType === typeKey;
@@ -4136,7 +4173,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
             {/* "+ Add Step" Action Palette */}
             <div className="pt-1 flex items-center gap-1.5 flex-wrap">
-              {STEP_TYPE_ORDER.map(type => {
+              {visibleStepTypes.map(type => {
                 const meta = STEP_TYPE_META[type];
                 const Icon = meta.icon;
                 return (
@@ -4278,7 +4315,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 </span>
 
                 <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex-wrap">
-                  {profiles.map(p => {
+                  {profiles.filter(p => p.id !== 'TV' || isTvEnabled).map(p => {
                     const ProfIcon = isBleHostProfile(p.id) ? Bluetooth : Tv;
                     const active = targetProfile === p.id;
                     return (

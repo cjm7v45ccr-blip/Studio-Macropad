@@ -175,7 +175,8 @@ function readStoredPadRecord(deviceId: string): StoredPadRecord | null {
       rev: typeof parsed.rev === 'number' ? parsed.rev : 0,
       profiles: normalizedProfiles,
       dirty: Boolean(parsed.dirty),
-      repeatConfigs: migrateRepeatConfigs(parsed.repeatConfigs)
+      repeatConfigs: migrateRepeatConfigs(parsed.repeatConfigs),
+      tvEnabled: typeof parsed.tvEnabled === 'boolean' ? parsed.tvEnabled : undefined
     };
   } catch {
     return null;
@@ -704,6 +705,7 @@ export function useStudioState(
       if (lastId) {
         const rec = readStoredPadRecord(lastId);
         if (rec) {
+          const bootTvEnabled = rec.tvEnabled !== false;
           const mergedMacros = mergeDiscoveredCustomMacros(
             initialUiPrefs.customMacros,
             rec.profiles,
@@ -714,6 +716,7 @@ export function useStudioState(
             rev: rec.rev,
             dirty: rec.dirty,
             hasStoredPad: true,
+            tvEnabled: bootTvEnabled,
             inferredHostOsMap: !initialUiPrefs.hadStoredHostOsMap
               ? {
                   HOST1: inferHostOsFromSlots(rec.profiles.h1, 'mac'),
@@ -728,13 +731,17 @@ export function useStudioState(
               undefined,
               mergedMacros
             ),
-            activeProfileId: rec.profiles.active || 'HOST1',
+            activeProfileId:
+              !bootTvEnabled && rec.profiles.active === 'TV'
+                ? 'HOST1'
+                : rec.profiles.active || 'HOST1',
             customMacros: mergedMacros
           };
         }
       }
       const draft = readStoredPadRecord(DRAFT_PAD_ID);
       if (draft) {
+        const draftTvEnabled = draft.tvEnabled !== false;
         const mergedMacros = mergeDiscoveredCustomMacros(
           initialUiPrefs.customMacros,
           draft.profiles,
@@ -745,6 +752,7 @@ export function useStudioState(
           rev: 0,
           dirty: draft.dirty,
           hasStoredPad: false,
+          tvEnabled: draftTvEnabled,
           inferredHostOsMap: !initialUiPrefs.hadStoredHostOsMap
             ? {
                 HOST1: inferHostOsFromSlots(draft.profiles.h1, 'mac'),
@@ -759,7 +767,10 @@ export function useStudioState(
             undefined,
             mergedMacros
           ),
-          activeProfileId: draft.profiles.active || 'HOST1',
+          activeProfileId:
+            !draftTvEnabled && draft.profiles.active === 'TV'
+              ? 'HOST1'
+              : draft.profiles.active || 'HOST1',
           customMacros: mergedMacros
         };
       }
@@ -783,6 +794,7 @@ export function useStudioState(
       rev: 0,
       dirty: false,
       hasStoredPad: false,
+      tvEnabled: true,
       inferredHostOsMap: undefined as HostOsMap | undefined,
       profiles: serializedProfilesToStudioProfiles(
         factorySerialized,
@@ -809,6 +821,11 @@ export function useStudioState(
   const [isConnected, setIsConnected] = useState<boolean>(usbHardware.info.connected);
   const [isSyncedWithHardware, setIsSyncedWithHardware] = useState<boolean>(
     bootPadData.hasStoredPad
+  );
+  const [cachedTvEnabled, setCachedTvEnabled] = useState<boolean>(
+    usbHardware.info.connected && usbHardware.info.telemetry
+      ? usbHardware.info.telemetry.tvEnabled !== false
+      : bootPadData.tvEnabled
   );
   const [conflictPrompt, setConflictPrompt] = useState<SyncConflictState | null>(null);
 
@@ -838,6 +855,14 @@ export function useStudioState(
   overridesRef.current = appearanceOverrides;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const cachedTvEnabledRef = useRef(cachedTvEnabled);
+  cachedTvEnabledRef.current = cachedTvEnabled;
+  const tvEnabled =
+    isConnected && usbHardware.info.telemetry
+      ? usbHardware.info.telemetry.tvEnabled !== false
+      : cachedTvEnabled;
+  const tvEnabledRef = useRef(tvEnabled);
+  tvEnabledRef.current = tvEnabled;
   const latestConfigEventRevRef = useRef<number | null>(null);
 
   // Sync theme (System / Dark / Light), accent color, sound, and live events flag
@@ -885,6 +910,29 @@ export function useStudioState(
   useEffect(() => {
     const unsub = usbHardware.onConnectionChange(info => {
       setIsConnected(info.connected);
+      if (info.connected && info.telemetry) {
+        const liveTv = info.telemetry.tvEnabled !== false;
+        setCachedTvEnabled(liveTv);
+        cachedTvEnabledRef.current = liveTv;
+        const devId = info.deviceId || deviceIdRef.current;
+        if (devId && !dirtyRef.current) {
+          const existing = readStoredPadRecord(devId);
+          if (existing && existing.tvEnabled !== liveTv) {
+            writeStoredPadRecord(devId, {
+              ...existing,
+              tvEnabled: liveTv
+            });
+          }
+        }
+        if (!liveTv && snapshotRef.current.activeProfileId === 'TV') {
+          const fallbackHost = bleSlotToProfileId(info.telemetry.bleActiveHost ?? 1);
+          setSnapshot(prev =>
+            prev.activeProfileId === 'TV'
+              ? { ...prev, activeProfileId: fallbackHost }
+              : prev
+          );
+        }
+      }
       if (
         info.connected &&
         info.transport !== 'demo' &&
@@ -911,21 +959,40 @@ export function useStudioState(
       deviceId: string,
       rev: number,
       padProfiles: SerializedPadProfiles,
-      knownRepeats?: SlotRepeatMap
+      knownRepeats?: SlotRepeatMap,
+      padTvEnabled?: boolean
     ) => {
+      const resolvedTvEnabled =
+        typeof padTvEnabled === 'boolean'
+          ? padTvEnabled
+          : usbHardware.info.telemetry
+          ? usbHardware.info.telemetry.tvEnabled !== false
+          : cachedTvEnabledRef.current;
+      setCachedTvEnabled(resolvedTvEnabled);
+      cachedTvEnabledRef.current = resolvedTvEnabled;
+
       const existingRec = readStoredPadRecord(deviceId);
       const effectiveRepeats =
         knownRepeats ??
         existingRec?.repeatConfigs ??
         extractRepeatMapFromProfiles(snapshotRef.current.profiles);
 
+      const effectiveActive: HardwareProfileId =
+        !resolvedTvEnabled && padProfiles.active === 'TV'
+          ? bleSlotToProfileId(usbHardware.info.telemetry?.bleActiveHost ?? 1)
+          : padProfiles.active;
+      const effectivePadProfiles: SerializedPadProfiles =
+        effectiveActive !== padProfiles.active
+          ? { ...padProfiles, active: effectiveActive }
+          : padProfiles;
+
       const mergedMacros = mergeDiscoveredCustomMacros(
         snapshotRef.current.customMacros,
-        padProfiles,
+        effectivePadProfiles,
         effectiveRepeats
       );
       const builtProfiles = serializedProfilesToStudioProfiles(
-        padProfiles,
+        effectivePadProfiles,
         overridesRef.current,
         effectiveRepeats,
         snapshotRef.current.profiles,
@@ -935,10 +1002,10 @@ export function useStudioState(
 
       setSnapshot({
         profiles: builtProfiles,
-        activeProfileId: padProfiles.active,
+        activeProfileId: effectiveActive,
         customMacros: mergeDiscoveredCustomMacros(
           mergedMacros,
-          padProfiles,
+          effectivePadProfiles,
           cleanedRepeatMap
         )
       });
@@ -954,9 +1021,10 @@ export function useStudioState(
 
       writeStoredPadRecord(deviceId, {
         rev,
-        profiles: padProfiles,
+        profiles: effectivePadProfiles,
         dirty: false,
-        repeatConfigs: cleanedRepeatMap
+        repeatConfigs: cleanedRepeatMap,
+        tvEnabled: resolvedTvEnabled
       });
       removeStoredPadRecord(DRAFT_PAD_ID);
     },
@@ -982,7 +1050,8 @@ export function useStudioState(
       rev: revRef.current,
       profiles: serialized,
       dirty: true,
-      repeatConfigs: repeatMap
+      repeatConfigs: repeatMap,
+      tvEnabled: cachedTvEnabledRef.current
     });
   }, []);
 
@@ -1030,7 +1099,10 @@ export function useStudioState(
         rev: resolvedRev,
         profiles: serialized,
         dirty: false,
-        repeatConfigs: repeatMap
+        repeatConfigs: repeatMap,
+        tvEnabled: usbHardware.info.telemetry
+          ? usbHardware.info.telemetry.tvEnabled !== false
+          : cachedTvEnabledRef.current
       });
       removeStoredPadRecord(DRAFT_PAD_ID);
     },
@@ -1042,6 +1114,9 @@ export function useStudioState(
     const unsubConnect = usbHardware.onConnectStatus(status => {
       const id = status.device?.id || 'studio-pad';
       const padRev = typeof status.rev === 'number' ? status.rev : 0;
+      const padTvEnabled = status.tv?.enabled !== false;
+      setCachedTvEnabled(padTvEnabled);
+      cachedTvEnabledRef.current = padTvEnabled;
       const padProfiles = statusPacketToSerializedProfiles(status);
 
       const saved = readStoredPadRecord(id);
@@ -1049,7 +1124,7 @@ export function useStudioState(
       const effectiveRecord = saved || (preConnectDraft?.dirty ? preConnectDraft : null);
 
       if (!effectiveRecord) {
-        adoptPadState(id, padRev, padProfiles);
+        adoptPadState(id, padRev, padProfiles, undefined, padTvEnabled);
         onToast(`Connected & adopted settings from ${status.device?.name || 'MacroPad'}`);
         return;
       }
@@ -1058,10 +1133,24 @@ export function useStudioState(
         const websiteProfiles = effectiveRecord.profiles;
         const diffs = computeProfileDiffs(websiteProfiles, padProfiles);
         if (diffs.length === 0) {
-          adoptPadState(id, padRev, padProfiles, effectiveRecord.repeatConfigs);
+          adoptPadState(id, padRev, padProfiles, effectiveRecord.repeatConfigs, padTvEnabled);
           onToast('MacroPad reconnected — offline edits already match pad');
           return;
         }
+
+        const resolvedActive: HardwareProfileId =
+          !padTvEnabled && (websiteProfiles.active || snapshotRef.current.activeProfileId) === 'TV'
+            ? 'HOST1'
+            : websiteProfiles.active || snapshotRef.current.activeProfileId;
+
+        writeStoredPadRecord(id, {
+          ...effectiveRecord,
+          profiles:
+            resolvedActive !== websiteProfiles.active
+              ? { ...websiteProfiles, active: resolvedActive }
+              : websiteProfiles,
+          tvEnabled: padTvEnabled
+        });
 
         setSnapshot(prev => ({
           profiles: serializedProfilesToStudioProfiles(
@@ -1070,7 +1159,10 @@ export function useStudioState(
             effectiveRecord.repeatConfigs,
             prev.profiles
           ),
-          activeProfileId: websiteProfiles.active || prev.activeProfileId,
+          activeProfileId:
+            !padTvEnabled && (websiteProfiles.active || prev.activeProfileId) === 'TV'
+              ? 'HOST1'
+              : websiteProfiles.active || prev.activeProfileId,
           customMacros: mergeDiscoveredCustomMacros(
             prev.customMacros,
             websiteProfiles,
@@ -1153,7 +1245,7 @@ export function useStudioState(
       );
 
       if (upgradedProfiles.length > 0) {
-        adoptPadState(id, padRev, nextSerialized, effectiveRecord.repeatConfigs);
+        adoptPadState(id, padRev, nextSerialized, effectiveRecord.repeatConfigs, padTvEnabled);
         setSavingCount(c => c + 1);
         (async () => {
           try {
@@ -1163,7 +1255,13 @@ export function useStudioState(
               const res = await usbHardware.saveFullProfile(profId, slots);
               if (typeof res.rev === 'number') latestRev = res.rev;
             }
-            adoptPadState(id, latestRev, nextSerialized, effectiveRecord.repeatConfigs);
+            adoptPadState(
+              id,
+              latestRev,
+              nextSerialized,
+              effectiveRecord.repeatConfigs,
+              padTvEnabled
+            );
             onToast('Synced standalone macro delays to MacroPad — works unplugged');
           } catch {
             // Keep upgraded macro state in workspace if cable disconnected mid-sync
@@ -1175,19 +1273,19 @@ export function useStudioState(
       }
 
       if (effectiveRecord.rev === padRev) {
-        adoptPadState(id, padRev, padProfiles, effectiveRecord.repeatConfigs);
+        adoptPadState(id, padRev, padProfiles, effectiveRecord.repeatConfigs, padTvEnabled);
         onToast('MacroPad connected — already in sync');
         return;
       }
 
-      adoptPadState(id, padRev, padProfiles, effectiveRecord.repeatConfigs);
+      adoptPadState(id, padRev, padProfiles, effectiveRecord.repeatConfigs, padTvEnabled);
       onToast(`Pad changed elsewhere (rev ${padRev}) — adopted MacroPad settings`);
     });
 
     return unsubConnect;
   }, [adoptPadState, onToast]);
 
-  // Live Hardware Events (`profile`, `config`, AND physical `press` / `turn` repeat sequences)
+  // Live Hardware Events (`profile`, `config`, `tv`, AND physical `press` / `turn` repeat sequences)
   useEffect(() => {
     const unsubEvents = usbHardware.onHardwareEvent((e: HardwareEventPacket) => {
       if (e.event === 'macro_cancel') {
@@ -1195,6 +1293,33 @@ export function useStudioState(
           repeatMacroRunner.stop();
         }
         onToast('Macro cancelled on hardware');
+        return;
+      }
+
+      if (e.event === 'tv') {
+        const nextTv = Boolean(e.enabled);
+        setCachedTvEnabled(nextTv);
+        cachedTvEnabledRef.current = nextTv;
+        const fallbackHost = bleSlotToProfileId(
+          usbHardware.info.telemetry?.bleActiveHost ?? 1
+        );
+        setSnapshot(prev => {
+          const nextActive: HardwareProfileId =
+            !nextTv && prev.activeProfileId === 'TV' ? fallbackHost : prev.activeProfileId;
+          const updated =
+            nextActive !== prev.activeProfileId ? { ...prev, activeProfileId: nextActive } : prev;
+          const devId = usbHardware.info.deviceId || deviceIdRef.current;
+          if (devId && !dirtyRef.current) {
+            writeStoredPadRecord(devId, {
+              rev: revRef.current,
+              profiles: snapshotToSerializedProfiles(updated.profiles, nextActive),
+              dirty: false,
+              repeatConfigs: extractRepeatMapFromProfiles(updated.profiles),
+              tvEnabled: nextTv
+            });
+          }
+          return updated;
+        });
         return;
       }
 
@@ -1254,10 +1379,14 @@ export function useStudioState(
 
       if (e.event === 'profile') {
         const currentSlot = usbHardware.info.telemetry?.bleActiveHost ?? 1;
-        const nextActive = normalizeHardwareProfileId(
+        const rawActive = normalizeHardwareProfileId(
           e.active || e.profile,
           currentSlot
         );
+        const nextActive: HardwareProfileId =
+          rawActive === 'TV' && !tvEnabledRef.current
+            ? bleSlotToProfileId(currentSlot)
+            : rawActive;
         setSnapshot(prev => {
           const updated = { ...prev, activeProfileId: nextActive };
           const devId = usbHardware.info.deviceId || deviceIdRef.current;
@@ -1266,7 +1395,8 @@ export function useStudioState(
               rev: revRef.current,
               profiles: snapshotToSerializedProfiles(updated.profiles, nextActive),
               dirty: false,
-              repeatConfigs: extractRepeatMapFromProfiles(updated.profiles)
+              repeatConfigs: extractRepeatMapFromProfiles(updated.profiles),
+              tvEnabled: cachedTvEnabledRef.current
             });
           }
           return updated;
@@ -1277,7 +1407,9 @@ export function useStudioState(
         const nextHostProf = bleSlotToProfileId(nextSlot);
         setSnapshot(prev => {
           const nextActive: HardwareProfileId =
-            prev.activeProfileId === 'TV' && e.active === 'TV' ? 'TV' : nextHostProf;
+            prev.activeProfileId === 'TV' && e.active === 'TV' && tvEnabledRef.current
+              ? 'TV'
+              : nextHostProf;
           const updated = { ...prev, activeProfileId: nextActive };
           const devId = usbHardware.info.deviceId || deviceIdRef.current;
           if (devId && !dirtyRef.current) {
@@ -1285,7 +1417,8 @@ export function useStudioState(
               rev: revRef.current,
               profiles: snapshotToSerializedProfiles(updated.profiles, nextActive),
               dirty: false,
-              repeatConfigs: extractRepeatMapFromProfiles(updated.profiles)
+              repeatConfigs: extractRepeatMapFromProfiles(updated.profiles),
+              tvEnabled: cachedTvEnabledRef.current
             });
           }
           return updated;
@@ -1628,34 +1761,55 @@ export function useStudioState(
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [undo, redo]);
 
-  const selectProfile = useCallback((profileId: HardwareProfileId) => {
-    setSnapshot(prev => {
-      const updated = { ...prev, activeProfileId: profileId };
-      const devId = usbHardware.info.deviceId || deviceIdRef.current;
-      if (devId) {
-        writeStoredPadRecord(devId, {
-          rev: revRef.current,
-          profiles: snapshotToSerializedProfiles(updated.profiles, profileId),
-          dirty: dirtyRef.current,
-          repeatConfigs: extractRepeatMapFromProfiles(updated.profiles)
-        });
+  const selectProfile = useCallback(
+    (profileId: HardwareProfileId) => {
+      if (profileId === 'TV' && !tvEnabledRef.current) {
+        onToast('TV mode is turned off on the pad.');
+        return;
       }
-      return updated;
-    });
 
-    if (usbHardware.info.connected) {
-      const liveBleSlot = usbHardware.info.telemetry?.bleActiveHost ?? 1;
-      const liveHostProf = bleSlotToProfileId(liveBleSlot);
-      // Switch live hardware mode without rebooting when toggling between TV and the active BLE host
-      if (profileId === 'TV' || profileId === liveHostProf) {
-        if (usbHardware.info.telemetry?.activeProfile !== profileId) {
-          usbHardware.activateProfile(profileId).catch((err: any) => {
-            onToast(err?.message || 'Could not switch profile on pad', 'error');
+      setSnapshot(prev => {
+        const updated = { ...prev, activeProfileId: profileId };
+        const devId = usbHardware.info.deviceId || deviceIdRef.current;
+        if (devId) {
+          writeStoredPadRecord(devId, {
+            rev: revRef.current,
+            profiles: snapshotToSerializedProfiles(updated.profiles, profileId),
+            dirty: dirtyRef.current,
+            repeatConfigs: extractRepeatMapFromProfiles(updated.profiles),
+            tvEnabled: cachedTvEnabledRef.current
           });
         }
+        return updated;
+      });
+
+      if (usbHardware.info.connected) {
+        const liveBleSlot = usbHardware.info.telemetry?.bleActiveHost ?? 1;
+        const liveHostProf = bleSlotToProfileId(liveBleSlot);
+        // Switch live hardware mode without rebooting when toggling between TV and the active BLE host
+        if (profileId === 'TV' || profileId === liveHostProf) {
+          if (usbHardware.info.telemetry?.activeProfile !== profileId) {
+            usbHardware
+              .activateProfile(profileId)
+              .then(res => {
+                if (res?.tvDisabled) {
+                  onToast(res.message || 'TV mode is turned off on the pad.');
+                  setSnapshot(prev =>
+                    prev.activeProfileId === 'TV'
+                      ? { ...prev, activeProfileId: liveHostProf }
+                      : prev
+                  );
+                }
+              })
+              .catch((err: any) => {
+                onToast(err?.message || 'Could not switch profile on pad', 'error');
+              });
+          }
+        }
       }
-    }
-  }, [onToast]);
+    },
+    [onToast]
+  );
 
   const toggleActiveProfile = useCallback(() => {
     const liveSlot =
@@ -1663,6 +1817,16 @@ export function useStudioState(
       profileIdToBleSlot(snapshotRef.current.activeProfileId) ??
       1;
     const hostProf = bleSlotToProfileId(liveSlot);
+    if (!tvEnabledRef.current) {
+      if (snapshotRef.current.activeProfileId === 'TV') {
+        selectProfile(hostProf);
+      }
+      const hostProfObj = snapshotRef.current.profiles.find(p => p.id === hostProf);
+      onToast(
+        `${hostProfObj?.name || defaultProfileAlias(hostProf)} active (TV mode is off)`
+      );
+      return;
+    }
     const nextId: HardwareProfileId =
       snapshotRef.current.activeProfileId === 'TV' ? hostProf : 'TV';
     const nextProfObj = snapshotRef.current.profiles.find(p => p.id === nextId);
@@ -1674,6 +1838,35 @@ export function useStudioState(
         : `Switched draft view to ${label}`
     );
   }, [selectProfile, onToast]);
+
+  const setOfflineTvEnabled = useCallback((enabled: boolean) => {
+    setCachedTvEnabled(enabled);
+    cachedTvEnabledRef.current = enabled;
+    const nextActive: HardwareProfileId =
+      !enabled && snapshotRef.current.activeProfileId === 'TV'
+        ? 'HOST1'
+        : snapshotRef.current.activeProfileId;
+    const nextSnap: WorkspaceSnapshot =
+      nextActive !== snapshotRef.current.activeProfileId
+        ? { ...snapshotRef.current, activeProfileId: nextActive }
+        : snapshotRef.current;
+    if (nextSnap !== snapshotRef.current) {
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+    }
+    const targetId =
+      usbHardware.info.deviceId ||
+      (deviceIdRef.current && deviceIdRef.current !== DRAFT_PAD_ID
+        ? deviceIdRef.current
+        : DRAFT_PAD_ID);
+    writeStoredPadRecord(targetId, {
+      rev: revRef.current,
+      profiles: snapshotToSerializedProfiles(nextSnap.profiles, nextSnap.activeProfileId),
+      dirty: dirtyRef.current,
+      repeatConfigs: extractRepeatMapFromProfiles(nextSnap.profiles),
+      tvEnabled: enabled
+    });
+  }, []);
 
   const renameProfile = useCallback(
     async (profileId: HardwareProfileId, rawName: string): Promise<boolean> => {
@@ -2159,7 +2352,8 @@ export function useStudioState(
       const status = await usbHardware.fetchStatus();
       const id = status.device?.id || deviceIdRef.current || 'studio-pad';
       const rev = typeof status.rev === 'number' ? status.rev : revRef.current;
-      adoptPadState(id, rev, statusPacketToSerializedProfiles(status));
+      const padTvEnabled = status.tv?.enabled !== false;
+      adoptPadState(id, rev, statusPacketToSerializedProfiles(status), undefined, padTvEnabled);
       onToast(`Synced from MacroPad (rev ${rev})`);
       return true;
     } catch (err: any) {
@@ -2907,6 +3101,8 @@ export function useStudioState(
     currentDeviceId,
     dirty,
     isSyncedWithHardware,
+    tvEnabled,
+    setOfflineTvEnabled,
     conflictPrompt,
     resolveConflictUseWebsite,
     resolveConflictUsePad,

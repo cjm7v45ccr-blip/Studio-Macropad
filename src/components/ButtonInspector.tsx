@@ -41,6 +41,7 @@ interface ButtonInspectorProps {
   activeProfileId: HardwareProfileId;
   activeProfileName: string;
   activeHostOs: HostOsType;
+  tvEnabled?: boolean;
   onChangeHostOs?: (os: HostOsType) => void;
   showAdvancedIds?: boolean;
   onToggleAdvancedIds?: () => void;
@@ -79,6 +80,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   activeProfileId,
   activeProfileName,
   activeHostOs,
+  tvEnabled,
   onChangeHostOs,
   showAdvancedIds = false,
   onToggleAdvancedIds,
@@ -116,6 +118,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     }
   }, [selectionKey, trackedSelectionKey, keyConfig.triggers.tap]);
 
+  const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
   const activeBleHost: BleHostSlot =
     connection.telemetry?.bleActiveHost ?? profileIdToBleSlot(activeProfileId) ?? 1;
 
@@ -138,7 +141,9 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 Mode Key
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Mode Toggle · Multi-Host BLE · Setup
+                {isTvEnabled
+                  ? 'Mode Toggle · Multi-Host BLE · Setup'
+                  : 'Multi-Host BLE · Setup · TV off'}
               </p>
             </div>
           </div>
@@ -155,7 +160,16 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                   Short Press
                 </span>
                 <span>
-                  Switches between <strong>{activeHostDisplay}</strong> and <strong>TV</strong>.
+                  {isTvEnabled ? (
+                    <>
+                      Switches between <strong>{activeHostDisplay}</strong> and{' '}
+                      <strong>TV</strong>.
+                    </>
+                  ) : (
+                    <>
+                      Flashes <strong>{activeHostDisplay}</strong> on the OLED screen (TV mode is off).
+                    </>
+                  )}
                 </span>
               </li>
               <li className="flex items-start gap-2.5">
@@ -175,17 +189,19 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             </ul>
           </div>
 
-          <button
-            type="button"
-            onClick={onToggleProfileMode}
-            style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
-          >
-            <ArrowLeftRight className="w-4 h-4 shrink-0" />
-            <span>
-              Switch to {activeProfileId === 'TV' ? activeHostDisplay : 'TV'} Profile
-            </span>
-          </button>
+          {isTvEnabled && (
+            <button
+              type="button"
+              onClick={onToggleProfileMode}
+              style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+            >
+              <ArrowLeftRight className="w-4 h-4 shrink-0" />
+              <span>
+                Switch to {activeProfileId === 'TV' ? activeHostDisplay : 'TV'} Profile
+              </span>
+            </button>
+          )}
 
           <div className="p-4 rounded-xl bg-[var(--bg-input)] space-y-3">
             <div className="flex items-center justify-between gap-2">
@@ -400,6 +416,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             connection={connection}
             activeProfileId={activeProfileId}
             activeHostOs={activeHostOs}
+            tvEnabled={isTvEnabled}
             onChangeHostOs={onChangeHostOs}
             showAdvancedIds={showAdvancedIds}
             onToggleAdvancedIds={onToggleAdvancedIds}

@@ -68,25 +68,52 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="studio-sense-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-[rgba(var(--accent-rgb),0.15)] text-[var(--accent)]">
-              <Sparkles className="w-5 h-5 animate-pulse" />
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[var(--text-primary)]">Studio Sense AI Workflow Assistant</h2>
-              <p className="text-xs text-[var(--text-muted)]">Analyzing your macro habits & suggesting high-value automations</p>
+              <h2
+                id="studio-sense-modal-title"
+                className="text-base font-bold text-[var(--text-primary)]"
+              >
+                Studio Sense Workflow Assistant
+              </h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                Analyzing your macro habits & suggesting high-value automations
+              </p>
             </div>
           </div>
           <button
             type="button"
+            aria-label="Close Studio Sense modal"
             onClick={onClose}
             className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer"
           >
@@ -100,17 +127,21 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
             <div className="py-16 flex flex-col items-center justify-center space-y-4 text-center">
               <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)]" />
               <div className="space-y-1">
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Studio Sense is analyzing your macros…</p>
-                <p className="text-xs text-[var(--text-muted)]">Looking for login auto-fills, 2FA sequences, and timing optimizations.</p>
+                <p className="text-sm font-semibold text-[var(--text-primary)]">
+                  Studio Sense is analyzing your macros…
+                </p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Looking for login auto-fills, 2FA sequences, and timing optimizations.
+                </p>
               </div>
             </div>
           ) : error ? (
-            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 space-y-3">
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-200 space-y-3">
               <p className="text-xs font-semibold">{error}</p>
               <button
                 type="button"
                 onClick={fetchStudioSenseAnalysis}
-                className="px-3.5 py-1.5 rounded-lg bg-rose-500/20 text-rose-200 text-xs font-semibold hover:bg-rose-500/35 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg bg-rose-500/20 text-rose-700 dark:text-rose-200 text-xs font-semibold hover:bg-rose-500/30 transition-colors cursor-pointer whitespace-nowrap"
               >
                 Retry Analysis
               </button>

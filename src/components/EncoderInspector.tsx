@@ -37,6 +37,7 @@ interface EncoderInspectorProps {
   activeProfileId: HardwareProfileId;
   activeProfileName: string;
   activeHostOs: HostOsType;
+  tvEnabled?: boolean;
   onChangeHostOs?: (os: HostOsType) => void;
   showAdvancedIds?: boolean;
   onToggleAdvancedIds?: () => void;
@@ -67,6 +68,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   activeProfileId,
   activeProfileName,
   activeHostOs,
+  tvEnabled,
   onChangeHostOs,
   showAdvancedIds = false,
   onToggleAdvancedIds,
@@ -83,6 +85,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   onStopRepeat,
   onOpenMacroBuilder
 }) => {
+  const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
   const activeBinding =
     selectedSubControl === 'dial'
       ? encoder.dial
@@ -353,12 +356,16 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          <div
+            className={`grid gap-1.5 ${
+              isTvEnabled ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'
+            }`}
+          >
             {(
               [
                 { id: 'volume', label: 'Volume' },
                 { id: 'track', label: 'Track skip' },
-                { id: 'channel', label: 'Channel' },
+                ...(isTvEnabled ? ([{ id: 'channel', label: 'Channel' }] as const) : []),
                 { id: 'arrows', label: 'Arrow keys' }
               ] as const
             ).map(preset => (
@@ -383,6 +390,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
           connection={connection}
           activeProfileId={activeProfileId}
           activeHostOs={activeHostOs}
+          tvEnabled={isTvEnabled}
           onChangeHostOs={onChangeHostOs}
           showAdvancedIds={showAdvancedIds}
           onToggleAdvancedIds={onToggleAdvancedIds}

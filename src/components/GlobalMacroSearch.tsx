@@ -18,6 +18,7 @@ import {
   FIRMWARE_STATIC_CATALOG,
   HARDWARE_SLOTS,
   SLOT_LABELS,
+  actionContainsTvSteps,
   actionToMacroSteps,
   buildFirmwareActionFromTextConfig,
   calculateStepsTiming,
@@ -64,6 +65,7 @@ interface GlobalMacroSearchProps {
   profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
   activeHostOs?: HostOsType;
+  tvEnabled?: boolean;
   showAdvancedIds?: boolean;
   selectedControl: ControlId;
   customMacros: CustomMacroItem[];
@@ -180,6 +182,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
   profiles,
   activeProfileId,
   activeHostOs = 'mac',
+  tvEnabled,
   showAdvancedIds = false,
   selectedControl,
   customMacros,
@@ -191,11 +194,14 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
   onApplyProfilePreset,
   onTestBinding
 }) => {
+  const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<SearchFilterTab>('all');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [assignProfile, setAssignProfile] = useState<HardwareProfileId>(activeProfileId);
+  const [assignProfile, setAssignProfile] = useState<HardwareProfileId>(
+    activeProfileId === 'TV' && !isTvEnabled ? 'HOST1' : activeProfileId
+  );
   const [assignSlot, setAssignSlot] = useState<HardwareSlotId>(() =>
     controlToHardwareSlot(selectedControl)
   );
@@ -211,8 +217,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
   }, []);
 
   useEffect(() => {
-    setAssignProfile(activeProfileId);
-  }, [activeProfileId]);
+    setAssignProfile(activeProfileId === 'TV' && !isTvEnabled ? 'HOST1' : activeProfileId);
+  }, [activeProfileId, isTvEnabled]);
 
   useEffect(() => {
     setAssignSlot(controlToHardwareSlot(selectedControl));
@@ -306,6 +312,9 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       } else if (macro.repeatConfig && macro.repeatConfig.repeatCount > 1) {
         metaParts.push(`×${macro.repeatConfig.repeatCount}`);
       }
+      if (!isTvEnabled && actionContainsTvSteps(macro.action, macro.repeatConfig)) {
+        metaParts.push('TV off');
+      }
 
       results.push({
         id: `custom-${macro.id}`,
@@ -323,9 +332,11 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     });
 
     // 2. Currently Assigned Controls across Host 1–3 & TV Profiles
-    const sortedProfiles = [...profiles].sort((a, b) =>
-      a.id === activeProfileId ? -1 : b.id === activeProfileId ? 1 : 0
-    );
+    const sortedProfiles = [...profiles]
+      .filter(p => p.id !== 'TV' || isTvEnabled)
+      .sort((a, b) =>
+        a.id === activeProfileId ? -1 : b.id === activeProfileId ? 1 : 0
+      );
 
     sortedProfiles.forEach(prof => {
       const slots = extractProfileSlots(prof);
@@ -369,6 +380,9 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           `${prof.name} (${profileShortTag(prof.id)})`,
           slotLabel
         ];
+        if (!isTvEnabled && actionContainsTvSteps(rawAction, binding?.repeatConfig)) {
+          metaParts.push('TV off');
+        }
 
         results.push({
           id: `assigned-${prof.id}-${slot}`,
@@ -402,7 +416,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     });
 
     // 3. Multi-Step Starter Sequences & Curated Pad Presets
-    STARTER_TEMPLATES.forEach(tpl => {
+    STARTER_TEMPLATES.filter(tpl => isTvEnabled || tpl.category !== 'tv').forEach(tpl => {
       const compiled = buildStarterTemplateBinding(tpl.steps);
       const tplSig = getMacroCanonicalSignature(compiled.action, compiled.repeatConfig);
       const existingSaved = tplSig ? customMacroBySignature.get(tplSig) : undefined;
@@ -423,7 +437,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       });
     });
 
-    CURATED_PRESETS.forEach(preset => {
+    CURATED_PRESETS.filter(preset => isTvEnabled || preset.mode !== 'TV').forEach(preset => {
       const bleMode = isBleHostProfile(preset.mode);
       results.push({
         id: `preset-${preset.id}`,
@@ -462,7 +476,10 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     });
 
     FIRMWARE_STATIC_CATALOG.filter(
-      spec => spec.category !== 'mac_macro' && spec.category !== 'win_macro'
+      spec =>
+        spec.category !== 'mac_macro' &&
+        spec.category !== 'win_macro' &&
+        (isTvEnabled || (spec.category !== 'tv' && spec.category !== 'tv_app'))
     ).forEach(spec => {
       const catLabel = CATALOG_CATEGORY_LABELS[spec.category] || 'Action';
       const binding = firmwareActionToBinding(spec.action);
@@ -481,7 +498,14 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     });
 
     return results;
-  }, [profiles, activeProfileId, activeHostOs, customMacros, customMacroBySignature]);
+  }, [
+    profiles,
+    activeProfileId,
+    activeHostOs,
+    isTvEnabled,
+    customMacros,
+    customMacroBySignature
+  ]);
 
   const { filteredEntries, tabCounts } = useMemo(() => {
     const tokens = query
@@ -828,7 +852,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <div className="inline-flex items-center p-0.5 rounded-lg bg-[var(--bg-input)]">
-                    {profiles.map(prof => {
+                    {profiles.filter(p => p.id !== 'TV' || isTvEnabled).map(prof => {
                       const active = assignProfile === prof.id;
                       const ProfIcon = isBleHostProfile(prof.id) ? Bluetooth : Tv;
                       return (

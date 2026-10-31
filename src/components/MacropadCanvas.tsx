@@ -52,6 +52,7 @@ interface MacropadCanvasProps {
   conflicts: ConflictWarning[];
   customMacros: CustomMacroItem[];
   connection: DeviceConnectionInfo;
+  tvEnabled?: boolean;
   isSyncedWithHardware: boolean;
   onSelectControl: (id: ControlId) => void;
   onSelectProfile: (id: HardwareProfileId) => void;
@@ -92,6 +93,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   conflicts,
   customMacros,
   connection,
+  tvEnabled,
   isSyncedWithHardware,
   onSelectControl,
   onSelectProfile,
@@ -398,6 +400,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     if (!cfg) return;
 
     if (cfg.isModeSwitch || kid === 'k9') {
+      const isTvOn = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
+      if (!isTvOn) {
+        triggerOledToast(`HOST ${activeBleHost}`, activeProfileName.toUpperCase());
+        pushLog(
+          'Mode',
+          'Press',
+          `Flashed ${activeProfileName} (TV mode is off)`,
+          connection.connected ? 'usb-test' : 'sim'
+        );
+        return;
+      }
       const targetLabel =
         activeProfileId === 'TV' ? `Device ${activeBleHost}` : 'TV';
       onToggleHardwareMode();
@@ -778,7 +791,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         aria-label={`${badgeText}: ${cfg.appearance.label}`}
         title={
           cfg.isModeSwitch
-            ? 'Mode Switch (short press: Host/TV, hold+dial: Host 1–3)'
+            ? (tvEnabled ?? (connection.telemetry?.tvEnabled !== false))
+              ? 'Mode Switch (short press: Host/TV, hold+dial: Host 1–3)'
+              : 'Mode Switch (short press: flash current host, hold+dial: Host 1–3)'
             : isUnassigned
             ? `Key ${index + 1} — Unassigned`
             : `Key ${index + 1}: ${summarizeAction(cfg.triggers.tap, customMacros)}`
@@ -807,7 +822,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             ? '0 2px 4px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.4)'
             : '0 6px 0 #101217, 0 10px 18px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.09)'
         }}
-        className={`relative w-[88px] h-[88px] sm:w-[104px] sm:h-[104px] xl:w-[114px] xl:h-[114px] rounded-2xl bg-gradient-to-b from-[#252933] to-[#1B1E26] border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none transition-all duration-150 ease-out cursor-pointer ${
+        className={`relative shrink-0 w-[86px] h-[86px] sm:w-[96px] sm:h-[96px] xl:w-[106px] xl:h-[106px] 2xl:w-[112px] 2xl:h-[112px] rounded-2xl bg-gradient-to-b from-[#252933] to-[#1B1E26] border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none transition-all duration-150 ease-out cursor-pointer ${
           isSelected && !isFlashed ? 'keycap-selected-glow -translate-y-0.5' : ''
         } ${isDown ? 'translate-y-1' : !isSelected ? 'hover:-translate-y-0.5' : ''} ${
           isUnassigned && !isSelected && !isFlashed
@@ -864,7 +879,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const telemetry = connection.telemetry;
 
   return (
-    <div className="flex-1 flex flex-col items-center p-4 sm:p-6 lg:overflow-y-auto relative min-w-0">
+    <div className="flex-1 @container flex flex-col items-center p-4 sm:p-6 lg:overflow-y-auto relative min-w-0">
       {/* Top Canvas Toolbar (Clean Filled Controls, Minimal Outlines) */}
       <div className="w-full max-w-2xl flex items-center justify-between gap-2 flex-wrap shrink-0">
         <div className="flex items-center p-1 rounded-xl bg-[var(--bg-panel)] shadow-2xs">
@@ -1012,11 +1027,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       {/* Vertically Centered Larger Physical MacroPad */}
       <div className="my-auto py-4 sm:py-6 flex flex-col items-center justify-center w-full">
         <div
-          className={`w-full ${
+          className={`w-fit max-w-full ${
             encoderPlacement === 'top'
-              ? 'max-w-[356px] sm:max-w-[440px] xl:max-w-[468px]'
-              : 'max-w-[356px] sm:max-w-[604px] xl:max-w-[644px]'
-          } chassis-shell rounded-[32px] sm:rounded-[38px] p-5 sm:p-7 bg-gradient-to-b from-[#232731] to-[#151820] border border-white/10`}
+              ? 'min-w-[300px]'
+              : 'min-w-[300px]'
+          } chassis-shell rounded-[32px] sm:rounded-[38px] p-4 sm:p-6 xl:p-7 bg-gradient-to-b from-[#232731] to-[#151820] border border-white/10`}
         >
           {/* 128x64 SSD1306 Hardware OLED Strip */}
           <div className="mb-5 sm:mb-6 px-3.5 py-2.5 rounded-xl bg-[#090B0E] border border-white/10 shadow-inner flex items-center justify-between gap-2 min-h-[40px]">
@@ -1124,16 +1139,16 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           {encoderPlacement === 'top' ? (
             <div className="flex flex-col items-center gap-5 sm:gap-6">
               {renderEncoderUnit()}
-              <div className="grid grid-cols-3 gap-3 sm:gap-3.5 justify-items-center">
+              <div className="grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center shrink-0">
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
             </div>
           ) : (
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-5 sm:gap-6">
-              <div className="order-2 sm:order-1 grid grid-cols-3 gap-3 sm:gap-3.5 justify-items-center">
+            <div className="flex flex-col @[580px]:flex-row items-center justify-center gap-5 @[580px]:gap-6">
+              <div className="order-2 @[580px]:order-1 grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center shrink-0">
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
-              <div className="order-1 sm:order-2 flex flex-col items-center justify-center sm:pl-6 sm:border-l sm:border-white/10 sm:self-stretch">
+              <div className="order-1 @[580px]:order-2 shrink-0 flex flex-col items-center justify-center @[580px]:pl-6 @[580px]:border-l @[580px]:border-white/10 @[580px]:self-stretch">
                 {renderEncoderUnit()}
               </div>
             </div>

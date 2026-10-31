@@ -225,6 +225,7 @@ export interface StoredPadRecord {
   profiles: SerializedPadProfiles;
   dirty: boolean;
   repeatConfigs?: SlotRepeatMap;
+  tvEnabled?: boolean;
 }
 
 export interface SyncConflictDiffItem {
@@ -255,9 +256,11 @@ export interface HardwareEventPacket {
     | 'setup'
     | 'mode'
     | 'ota'
+    | 'tv'
     | 'macro_cancel'
     | string;
   mode?: string;
+  enabled?: boolean;
   setup_mode?: boolean;
   setup_done?: boolean;
   phase?: string;

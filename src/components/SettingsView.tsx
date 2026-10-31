@@ -16,7 +16,7 @@ import {
   bleSlotToProfileId
 } from '../types/studio';
 import { ToastVariant } from '../hooks/useStudioState';
-import { usbHardware } from '../services/usbHardwareService';
+import { isTvDisabledResponse, usbHardware } from '../services/usbHardwareService';
 import { DiffConfirmModal } from './DiffConfirmModal';
 import {
   FirmwareUpdateBanner,
@@ -171,8 +171,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [showManualTokenMode, setShowManualTokenMode] = useState(false);
   const [tvToken, setTvToken] = useState('');
   const [tvBusy, setTvBusy] = useState(false);
+  const [tvModeBusy, setTvModeBusy] = useState(false);
   const [tvTestResult, setTvTestResult] = useState<{
     ok: boolean;
+    neutral?: boolean;
     text: string;
   } | null>(null);
   const [forgetTvModalOpen, setForgetTvModalOpen] = useState(false);
@@ -205,6 +207,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const telemetry = connection.telemetry;
   const isDemo = connection.transport === 'demo';
+  const supportsTvToggle =
+    !connection.connected ||
+    !telemetry ||
+    telemetry.capabilities.includes('tv_toggle');
+  const isTvModeEnabled =
+    connection.connected && telemetry ? telemetry.tvEnabled !== false : false;
 
   // Populate live pad-only fields strictly from live `/api/status` telemetry
   useEffect(() => {
@@ -272,6 +280,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       // Automatically run `/api/tv/test` after PIN submission and report pass/fail!
       const testRes = await usbHardware.testTv();
+      if (isTvDisabledResponse(testRes)) {
+        const msg = `PIN saved to MacroPad. ${
+          testRes?.message || 'TV mode is turned off on the pad.'
+        }`;
+        setTvTestResult({ ok: true, neutral: true, text: msg });
+        onToast(msg);
+        return;
+      }
       const passed = Boolean(testRes?.ok);
       const summary = passed
         ? `Pairing & automatic TV test passed: ${testRes.message || 'TV reachable'}`
@@ -311,13 +327,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setShowManualTokenMode(false);
       const testRes = await usbHardware.testTv().catch(() => null);
       if (testRes) {
-        const passed = Boolean(testRes.ok);
-        setTvTestResult({
-          ok: passed,
-          text: passed
-            ? `Token saved & TV test passed (${tvIp}:${Number(tvPort) || 7345})`
-            : `Token saved, but TV test failed: ${testRes.message || 'Unreachable'}`
-        });
+        if (isTvDisabledResponse(testRes)) {
+          setTvTestResult({
+            ok: true,
+            neutral: true,
+            text: `Token saved (${tvIp}:${Number(tvPort) || 7345}). ${
+              testRes.message || 'TV mode is turned off on the pad.'
+            }`
+          });
+        } else {
+          const passed = Boolean(testRes.ok);
+          setTvTestResult({
+            ok: passed,
+            text: passed
+              ? `Token saved & TV test passed (${tvIp}:${Number(tvPort) || 7345})`
+              : `Token saved, but TV test failed: ${testRes.message || 'Unreachable'}`
+          });
+        }
       }
       onToast(res.message || 'Saved TV IP, port, and auth token to MacroPad');
     } catch (err: any) {
@@ -327,11 +353,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const handleToggleTvMode = async () => {
+    if (!connection.connected || tvModeBusy) return;
+    const nextEnabled = telemetry?.tvEnabled === false;
+    setTvModeBusy(true);
+    try {
+      const res = await usbHardware.setTvEnabled(nextEnabled);
+      const refreshed = await usbHardware.fetchStatus();
+      const confirmedEnabled = refreshed.tv?.enabled !== false;
+      onToast(
+        res?.message || (confirmedEnabled ? 'TV mode enabled.' : 'TV mode disabled.'),
+        'success'
+      );
+    } catch (err: any) {
+      onToast(err?.message || 'Could not update TV mode on MacroPad', 'error');
+    } finally {
+      setTvModeBusy(false);
+    }
+  };
+
   const handleTestTv = async () => {
     setTvBusy(true);
     setTvTestResult(null);
     try {
       const res = await usbHardware.testTv();
+      if (isTvDisabledResponse(res)) {
+        const infoText = res?.message || 'TV mode is turned off on the pad.';
+        setTvTestResult({ ok: true, neutral: true, text: infoText });
+        onToast(infoText);
+        return;
+      }
       const passed = Boolean(res?.ok);
       const text = passed
         ? `Pass: ${res.message || 'SmartCast TV is reachable'}`
@@ -576,8 +627,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span
                     className={
                       telemetry?.setupMode
-                        ? 'text-amber-300 font-semibold'
-                        : 'text-emerald-400 font-semibold'
+                        ? 'text-amber-600 dark:text-amber-300 font-semibold'
+                        : 'text-emerald-600 dark:text-emerald-400 font-semibold'
                     }
                   >
                     {telemetry?.setupMode ? 'Setup Mode Active' : 'Provisioned (Normal)'}
@@ -768,7 +819,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         BLE:{' '}
                         <span
                           className={
-                            telemetry.bleConnected ? 'text-emerald-400' : 'text-amber-300'
+                            telemetry.bleConnected
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-amber-700 dark:text-amber-300'
                           }
                         >
                           H{telemetry.bleActiveHost} {telemetry.bleDeviceName} (
@@ -1127,67 +1180,80 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
         )}
 
-        {/* TV Mode Toggle Card */}
-        {showWifiTv && (!telemetry?.capabilities || telemetry.capabilities.includes('tv_toggle')) && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-                <Tv className="w-4 h-4 text-purple-400" />
-                <span>TV Mode</span>
-              </div>
-              <div className="font-mono text-[11px] text-[var(--text-secondary)]">
-                {connection.connected && telemetry ? (
-                  telemetry.tvEnabled !== false ? (
-                    <span className="text-emerald-600 dark:text-emerald-400">Enabled</span>
-                  ) : (
-                    <span className="text-amber-700 dark:text-amber-300">Disabled (Off)</span>
-                  )
-                ) : (
-                  <span className="text-[var(--text-muted)]">Pad offline</span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-              <div className="space-y-0.5">
-                <div className="text-xs font-semibold text-[var(--text-primary)]">
-                  Enable SmartCast TV profile & remote actions
-                </div>
-                <div className="text-[11px] text-[var(--text-muted)]">
-                  When turned off, TV mode and Wi-Fi pairing are disabled, leaving only Bluetooth hosts.
-                </div>
-              </div>
-              <button
-                type="button"
-                disabled={!connection.connected}
-                onClick={async () => {
-                  const nextVal = telemetry?.tvEnabled === false ? true : false;
-                  try {
-                    await usbHardware.setTvEnabled(nextVal);
-                    await usbHardware.call({ path: '/api/status' });
-                    onToast(nextVal ? 'TV mode enabled' : 'TV mode disabled', 'success');
-                  } catch (err: any) {
-                    onToast(err?.message || 'Failed to toggle TV mode', 'error');
-                  }
-                }}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  !connection.connected ? 'opacity-40 cursor-not-allowed' : ''
-                } ${telemetry?.tvEnabled !== false ? 'bg-[var(--accent)]' : 'bg-zinc-600'}`}
-                role="switch"
-                aria-checked={telemetry?.tvEnabled !== false}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                    telemetry?.tvEnabled !== false ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 3. Wi-Fi Provisioning Card */}
+        {/* Wi-Fi & TV Section */}
         {showWifiTv && (
+          <section aria-labelledby="settings-wifi-tv-heading" className="space-y-4">
+            <div className="flex items-center justify-between gap-2 px-0.5">
+              <h2
+                id="settings-wifi-tv-heading"
+                className="text-xs font-bold tracking-tight text-[var(--text-secondary)]"
+              >
+                Wi-Fi & TV
+              </h2>
+              <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                {connection.connected
+                  ? telemetry?.tvEnabled === false
+                    ? 'TV mode off · Settings preserved on pad'
+                    : 'Stored on pad'
+                  : 'Connect USB pad to manage'}
+              </span>
+            </div>
+
+            {supportsTvToggle && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Tv className="w-4 h-4 text-purple-400 shrink-0" />
+                    <span
+                      id="settings-tv-mode-label"
+                      className="text-xs font-bold text-[var(--text-primary)]"
+                    >
+                      TV mode
+                    </span>
+                    <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                      ·{' '}
+                      {connection.connected && telemetry
+                        ? isTvModeEnabled
+                          ? 'On'
+                          : 'Off'
+                        : 'Pad disconnected'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                    Enables the TV profile and SmartCast TV actions on the pad. Turning TV mode off leaves only Bluetooth hosts active while keeping your saved TV bindings, Wi-Fi network, and pairing data intact.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-labelledby="settings-tv-mode-label"
+                  aria-checked={isTvModeEnabled}
+                  disabled={!connection.connected || tvModeBusy}
+                  onClick={handleToggleTvMode}
+                  title={
+                    !connection.connected
+                      ? 'Connect MacroPad via USB to toggle TV mode'
+                      : isTvModeEnabled
+                      ? 'Turn off TV mode'
+                      : 'Turn on TV mode'
+                  }
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                    !connection.connected || tvModeBusy
+                      ? 'opacity-40 cursor-not-allowed'
+                      : 'cursor-pointer'
+                  } ${isTvModeEnabled ? 'bg-[var(--accent)]' : 'bg-zinc-300 dark:bg-zinc-600'}`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                      isTvModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
+
+            {/* 3. Wi-Fi Provisioning Card */}
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
@@ -1263,10 +1329,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
         </div>
-        )}
 
         {/* 4. SmartCast TV Pairing Card */}
-        {showWifiTv && (
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
@@ -1338,7 +1402,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               type="button"
               disabled={!connection.connected || tvBusy}
               onClick={() => setForgetTvModalOpen(true)}
-              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-medium text-rose-400 disabled:opacity-40 cursor-pointer whitespace-nowrap ml-auto"
+              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-medium text-rose-600 dark:text-rose-400 disabled:opacity-40 cursor-pointer whitespace-nowrap ml-auto"
             >
               Forget TV
             </button>
@@ -1408,12 +1472,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {tvTestResult && (
             <div
               className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
-                tvTestResult.ok
+                tvTestResult.neutral
+                  ? 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
+                  : tvTestResult.ok
                   ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-700 dark:text-emerald-300'
                   : 'bg-rose-500/12 border-rose-500/35 text-rose-700 dark:text-rose-300'
               }`}
             >
-              {tvTestResult.ok ? (
+              {tvTestResult.neutral ? (
+                <Tv className="w-4 h-4 text-[var(--text-muted)] shrink-0 mt-0.5" />
+              ) : tvTestResult.ok ? (
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               ) : (
                 <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
@@ -1422,10 +1490,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
         </div>
-        )}
 
         {/* 5. Local HTTP API Security (Pad Only) */}
-        {showWifiTv && (
           <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
@@ -1462,6 +1528,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
           </div>
+          </section>
         )}
 
         {/* 6. Theme, Live Events Toggle, Audio & Keyboard Layout */}
@@ -1762,7 +1829,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <button
               type="button"
               onClick={() => setResetProfilesModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/12 hover:bg-rose-500/20 border border-rose-500/35 text-xs font-semibold text-rose-300 cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/12 hover:bg-rose-500/20 border border-rose-500/35 text-xs font-semibold text-rose-600 dark:text-rose-300 cursor-pointer whitespace-nowrap shrink-0"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset all profiles</span>

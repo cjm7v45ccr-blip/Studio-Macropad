@@ -18,6 +18,7 @@
   --text-muted: #6B7280;
   --accent: #3B82F6;
   --accent-rgb: 59, 130, 246;
+  --accent-soft: rgba(var(--accent-rgb), 0.14);
   color-scheme: dark;
 }
 
@@ -31,6 +32,7 @@
   --text-primary: #0F172A;
   --text-secondary: #475569;
   --text-muted: #64748B;
+  --accent-soft: rgba(var(--accent-rgb), 0.11);
   color-scheme: light;
 }
 

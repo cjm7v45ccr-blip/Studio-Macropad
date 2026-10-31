@@ -67,7 +67,10 @@ export function inspectFirmwareBinaryCapabilities(bytes: Uint8Array): {
 } {
   try {
     const latin1 = new TextDecoder('iso-8859-1').decode(bytes);
-    const supportsV45Engine = latin1.includes('/api/macro/cancel');
+    const supportsV45Engine =
+      latin1.includes('/api/macro/cancel') ||
+      latin1.includes('DELAY:') ||
+      latin1.includes('tv_toggle');
     const jsonFwMatch = latin1.match(
       /"firmware"\s*:\s*"v?(\d+\.\d+(?:\.\d+)?(?:-[A-Za-z0-9._-]+)?)"/
     );
