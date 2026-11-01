@@ -773,7 +773,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           : connection.connected
                           ? telemetry?.supportsNativeDelay
                             ? 'Native Delay + 512B'
-                            : 'Standard PadLink'
+                            : 'Standard BertoLink'
                           : 'Connect USB to read'}
                       </div>
                     </div>
@@ -787,7 +787,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
                         {connection.connected && telemetry
                           ? telemetry.connectionType || 'USB'
-                          : 'PadLink JSON'}
+                          : 'BertoLink JSON'}
                       </div>
                     </div>
 

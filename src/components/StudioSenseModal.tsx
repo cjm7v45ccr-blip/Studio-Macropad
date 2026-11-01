@@ -104,7 +104,7 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
                 id="studio-sense-modal-title"
                 className="text-base font-bold text-[var(--text-primary)]"
               >
-                Studio Sense Workflow Assistant
+                BertoSense Workflow Assistant
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
                 Analyzing your macro habits & suggesting high-value automations
@@ -125,10 +125,14 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
           {loading ? (
             <div className="py-16 flex flex-col items-center justify-center space-y-4 text-center">
-              <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)]" />
+              <img
+                src="/logo-mark-dark.svg"
+                alt="BertoSense"
+                className="w-10 h-10 animate-[spin_3s_linear_infinite] object-contain"
+              />
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-[var(--text-primary)]">
-                  Studio Sense is analyzing your macros…
+                  BertoSense is analyzing your macros…
                 </p>
                 <p className="text-xs text-[var(--text-muted)]">
                   Looking for login auto-fills, 2FA sequences, and timing optimizations.

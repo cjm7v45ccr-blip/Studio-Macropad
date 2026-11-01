@@ -140,14 +140,17 @@ export const TopBar: React.FC<TopBarProps> = ({
       {/* Left: Brand + Profile Tabs + Grouped Profile Actions */}
       <div className="flex items-center gap-3 min-w-0">
         <div className="flex items-center gap-2 shrink-0">
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-white shadow-xs shrink-0"
-            style={{ backgroundColor: 'var(--accent)' }}
-          >
-            <Cpu className="w-4 h-4" />
-          </div>
+          <img
+            src="/logo-mark-dark.svg"
+            alt="BertoPad"
+            className="w-7 h-7 rounded-lg object-contain shrink-0"
+            onError={e => {
+              // Fallback if svg file is missing until user uploads it
+              (e.currentTarget as HTMLElement).style.display = 'none';
+            }}
+          />
           <span className="text-sm font-bold tracking-tight text-[var(--text-primary)] hidden xl:inline whitespace-nowrap">
-            Studio MacroPad
+            BertoPad
           </span>
         </div>
 

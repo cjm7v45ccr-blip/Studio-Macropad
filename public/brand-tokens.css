@@ -1,0 +1,19 @@
+:root {
+  /* BertoPad palette */
+  --bp-graphite: #14161B;
+  --bp-panel:    #1E2128;
+  --bp-bone:     #ECEAE4;
+  --bp-muted:    #A3A6AD;
+  --bp-amber:    #F2A33A;   /* signature accent on dark */
+  --bp-amber-deep: #D97706; /* accent on light */
+
+  /* app theme (dark default) */
+  --bg: var(--bp-graphite); --surface: var(--bp-panel);
+  --text: var(--bp-bone); --text-muted: var(--bp-muted); --accent: var(--bp-amber);
+  --font-ui: 'Manrope', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+[data-theme="light"] {
+  --bg: #F6F4EF; --surface: #FFFFFF;
+  --text: #14161B; --text-muted: #5B5F68; --accent: var(--bp-amber-deep);
+}

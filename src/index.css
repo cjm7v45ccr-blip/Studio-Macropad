@@ -7,32 +7,42 @@
 }
 
 :root {
-  --bg-canvas: #0E0F13;
-  --bg-panel: #16181F;
-  --bg-elevated: #1E212B;
-  --bg-input: #111319;
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --text-primary: #F3F4F6;
-  --text-secondary: #9CA3AF;
-  --text-muted: #6B7280;
-  --accent: #3B82F6;
-  --accent-rgb: 59, 130, 246;
-  --accent-soft: rgba(var(--accent-rgb), 0.14);
+  /* BertoPad palette */
+  --bp-graphite: #14161B;
+  --bp-panel:    #1E2128;
+  --bp-bone:     #ECEAE4;
+  --bp-muted:    #A3A6AD;
+  --bp-amber:    #F2A33A;
+  --bp-amber-deep: #D97706;
+
+  --bg-canvas: #14161B;
+  --bg-panel: #1E2128;
+  --bg-elevated: #262A34;
+  --bg-input: #191C23;
+  --border-subtle: rgba(236, 234, 228, 0.08);
+  --border-strong: rgba(236, 234, 228, 0.16);
+  --text-primary: #ECEAE4;
+  --text-secondary: #A3A6AD;
+  --text-muted: #797C85;
+  --accent: #F2A33A;
+  --accent-rgb: 242, 163, 58;
+  --accent-soft: rgba(242, 163, 58, 0.14);
   color-scheme: dark;
 }
 
 :root[data-theme="light"] {
-  --bg-canvas: #F4F6FA;
+  --bg-canvas: #F6F4EF;
   --bg-panel: #FFFFFF;
-  --bg-elevated: #EDF0F7;
-  --bg-input: #F1F4F9;
-  --border-subtle: rgba(15, 23, 42, 0.08);
-  --border-strong: rgba(15, 23, 42, 0.15);
-  --text-primary: #0F172A;
-  --text-secondary: #475569;
-  --text-muted: #64748B;
-  --accent-soft: rgba(var(--accent-rgb), 0.11);
+  --bg-elevated: #EDEAE2;
+  --bg-input: #F0EDE6;
+  --border-subtle: rgba(20, 22, 27, 0.08);
+  --border-strong: rgba(20, 22, 27, 0.16);
+  --text-primary: #14161B;
+  --text-secondary: #5B5F68;
+  --text-muted: #848894;
+  --accent: #D97706;
+  --accent-rgb: 217, 119, 6;
+  --accent-soft: rgba(217, 119, 6, 0.12);
   color-scheme: light;
 }
 

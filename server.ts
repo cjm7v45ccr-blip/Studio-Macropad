@@ -38,13 +38,13 @@ async function startServer() {
     res.send(buildPublicFirmwareCatalogJson(scanDir));
   });
 
-  // Studio Sense AI analysis endpoint
+  // BertoSense AI analysis endpoint
   app.post('/api/studio-sense/analyze', async (req, res) => {
     try {
       const ai = getGenAiClient();
       const { macros, userContext } = req.body || {};
 
-      const prompt = `You are Studio Sense, an expert macro automation and firmware engineering assistant for the ESP32 Studio MacroPad.
+      const prompt = `You are BertoSense, an expert macro automation and firmware engineering assistant for the ESP32 BertoPad.
 Analyze the following user macros and suggest 3 high-value workflow optimizations, missing steps (such as auto-fill login sequences, 2FA timing delays, clipboard pasting, or multi-step shortcuts), and macro improvements.
 
 User Macros:
@@ -59,7 +59,7 @@ ${userContext || 'No additional context provided.'}`;
         config: {
           responseMimeType: 'application/json',
           systemInstruction:
-            'You are Studio Sense, an expert hardware controller and macro workflow optimization assistant. Return concise, practical macro automation recommendations matching the requested schema.',
+            'You are BertoSense, an expert hardware controller and macro workflow optimization assistant. Return concise, practical macro automation recommendations matching the requested schema.',
           responseSchema: {
             type: Type.OBJECT,
             properties: {
