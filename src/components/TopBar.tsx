@@ -149,8 +149,9 @@ export const TopBar: React.FC<TopBarProps> = ({
               (e.currentTarget as HTMLElement).style.display = 'none';
             }}
           />
-          <span className="text-sm font-bold tracking-tight text-[var(--text-primary)] hidden xl:inline whitespace-nowrap">
-            BertoPad
+          <span className="text-sm font-bold tracking-tight hidden xl:inline whitespace-nowrap">
+            <span className="text-[var(--text-primary)]">Berto</span>
+            <span className="text-[var(--accent)]">Pad</span>
           </span>
         </div>
 
