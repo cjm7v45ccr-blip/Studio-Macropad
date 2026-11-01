@@ -62,8 +62,8 @@ export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
   enc_cw: 'MEDIA:VOL_UP',
   enc_ccw: 'MEDIA:VOL_DOWN',
   dial2: 'MEDIA:PLAY_PAUSE',
-  e2_cw: 'MEDIA:NEXT',
-  e2_ccw: 'MEDIA:PREV'
+  e2_cw: 'SHORTCUT:cmd:=',
+  e2_ccw: 'SHORTCUT:cmd:-'
 };
 
 export const FACTORY_DEFAULT_SLOTS: Record<

@@ -107,6 +107,7 @@ export type ActionType =
   | 'mac_macro'
   | 'win_macro'
   | 'media'
+  | 'display'
   | 'ble'
   | 'shortcut'
   | 'text'

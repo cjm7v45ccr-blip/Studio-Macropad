@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   ActionBinding,
+  ActionType,
   ActiveRepeatJob,
   CustomMacroItem,
   DeviceConnectionInfo,
@@ -60,7 +61,8 @@ import {
   Wand2,
   Zap,
   Code2,
-  Plus
+  Plus,
+  Monitor
 } from 'lucide-react';
 
 interface ActionPickerControlProps {
@@ -85,6 +87,7 @@ type PickerCategoryTab =
   | 'my_macros'
   | 'os_shortcuts'
   | 'media'
+  | 'display'
   | 'ble'
   | 'shortcut'
   | 'text'
@@ -99,6 +102,7 @@ const ACTION_TABS: {
   { id: 'my_macros', label: 'My Macros', icon: Zap },
   { id: 'os_shortcuts', label: 'Shortcuts', icon: Laptop },
   { id: 'media', label: 'Media & Keys', icon: Volume2 },
+  { id: 'display', label: 'Display/OS', icon: Monitor },
   { id: 'ble', label: 'BLE Hosts', icon: Bluetooth },
   { id: 'shortcut', label: 'Custom Key', icon: Command },
   { id: 'text', label: 'Type Text', icon: FileText },
@@ -514,12 +518,96 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     );
   }, [nonOsStaticCatalog, searchShortcutMatches, trimmedQuery]);
 
+  const displayControls = useMemo(() => {
+    const isMac = activeHostOs === 'mac';
+    const zoomInAction = isMac ? 'SHORTCUT:cmd:=' : 'SHORTCUT:ctrl:=';
+    const zoomOutAction = isMac ? 'SHORTCUT:cmd:-' : 'SHORTCUT:ctrl:-';
+    const zoomResetAction = isMac ? 'SHORTCUT:cmd:0' : 'SHORTCUT:ctrl:0';
+    const zoomHint = isMac ? '⌘+' : 'Ctrl++';
+    const zoomOutHint = isMac ? '⌘-' : 'Ctrl+-';
+    const zoomResetHint = isMac ? '⌘0' : 'Ctrl+0';
+
+    return [
+      {
+        id: 'bright_up',
+        label: 'Brightness Up',
+        shortcutHint: isMac ? 'F15 / ☀+' : '☀+',
+        action: 'MEDIA:BRIGHT_UP',
+        icon: 'sun',
+        color: '#FBBF24',
+        category: 'display' as ActionType,
+        description: 'Increase display screen brightness'
+      },
+      {
+        id: 'bright_down',
+        label: 'Brightness Down',
+        shortcutHint: isMac ? 'F14 / ☀-' : '☀-',
+        action: 'MEDIA:BRIGHT_DOWN',
+        icon: 'sun-dim',
+        color: '#38BDF8',
+        category: 'display' as ActionType,
+        description: 'Decrease display screen brightness'
+      },
+      {
+        id: 'zoom_in',
+        label: 'Zoom In (Standard)',
+        shortcutHint: zoomHint,
+        action: zoomInAction,
+        icon: 'zoom-in',
+        color: '#38BDF8',
+        category: 'display' as ActionType,
+        description: 'Zoom in active window, browser, or document'
+      },
+      {
+        id: 'zoom_out',
+        label: 'Zoom Out (Standard)',
+        shortcutHint: zoomOutHint,
+        action: zoomOutAction,
+        icon: 'zoom-out',
+        color: '#60A5FA',
+        category: 'display' as ActionType,
+        description: 'Zoom out active window, browser, or document'
+      },
+      {
+        id: 'zoom_reset',
+        label: 'Reset Zoom (100%)',
+        shortcutHint: zoomResetHint,
+        action: zoomResetAction,
+        icon: 'maximize',
+        color: '#A78BFA',
+        category: 'display' as ActionType,
+        description: 'Reset window or canvas zoom to 100%'
+      },
+      {
+        id: 'cad_zoom_in',
+        label: 'CAD Zoom In (KiCad / Onshape)',
+        shortcutHint: 'Key I',
+        action: 'KEY:i',
+        icon: 'zoom-in',
+        color: '#34D399',
+        category: 'display' as ActionType,
+        description: 'Zoom in for CAD software like KiCad schematic/PCB and Onshape (press i)'
+      },
+      {
+        id: 'cad_zoom_out',
+        label: 'CAD Zoom Out (KiCad / Onshape)',
+        shortcutHint: 'Key O',
+        action: 'KEY:o',
+        icon: 'zoom-out',
+        color: '#F472B6',
+        category: 'display' as ActionType,
+        description: 'Zoom out for CAD software like KiCad schematic/PCB and Onshape (press o)'
+      }
+    ];
+  }, [activeHostOs]);
+
   const activeCategoryItems = useMemo(() => {
     if (
       effectiveTab === 'my_macros' ||
       effectiveTab === 'os_shortcuts' ||
       effectiveTab === 'shortcut' ||
-      effectiveTab === 'text'
+      effectiveTab === 'text' ||
+      effectiveTab === 'display'
     ) {
       return [];
     }
@@ -1038,6 +1126,57 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                       title={`${spec.label} (${spec.shortcutHint}) — ${spec.action}`}
                       onClick={() =>
                         onChange(firmwareActionToBinding(spec.action))
+                      }
+                      className={`flex items-center gap-2 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                        selected
+                          ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
+                          : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <KeycapIcon
+                        icon={spec.icon}
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          selected
+                            ? 'text-[var(--accent)]'
+                            : 'text-[var(--text-secondary)]'
+                        }`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-medium text-[var(--text-primary)] truncate">
+                          {spec.label}
+                        </div>
+                        <div className="text-[10px] font-mono text-[var(--text-muted)] truncate">
+                          {showAdvancedIds ? spec.action : spec.shortcutHint}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : effectiveTab === 'display' ? (
+            /* Display & OS Controls (Brightness, Zoom, CAD zoom for KiCad/Onshape) */
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2 px-0.5">
+                <span className="text-[11px] text-[var(--text-muted)] truncate">
+                  Display, Brightness & Zoom (incl. KiCad & Onshape CAD zoom)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {displayControls.map(spec => {
+                  const selected =
+                    binding.value === spec.action && !binding.repeatConfig;
+                  return (
+                    <button
+                      key={spec.id}
+                      type="button"
+                      title={`${spec.label} (${spec.shortcutHint}) — ${spec.action}`}
+                      onClick={() =>
+                        onChange({
+                          type: spec.category,
+                          value: spec.action
+                        })
                       }
                       className={`flex items-center gap-2 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
                         selected
