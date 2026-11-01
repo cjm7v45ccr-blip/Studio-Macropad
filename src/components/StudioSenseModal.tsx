@@ -47,11 +47,11 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
             name: m.name,
             action: m.action
           })),
-          userContext: 'ESP32 Studio MacroPad flagship controller running productivity & auth macros.'
+          userContext: 'ESP32 BertoPad flagship controller running productivity & auth macros.'
         })
       });
       if (!res.ok) {
-        throw new Error('Failed to communicate with Studio Sense AI');
+        throw new Error('Failed to communicate with BertoSense');
       }
       const json = await res.json();
       setData(json);
@@ -113,7 +113,7 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
           </div>
           <button
             type="button"
-            aria-label="Close Studio Sense modal"
+            aria-label="Close BertoSense modal"
             onClick={onClose}
             className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer"
           >
@@ -140,12 +140,12 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
               </div>
             </div>
           ) : error ? (
-            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-200 space-y-3">
+            <div className="p-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-[var(--text-primary)] space-y-3">
               <p className="text-xs font-semibold">{error}</p>
               <button
                 type="button"
                 onClick={fetchStudioSenseAnalysis}
-                className="px-3.5 py-1.5 rounded-lg bg-rose-500/20 text-rose-700 dark:text-rose-200 text-xs font-semibold hover:bg-rose-500/30 transition-colors cursor-pointer whitespace-nowrap"
+                className="px-3.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-strong)] text-[var(--text-primary)] text-xs font-semibold hover:border-[var(--accent)] transition-colors cursor-pointer whitespace-nowrap"
               >
                 Retry Analysis
               </button>
@@ -193,10 +193,10 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
                             };
                           });
                           onApplySuggestion(item.title, steps);
-                          onToast(`Applied Studio Sense automation: "${item.title}"`);
+                          onToast(`Applied BertoSense automation: "${item.title}"`);
                           onClose();
                         }}
-                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer shrink-0"
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer shrink-0"
                       >
                         <Wand2 className="w-3.5 h-3.5" />
                         <span>Apply & Edit</span>
@@ -228,7 +228,7 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-xs">
           <span className="text-[var(--text-muted)] tabular-nums">
-            Studio Sense Workflow Analyzer · {customMacros.length} saved{' '}
+            BertoSense Workflow Analyzer · {customMacros.length} saved{' '}
             {customMacros.length === 1 ? 'macro' : 'macros'}
           </span>
           <button

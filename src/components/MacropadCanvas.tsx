@@ -713,13 +713,15 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const isCwUnassigned = !encCfg.cw.value;
     const isCcwUnassigned = !encCfg.ccw.value;
 
+    const ringAccent = encCfg.color || '#F2A33A';
+
     return (
       <div className="flex flex-col items-center justify-center gap-1.5">
         <div className="relative flex items-center justify-center gap-1.5">
           {accel > 1 && (
             <span
               title={`Knob ${encoderIndex} velocity acceleration (${accel}× step)`}
-              className="absolute -top-2.5 right-6 z-10 px-1.5 py-0.5 rounded-md bg-sky-500/20 border border-sky-400/60 font-mono text-[9px] font-bold text-sky-300 tabular-nums pointer-events-none"
+              className="absolute -top-2.5 right-6 z-10 px-1.5 py-0.5 rounded-md bg-[#1E2128] border border-[#F2A33A] font-mono text-[9px] font-bold text-[#F2A33A] tabular-nums pointer-events-none"
             >
               {accel}×
             </span>
@@ -738,12 +740,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             }`}
             className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
               isCcwFlashed
-                ? 'bg-sky-500/35 ring-2 ring-sky-400 text-sky-200 scale-110'
+                ? 'bg-[#F2A33A]/25 ring-2 ring-[#F2A33A] text-[#ECEAE4] scale-110'
                 : isCcwSelected
-                ? 'bg-[rgba(var(--accent-rgb),0.28)] ring-2 ring-[var(--accent)] text-white shadow-[0_0_16px_rgba(var(--accent-rgb),0.45)]'
+                ? 'bg-[rgba(var(--accent-rgb),0.28)] ring-2 ring-[var(--accent)] text-[#ECEAE4] shadow-[0_0_16px_rgba(var(--accent-rgb),0.45)]'
                 : ccwConflict
-                ? 'bg-amber-500/15 ring-1 ring-amber-400/70 text-amber-200 hover:bg-amber-500/25'
-                : `bg-white/[0.06] hover:bg-white/[0.15] text-zinc-300 hover:text-white ${
+                ? 'bg-[#F2A33A]/15 ring-1 ring-[#F2A33A]/70 text-[#F2A33A] hover:bg-[#F2A33A]/25'
+                : `bg-[#ECEAE4]/[0.06] hover:bg-[#ECEAE4]/[0.14] text-[#A3A6AD] hover:text-[#ECEAE4] ${
                     isCcwUnassigned ? 'opacity-45 hover:opacity-85' : ''
                   }`
             }`}
@@ -751,7 +753,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
-          {/* Physical Rotary Knob (`dial` / `dial2`) */}
+          {/* Physical Rotary Knob (`dial` / `dial2`) — BertoPad dial with Bone track + Amber level arc */}
           <button
             type="button"
             aria-label={`Knob ${encoderIndex} Press: ${dialInfo.fullLabel}`}
@@ -771,21 +773,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             }}
             style={{
               borderColor: isDialFlashed
-                ? '#38BDF8'
+                ? '#F2A33A'
                 : isDialSelected
                 ? 'var(--accent)'
                 : dialConflict
-                ? '#F59E0B'
-                : 'rgba(255,255,255,0.14)',
+                ? '#F2A33A'
+                : 'rgba(236, 234, 228, 0.14)',
               boxShadow: isDialFlashed
-                ? '0 0 0 4px rgba(56, 189, 248, 0.45), 0 0 26px rgba(56, 189, 248, 0.35)'
+                ? '0 0 0 4px rgba(242, 163, 58, 0.4), 0 0 26px rgba(242, 163, 58, 0.35)'
                 : undefined
             }}
-            className={`w-20 h-20 sm:w-24 sm:h-24 xl:w-26 xl:h-26 rounded-full bg-gradient-to-b from-[#282C37] to-[#171A21] border-2 flex items-center justify-center transition-all duration-150 cursor-pointer select-none ${
+            className={`relative w-20 h-20 sm:w-24 sm:h-24 xl:w-26 xl:h-26 rounded-full bg-gradient-to-b from-[#1E2128] to-[#14161B] border-2 flex items-center justify-center transition-all duration-150 cursor-pointer select-none ${
               isDialSelected && !isDialFlashed
                 ? 'encoder-ring-selected'
                 : !isDialFlashed
-                ? 'shadow-[0_10px_22px_rgba(0,0,0,0.48),inset_0_1px_1px_rgba(255,255,255,0.09)]'
+                ? 'shadow-[0_10px_22px_rgba(0,0,0,0.52),inset_0_1px_1px_rgba(236,234,228,0.09)]'
                 : ''
             } ${isPressed || isDialFlashed ? 'scale-95' : 'hover:scale-[1.02]'} ${
               isDialUnassigned && !isDialSelected && !isDialFlashed
@@ -793,20 +795,48 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 : ''
             }`}
           >
+            {/* Dial Level Arc (Bone track + Amber level arc matching BertoPad mark) */}
+            <svg
+              viewBox="0 0 100 100"
+              aria-hidden="true"
+              style={{ transform: `rotate(${angle}deg)` }}
+              className="absolute inset-1 w-[calc(100%-8px)] h-[calc(100%-8px)] pointer-events-none transition-transform duration-150 ease-out"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                r="43"
+                fill="none"
+                stroke="#ECEAE4"
+                strokeOpacity="0.26"
+                strokeWidth="3.5"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                r="43"
+                fill="none"
+                stroke={isDialFlashed ? '#F2A33A' : ringAccent}
+                strokeWidth="5.5"
+                strokeLinecap="round"
+                strokeDasharray="135 271"
+                strokeDashoffset="40"
+              />
+            </svg>
+
             <span
               style={{
-                borderColor: isDialFlashed ? '#38BDF8' : encCfg.color,
                 transform: `rotate(${angle}deg)`
               }}
-              className="w-14 h-14 sm:w-17 sm:h-17 xl:w-18 xl:h-18 rounded-full bg-[#12141A] border-2 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner"
+              className="w-13 h-13 sm:w-16 sm:h-16 xl:w-17 xl:h-17 rounded-full bg-[#14161B] border border-[#ECEAE4]/15 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner"
             >
               <span
                 className="w-1.5 h-2.5 rounded-full absolute top-1.5"
                 style={{
-                  backgroundColor: isDialFlashed ? '#38BDF8' : encCfg.color
+                  backgroundColor: isDialFlashed ? '#F2A33A' : ringAccent
                 }}
               />
-              <span className="font-mono text-[8px] sm:text-[9px] font-semibold uppercase tracking-wider text-zinc-200 tabular-nums">
+              <span className="font-mono text-[8px] sm:text-[9px] font-semibold uppercase tracking-wider text-[#ECEAE4] tabular-nums">
                 KNOB {encoderIndex}
               </span>
             </span>
@@ -825,12 +855,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             }`}
             className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
               isCwFlashed
-                ? 'bg-sky-500/35 ring-2 ring-sky-400 text-sky-200 scale-110'
+                ? 'bg-[#F2A33A]/25 ring-2 ring-[#F2A33A] text-[#ECEAE4] scale-110'
                 : isCwSelected
-                ? 'bg-[rgba(var(--accent-rgb),0.28)] ring-2 ring-[var(--accent)] text-white shadow-[0_0_16px_rgba(var(--accent-rgb),0.45)]'
+                ? 'bg-[rgba(var(--accent-rgb),0.28)] ring-2 ring-[var(--accent)] text-[#ECEAE4] shadow-[0_0_16px_rgba(var(--accent-rgb),0.45)]'
                 : cwConflict
-                ? 'bg-amber-500/15 ring-1 ring-amber-400/70 text-amber-200 hover:bg-amber-500/25'
-                : `bg-white/[0.06] hover:bg-white/[0.15] text-zinc-300 hover:text-white ${
+                ? 'bg-[#F2A33A]/15 ring-1 ring-[#F2A33A]/70 text-[#F2A33A] hover:bg-[#F2A33A]/25'
+                : `bg-[#ECEAE4]/[0.06] hover:bg-[#ECEAE4]/[0.14] text-[#A3A6AD] hover:text-[#ECEAE4] ${
                     isCwUnassigned ? 'opacity-45 hover:opacity-85' : ''
                   }`
             }`}
@@ -839,39 +869,39 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-1 text-[10px] text-zinc-400 text-center max-w-[164px] truncate">
+        <div className="flex items-center gap-1 text-[10px] text-[#A3A6AD] text-center max-w-[164px] truncate">
           <button
             type="button"
             onClick={() => triggerEncoderSpin(encoderIndex, 'ccw')}
             title={`Knob ${encoderIndex} Turn Left: ${ccwInfo.fullLabel}`}
-            className={`hover:text-white transition-colors cursor-pointer truncate ${
-              isCcwSelected ? 'text-sky-300 font-semibold' : ''
+            className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
+              isCcwSelected ? 'text-[#F2A33A] font-semibold' : ''
             }`}
           >
             ↺ {ccwInfo.shortLabel}
           </button>
-          <span aria-hidden="true" className="text-zinc-600">
+          <span aria-hidden="true" className="text-[#A3A6AD]/50">
             ·
           </span>
           <button
             type="button"
             onClick={() => activateDialPush(encoderIndex)}
             title={`Knob ${encoderIndex} Press: ${dialInfo.fullLabel}`}
-            className={`hover:text-white transition-colors cursor-pointer truncate ${
-              isDialSelected ? 'text-sky-300 font-semibold' : ''
+            className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
+              isDialSelected ? 'text-[#F2A33A] font-semibold' : ''
             }`}
           >
             {dialInfo.shortLabel}
           </button>
-          <span aria-hidden="true" className="text-zinc-600">
+          <span aria-hidden="true" className="text-[#A3A6AD]/50">
             ·
           </span>
           <button
             type="button"
             onClick={() => triggerEncoderSpin(encoderIndex, 'cw')}
             title={`Knob ${encoderIndex} Turn Right: ${cwInfo.fullLabel}`}
-            className={`hover:text-white transition-colors cursor-pointer truncate ${
-              isCwSelected ? 'text-sky-300 font-semibold' : ''
+            className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
+              isCwSelected ? 'text-[#F2A33A] font-semibold' : ''
             }`}
           >
             {cwInfo.shortLabel} ↻
@@ -916,23 +946,23 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         onClick={() => activateKeyControl(kid)}
         style={{
           borderColor: isFlashed
-            ? '#38BDF8'
+            ? '#F2A33A'
             : isSelected
             ? 'var(--accent)'
             : conflict
-            ? '#F59E0B'
+            ? '#F2A33A'
             : cfg.isModeSwitch
-            ? 'rgba(56,189,248,0.28)'
-            : 'rgba(255,255,255,0.08)',
+            ? 'rgba(242, 163, 58, 0.35)'
+            : 'rgba(236, 234, 228, 0.08)',
           boxShadow: isFlashed
-            ? '0 0 0 4px rgba(56, 189, 248, 0.45), 0 0 24px rgba(56, 189, 248, 0.35)'
+            ? '0 0 0 4px rgba(242, 163, 58, 0.4), 0 0 24px rgba(242, 163, 58, 0.32)'
             : isSelected
             ? undefined
             : isDown
             ? '0 2px 4px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.4)'
-            : '0 6px 0 #101217, 0 10px 18px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.09)'
+            : '0 6px 0 #14161B, 0 10px 18px rgba(0,0,0,0.46), inset 0 1px 0 rgba(236,234,228,0.08)'
         }}
-        className={`relative shrink-0 w-[86px] h-[86px] sm:w-[96px] sm:h-[96px] xl:w-[106px] xl:h-[106px] 2xl:w-[112px] 2xl:h-[112px] rounded-2xl bg-gradient-to-b from-[#252933] to-[#1B1E26] border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none transition-all duration-150 ease-out cursor-pointer ${
+        className={`relative shrink-0 w-[86px] h-[86px] sm:w-[96px] sm:h-[96px] xl:w-[106px] xl:h-[106px] 2xl:w-[112px] 2xl:h-[112px] rounded-2xl bg-[#1E2128] border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none transition-all duration-150 ease-out cursor-pointer ${
           isSelected && !isFlashed ? 'keycap-selected-glow -translate-y-0.5' : ''
         } ${isDown ? 'translate-y-1' : !isSelected ? 'hover:-translate-y-0.5' : ''} ${
           isUnassigned && !isSelected && !isFlashed
@@ -944,17 +974,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <span
             className={`font-mono text-[9px] sm:text-[10px] leading-none font-medium tabular-nums ${
               isFlashed || cfg.isModeSwitch
-                ? 'text-sky-400'
+                ? 'text-[#F2A33A]'
                 : isSelected
-                ? 'text-zinc-200'
-                : 'text-zinc-500'
+                ? 'text-[#ECEAE4]'
+                : 'text-[#A3A6AD]'
             }`}
           >
             {badgeText}
           </span>
           {conflict ? (
             <span title="Duplicate action warning">
-              <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+              <AlertTriangle className="w-3 h-3 text-[#F2A33A] shrink-0" />
             </span>
           ) : null}
         </div>
@@ -967,17 +997,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             }`}
             style={{
               color: isFlashed
-                ? '#38BDF8'
+                ? '#F2A33A'
                 : isUnassigned
-                ? '#71717A'
-                : cfg.appearance.labelColor
+                ? '#A3A6AD'
+                : cfg.appearance.labelColor || '#ECEAE4'
             }}
           />
         </div>
 
         <span
           className={`text-[11px] sm:text-xs font-medium truncate max-w-full tracking-tight ${
-            isUnassigned ? 'text-zinc-500' : 'text-zinc-100'
+            isUnassigned ? 'text-[#A3A6AD]' : 'text-[#ECEAE4]'
           }`}
         >
           {cfg.appearance.label}
@@ -1061,9 +1091,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
       {/* Unsupported Browser Banner (Firefox / Safari) */}
       {!usbHardware.browserSupportsWebSerial && !connection.connected && (
-        <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-amber-500/12 border border-amber-500/35 flex items-center justify-between gap-3 flex-wrap shrink-0">
+        <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)] flex items-center justify-between gap-3 flex-wrap shrink-0">
           <div className="flex items-start gap-2.5 min-w-0 flex-1">
-            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <AlertCircle className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
             <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
               <strong className="text-[var(--text-primary)]">Unsupported browser:</strong>{' '}
               Web Serial requires Chrome or Edge on desktop. You can explore everything in Demo Mode.
@@ -1072,7 +1102,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <button
             type="button"
             onClick={onStartDemoMode}
-            style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5"
           >
             <PlayCircle className="w-3.5 h-3.5" />
@@ -1083,9 +1113,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
       {/* Active Hardware Setup Mode Banner */}
       {connection.connected && connection.telemetry?.setupMode && onOpenSetupWizard && (
-        <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/35 flex items-center justify-between gap-3 flex-wrap shrink-0">
+        <div className="w-full max-w-2xl mt-3 px-4 py-3 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)] flex items-center justify-between gap-3 flex-wrap shrink-0">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <SlidersHorizontal className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <SlidersHorizontal className="w-4 h-4 text-[var(--accent)] shrink-0" />
             <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
               <strong className="text-[var(--text-primary)]">Board is in Setup Mode.</strong>{' '}
               Configure your starter layout, Bluetooth device names, and optional Wi-Fi or TV pairing.
@@ -1094,7 +1124,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <button
             type="button"
             onClick={onOpenSetupWizard}
-            style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
             className="px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap flex items-center gap-1.5 shrink-0"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -1107,7 +1137,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       {!connection.connected && !isSyncedWithHardware && (
         <div className="w-full max-w-2xl mt-3 px-4 py-2.5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap shrink-0">
           <div className="text-xs text-[var(--text-secondary)] min-w-0">
-            <span className="font-semibold text-[var(--text-primary)]">No USB MacroPad connected</span>
+            <span className="font-semibold text-[var(--text-primary)]">No USB BertoPad connected</span>
             <span className="hidden sm:inline"> — customize offline or launch the interactive simulator.</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -1123,7 +1153,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               <button
                 type="button"
                 onClick={onConnectUsbPad}
-                style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+                style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-95 transition-opacity cursor-pointer whitespace-nowrap flex items-center gap-1.5"
               >
                 <Usb className="w-3.5 h-3.5" />
@@ -1134,37 +1164,35 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
       )}
 
-      {/* Vertically Centered Larger Physical MacroPad */}
+      {/* Vertically Centered Larger Physical BertoPad */}
       <div className="my-auto py-4 sm:py-6 flex flex-col items-center justify-center w-full">
         <div
-          className={`w-fit max-w-full ${
-            encoderPlacement === 'top'
-              ? 'min-w-[300px]'
-              : 'min-w-[300px]'
-          } chassis-shell rounded-[32px] sm:rounded-[38px] p-4 sm:p-6 xl:p-7 bg-gradient-to-b from-[#232731] to-[#151820] border border-white/10`}
+          className="w-fit max-w-full min-w-[300px] chassis-shell rounded-[32px] sm:rounded-[38px] p-4 sm:p-6 xl:p-7 border border-[#ECEAE4]/10"
         >
-          {/* 128x64 SSD1306 Hardware OLED Strip */}
-          <div className="mb-5 sm:mb-6 px-3.5 py-2.5 rounded-xl bg-[#090B0E] border border-white/10 shadow-inner flex items-center justify-between gap-2 min-h-[40px]">
+          {/* 128x64 SSD1306 1-Bit Monochrome Hardware OLED Strip (matches brand card OLED boot screen) */}
+          <div className="mb-5 sm:mb-6 px-3.5 py-2.5 rounded-xl bg-black border border-[#ECEAE4]/15 shadow-inner flex items-center justify-between gap-2 min-h-[42px]">
             <div className="flex items-center gap-2 min-w-0">
+              <img
+                src="/logo-mark-mono.svg"
+                alt="BertoPad OLED"
+                referrerPolicy="no-referrer"
+                className={`w-4 h-4 object-contain shrink-0 opacity-90 ${
+                  connection.connecting ? 'animate-[spin_3s_linear_infinite]' : ''
+                }`}
+              />
               {oledToast ? (
                 <div className="flex items-center gap-1.5 min-w-0 font-mono text-[10px] sm:text-[11px] tabular-nums">
-                  <span className="px-1.5 py-0.5 rounded bg-sky-400 text-black font-bold uppercase tracking-wider leading-none shrink-0">
+                  <span className="px-1.5 py-0.5 rounded bg-[#ECEAE4] text-[#14161B] font-bold uppercase tracking-wider leading-none shrink-0">
                     {oledToast.title}
                   </span>
                   {oledToast.subtitle && (
-                    <span className="text-sky-200 font-semibold truncate">
+                    <span className="text-[#ECEAE4] font-semibold truncate">
                       {oledToast.subtitle}
                     </span>
                   )}
                 </div>
               ) : (
-                <span
-                  className={`font-mono text-[11px] sm:text-xs font-bold uppercase tracking-wider truncate tabular-nums ${
-                    connection.connected && connection.telemetry?.setupMode
-                      ? 'text-amber-300'
-                      : 'text-sky-300'
-                  }`}
-                >
+                <span className="font-mono text-[11px] sm:text-xs font-bold uppercase tracking-wider truncate tabular-nums text-[#ECEAE4]">
                   {connection.connected && connection.telemetry?.setupMode
                     ? `SETUP · ${activeProfileName}`
                     : activeProfileName}
@@ -1177,7 +1205,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 <>
                   <span
                     className={`flex items-center gap-0.5 ${
-                      telemetry?.bleConnected ? 'text-sky-400' : 'text-zinc-600'
+                      telemetry?.bleConnected ? 'text-[#ECEAE4]' : 'text-[#A3A6AD]/60'
                     }`}
                     title={
                       telemetry?.bleConnected
@@ -1190,7 +1218,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   </span>
                   <span
                     className={`flex items-center gap-0.5 ${
-                      telemetry?.wifiConnected ? 'text-emerald-400' : 'text-zinc-600'
+                      telemetry?.wifiConnected ? 'text-[#ECEAE4]' : 'text-[#A3A6AD]/60'
                     }`}
                     title={
                       telemetry?.wifiConnected
@@ -1205,14 +1233,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     type="button"
                     onClick={onPullFromUsb}
                     title="Refresh status & all 4 profiles"
-                    className="text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    className="text-[#ECEAE4] hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <RefreshCw className="w-2.5 h-2.5" />
                     <span>{connection.transport === 'demo' ? 'DEMO' : 'LIVE'}</span>
                   </button>
                 </>
               ) : (
-                <span className="text-zinc-500">
+                <span className="text-[#A3A6AD]/75">
                   {connection.connecting ? 'CONNECTING…' : 'OFFLINE'}
                 </span>
               )}
@@ -1236,8 +1264,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   }
                   className={`px-1.5 py-0.5 rounded bg-black border font-mono text-[10px] font-bold leading-none tracking-tight transition-colors cursor-pointer tabular-nums shrink-0 ${
                     connection.connected && oledBadgeHost !== activeBleHost
-                      ? 'border-amber-400/75 text-amber-300 hover:border-amber-300'
-                      : 'border-white/75 text-white hover:border-sky-400 hover:text-sky-200'
+                      ? 'border-[#ECEAE4]/50 text-[#A3A6AD] hover:border-[#ECEAE4]'
+                      : 'border-[#ECEAE4]/80 text-[#ECEAE4] hover:bg-[#ECEAE4] hover:text-[#14161B]'
                   }`}
                 >
                   [H{oledBadgeHost}]
@@ -1261,7 +1289,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               <div className="order-2 @[580px]:order-1 grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center shrink-0">
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
-              <div className="order-1 @[580px]:order-2 shrink-0 flex flex-row flex-wrap @[580px]:flex-col items-center justify-center gap-4 sm:gap-5 @[580px]:pl-6 @[580px]:border-l @[580px]:border-white/10 @[580px]:self-stretch">
+              <div className="order-1 @[580px]:order-2 shrink-0 flex flex-row flex-wrap @[580px]:flex-col items-center justify-center gap-4 sm:gap-5 @[580px]:pl-6 @[580px]:border-l @[580px]:border-[#ECEAE4]/10 @[580px]:self-stretch">
                 {renderEncoderUnit(1)}
                 {renderEncoderUnit(2)}
               </div>
@@ -1274,8 +1302,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       {(conflicts.length > 0 && viewMode === 'edit') || viewMode === 'test' ? (
         <div className="w-full max-w-2xl space-y-2 shrink-0">
           {conflicts.length > 0 && viewMode === 'edit' && (
-            <div className="px-3.5 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-700 dark:text-amber-300">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+            <div className="px-3.5 py-2.5 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)] flex items-center gap-2.5 text-xs text-[var(--text-primary)]">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-[var(--accent)]" />
               <span>{conflicts[0].summary}</span>
             </div>
           )}

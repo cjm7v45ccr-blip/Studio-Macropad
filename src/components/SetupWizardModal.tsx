@@ -595,15 +595,18 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white shrink-0">
-              <Cpu className="w-4 h-4" />
-            </div>
+            <img
+              src="/logo-mark-dark.svg"
+              alt=""
+              aria-hidden="true"
+              className="w-9 h-9 rounded-xl object-contain shrink-0"
+            />
             <div className="min-w-0">
               <h2
                 id="setup-wizard-title"
                 className="text-sm sm:text-base font-bold text-[var(--text-primary)] truncate"
               >
-                Studio MacroPad Guided Setup
+                BertoPad Guided Setup
               </h2>
               <div className="flex items-center gap-1.5 text-[11px] font-mono text-[var(--text-muted)] tabular-nums truncate">
                 <span>
@@ -666,7 +669,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
             <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-0.5 text-xs">
                 <div className="font-semibold text-[var(--text-primary)]">
-                  No MacroPad connected over USB yet
+                  No BertoPad connected over USB yet
                 </div>
                 <p className="text-[var(--text-muted)]">
                   Connect your pad via USB to provision Bluetooth, Wi-Fi, and NVS profiles directly, or test with Demo Setup Mode.
@@ -683,7 +686,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 <button
                   type="button"
                   onClick={onConnectUsbPad}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Usb className="w-3.5 h-3.5" />
                   <span>Connect USB</span>
@@ -805,7 +808,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     Name your 3 Bluetooth Host slots
                   </div>
                   <span className="text-[11px] text-[var(--text-muted)]">
-                    Saved directly on your MacroPad (1–20 chars)
+                    Saved directly on your BertoPad (1–20 chars)
                   </span>
                 </div>
 
@@ -857,7 +860,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                         aria-label={`${h.label} profile name`}
                         placeholder={h.label}
                         className={`w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] border text-xs text-[var(--text-primary)] focus:outline-none ${
-                          h.err ? 'border-rose-500' : 'border-[var(--border-subtle)] focus:border-[var(--accent)]'
+                          h.err ? 'border-[#D97706]' : 'border-[var(--border-subtle)] focus:border-[var(--accent)]'
                         }`}
                       />
                       <select
@@ -872,7 +875,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                         <option value="linux">Linux / Browser Layout</option>
                         <option value="keep">Keep Current Keys</option>
                       </select>
-                      {h.err && <div className="text-[10px] text-rose-400">{h.err}</div>}
+                      {h.err && <div className="text-[10px] text-[#D97706]">{h.err}</div>}
                     </div>
                   ))}
                 </div>
@@ -902,7 +905,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-4">
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-2">
-                        <Tv className="w-4 h-4 text-purple-400 shrink-0" />
+                        <Tv className="w-4 h-4 text-[var(--accent)] shrink-0" />
                         <span
                           id="wizard-tv-mode-label"
                           className="text-xs font-semibold text-[var(--text-primary)]"
@@ -927,11 +930,13 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       onClick={handleToggleWizardTvMode}
                       className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                         tvModeBusy ? 'opacity-45 cursor-not-allowed' : 'cursor-pointer'
-                      } ${wizardTvEnabled ? 'bg-[var(--accent)]' : 'bg-zinc-600'}`}
+                      } ${wizardTvEnabled ? 'bg-[var(--accent)]' : 'bg-[var(--bg-elevated)] border-[var(--border-strong)]'}`}
                     >
                       <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                          wizardTvEnabled ? 'translate-x-5' : 'translate-x-0'
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          wizardTvEnabled
+                            ? 'translate-x-5 bg-[var(--accent-contrast)]'
+                            : 'translate-x-0 bg-[var(--text-muted)]'
                         }`}
                       />
                     </button>
@@ -949,7 +954,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   02. Pair Bluetooth Hosts
                 </h3>
                 <p className="text-xs text-[var(--text-muted)]">
-                  Your MacroPad advertises 3 independent Bluetooth identities (<span className="font-mono">Studio Pad 1–3</span>) so you can switch between your computer, laptop, and phone without re-pairing.
+                  Your BertoPad advertises 3 independent Bluetooth identities (<span className="font-mono">Studio Pad 1–3</span>) so you can switch between your computer, laptop, and phone without re-pairing.
                 </p>
               </div>
 
@@ -959,7 +964,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     <Bluetooth
                       className={`w-5 h-5 shrink-0 ${
                         connection.connected && telemetry?.bleConnected
-                          ? 'text-sky-400'
+                          ? 'text-[var(--accent)]'
                           : 'text-[var(--text-muted)]'
                       }`}
                     />
@@ -980,7 +985,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   {connection.connected && (
                     <span
                       className={`text-xs font-mono font-semibold tabular-nums whitespace-nowrap shrink-0 ${
-                        telemetry?.bleConnected ? 'text-emerald-400' : 'text-amber-300'
+                        telemetry?.bleConnected ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
                       }`}
                     >
                       {telemetry?.bleConnected ? 'Paired & Connected' : 'Waiting to Pair'}
@@ -1067,7 +1072,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     03. Wi-Fi & Smart TV Setup (Optional)
                   </h3>
                   <p className="text-xs text-[var(--text-muted)]">
-                    Only needed if you want your MacroPad to control a Vizio SmartCast TV over local Wi-Fi. Bluetooth keyboard and media controls work without Wi-Fi.
+                    Only needed if you want your BertoPad to control a Vizio SmartCast TV over local Wi-Fi. Bluetooth keyboard and media controls work without Wi-Fi.
                   </p>
                 </div>
               </div>
@@ -1076,7 +1081,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
               <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-3">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-                    <Wifi className="w-4 h-4 text-emerald-400" />
+                    <Wifi className="w-4 h-4 text-[var(--accent)]" />
                     <span>2.4 GHz Wi-Fi Network</span>
                   </div>
                   <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
@@ -1116,7 +1121,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     type="button"
                     disabled={!connection.connected || wifiBusy || !wifiSsid.trim()}
                     onClick={handleSaveWifi}
-                    className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+                    className="px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
                   >
                     {wifiBusy && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
                     <span>{wifiBusy ? 'Connecting…' : 'Connect Wi-Fi'}</span>
@@ -1127,14 +1132,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   <div
                     className={`p-2.5 rounded-lg border text-xs flex items-start gap-2 ${
                       wifiBanner.ok
-                        ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-300'
-                        : 'bg-rose-500/10 border-rose-500/35 text-rose-300'
+                        ? 'bg-[var(--accent-soft)] border-[rgba(var(--accent-rgb),0.35)] text-[var(--text-primary)]'
+                        : 'bg-[var(--bg-elevated)] border-[var(--border-strong)] text-[var(--text-primary)]'
                     }`}
                   >
                     {wifiBanner.ok ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <CheckCircle2 className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
                     ) : (
-                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                      <AlertCircle className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
                     )}
                     <span>{wifiBanner.text}</span>
                   </div>
@@ -1145,7 +1150,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
               <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-3">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-                    <Tv className="w-4 h-4 text-purple-400" />
+                    <Tv className="w-4 h-4 text-[var(--accent)]" />
                     <span>Vizio SmartCast TV Profile</span>
                   </div>
                   <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
@@ -1170,7 +1175,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       placeholder="Living Room TV"
                       className={`w-full px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border text-xs text-[var(--text-primary)] focus:outline-none ${
                         aliasErrors.tv
-                          ? 'border-rose-500'
+                          ? 'border-[#D97706]'
                           : 'border-[var(--border-subtle)] focus:border-[var(--accent)]'
                       }`}
                     />
@@ -1237,7 +1242,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       type="button"
                       disabled={tvBusy || !tvPin.trim()}
                       onClick={handleSubmitTvPin}
-                      className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
+                      className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
                     >
                       Submit PIN
                     </button>
@@ -1248,14 +1253,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   <div
                     className={`p-2.5 rounded-lg border text-xs flex items-start gap-2 ${
                       tvBanner.ok
-                        ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-300'
-                        : 'bg-rose-500/10 border-rose-500/35 text-rose-300'
+                        ? 'bg-[var(--accent-soft)] border-[rgba(var(--accent-rgb),0.35)] text-[var(--text-primary)]'
+                        : 'bg-[var(--bg-elevated)] border-[var(--border-strong)] text-[var(--text-primary)]'
                     }`}
                   >
                     {tvBanner.ok ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <CheckCircle2 className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
                     ) : (
-                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                      <AlertCircle className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
                     )}
                     <span>{tvBanner.text}</span>
                   </div>
@@ -1272,7 +1277,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   {wizardTvEnabled ? '04' : '03'}. Verify Hardware & Save to Pad
                 </h3>
                 <p className="text-xs text-[var(--text-muted)]">
-                  Press any physical key or turn the knob on your MacroPad to verify live communication, then save your setup to non-volatile memory.
+                  Press any physical key or turn the knob on your BertoPad to verify live communication, then save your setup to non-volatile memory.
                 </p>
               </div>
 
@@ -1283,7 +1288,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     Live Switch & Encoder Check
                   </div>
                   {detectedInput ? (
-                    <div className="flex items-center gap-2 text-xs text-emerald-400 font-mono tabular-nums">
+                    <div className="flex items-center gap-2 text-xs text-[var(--accent)] font-mono tabular-nums">
                       <CheckCircle2 className="w-4 h-4 shrink-0" />
                       <span>
                         Detected {detectedInput.slotLabel} · {detectedInput.actionLabel} ({detectedInput.timestamp})
@@ -1292,8 +1297,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   ) : (
                     <div className="text-xs text-[var(--text-muted)]">
                       {connection.connected
-                        ? 'Waiting for a button press or knob turn on your MacroPad…'
-                        : 'Connect your MacroPad via USB to test physical switches live.'}
+                        ? 'Waiting for a button press or knob turn on your BertoPad…'
+                        : 'Connect your BertoPad via USB to test physical switches live.'}
                     </div>
                   )}
                 </div>
@@ -1410,7 +1415,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   }
                   setStep(s => (s === 1 && !wizardTvEnabled ? 3 : Math.min(3, s + 1)));
                 }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
               >
                 <span>Continue</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -1420,7 +1425,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 type="button"
                 disabled={finishing}
                 onClick={handleFinishWizard}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-50 cursor-pointer whitespace-nowrap shrink-0"
               >
                 {finishing ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />

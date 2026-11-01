@@ -415,7 +415,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         metaParts: [`${prof.name} (${profileShortTag(prof.id)})`, 'Key 9'],
         searchBlob: `hardware mode switch key 9 k9 9th button profile toggle bluetooth ble host 1 2 3 dial setup oled ${prof.name} ${prof.id} ${profileShortTag(prof.id)}`.toLowerCase(),
         icon: 'layers',
-        iconColor: '#38BDF8',
+        iconColor: '#F2A33A',
         assignedProfileId: prof.id,
         assignedControlId: 'k9'
       });
@@ -435,7 +435,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         metaParts: ['Starter Recipe', tpl.summary],
         searchBlob: `${tpl.name} ${tpl.summary} ${stepKeywords} starter template recipe multi step sequence macro`.toLowerCase(),
         icon: 'zap',
-        iconColor: '#38BDF8',
+        iconColor: '#F2A33A',
         action: compiled.action,
         binding: compiled.binding,
         customMacroId: existingSaved?.id,
@@ -457,7 +457,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         ],
         searchBlob: `${preset.title} ${preset.subtitle} ${preset.description} ${preset.mode} ${profileShortTag(preset.mode)} preset layout profile`.toLowerCase(),
         icon: bleMode ? 'monitor' : 'tv',
-        iconColor: bleMode ? '#3B82F6' : '#10B981',
+        iconColor: bleMode ? '#F2A33A' : '#ECEAE4',
         presetMode: preset.mode,
         presetBindings: preset.bindings
       });
@@ -936,7 +936,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           });
                           setIsOpen(false);
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
                       >
                         <Sliders className="w-3.5 h-3.5" />
                         <span>Build “{query.trim().slice(0, 28)}” in Macro Builder</span>
@@ -1049,7 +1049,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           onClick={() => handlePrimaryAction(entry)}
                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                             isHighlighted
-                              ? 'bg-[var(--accent)] text-white shadow-xs'
+                              ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-xs'
                               : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                           }`}
                         >

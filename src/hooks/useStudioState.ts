@@ -104,7 +104,7 @@ const DEFAULT_HOST_OS_MAP: HostOsMap = {
 
 const DEFAULT_SETTINGS: StudioSettings = {
   theme: 'dark',
-  accentColor: '#3B82F6',
+  accentColor: '#F2A33A',
   keyboardLayout: 'us_qwerty',
   encoderPlacement: 'grid',
   soundEnabled: true,
@@ -114,16 +114,6 @@ const DEFAULT_SETTINGS: StudioSettings = {
   hostOsMap: DEFAULT_HOST_OS_MAP,
   showAdvancedIds: false
 };
-
-function hexToRgbString(hex: string): string {
-  const clean = hex.replace('#', '');
-  if (clean.length !== 6) return '59, 130, 246';
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
-  if ([r, g, b].some(v => Number.isNaN(v))) return '59, 130, 246';
-  return `${r}, ${g}, ${b}`;
-}
 
 function migrateRepeatConfigs(rawRepeats?: SlotRepeatMap): SlotRepeatMap {
   if (!rawRepeats) return {};
@@ -931,7 +921,7 @@ export function useStudioState(
   tvEnabledRef.current = tvEnabled;
   const latestConfigEventRevRef = useRef<number | null>(null);
 
-  // Sync theme (System / Dark / Light), accent color, sound, and live events flag
+  // Sync theme (System / Dark / Light), brand-tokens --accent, sound, and live events flag
   useEffect(() => {
     const root = document.documentElement;
     const applyResolvedTheme = () => {
@@ -945,11 +935,14 @@ export function useStudioState(
       }
       root.setAttribute('data-theme', resolved);
       root.classList.toggle('dark', resolved === 'dark');
+      root.style.removeProperty('--accent');
+      root.style.setProperty(
+        '--accent-rgb',
+        resolved === 'light' ? '217, 119, 6' : '242, 163, 58'
+      );
     };
 
     applyResolvedTheme();
-    root.style.setProperty('--accent', settings.accentColor);
-    root.style.setProperty('--accent-rgb', hexToRgbString(settings.accentColor));
     soundEngine.setEnabled(settings.soundEnabled);
     usbHardware.setEventsEnabled(settings.liveEventsEnabled);
 
@@ -2828,7 +2821,7 @@ export function useStudioState(
             });
           }
           if (validIncoming.length === 0) {
-            onToast('JSON file did not contain valid Studio MacroPad actions', 'error');
+            onToast('JSON file did not contain valid BertoPad actions', 'error');
             return;
           }
           const beforeCount = snapshotRef.current.customMacros.length;

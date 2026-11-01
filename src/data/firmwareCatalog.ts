@@ -103,92 +103,92 @@ export interface FirmwareActionSpec {
 
 export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   // MEDIA:* (8)
-  { action: 'MEDIA:PLAY_PAUSE', label: 'Play / Pause', shortLabel: 'Play/Pause', description: 'BLE Media Play / Pause toggle', category: 'media', icon: 'play', color: '#38BDF8' },
-  { action: 'MEDIA:MUTE', label: 'Mute Audio', shortLabel: 'Mute', description: 'BLE Master speaker mute toggle', category: 'media', icon: 'volume-x', color: '#F87171' },
-  { action: 'MEDIA:VOL_UP', label: 'Volume Up', shortLabel: 'Vol +', description: 'BLE Master volume up', category: 'media', icon: 'volume-2', color: '#34D399' },
-  { action: 'MEDIA:VOL_DOWN', label: 'Volume Down', shortLabel: 'Vol -', description: 'BLE Master volume down', category: 'media', icon: 'volume-1', color: '#60A5FA' },
-  { action: 'MEDIA:NEXT', label: 'Next Track', shortLabel: 'Next', description: 'BLE Skip to next track', category: 'media', icon: 'skip-forward', color: '#A78BFA' },
-  { action: 'MEDIA:PREV', label: 'Previous Track', shortLabel: 'Prev', description: 'BLE Return to previous track', category: 'media', icon: 'skip-back', color: '#A78BFA' },
-  { action: 'MEDIA:BRIGHT_UP', label: 'Brightness Up', shortLabel: 'Bright +', description: 'BLE Display brightness up', category: 'media', icon: 'sun', color: '#FBBF24' },
-  { action: 'MEDIA:BRIGHT_DOWN', label: 'Brightness Down', shortLabel: 'Bright -', description: 'BLE Display brightness down', category: 'media', icon: 'sun-dim', color: '#38BDF8' },
+  { action: 'MEDIA:PLAY_PAUSE', label: 'Play / Pause', shortLabel: 'Play/Pause', description: 'BLE Media Play / Pause toggle', category: 'media', icon: 'play', color: '#ECEAE4' },
+  { action: 'MEDIA:MUTE', label: 'Mute Audio', shortLabel: 'Mute', description: 'BLE Master speaker mute toggle', category: 'media', icon: 'volume-x', color: '#F2A33A' },
+  { action: 'MEDIA:VOL_UP', label: 'Volume Up', shortLabel: 'Vol +', description: 'BLE Master volume up', category: 'media', icon: 'volume-2', color: '#ECEAE4' },
+  { action: 'MEDIA:VOL_DOWN', label: 'Volume Down', shortLabel: 'Vol -', description: 'BLE Master volume down', category: 'media', icon: 'volume-1', color: '#ECEAE4' },
+  { action: 'MEDIA:NEXT', label: 'Next Track', shortLabel: 'Next', description: 'BLE Skip to next track', category: 'media', icon: 'skip-forward', color: '#ECEAE4' },
+  { action: 'MEDIA:PREV', label: 'Previous Track', shortLabel: 'Prev', description: 'BLE Return to previous track', category: 'media', icon: 'skip-back', color: '#ECEAE4' },
+  { action: 'MEDIA:BRIGHT_UP', label: 'Brightness Up', shortLabel: 'Bright +', description: 'BLE Display brightness up', category: 'media', icon: 'sun', color: '#F2A33A' },
+  { action: 'MEDIA:BRIGHT_DOWN', label: 'Brightness Down', shortLabel: 'Bright -', description: 'BLE Display brightness down', category: 'media', icon: 'sun-dim', color: '#F2A33A' },
 
   // KEY:F13..F16 (4)
-  { action: 'KEY:F13', label: 'F13 Function Key', shortLabel: 'F13', description: 'BLE Aux function key F13', category: 'media', icon: 'zap', color: '#A78BFA' },
-  { action: 'KEY:F14', label: 'F14 Function Key', shortLabel: 'F14', description: 'BLE Aux function key F14', category: 'media', icon: 'sparkles', color: '#38BDF8' },
-  { action: 'KEY:F15', label: 'F15 Function Key', shortLabel: 'F15', description: 'BLE Aux function key F15', category: 'media', icon: 'sliders', color: '#34D399' },
-  { action: 'KEY:F16', label: 'F16 Function Key', shortLabel: 'F16', description: 'BLE Aux function key F16', category: 'media', icon: 'layers', color: '#FBBF24' },
+  { action: 'KEY:F13', label: 'F13 Function Key', shortLabel: 'F13', description: 'BLE Aux function key F13', category: 'media', icon: 'zap', color: '#ECEAE4' },
+  { action: 'KEY:F14', label: 'F14 Function Key', shortLabel: 'F14', description: 'BLE Aux function key F14', category: 'media', icon: 'sparkles', color: '#ECEAE4' },
+  { action: 'KEY:F15', label: 'F15 Function Key', shortLabel: 'F15', description: 'BLE Aux function key F15', category: 'media', icon: 'sliders', color: '#ECEAE4' },
+  { action: 'KEY:F16', label: 'F16 Function Key', shortLabel: 'F16', description: 'BLE Aux function key F16', category: 'media', icon: 'layers', color: '#ECEAE4' },
 
   // MACRO:* macOS Built-ins (11)
-  { action: 'MACRO:COPY', label: 'Copy (⌘C)', shortLabel: 'Copy', description: 'macOS Command + C', category: 'mac_macro', icon: 'copy', color: '#60A5FA' },
-  { action: 'MACRO:PASTE', label: 'Paste (⌘V)', shortLabel: 'Paste', description: 'macOS Command + V', category: 'mac_macro', icon: 'paste', color: '#60A5FA' },
-  { action: 'MACRO:CUT', label: 'Cut (⌘X)', shortLabel: 'Cut', description: 'macOS Command + X', category: 'mac_macro', icon: 'scissors', color: '#F472B6' },
-  { action: 'MACRO:UNDO', label: 'Undo (⌘Z)', shortLabel: 'Undo', description: 'macOS Command + Z', category: 'mac_macro', icon: 'undo', color: '#FBBF24' },
-  { action: 'MACRO:REDO', label: 'Redo (⌘⇧Z)', shortLabel: 'Redo', description: 'macOS Command + Shift + Z', category: 'mac_macro', icon: 'redo', color: '#FBBF24' },
-  { action: 'MACRO:SELECT_ALL', label: 'Select All (⌘A)', shortLabel: 'Select All', description: 'macOS Command + A', category: 'mac_macro', icon: 'check-square', color: '#A78BFA' },
-  { action: 'MACRO:SAVE', label: 'Save (⌘S)', shortLabel: 'Save', description: 'macOS Command + S', category: 'mac_macro', icon: 'save', color: '#34D399' },
-  { action: 'MACRO:SPOTLIGHT', label: 'Spotlight (⌘Space)', shortLabel: 'Spotlight', description: 'macOS Command + Space search', category: 'mac_macro', icon: 'search', color: '#38BDF8' },
-  { action: 'MACRO:LOCK', label: 'Lock Mac (⌃⌘Q)', shortLabel: 'Lock Mac', description: 'macOS Control + Command + Q', category: 'mac_macro', icon: 'lock', color: '#F87171' },
-  { action: 'MACRO:NEW_TAB', label: 'New Tab (⌘T)', shortLabel: 'New Tab', description: 'macOS Command + T', category: 'mac_macro', icon: 'globe', color: '#34D399' },
-  { action: 'MACRO:CLOSE_TAB', label: 'Close Tab (⌘W)', shortLabel: 'Close Tab', description: 'macOS Command + W', category: 'mac_macro', icon: 'x', color: '#F87171' },
+  { action: 'MACRO:COPY', label: 'Copy (⌘C)', shortLabel: 'Copy', description: 'macOS Command + C', category: 'mac_macro', icon: 'copy', color: '#ECEAE4' },
+  { action: 'MACRO:PASTE', label: 'Paste (⌘V)', shortLabel: 'Paste', description: 'macOS Command + V', category: 'mac_macro', icon: 'paste', color: '#ECEAE4' },
+  { action: 'MACRO:CUT', label: 'Cut (⌘X)', shortLabel: 'Cut', description: 'macOS Command + X', category: 'mac_macro', icon: 'scissors', color: '#ECEAE4' },
+  { action: 'MACRO:UNDO', label: 'Undo (⌘Z)', shortLabel: 'Undo', description: 'macOS Command + Z', category: 'mac_macro', icon: 'undo', color: '#ECEAE4' },
+  { action: 'MACRO:REDO', label: 'Redo (⌘⇧Z)', shortLabel: 'Redo', description: 'macOS Command + Shift + Z', category: 'mac_macro', icon: 'redo', color: '#ECEAE4' },
+  { action: 'MACRO:SELECT_ALL', label: 'Select All (⌘A)', shortLabel: 'Select All', description: 'macOS Command + A', category: 'mac_macro', icon: 'check-square', color: '#ECEAE4' },
+  { action: 'MACRO:SAVE', label: 'Save (⌘S)', shortLabel: 'Save', description: 'macOS Command + S', category: 'mac_macro', icon: 'save', color: '#ECEAE4' },
+  { action: 'MACRO:SPOTLIGHT', label: 'Spotlight (⌘Space)', shortLabel: 'Spotlight', description: 'macOS Command + Space search', category: 'mac_macro', icon: 'search', color: '#F2A33A' },
+  { action: 'MACRO:LOCK', label: 'Lock Mac (⌃⌘Q)', shortLabel: 'Lock Mac', description: 'macOS Control + Command + Q', category: 'mac_macro', icon: 'lock', color: '#F2A33A' },
+  { action: 'MACRO:NEW_TAB', label: 'New Tab (⌘T)', shortLabel: 'New Tab', description: 'macOS Command + T', category: 'mac_macro', icon: 'globe', color: '#ECEAE4' },
+  { action: 'MACRO:CLOSE_TAB', label: 'Close Tab (⌘W)', shortLabel: 'Close Tab', description: 'macOS Command + W', category: 'mac_macro', icon: 'x', color: '#ECEAE4' },
 
   // WIN:* Windows Built-ins (16)
-  { action: 'WIN:COPY', label: 'Copy (Ctrl+C)', shortLabel: 'Copy', description: 'Windows Ctrl + C', category: 'win_macro', icon: 'copy', color: '#38BDF8' },
-  { action: 'WIN:PASTE', label: 'Paste (Ctrl+V)', shortLabel: 'Paste', description: 'Windows Ctrl + V', category: 'win_macro', icon: 'paste', color: '#38BDF8' },
-  { action: 'WIN:CUT', label: 'Cut (Ctrl+X)', shortLabel: 'Cut', description: 'Windows Ctrl + X', category: 'win_macro', icon: 'scissors', color: '#F472B6' },
-  { action: 'WIN:UNDO', label: 'Undo (Ctrl+Z)', shortLabel: 'Undo', description: 'Windows Ctrl + Z', category: 'win_macro', icon: 'undo', color: '#FBBF24' },
-  { action: 'WIN:REDO', label: 'Redo (Ctrl+Y)', shortLabel: 'Redo', description: 'Windows Ctrl + Y', category: 'win_macro', icon: 'redo', color: '#FBBF24' },
-  { action: 'WIN:SELECT_ALL', label: 'Select All (Ctrl+A)', shortLabel: 'Select All', description: 'Windows Ctrl + A', category: 'win_macro', icon: 'check-square', color: '#A78BFA' },
-  { action: 'WIN:SAVE', label: 'Save (Ctrl+S)', shortLabel: 'Save', description: 'Windows Ctrl + S', category: 'win_macro', icon: 'save', color: '#34D399' },
-  { action: 'WIN:NEW_TAB', label: 'New Tab (Ctrl+T)', shortLabel: 'New Tab', description: 'Windows Ctrl + T', category: 'win_macro', icon: 'globe', color: '#34D399' },
-  { action: 'WIN:CLOSE_TAB', label: 'Close Tab (Ctrl+W)', shortLabel: 'Close Tab', description: 'Windows Ctrl + W', category: 'win_macro', icon: 'x', color: '#F87171' },
-  { action: 'WIN:LOCK', label: 'Lock Screen (Win+L)', shortLabel: 'Lock', description: 'Windows + L lock screen', category: 'win_macro', icon: 'lock', color: '#F87171' },
-  { action: 'WIN:SEARCH', label: 'Search (Win+S)', shortLabel: 'Search', description: 'Windows + S search bar', category: 'win_macro', icon: 'search', color: '#38BDF8' },
-  { action: 'WIN:EXPLORER', label: 'File Explorer (Win+E)', shortLabel: 'Explorer', description: 'Windows + E File Explorer', category: 'win_macro', icon: 'folder', color: '#FBBF24' },
-  { action: 'WIN:TASK_MGR', label: 'Task Manager', shortLabel: 'Task Mgr', description: 'Ctrl + Shift + Esc', category: 'win_macro', icon: 'terminal', color: '#A78BFA' },
-  { action: 'WIN:SNIP', label: 'Screenshot Snip', shortLabel: 'Snip', description: 'Win + Shift + S screen snip', category: 'win_macro', icon: 'camera', color: '#34D399' },
-  { action: 'WIN:DESKTOP', label: 'Show Desktop (Win+D)', shortLabel: 'Desktop', description: 'Windows + D toggle desktop', category: 'win_macro', icon: 'monitor', color: '#60A5FA' },
-  { action: 'WIN:RUN', label: 'Run Dialog (Win+R)', shortLabel: 'Run', description: 'Windows + R command prompt', category: 'win_macro', icon: 'play-circle', color: '#38BDF8' },
+  { action: 'WIN:COPY', label: 'Copy (Ctrl+C)', shortLabel: 'Copy', description: 'Windows Ctrl + C', category: 'win_macro', icon: 'copy', color: '#ECEAE4' },
+  { action: 'WIN:PASTE', label: 'Paste (Ctrl+V)', shortLabel: 'Paste', description: 'Windows Ctrl + V', category: 'win_macro', icon: 'paste', color: '#ECEAE4' },
+  { action: 'WIN:CUT', label: 'Cut (Ctrl+X)', shortLabel: 'Cut', description: 'Windows Ctrl + X', category: 'win_macro', icon: 'scissors', color: '#ECEAE4' },
+  { action: 'WIN:UNDO', label: 'Undo (Ctrl+Z)', shortLabel: 'Undo', description: 'Windows Ctrl + Z', category: 'win_macro', icon: 'undo', color: '#ECEAE4' },
+  { action: 'WIN:REDO', label: 'Redo (Ctrl+Y)', shortLabel: 'Redo', description: 'Windows Ctrl + Y', category: 'win_macro', icon: 'redo', color: '#ECEAE4' },
+  { action: 'WIN:SELECT_ALL', label: 'Select All (Ctrl+A)', shortLabel: 'Select All', description: 'Windows Ctrl + A', category: 'win_macro', icon: 'check-square', color: '#ECEAE4' },
+  { action: 'WIN:SAVE', label: 'Save (Ctrl+S)', shortLabel: 'Save', description: 'Windows Ctrl + S', category: 'win_macro', icon: 'save', color: '#ECEAE4' },
+  { action: 'WIN:NEW_TAB', label: 'New Tab (Ctrl+T)', shortLabel: 'New Tab', description: 'Windows Ctrl + T', category: 'win_macro', icon: 'globe', color: '#ECEAE4' },
+  { action: 'WIN:CLOSE_TAB', label: 'Close Tab (Ctrl+W)', shortLabel: 'Close Tab', description: 'Windows Ctrl + W', category: 'win_macro', icon: 'x', color: '#ECEAE4' },
+  { action: 'WIN:LOCK', label: 'Lock Screen (Win+L)', shortLabel: 'Lock', description: 'Windows + L lock screen', category: 'win_macro', icon: 'lock', color: '#F2A33A' },
+  { action: 'WIN:SEARCH', label: 'Search (Win+S)', shortLabel: 'Search', description: 'Windows + S search bar', category: 'win_macro', icon: 'search', color: '#F2A33A' },
+  { action: 'WIN:EXPLORER', label: 'File Explorer (Win+E)', shortLabel: 'Explorer', description: 'Windows + E File Explorer', category: 'win_macro', icon: 'folder', color: '#ECEAE4' },
+  { action: 'WIN:TASK_MGR', label: 'Task Manager', shortLabel: 'Task Mgr', description: 'Ctrl + Shift + Esc', category: 'win_macro', icon: 'terminal', color: '#ECEAE4' },
+  { action: 'WIN:SNIP', label: 'Screenshot Snip', shortLabel: 'Snip', description: 'Win + Shift + S screen snip', category: 'win_macro', icon: 'camera', color: '#ECEAE4' },
+  { action: 'WIN:DESKTOP', label: 'Show Desktop (Win+D)', shortLabel: 'Desktop', description: 'Windows + D toggle desktop', category: 'win_macro', icon: 'monitor', color: '#ECEAE4' },
+  { action: 'WIN:RUN', label: 'Run Dialog (Win+R)', shortLabel: 'Run', description: 'Windows + R command prompt', category: 'win_macro', icon: 'play-circle', color: '#ECEAE4' },
 
   // BLE:* Multi-Host Bluetooth Engine (4)
-  { action: 'BLE:HOST1', label: 'Device 1 (Studio Pad 1)', shortLabel: 'Device 1', description: 'Switch to Device 1 virtual MAC (Studio Pad 1)', category: 'ble', icon: 'bluetooth', color: '#38BDF8' },
-  { action: 'BLE:HOST2', label: 'Device 2 (Studio Pad 2)', shortLabel: 'Device 2', description: 'Switch to Device 2 virtual MAC (Studio Pad 2)', category: 'ble', icon: 'bluetooth', color: '#60A5FA' },
-  { action: 'BLE:HOST3', label: 'Device 3 (Studio Pad 3)', shortLabel: 'Device 3', description: 'Switch to Device 3 virtual MAC (Studio Pad 3)', category: 'ble', icon: 'bluetooth', color: '#818CF8' },
-  { action: 'BLE:NEXT_HOST', label: 'Next BLE Device (Cycle 1–3)', shortLabel: 'Next Host', description: 'Cycle active Bluetooth device (Studio Pad 1 → 2 → 3)', category: 'ble', icon: 'bluetooth', color: '#34D399' },
+  { action: 'BLE:HOST1', label: 'Device 1 (Studio Pad 1)', shortLabel: 'Device 1', description: 'Switch to Device 1 virtual MAC (Studio Pad 1)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:HOST2', label: 'Device 2 (Studio Pad 2)', shortLabel: 'Device 2', description: 'Switch to Device 2 virtual MAC (Studio Pad 2)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:HOST3', label: 'Device 3 (Studio Pad 3)', shortLabel: 'Device 3', description: 'Switch to Device 3 virtual MAC (Studio Pad 3)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:NEXT_HOST', label: 'Next BLE Device (Cycle 1–3)', shortLabel: 'Next Host', description: 'Cycle active Bluetooth device (Studio Pad 1 → 2 → 3)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
 
   // TV:* SmartCast Remote (25)
-  { action: 'TV:POWER', label: 'TV Power', shortLabel: 'TV Power', description: 'SmartCast power toggle (11, 2)', category: 'tv', icon: 'power', color: '#F87171' },
-  { action: 'TV:VOL_UP', label: 'TV Volume +', shortLabel: 'TV Vol +', description: 'Increase TV volume (5, 1)', category: 'tv', icon: 'volume-2', color: '#34D399' },
-  { action: 'TV:VOL_DOWN', label: 'TV Volume -', shortLabel: 'TV Vol -', description: 'Decrease TV volume (5, 0)', category: 'tv', icon: 'volume-1', color: '#60A5FA' },
-  { action: 'TV:MUTE', label: 'TV Mute', shortLabel: 'TV Mute', description: 'Mute TV audio (5, 4)', category: 'tv', icon: 'volume-x', color: '#FBBF24' },
-  { action: 'TV:HOME', label: 'TV Home', shortLabel: 'TV Home', description: 'SmartCast Home screen (4, 3)', category: 'tv', icon: 'tv', color: '#38BDF8' },
-  { action: 'TV:INPUT', label: 'TV Input', shortLabel: 'Input', description: 'Cycle HDMI / Input source (7, 1)', category: 'tv', icon: 'monitor-up', color: '#A78BFA' },
-  { action: 'TV:OK', label: 'TV OK / Select', shortLabel: 'TV OK', description: 'Confirm selection (3, 2)', category: 'tv', icon: 'check-square', color: '#34D399' },
-  { action: 'TV:BACK', label: 'TV Back', shortLabel: 'TV Back', description: 'Navigate back (4, 0)', category: 'tv', icon: 'undo', color: '#F3F4F6' },
-  { action: 'TV:EXIT', label: 'TV Exit', shortLabel: 'TV Exit', description: 'Close TV overlay (9, 0)', category: 'tv', icon: 'x', color: '#F87171' },
-  { action: 'TV:UP', label: 'D-Pad Up', shortLabel: 'TV Up', description: 'Navigate up (3, 8)', category: 'tv', icon: 'arrow-up', color: '#F3F4F6' },
-  { action: 'TV:DOWN', label: 'D-Pad Down', shortLabel: 'TV Down', description: 'Navigate down (3, 0)', category: 'tv', icon: 'arrow-down', color: '#F3F4F6' },
-  { action: 'TV:LEFT', label: 'D-Pad Left', shortLabel: 'TV Left', description: 'Navigate left (3, 1)', category: 'tv', icon: 'arrow-left', color: '#F3F4F6' },
-  { action: 'TV:RIGHT', label: 'D-Pad Right', shortLabel: 'TV Right', description: 'Navigate right (3, 7)', category: 'tv', icon: 'arrow-right', color: '#F3F4F6' },
-  { action: 'TV:MENU', label: 'TV Settings Menu', shortLabel: 'TV Menu', description: 'Open TV settings (4, 8)', category: 'tv', icon: 'sliders', color: '#60A5FA' },
-  { action: 'TV:INFO', label: 'TV Info', shortLabel: 'TV Info', description: 'Display channel/input banner (4, 15)', category: 'tv', icon: 'sparkles', color: '#38BDF8' },
-  { action: 'TV:GUIDE', label: 'TV Guide', shortLabel: 'Guide', description: 'Open program guide (4, 12)', category: 'tv', icon: 'layout-grid', color: '#A78BFA' },
-  { action: 'TV:CC', label: 'Closed Captions', shortLabel: 'CC', description: 'Toggle subtitles (4, 4)', category: 'tv', icon: 'message-square', color: '#FBBF24' },
-  { action: 'TV:CH_UP', label: 'Channel Up', shortLabel: 'Ch +', description: 'Next channel (8, 1)', category: 'tv', icon: 'arrow-up', color: '#34D399' },
-  { action: 'TV:CH_DOWN', label: 'Channel Down', shortLabel: 'Ch -', description: 'Previous channel (8, 0)', category: 'tv', icon: 'arrow-down', color: '#60A5FA' },
-  { action: 'TV:PREV_CH', label: 'Last Channel', shortLabel: 'Prev Ch', description: 'Return to previous channel (8, 2)', category: 'tv', icon: 'repeat', color: '#A78BFA' },
-  { action: 'TV:PLAY', label: 'TV Play', shortLabel: 'TV Play', description: 'Resume TV playback (2, 3)', category: 'tv', icon: 'play', color: '#34D399' },
-  { action: 'TV:PAUSE', label: 'TV Pause', shortLabel: 'TV Pause', description: 'Pause TV playback (2, 2)', category: 'tv', icon: 'pause', color: '#FBBF24' },
-  { action: 'TV:STOP', label: 'TV Stop', shortLabel: 'TV Stop', description: 'Stop TV stream (2, 9)', category: 'tv', icon: 'square', color: '#F87171' },
-  { action: 'TV:REWIND', label: 'TV Rewind', shortLabel: 'Rewind', description: 'Rewind media (2, 1)', category: 'tv', icon: 'skip-back', color: '#60A5FA' },
-  { action: 'TV:FFWD', label: 'TV Fast Forward', shortLabel: 'Fast Fwd', description: 'Fast forward media (2, 0)', category: 'tv', icon: 'skip-forward', color: '#60A5FA' },
+  { action: 'TV:POWER', label: 'TV Power', shortLabel: 'TV Power', description: 'SmartCast power toggle (11, 2)', category: 'tv', icon: 'power', color: '#F2A33A' },
+  { action: 'TV:VOL_UP', label: 'TV Volume +', shortLabel: 'TV Vol +', description: 'Increase TV volume (5, 1)', category: 'tv', icon: 'volume-2', color: '#ECEAE4' },
+  { action: 'TV:VOL_DOWN', label: 'TV Volume -', shortLabel: 'TV Vol -', description: 'Decrease TV volume (5, 0)', category: 'tv', icon: 'volume-1', color: '#ECEAE4' },
+  { action: 'TV:MUTE', label: 'TV Mute', shortLabel: 'TV Mute', description: 'Mute TV audio (5, 4)', category: 'tv', icon: 'volume-x', color: '#F2A33A' },
+  { action: 'TV:HOME', label: 'TV Home', shortLabel: 'TV Home', description: 'SmartCast Home screen (4, 3)', category: 'tv', icon: 'tv', color: '#F2A33A' },
+  { action: 'TV:INPUT', label: 'TV Input', shortLabel: 'Input', description: 'Cycle HDMI / Input source (7, 1)', category: 'tv', icon: 'monitor-up', color: '#ECEAE4' },
+  { action: 'TV:OK', label: 'TV OK / Select', shortLabel: 'TV OK', description: 'Confirm selection (3, 2)', category: 'tv', icon: 'check-square', color: '#ECEAE4' },
+  { action: 'TV:BACK', label: 'TV Back', shortLabel: 'TV Back', description: 'Navigate back (4, 0)', category: 'tv', icon: 'undo', color: '#ECEAE4' },
+  { action: 'TV:EXIT', label: 'TV Exit', shortLabel: 'TV Exit', description: 'Close TV overlay (9, 0)', category: 'tv', icon: 'x', color: '#ECEAE4' },
+  { action: 'TV:UP', label: 'D-Pad Up', shortLabel: 'TV Up', description: 'Navigate up (3, 8)', category: 'tv', icon: 'arrow-up', color: '#ECEAE4' },
+  { action: 'TV:DOWN', label: 'D-Pad Down', shortLabel: 'TV Down', description: 'Navigate down (3, 0)', category: 'tv', icon: 'arrow-down', color: '#ECEAE4' },
+  { action: 'TV:LEFT', label: 'D-Pad Left', shortLabel: 'TV Left', description: 'Navigate left (3, 1)', category: 'tv', icon: 'arrow-left', color: '#ECEAE4' },
+  { action: 'TV:RIGHT', label: 'D-Pad Right', shortLabel: 'TV Right', description: 'Navigate right (3, 7)', category: 'tv', icon: 'arrow-right', color: '#ECEAE4' },
+  { action: 'TV:MENU', label: 'TV Settings Menu', shortLabel: 'TV Menu', description: 'Open TV settings (4, 8)', category: 'tv', icon: 'sliders', color: '#ECEAE4' },
+  { action: 'TV:INFO', label: 'TV Info', shortLabel: 'TV Info', description: 'Display channel/input banner (4, 15)', category: 'tv', icon: 'sparkles', color: '#ECEAE4' },
+  { action: 'TV:GUIDE', label: 'TV Guide', shortLabel: 'Guide', description: 'Open program guide (4, 12)', category: 'tv', icon: 'layout-grid', color: '#ECEAE4' },
+  { action: 'TV:CC', label: 'Closed Captions', shortLabel: 'CC', description: 'Toggle subtitles (4, 4)', category: 'tv', icon: 'message-square', color: '#ECEAE4' },
+  { action: 'TV:CH_UP', label: 'Channel Up', shortLabel: 'Ch +', description: 'Next channel (8, 1)', category: 'tv', icon: 'arrow-up', color: '#ECEAE4' },
+  { action: 'TV:CH_DOWN', label: 'Channel Down', shortLabel: 'Ch -', description: 'Previous channel (8, 0)', category: 'tv', icon: 'arrow-down', color: '#ECEAE4' },
+  { action: 'TV:PREV_CH', label: 'Last Channel', shortLabel: 'Prev Ch', description: 'Return to previous channel (8, 2)', category: 'tv', icon: 'repeat', color: '#ECEAE4' },
+  { action: 'TV:PLAY', label: 'TV Play', shortLabel: 'TV Play', description: 'Resume TV playback (2, 3)', category: 'tv', icon: 'play', color: '#ECEAE4' },
+  { action: 'TV:PAUSE', label: 'TV Pause', shortLabel: 'TV Pause', description: 'Pause TV playback (2, 2)', category: 'tv', icon: 'pause', color: '#ECEAE4' },
+  { action: 'TV:STOP', label: 'TV Stop', shortLabel: 'TV Stop', description: 'Stop TV stream (2, 9)', category: 'tv', icon: 'square', color: '#ECEAE4' },
+  { action: 'TV:REWIND', label: 'TV Rewind', shortLabel: 'Rewind', description: 'Rewind media (2, 1)', category: 'tv', icon: 'skip-back', color: '#ECEAE4' },
+  { action: 'TV:FFWD', label: 'TV Fast Forward', shortLabel: 'Fast Fwd', description: 'Fast forward media (2, 0)', category: 'tv', icon: 'skip-forward', color: '#ECEAE4' },
 
   // APP:* SmartCast Streaming Apps (6)
-  { action: 'APP:YOUTUBE', label: 'YouTube', shortLabel: 'YouTube', description: 'Launch YouTube on Smart TV', category: 'tv_app', icon: 'video', color: '#F87171' },
-  { action: 'APP:DISNEY', label: 'Disney+', shortLabel: 'Disney+', description: 'Launch Disney+ on Smart TV', category: 'tv_app', icon: 'sparkles', color: '#60A5FA' },
-  { action: 'APP:TUBI', label: 'Tubi', shortLabel: 'Tubi', description: 'Launch Tubi on Smart TV', category: 'tv_app', icon: 'clapperboard', color: '#FBBF24' },
-  { action: 'APP:NETFLIX', label: 'Netflix', shortLabel: 'Netflix', description: 'Launch Netflix on Smart TV', category: 'tv_app', icon: 'tv', color: '#F87171' },
-  { action: 'APP:PRIME', label: 'Prime Video', shortLabel: 'Prime', description: 'Launch Prime Video on Smart TV', category: 'tv_app', icon: 'play-circle', color: '#38BDF8' },
-  { action: 'APP:APPLETV', label: 'Apple TV+', shortLabel: 'Apple TV+', description: 'Launch Apple TV+ on Smart TV', category: 'tv_app', icon: 'monitor', color: '#F3F4F6' }
+  { action: 'APP:YOUTUBE', label: 'YouTube', shortLabel: 'YouTube', description: 'Launch YouTube on Smart TV', category: 'tv_app', icon: 'video', color: '#ECEAE4' },
+  { action: 'APP:DISNEY', label: 'Disney+', shortLabel: 'Disney+', description: 'Launch Disney+ on Smart TV', category: 'tv_app', icon: 'sparkles', color: '#ECEAE4' },
+  { action: 'APP:TUBI', label: 'Tubi', shortLabel: 'Tubi', description: 'Launch Tubi on Smart TV', category: 'tv_app', icon: 'clapperboard', color: '#ECEAE4' },
+  { action: 'APP:NETFLIX', label: 'Netflix', shortLabel: 'Netflix', description: 'Launch Netflix on Smart TV', category: 'tv_app', icon: 'tv', color: '#ECEAE4' },
+  { action: 'APP:PRIME', label: 'Prime Video', shortLabel: 'Prime', description: 'Launch Prime Video on Smart TV', category: 'tv_app', icon: 'play-circle', color: '#ECEAE4' },
+  { action: 'APP:APPLETV', label: 'Apple TV+', shortLabel: 'Apple TV+', description: 'Launch Apple TV+ on Smart TV', category: 'tv_app', icon: 'monitor', color: '#ECEAE4' }
 ];
 
 const STATIC_MAP = new Map<string, FirmwareActionSpec>(
@@ -234,45 +234,45 @@ const WIN_TO_MAC_ACTION_MAP: Record<string, string> = Object.fromEntries(
 export function getShortcutsForHostOs(os: HostOsType): UnifiedShortcutSpec[] {
   if (os === 'mac') {
     return [
-      { id: 'copy', label: 'Copy', shortcutHint: '⌘C', action: 'MACRO:COPY', icon: 'copy', color: '#60A5FA', description: 'Copy selection to clipboard' },
-      { id: 'paste', label: 'Paste', shortcutHint: '⌘V', action: 'MACRO:PASTE', icon: 'paste', color: '#60A5FA', description: 'Paste from clipboard' },
-      { id: 'cut', label: 'Cut', shortcutHint: '⌘X', action: 'MACRO:CUT', icon: 'scissors', color: '#F472B6', description: 'Cut selection' },
-      { id: 'undo', label: 'Undo', shortcutHint: '⌘Z', action: 'MACRO:UNDO', icon: 'undo', color: '#FBBF24', description: 'Undo last change' },
-      { id: 'redo', label: 'Redo', shortcutHint: '⌘⇧Z', action: 'MACRO:REDO', icon: 'redo', color: '#FBBF24', description: 'Redo last change' },
-      { id: 'select_all', label: 'Select All', shortcutHint: '⌘A', action: 'MACRO:SELECT_ALL', icon: 'check-square', color: '#A78BFA', description: 'Select all content' },
-      { id: 'save', label: 'Save', shortcutHint: '⌘S', action: 'MACRO:SAVE', icon: 'save', color: '#34D399', description: 'Save current file' },
-      { id: 'zoom_in', label: 'Zoom In', shortcutHint: '⌘+', action: 'SHORTCUT:cmd:=', icon: 'zoom-in', color: '#38BDF8', description: 'Zoom in active window or canvas' },
-      { id: 'zoom_out', label: 'Zoom Out', shortcutHint: '⌘-', action: 'SHORTCUT:cmd:-', icon: 'zoom-out', color: '#60A5FA', description: 'Zoom out active window or canvas' },
-      { id: 'zoom_reset', label: 'Reset Zoom', shortcutHint: '⌘0', action: 'SHORTCUT:cmd:0', icon: 'maximize', color: '#A78BFA', description: 'Reset zoom to 100%' },
-      { id: 'bright_up', label: 'Brightness Up', shortcutHint: 'F15 / ☀+', action: 'MEDIA:BRIGHT_UP', icon: 'sun', color: '#FBBF24', description: 'Increase macOS display brightness' },
-      { id: 'bright_down', label: 'Brightness Down', shortcutHint: 'F14 / ☀-', action: 'MEDIA:BRIGHT_DOWN', icon: 'sun-dim', color: '#38BDF8', description: 'Decrease macOS display brightness' },
-      { id: 'new_tab', label: 'New Tab', shortcutHint: '⌘T', action: 'MACRO:NEW_TAB', icon: 'globe', color: '#34D399', description: 'Open new browser or editor tab' },
-      { id: 'close_tab', label: 'Close Tab', shortcutHint: '⌘W', action: 'MACRO:CLOSE_TAB', icon: 'x', color: '#F87171', description: 'Close active tab or window' },
-      { id: 'search', label: 'Spotlight Search', shortcutHint: '⌘Space', action: 'MACRO:SPOTLIGHT', icon: 'search', color: '#38BDF8', description: 'Open macOS Spotlight search' },
-      { id: 'screenshot', label: 'Screenshot', shortcutHint: '⌘⇧4', action: 'SHORTCUT:cmd,shift:4', icon: 'camera', color: '#34D399', description: 'Capture screen region' },
-      { id: 'lock', label: 'Lock Screen', shortcutHint: '⌃⌘Q', action: 'MACRO:LOCK', icon: 'lock', color: '#F87171', description: 'Lock Mac immediately' },
-      { id: 'cmd_palette', label: 'Command Palette', shortcutHint: '⌘⇧P', action: 'SHORTCUT:cmd,shift:p', icon: 'code', color: '#A78BFA', description: 'Open IDE command palette' },
-      { id: 'switch_app', label: 'Switch App', shortcutHint: '⌘Tab', action: 'SHORTCUT:cmd:tab', icon: 'layers', color: '#60A5FA', description: 'Switch to previous application' },
-      { id: 'reopen_tab', label: 'Reopen Closed Tab', shortcutHint: '⌘⇧T', action: 'SHORTCUT:cmd,shift:t', icon: 'redo', color: '#34D399', description: 'Restore closed browser tab' },
-      { id: 'reload', label: 'Reload Page', shortcutHint: '⌘R', action: 'SHORTCUT:cmd:r', icon: 'repeat', color: '#38BDF8', description: 'Refresh active page' }
+      { id: 'copy', label: 'Copy', shortcutHint: '⌘C', action: 'MACRO:COPY', icon: 'copy', color: '#ECEAE4', description: 'Copy selection to clipboard' },
+      { id: 'paste', label: 'Paste', shortcutHint: '⌘V', action: 'MACRO:PASTE', icon: 'paste', color: '#ECEAE4', description: 'Paste from clipboard' },
+      { id: 'cut', label: 'Cut', shortcutHint: '⌘X', action: 'MACRO:CUT', icon: 'scissors', color: '#ECEAE4', description: 'Cut selection' },
+      { id: 'undo', label: 'Undo', shortcutHint: '⌘Z', action: 'MACRO:UNDO', icon: 'undo', color: '#ECEAE4', description: 'Undo last change' },
+      { id: 'redo', label: 'Redo', shortcutHint: '⌘⇧Z', action: 'MACRO:REDO', icon: 'redo', color: '#ECEAE4', description: 'Redo last change' },
+      { id: 'select_all', label: 'Select All', shortcutHint: '⌘A', action: 'MACRO:SELECT_ALL', icon: 'check-square', color: '#ECEAE4', description: 'Select all content' },
+      { id: 'save', label: 'Save', shortcutHint: '⌘S', action: 'MACRO:SAVE', icon: 'save', color: '#ECEAE4', description: 'Save current file' },
+      { id: 'zoom_in', label: 'Zoom In', shortcutHint: '⌘+', action: 'SHORTCUT:cmd:=', icon: 'zoom-in', color: '#F2A33A', description: 'Zoom in active window or canvas' },
+      { id: 'zoom_out', label: 'Zoom Out', shortcutHint: '⌘-', action: 'SHORTCUT:cmd:-', icon: 'zoom-out', color: '#F2A33A', description: 'Zoom out active window or canvas' },
+      { id: 'zoom_reset', label: 'Reset Zoom', shortcutHint: '⌘0', action: 'SHORTCUT:cmd:0', icon: 'maximize', color: '#ECEAE4', description: 'Reset zoom to 100%' },
+      { id: 'bright_up', label: 'Brightness Up', shortcutHint: 'F15 / ☀+', action: 'MEDIA:BRIGHT_UP', icon: 'sun', color: '#F2A33A', description: 'Increase macOS display brightness' },
+      { id: 'bright_down', label: 'Brightness Down', shortcutHint: 'F14 / ☀-', action: 'MEDIA:BRIGHT_DOWN', icon: 'sun-dim', color: '#F2A33A', description: 'Decrease macOS display brightness' },
+      { id: 'new_tab', label: 'New Tab', shortcutHint: '⌘T', action: 'MACRO:NEW_TAB', icon: 'globe', color: '#ECEAE4', description: 'Open new browser or editor tab' },
+      { id: 'close_tab', label: 'Close Tab', shortcutHint: '⌘W', action: 'MACRO:CLOSE_TAB', icon: 'x', color: '#ECEAE4', description: 'Close active tab or window' },
+      { id: 'search', label: 'Spotlight Search', shortcutHint: '⌘Space', action: 'MACRO:SPOTLIGHT', icon: 'search', color: '#F2A33A', description: 'Open macOS Spotlight search' },
+      { id: 'screenshot', label: 'Screenshot', shortcutHint: '⌘⇧4', action: 'SHORTCUT:cmd,shift:4', icon: 'camera', color: '#ECEAE4', description: 'Capture screen region' },
+      { id: 'lock', label: 'Lock Screen', shortcutHint: '⌃⌘Q', action: 'MACRO:LOCK', icon: 'lock', color: '#F2A33A', description: 'Lock Mac immediately' },
+      { id: 'cmd_palette', label: 'Command Palette', shortcutHint: '⌘⇧P', action: 'SHORTCUT:cmd,shift:p', icon: 'code', color: '#ECEAE4', description: 'Open IDE command palette' },
+      { id: 'switch_app', label: 'Switch App', shortcutHint: '⌘Tab', action: 'SHORTCUT:cmd:tab', icon: 'layers', color: '#ECEAE4', description: 'Switch to previous application' },
+      { id: 'reopen_tab', label: 'Reopen Closed Tab', shortcutHint: '⌘⇧T', action: 'SHORTCUT:cmd,shift:t', icon: 'redo', color: '#ECEAE4', description: 'Restore closed browser tab' },
+      { id: 'reload', label: 'Reload Page', shortcutHint: '⌘R', action: 'SHORTCUT:cmd:r', icon: 'repeat', color: '#ECEAE4', description: 'Refresh active page' }
     ];
   }
 
   const isLinux = os === 'linux';
   const superLabel = isLinux ? 'Super' : 'Win';
   return [
-    { id: 'copy', label: 'Copy', shortcutHint: 'Ctrl+C', action: 'WIN:COPY', icon: 'copy', color: '#38BDF8', description: 'Copy selection to clipboard' },
-    { id: 'paste', label: 'Paste', shortcutHint: 'Ctrl+V', action: 'WIN:PASTE', icon: 'paste', color: '#38BDF8', description: 'Paste from clipboard' },
-    { id: 'cut', label: 'Cut', shortcutHint: 'Ctrl+X', action: 'WIN:CUT', icon: 'scissors', color: '#F472B6', description: 'Cut selection' },
-    { id: 'undo', label: 'Undo', shortcutHint: 'Ctrl+Z', action: 'WIN:UNDO', icon: 'undo', color: '#FBBF24', description: 'Undo last change' },
-    { id: 'redo', label: 'Redo', shortcutHint: 'Ctrl+Y', action: 'WIN:REDO', icon: 'redo', color: '#FBBF24', description: 'Redo last change' },
-    { id: 'select_all', label: 'Select All', shortcutHint: 'Ctrl+A', action: 'WIN:SELECT_ALL', icon: 'check-square', color: '#A78BFA', description: 'Select all content' },
-    { id: 'save', label: 'Save', shortcutHint: 'Ctrl+S', action: 'WIN:SAVE', icon: 'save', color: '#34D399', description: 'Save current file' },
-    { id: 'zoom_in', label: 'Zoom In', shortcutHint: 'Ctrl++', action: 'SHORTCUT:ctrl:=', icon: 'zoom-in', color: '#38BDF8', description: isLinux ? 'Zoom in Linux window, browser, or terminal' : 'Zoom in active window or canvas' },
-    { id: 'zoom_out', label: 'Zoom Out', shortcutHint: 'Ctrl+-', action: 'SHORTCUT:ctrl:-', icon: 'zoom-out', color: '#60A5FA', description: isLinux ? 'Zoom out Linux window, browser, or terminal' : 'Zoom out active window or canvas' },
-    { id: 'zoom_reset', label: 'Reset Zoom', shortcutHint: 'Ctrl+0', action: 'SHORTCUT:ctrl:0', icon: 'maximize', color: '#A78BFA', description: 'Reset zoom to 100%' },
-    { id: 'bright_up', label: 'Brightness Up', shortcutHint: '☀+', action: 'MEDIA:BRIGHT_UP', icon: 'sun', color: '#FBBF24', description: isLinux ? 'Increase Linux display brightness' : 'Increase Windows display brightness' },
-    { id: 'bright_down', label: 'Brightness Down', shortcutHint: '☀-', action: 'MEDIA:BRIGHT_DOWN', icon: 'sun-dim', color: '#38BDF8', description: isLinux ? 'Decrease Linux display brightness' : 'Decrease Windows display brightness' },
+    { id: 'copy', label: 'Copy', shortcutHint: 'Ctrl+C', action: 'WIN:COPY', icon: 'copy', color: '#ECEAE4', description: 'Copy selection to clipboard' },
+    { id: 'paste', label: 'Paste', shortcutHint: 'Ctrl+V', action: 'WIN:PASTE', icon: 'paste', color: '#ECEAE4', description: 'Paste from clipboard' },
+    { id: 'cut', label: 'Cut', shortcutHint: 'Ctrl+X', action: 'WIN:CUT', icon: 'scissors', color: '#ECEAE4', description: 'Cut selection' },
+    { id: 'undo', label: 'Undo', shortcutHint: 'Ctrl+Z', action: 'WIN:UNDO', icon: 'undo', color: '#ECEAE4', description: 'Undo last change' },
+    { id: 'redo', label: 'Redo', shortcutHint: 'Ctrl+Y', action: 'WIN:REDO', icon: 'redo', color: '#ECEAE4', description: 'Redo last change' },
+    { id: 'select_all', label: 'Select All', shortcutHint: 'Ctrl+A', action: 'WIN:SELECT_ALL', icon: 'check-square', color: '#ECEAE4', description: 'Select all content' },
+    { id: 'save', label: 'Save', shortcutHint: 'Ctrl+S', action: 'WIN:SAVE', icon: 'save', color: '#ECEAE4', description: 'Save current file' },
+    { id: 'zoom_in', label: 'Zoom In', shortcutHint: 'Ctrl++', action: 'SHORTCUT:ctrl:=', icon: 'zoom-in', color: '#F2A33A', description: isLinux ? 'Zoom in Linux window, browser, or terminal' : 'Zoom in active window or canvas' },
+    { id: 'zoom_out', label: 'Zoom Out', shortcutHint: 'Ctrl+-', action: 'SHORTCUT:ctrl:-', icon: 'zoom-out', color: '#F2A33A', description: isLinux ? 'Zoom out Linux window, browser, or terminal' : 'Zoom out active window or canvas' },
+    { id: 'zoom_reset', label: 'Reset Zoom', shortcutHint: 'Ctrl+0', action: 'SHORTCUT:ctrl:0', icon: 'maximize', color: '#ECEAE4', description: 'Reset zoom to 100%' },
+    { id: 'bright_up', label: 'Brightness Up', shortcutHint: '☀+', action: 'MEDIA:BRIGHT_UP', icon: 'sun', color: '#F2A33A', description: isLinux ? 'Increase Linux display brightness' : 'Increase Windows display brightness' },
+    { id: 'bright_down', label: 'Brightness Down', shortcutHint: '☀-', action: 'MEDIA:BRIGHT_DOWN', icon: 'sun-dim', color: '#F2A33A', description: isLinux ? 'Decrease Linux display brightness' : 'Decrease Windows display brightness' },
     ...(isLinux
       ? []
       : [
@@ -282,19 +282,19 @@ export function getShortcutsForHostOs(os: HostOsType): UnifiedShortcutSpec[] {
             shortcutHint: 'Win+A',
             action: 'SHORTCUT:win:a',
             icon: 'sliders',
-            color: '#FBBF24',
+            color: '#F2A33A',
             description: 'Open Windows brightness & audio flyout'
           }
         ]),
-    { id: 'new_tab', label: 'New Tab', shortcutHint: 'Ctrl+T', action: 'WIN:NEW_TAB', icon: 'globe', color: '#34D399', description: 'Open new browser or editor tab' },
-    { id: 'close_tab', label: 'Close Tab', shortcutHint: 'Ctrl+W', action: 'WIN:CLOSE_TAB', icon: 'x', color: '#F87171', description: 'Close active tab' },
-    { id: 'search', label: 'Search', shortcutHint: `${superLabel}+S`, action: 'WIN:SEARCH', icon: 'search', color: '#38BDF8', description: 'Open system search' },
-    { id: 'screenshot', label: 'Screenshot Snip', shortcutHint: `${superLabel}+Shift+S`, action: 'WIN:SNIP', icon: 'camera', color: '#34D399', description: 'Capture screen region' },
-    { id: 'lock', label: 'Lock Screen', shortcutHint: `${superLabel}+L`, action: 'WIN:LOCK', icon: 'lock', color: '#F87171', description: 'Lock workstation immediately' },
-    { id: 'explorer', label: isLinux ? 'Files' : 'File Explorer', shortcutHint: `${superLabel}+E`, action: 'WIN:EXPLORER', icon: 'folder', color: '#FBBF24', description: isLinux ? 'Open file manager' : 'Open File Explorer' },
-    { id: 'task_mgr', label: isLinux ? 'System Monitor' : 'Task Manager', shortcutHint: 'Ctrl+Shift+Esc', action: 'WIN:TASK_MGR', icon: 'terminal', color: '#A78BFA', description: isLinux ? 'Open system monitor' : 'Open Task Manager' },
-    { id: 'desktop', label: 'Show Desktop', shortcutHint: `${superLabel}+D`, action: 'WIN:DESKTOP', icon: 'monitor', color: '#60A5FA', description: 'Minimize all windows' },
-    { id: 'run', label: 'Run Dialog', shortcutHint: `${superLabel}+R`, action: 'WIN:RUN', icon: 'play-circle', color: '#38BDF8', description: 'Open Run command prompt' }
+    { id: 'new_tab', label: 'New Tab', shortcutHint: 'Ctrl+T', action: 'WIN:NEW_TAB', icon: 'globe', color: '#ECEAE4', description: 'Open new browser or editor tab' },
+    { id: 'close_tab', label: 'Close Tab', shortcutHint: 'Ctrl+W', action: 'WIN:CLOSE_TAB', icon: 'x', color: '#ECEAE4', description: 'Close active tab' },
+    { id: 'search', label: 'Search', shortcutHint: `${superLabel}+S`, action: 'WIN:SEARCH', icon: 'search', color: '#F2A33A', description: 'Open system search' },
+    { id: 'screenshot', label: 'Screenshot Snip', shortcutHint: `${superLabel}+Shift+S`, action: 'WIN:SNIP', icon: 'camera', color: '#ECEAE4', description: 'Capture screen region' },
+    { id: 'lock', label: 'Lock Screen', shortcutHint: `${superLabel}+L`, action: 'WIN:LOCK', icon: 'lock', color: '#F2A33A', description: 'Lock workstation immediately' },
+    { id: 'explorer', label: isLinux ? 'Files' : 'File Explorer', shortcutHint: `${superLabel}+E`, action: 'WIN:EXPLORER', icon: 'folder', color: '#ECEAE4', description: isLinux ? 'Open file manager' : 'Open File Explorer' },
+    { id: 'task_mgr', label: isLinux ? 'System Monitor' : 'Task Manager', shortcutHint: 'Ctrl+Shift+Esc', action: 'WIN:TASK_MGR', icon: 'terminal', color: '#ECEAE4', description: isLinux ? 'Open system monitor' : 'Open Task Manager' },
+    { id: 'desktop', label: 'Show Desktop', shortcutHint: `${superLabel}+D`, action: 'WIN:DESKTOP', icon: 'monitor', color: '#ECEAE4', description: 'Minimize all windows' },
+    { id: 'run', label: 'Run Dialog', shortcutHint: `${superLabel}+R`, action: 'WIN:RUN', icon: 'play-circle', color: '#ECEAE4', description: 'Open Run command prompt' }
   ];
 }
 
@@ -1527,8 +1527,8 @@ export function compileMacroConfigForHardware(
       standaloneComplete: false,
       singleCycleStandalone: true,
       usbRequiredReason: loop
-        ? 'Pass 1 runs standalone on the MacroPad; keep Studio MacroPad open over USB for continuous looping.'
-        : `Pass 1 runs standalone on the MacroPad; passes 2–${totalCycles} stream over USB (${bestFull.byteLength}/${MAX_NVS_ACTION_BYTES} B).`,
+        ? 'Pass 1 runs standalone on the BertoPad; keep BertoPad open over USB for continuous looping.'
+        : `Pass 1 runs standalone on the BertoPad; passes 2–${totalCycles} stream over USB (${bestFull.byteLength}/${MAX_NVS_ACTION_BYTES} B).`,
       fullStandaloneByteEstimate: bestFull.byteLength,
       nativeDelayByteEstimate: nativeBestFull.byteLength
     };
@@ -1546,7 +1546,7 @@ export function compileMacroConfigForHardware(
     singleCycleStandalone: false,
     usbRequiredReason: fitsOnV45
       ? `Total wait needs ${bestOne.byteLength} B on legacy firmware (${nativeBestFull.byteLength} B with Firmware v4.5.0 native DELAY). Flash Firmware v4.5.0 in Settings to run unplugged, or keep USB connected.`
-      : `Total wait/steps need ${bestOne.byteLength} B (max ${MAX_NVS_ACTION_BYTES} B standalone). Shorten text/steps to run unplugged, or keep Studio MacroPad open via USB.`,
+      : `Total wait/steps need ${bestOne.byteLength} B (max ${MAX_NVS_ACTION_BYTES} B standalone). Shorten text/steps to run unplugged, or keep BertoPad open via USB.`,
     fullStandaloneByteEstimate: bestFull.byteLength,
     nativeDelayByteEstimate: nativeBestFull.byteLength
   };
@@ -1852,7 +1852,7 @@ export function describeFirmwareAction(
       fullLabel: 'Unassigned',
       description: 'No action assigned to this control',
       icon: 'none',
-      color: '#6B7280'
+      color: '#A3A6AD'
     };
   }
 
@@ -1878,7 +1878,7 @@ export function describeFirmwareAction(
       fullLabel: label,
       description: `Hardware timed pause (${ms} ms)`,
       icon: 'pause',
-      color: '#FBBF24'
+      color: '#F2A33A'
     };
   }
 
@@ -1899,7 +1899,7 @@ export function describeFirmwareAction(
         (repeatConfig.steps && repeatConfig.steps.length > 1)
           ? 'zap'
           : 'file-text',
-      color: '#34D399'
+      color: '#F2A33A'
     };
   }
 
@@ -1918,7 +1918,7 @@ export function describeFirmwareAction(
         fullLabel: matchedCustomName || summary.fullLabel,
         description: summary.fullLabel,
         icon: 'zap',
-        color: '#34D399'
+        color: '#F2A33A'
       };
     }
   }
@@ -1941,7 +1941,7 @@ export function describeFirmwareAction(
       fullLabel: friendly,
       description: friendly,
       icon: 'zap',
-      color: '#38BDF8'
+      color: '#ECEAE4'
     };
   }
 
@@ -1963,7 +1963,7 @@ export function describeFirmwareAction(
       fullLabel: matchedCustomName || pretty,
       description: `BLE Keyboard Shortcut (${pretty})`,
       icon: 'command',
-      color: '#38BDF8'
+      color: '#ECEAE4'
     };
   }
 
@@ -1975,7 +1975,7 @@ export function describeFirmwareAction(
       fullLabel: summary.fullLabel,
       description: `BLE Typed Text (${trimmed.slice(5).length} chars)`,
       icon: 'file-text',
-      color: '#34D399'
+      color: '#ECEAE4'
     };
   }
 
@@ -1986,7 +1986,7 @@ export function describeFirmwareAction(
       fullLabel: `SmartCast Key (${parts[1]}, ${parts[2]})`,
       description: `SmartCast Remote Codeset ${parts[1]}, Code ${parts[2]}`,
       icon: 'tv',
-      color: '#A78BFA'
+      color: '#ECEAE4'
     };
   }
 
@@ -1997,7 +1997,7 @@ export function describeFirmwareAction(
       fullLabel: `SmartCast App ID ${parts[1]}`,
       description: `SmartCast App ID ${parts[1]} (Namespace ${parts[2] || '4'})`,
       icon: 'clapperboard',
-      color: '#FBBF24'
+      color: '#ECEAE4'
     };
   }
 
@@ -2010,7 +2010,7 @@ export function describeFirmwareAction(
     fullLabel: strippedFallback,
     description: strippedFallback,
     icon: 'zap',
-    color: '#F3F4F6'
+    color: '#ECEAE4'
   };
 }
 
@@ -2270,49 +2270,49 @@ const WELL_KNOWN_SHORTCUT_SPECS: Record<string, WellKnownShortcutSpec> = {
     fullLabel: 'Zoom In (⌘+)',
     description: 'macOS Zoom In (Command + Plus)',
     icon: 'zoom-in',
-    color: '#38BDF8'
+    color: '#F2A33A'
   },
   'SHORTCUT:cmd:-': {
     shortLabel: 'Zoom -',
     fullLabel: 'Zoom Out (⌘-)',
     description: 'macOS Zoom Out (Command + Minus)',
     icon: 'zoom-out',
-    color: '#60A5FA'
+    color: '#F2A33A'
   },
   'SHORTCUT:cmd:0': {
     shortLabel: 'Zoom 100%',
     fullLabel: 'Reset Zoom (⌘0)',
     description: 'macOS Reset Zoom to 100% (Command + 0)',
     icon: 'maximize',
-    color: '#A78BFA'
+    color: '#ECEAE4'
   },
   'SHORTCUT:ctrl:=': {
     shortLabel: 'Zoom +',
     fullLabel: 'Zoom In (Ctrl++)',
     description: 'Windows / Linux Zoom In (Ctrl + Plus)',
     icon: 'zoom-in',
-    color: '#38BDF8'
+    color: '#F2A33A'
   },
   'SHORTCUT:ctrl:-': {
     shortLabel: 'Zoom -',
     fullLabel: 'Zoom Out (Ctrl+-)',
     description: 'Windows / Linux Zoom Out (Ctrl + Minus)',
     icon: 'zoom-out',
-    color: '#60A5FA'
+    color: '#F2A33A'
   },
   'SHORTCUT:ctrl:0': {
     shortLabel: 'Zoom 100%',
     fullLabel: 'Reset Zoom (Ctrl+0)',
     description: 'Windows / Linux Reset Zoom to 100% (Ctrl + 0)',
     icon: 'maximize',
-    color: '#A78BFA'
+    color: '#ECEAE4'
   },
   'SHORTCUT:win:a': {
     shortLabel: 'Quick Set',
     fullLabel: 'Quick Settings (Win+A)',
     description: 'Windows Brightness & Audio Quick Settings',
     icon: 'sliders',
-    color: '#FBBF24'
+    color: '#F2A33A'
   }
 };
 

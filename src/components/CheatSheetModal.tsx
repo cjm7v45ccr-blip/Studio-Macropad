@@ -191,7 +191,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                 {/* Profile Header */}
                 <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-[var(--border-subtle)]">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-strong)] font-mono text-[11px] font-bold text-sky-600 dark:text-sky-400 tabular-nums shrink-0">
+                    <span className="px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-strong)] font-mono text-[11px] font-bold text-[var(--accent)] tabular-nums shrink-0">
                       [{profileShortTag(prof.id)}]
                     </span>
                     <ProfileIcon className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
@@ -202,7 +202,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
 
                   <div className="flex items-center gap-2 shrink-0 font-mono text-[10px] tabular-nums">
                     {prof.id === 'TV' && !tvEnabled && (
-                      <span className="px-1.5 py-0.5 rounded bg-amber-500/12 border border-amber-500/35 text-amber-700 dark:text-amber-300 font-semibold print:hidden">
+                      <span className="px-1.5 py-0.5 rounded bg-[var(--accent-soft)] border border-[rgba(var(--accent-rgb),0.35)] text-[var(--accent)] font-semibold print:hidden">
                         TV off
                       </span>
                     )}
@@ -316,7 +316,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
             </span>
           </div>
           <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-            Studio MacroPad Pro
+            BertoPad
           </span>
         </div>
       </div>

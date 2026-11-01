@@ -12,7 +12,7 @@ type JobListener = (job: ActiveRepeatJob | null) => void;
 
 /**
  * Executes multi-step macro sequences and repeatable Text + Follow-up Button sequences
- * with custom millisecond delays over the live PadLink USB connection (or dry-run timing preview).
+ * with custom millisecond delays over the live BertoLink USB connection (or dry-run timing preview).
  * - Emits activeStepIndex & activeStepPhase ('action' | 'delay') for live timeline visualization
  * - Supports finite repeat counts (1..999) and continuous Loop-until-stopped mode
  * - Cancels cleanly on Stop click, second physical press, or USB disconnect
@@ -254,7 +254,7 @@ class RepeatMacroRunner {
    */
   public async runFromUiTest(cfg: TextMacroRepeatConfig): Promise<void> {
     if (!usbHardware.info.connected) {
-      throw new Error('Connect MacroPad via USB to run macro sequences.');
+      throw new Error('Connect BertoPad via USB to run macro sequences.');
     }
 
     this.stop();

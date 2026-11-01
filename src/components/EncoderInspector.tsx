@@ -64,7 +64,7 @@ interface EncoderInspectorProps {
   onOpenMacroBuilder: () => void;
 }
 
-const RING_COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899', '#06B6D4'];
+const RING_COLORS = ['#F2A33A', '#D97706', '#ECEAE4', '#A3A6AD'];
 
 export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   encoder,

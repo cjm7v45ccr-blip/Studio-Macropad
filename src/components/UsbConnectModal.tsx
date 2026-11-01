@@ -19,6 +19,7 @@ import {
 
 interface UsbConnectModalProps {
   isOpen: boolean;
+  resolvedTheme?: 'light' | 'dark';
   initialError?: string | null;
   onClose: () => void;
   connection: DeviceConnectionInfo;
@@ -28,6 +29,7 @@ interface UsbConnectModalProps {
 
 export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
   isOpen,
+  resolvedTheme = 'dark',
   initialError,
   onClose,
   connection,
@@ -93,7 +95,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
     try {
       await onPullFromUsb();
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Failed to read status from MacroPad.');
+      setErrorMsg(err?.message || 'Failed to read status from BertoPad.');
     } finally {
       setBusy(false);
     }
@@ -108,6 +110,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
   const telemetry = connection.telemetry;
   const isConnecting = busy || Boolean(connection.connecting);
   const isDemo = connection.transport === 'demo';
+  const markSrc = resolvedTheme === 'light' ? '/logo-mark-light.svg' : '/logo-mark-dark.svg';
 
   return (
     <div
@@ -126,18 +129,20 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white"
-              style={{ backgroundColor: 'var(--accent)' }}
-            >
-              <Usb className="w-4 h-4" />
-            </div>
+            <img
+              src={markSrc}
+              alt="BertoPad"
+              referrerPolicy="no-referrer"
+              className={`w-8 h-8 rounded-lg object-contain shrink-0 ${
+                isConnecting ? 'animate-[spin_3s_linear_infinite]' : ''
+              }`}
+            />
             <div>
               <h3
                 id="usb-connect-modal-title"
                 className="text-sm font-bold text-[var(--text-primary)]"
               >
-                Connect Studio MacroPad
+                Connect <span className="text-[var(--accent)]">BertoPad</span>
               </h3>
               <p className="text-[11px] text-[var(--text-muted)] font-mono tabular-nums">
                 {connection.connected
@@ -164,13 +169,13 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
         {/* Body */}
         <div className="p-5 space-y-4">
           {!usbHardware.browserSupportsWebSerial && (
-            <div className="p-3.5 rounded-xl bg-amber-500/12 border border-amber-500/35 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
-              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="p-3.5 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)] flex items-start gap-2.5 text-xs text-[var(--text-primary)] leading-relaxed">
+              <AlertCircle className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
               <div>
-                <div className="font-semibold text-amber-900 dark:text-amber-300">
+                <div className="font-semibold text-[var(--text-primary)]">
                   Unsupported browser for USB Web Serial
                 </div>
-                <p className="mt-0.5 text-[11px] text-amber-800/90 dark:text-amber-200/90">
+                <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
                   Firefox and Safari do not support Web Serial. Open this site in{' '}
                   <strong>Chrome</strong> or <strong>Edge</strong> on desktop over HTTPS to
                   connect a physical pad, or click <strong>Try demo mode</strong> below.
@@ -180,29 +185,29 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
           )}
 
           {connection.connected ? (
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-3">
+            <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-strong)] space-y-3">
               <div className="flex items-start gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-5 h-5 text-[var(--accent)] shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  <div className="text-xs font-semibold text-[var(--text-primary)]">
                     {connection.deviceName} Connected
                   </div>
-                  <div className="text-[11px] font-mono text-emerald-700/85 dark:text-emerald-400/80 mt-0.5 tabular-nums">
-                    ID: {connection.deviceId || 'studio-pad'} · rev {connection.rev ?? 0} · fw{' '}
+                  <div className="text-[11px] font-mono text-[var(--text-secondary)] mt-0.5 tabular-nums">
+                    ID: {connection.deviceId || 'bertopad'} · rev {connection.rev ?? 0} · fw{' '}
                     {connection.firmwareVersion} · API v{telemetry?.apiVersion ?? 2}
                   </div>
                 </div>
               </div>
 
               {telemetry && (
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-emerald-500/20 font-mono text-[10px]">
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[var(--border-subtle)] font-mono text-[10px]">
                   <div
                     className="flex items-center gap-1.5 text-[var(--text-secondary)]"
                     title={telemetry.bleDeviceName || `Studio Pad ${telemetry.bleActiveHost}`}
                   >
                     <Bluetooth
                       className={`w-3.5 h-3.5 shrink-0 ${
-                        telemetry.bleConnected ? 'text-sky-400' : 'text-zinc-500'
+                        telemetry.bleConnected ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
                       }`}
                     />
                     <span className="truncate tabular-nums">
@@ -212,7 +217,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                   <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
                     <Wifi
                       className={`w-3.5 h-3.5 ${
-                        telemetry.wifiConnected ? 'text-emerald-400' : 'text-zinc-500'
+                        telemetry.wifiConnected ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
                       }`}
                     />
                     <span className="truncate">
@@ -222,7 +227,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                   <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
                     <Tv
                       className={`w-3.5 h-3.5 ${
-                        telemetry.tvPaired ? 'text-purple-400' : 'text-zinc-500'
+                        telemetry.tvPaired ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
                       }`}
                     />
                     <span>{telemetry.tvPaired ? 'TV Paired' : 'TV Unpaired'}</span>
@@ -231,8 +236,8 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
               )}
 
               {telemetry?.setupMode && onOpenSetupWizard && (
-                <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-[var(--accent)]">
                     Board reported Setup Mode
                   </span>
                   <button
@@ -241,17 +246,17 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                       onClose();
                       onOpenSetupWizard();
                     }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-[11px] font-semibold text-amber-800 dark:text-amber-200 cursor-pointer whitespace-nowrap shrink-0"
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--accent-soft)] hover:opacity-90 border border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                   >
-                    <SlidersHorizontal className="w-3 h-3" />
+                    <SlidersHorizontal className="w-3 h-3 text-[var(--accent)]" />
                     <span>Open Setup Wizard</span>
                   </button>
                 </div>
               )}
 
               {isDemo && telemetry && (
-                <div className="pt-2 border-t border-emerald-500/20 space-y-1.5">
-                  <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300/80">
+                <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1.5">
+                  <div className="text-[10px] font-semibold text-[var(--text-secondary)]">
                     Demo Link & Setup Simulator
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -295,7 +300,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                         usbHardware.setDemoLinkState({ setupMode: next });
                         if (next) onClose();
                       }}
-                      className="px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-amber-500/40 text-[10px] font-mono text-amber-700 dark:text-amber-300 cursor-pointer whitespace-nowrap"
+                      className="px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[10px] font-mono text-[var(--accent)] cursor-pointer whitespace-nowrap"
                     >
                       Setup Mode: {telemetry.setupMode ? 'Active' : 'Trigger'}
                     </button>
@@ -317,7 +322,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                   type="button"
                   disabled={busy}
                   onClick={handleDisconnect}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-medium text-rose-600 dark:text-rose-400 transition-colors cursor-pointer whitespace-nowrap"
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <Unplug className="w-3.5 h-3.5" />
                   <span>Disconnect</span>
@@ -325,26 +330,31 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
               </div>
             </div>
           ) : isConnecting ? (
-            <div className="p-4 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-start gap-3">
-              <Loader2 className="w-5 h-5 text-sky-600 dark:text-sky-400 animate-spin shrink-0 mt-0.5" />
+            <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--accent)] flex items-center gap-3.5">
+              <img
+                src={markSrc}
+                alt="Connecting BertoPad"
+                referrerPolicy="no-referrer"
+                className="w-9 h-9 rounded-lg object-contain shrink-0 animate-[spin_3s_linear_infinite]"
+              />
               <div className="space-y-1">
-                <div className="text-xs font-semibold text-sky-700 dark:text-sky-300">
+                <div className="text-xs font-semibold text-[var(--text-primary)]">
                   Opening USB port & syncing profiles…
                 </div>
-                <p className="text-[11px] text-sky-800/80 dark:text-sky-200/80 leading-relaxed">
-                  Waiting for board readiness, enabling live events, and reading real profiles…
+                <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                  Waiting for BertoPad readiness, enabling live events, and reading hardware profiles…
                 </p>
               </div>
             </div>
           ) : (
             <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2 text-xs text-[var(--text-secondary)] leading-relaxed">
               <p>
-                Plug in your Studio MacroPad over USB. Make sure the Arduino{' '}
+                Plug in your <strong>BertoPad</strong> over USB. Make sure the Arduino{' '}
                 <strong>Serial Monitor</strong> and any other serial tools are closed so the
                 port is free.
               </p>
               <div className="flex items-start gap-2 pt-1 text-[11px] text-[var(--text-muted)]">
-                <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-sky-500 dark:text-sky-400" />
+                <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--accent)]" />
                 <span>
                   After your first connection, refreshing the page reconnects automatically
                   without showing the port picker again.
@@ -354,8 +364,8 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
           )}
 
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-500/12 border border-rose-500/35 flex items-start gap-2.5 text-xs text-rose-700 dark:text-rose-200 leading-relaxed">
-              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <div className="p-3 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)] flex items-start gap-2.5 text-xs text-[var(--text-primary)] leading-relaxed">
+              <AlertCircle className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
               <span>{errorMsg}</span>
             </div>
           )}
@@ -365,7 +375,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
               type="button"
               disabled={isConnecting || !usbHardware.browserSupportsWebSerial}
               onClick={handleConnectSerial}
-              style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+              style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
               className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
             >
               {isConnecting ? (
@@ -378,7 +388,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                   ? 'Connecting…'
                   : connection.connected && !isDemo
                   ? 'Switch USB Port'
-                  : 'Connect USB pad'}
+                  : 'Connect BertoPad'}
               </span>
             </button>
 
@@ -390,7 +400,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                   onClick={() => handleStartDemo(false)}
                   className="py-2.5 px-3 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                 >
-                  <PlayCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <PlayCircle className="w-4 h-4 text-[var(--accent)] shrink-0" />
                   <span>Try demo mode</span>
                 </button>
                 <button
@@ -398,9 +408,9 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                   disabled={isConnecting}
                   onClick={() => handleStartDemo(true)}
                   className="py-2.5 px-3 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
-                  title="Simulate connecting a factory-fresh MacroPad that reports Setup Mode over Web Serial"
+                  title="Simulate connecting a factory-fresh BertoPad that reports Setup Mode over Web Serial"
                 >
-                  <SlidersHorizontal className="w-4 h-4 text-sky-400 shrink-0" />
+                  <SlidersHorizontal className="w-4 h-4 text-[var(--accent)] shrink-0" />
                   <span>Demo setup mode</span>
                 </button>
               </div>

@@ -2,47 +2,39 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-mono);
 }
 
 :root {
-  /* BertoPad palette */
-  --bp-graphite: #14161B;
-  --bp-panel:    #1E2128;
-  --bp-bone:     #ECEAE4;
-  --bp-muted:    #A3A6AD;
-  --bp-amber:    #F2A33A;
-  --bp-amber-deep: #D97706;
-
-  --bg-canvas: #14161B;
-  --bg-panel: #1E2128;
-  --bg-elevated: #262A34;
-  --bg-input: #191C23;
-  --border-subtle: rgba(236, 234, 228, 0.08);
-  --border-strong: rgba(236, 234, 228, 0.16);
-  --text-primary: #ECEAE4;
-  --text-secondary: #A3A6AD;
-  --text-muted: #797C85;
-  --accent: #F2A33A;
+  --bg-canvas: var(--bg);
+  --bg-panel: var(--surface);
+  --bg-elevated: color-mix(in srgb, var(--bp-panel) 90%, var(--bp-bone) 10%);
+  --bg-input: color-mix(in srgb, var(--bp-graphite) 62%, var(--bp-panel) 38%);
+  --border-subtle: color-mix(in srgb, var(--bp-bone) 8%, transparent);
+  --border-strong: color-mix(in srgb, var(--bp-bone) 16%, transparent);
+  --text-primary: var(--text);
+  --text-secondary: var(--text-muted);
+  --text-muted: color-mix(in srgb, var(--bp-muted) 72%, var(--bp-graphite) 28%);
   --accent-rgb: 242, 163, 58;
   --accent-soft: rgba(242, 163, 58, 0.14);
+  --accent-contrast: var(--bp-graphite);
   color-scheme: dark;
 }
 
 :root[data-theme="light"] {
-  --bg-canvas: #F6F4EF;
-  --bg-panel: #FFFFFF;
-  --bg-elevated: #EDEAE2;
-  --bg-input: #F0EDE6;
-  --border-subtle: rgba(20, 22, 27, 0.08);
-  --border-strong: rgba(20, 22, 27, 0.16);
-  --text-primary: #14161B;
-  --text-secondary: #5B5F68;
-  --text-muted: #848894;
-  --accent: #D97706;
+  --bg-canvas: var(--bg);
+  --bg-panel: var(--surface);
+  --bg-elevated: color-mix(in srgb, var(--bg) 78%, var(--text) 6%);
+  --bg-input: color-mix(in srgb, var(--bg) 88%, var(--text) 3%);
+  --border-subtle: color-mix(in srgb, var(--text) 9%, transparent);
+  --border-strong: color-mix(in srgb, var(--text) 18%, transparent);
+  --text-primary: var(--text);
+  --text-secondary: var(--text-muted);
+  --text-muted: color-mix(in srgb, #5B5F68 74%, #FFFFFF 26%);
   --accent-rgb: 217, 119, 6;
   --accent-soft: rgba(217, 119, 6, 0.12);
+  --accent-contrast: #FFFFFF;
   color-scheme: light;
 }
 
@@ -54,7 +46,7 @@
 
 html,
 body {
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   background-color: var(--bg-canvas);
   color: var(--text-primary);
   margin: 0;
@@ -89,43 +81,47 @@ a:focus-visible,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.22);
+  background: color-mix(in srgb, var(--bp-muted) 26%, transparent);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.38);
+  background: color-mix(in srgb, var(--bp-muted) 42%, transparent);
 }
 
-/* Hardware Chassis & Tactile Keycaps */
+/* Hardware Chassis & Tactile Keycaps — strictly BertoPad Graphite (#14161B), Panel (#1E2128), Bone (#ECEAE4), Amber (--accent) */
 .chassis-shell {
-  background: linear-gradient(165deg, #212532 0%, #151822 55%, #0E1017 100%);
+  background: linear-gradient(165deg, var(--bp-panel) 0%, var(--bp-graphite) 100%);
   box-shadow:
     0 32px 68px -16px rgba(0, 0, 0, 0.72),
-    0 0 0 1px rgba(255, 255, 255, 0.09),
-    inset 0 1px 1px rgba(255, 255, 255, 0.13),
+    0 0 0 1px color-mix(in srgb, var(--bp-bone) 10%, transparent),
+    inset 0 1px 1px color-mix(in srgb, var(--bp-bone) 12%, transparent),
     inset 0 -3px 8px rgba(0, 0, 0, 0.65);
 }
 
 :root[data-theme="light"] .chassis-shell {
   box-shadow:
-    0 28px 56px -16px rgba(15, 23, 42, 0.32),
-    0 8px 20px -8px rgba(15, 23, 42, 0.16),
-    0 0 0 1px rgba(15, 23, 42, 0.18),
-    inset 0 1px 1px rgba(255, 255, 255, 0.14),
+    0 28px 56px -16px rgba(20, 22, 27, 0.28),
+    0 8px 20px -8px rgba(20, 22, 27, 0.14),
+    0 0 0 1px rgba(20, 22, 27, 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.12),
     inset 0 -3px 8px rgba(0, 0, 0, 0.65);
 }
 
 .chassis-well {
-  background: #0A0B0F;
+  background: var(--bp-graphite);
   box-shadow:
     inset 0 3px 8px rgba(0, 0, 0, 0.85),
-    0 1px 0 rgba(255, 255, 255, 0.05);
+    0 1px 0 color-mix(in srgb, var(--bp-bone) 6%, transparent);
 }
 
 .keycap-surface {
-  background: linear-gradient(180deg, #242836 0%, #181B25 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bp-panel) 94%, var(--bp-bone) 6%) 0%,
+    var(--bp-panel) 100%
+  );
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.14),
+    inset 0 1px 1px color-mix(in srgb, var(--bp-bone) 13%, transparent),
     inset 0 -3px 5px rgba(0, 0, 0, 0.55),
     0 5px 10px rgba(0, 0, 0, 0.55),
     0 1px 2px rgba(0, 0, 0, 0.75);
@@ -136,16 +132,24 @@ a:focus-visible,
 }
 
 .keycap-surface:hover {
-  background: linear-gradient(180deg, #2A2F40 0%, #1D212D 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bp-panel) 88%, var(--bp-bone) 12%) 0%,
+    color-mix(in srgb, var(--bp-panel) 96%, var(--bp-bone) 4%) 100%
+  );
   transform: translateY(-1px);
 }
 
 .keycap-selected-glow {
-  background: linear-gradient(180deg, #2B3144 0%, #1E2332 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bp-panel) 88%, var(--bp-bone) 12%) 0%,
+    var(--bp-panel) 100%
+  );
   box-shadow:
     0 0 0 2px var(--accent),
-    0 0 26px rgba(var(--accent-rgb), 0.34),
-    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    0 0 24px rgba(var(--accent-rgb), 0.32),
+    inset 0 1px 1px color-mix(in srgb, var(--bp-bone) 18%, transparent),
     inset 0 -2px 5px rgba(0, 0, 0, 0.5),
     0 6px 14px rgba(0, 0, 0, 0.55);
 }
@@ -161,35 +165,40 @@ a:focus-visible,
 .encoder-ring {
   background: conic-gradient(
     from 0deg,
-    #282D3C,
-    #161922,
-    #2F3546,
-    #141720,
-    #2A3040,
-    #161922,
-    #2D3344,
-    #151821,
-    #282D3C
+    color-mix(in srgb, var(--bp-panel) 90%, var(--bp-bone) 10%),
+    var(--bp-graphite),
+    color-mix(in srgb, var(--bp-panel) 86%, var(--bp-bone) 14%),
+    var(--bp-graphite),
+    color-mix(in srgb, var(--bp-panel) 90%, var(--bp-bone) 10%),
+    var(--bp-graphite),
+    color-mix(in srgb, var(--bp-panel) 86%, var(--bp-bone) 14%),
+    var(--bp-graphite),
+    color-mix(in srgb, var(--bp-panel) 90%, var(--bp-bone) 10%)
   );
   box-shadow:
     0 10px 22px rgba(0, 0, 0, 0.7),
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    inset 0 1px 2px rgba(255, 255, 255, 0.18);
+    0 0 0 1px color-mix(in srgb, var(--bp-bone) 10%, transparent),
+    inset 0 1px 2px color-mix(in srgb, var(--bp-bone) 16%, transparent);
   transition: box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1), transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .encoder-ring-selected {
   box-shadow:
     0 0 0 2px var(--accent),
-    0 0 28px rgba(var(--accent-rgb), 0.36),
+    0 0 26px rgba(var(--accent-rgb), 0.34),
     0 10px 22px rgba(0, 0, 0, 0.7),
-    inset 0 1px 2px rgba(255, 255, 255, 0.22);
+    inset 0 1px 2px color-mix(in srgb, var(--bp-bone) 20%, transparent);
 }
 
 .encoder-cap {
-  background: radial-gradient(circle at 32% 28%, #2E3446 0%, #1A1E29 58%, #11131B 100%);
+  background: radial-gradient(
+    circle at 32% 28%,
+    color-mix(in srgb, var(--bp-panel) 88%, var(--bp-bone) 12%) 0%,
+    var(--bp-panel) 58%,
+    var(--bp-graphite) 100%
+  );
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    inset 0 1px 1px color-mix(in srgb, var(--bp-bone) 18%, transparent),
     inset 0 -2px 5px rgba(0, 0, 0, 0.7);
 }
 

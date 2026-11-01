@@ -74,11 +74,7 @@ export const DiffConfirmModal: React.FC<DiffConfirmModalProps> = ({
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
             <div
-              className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 ${
-                tone === 'danger'
-                  ? 'bg-rose-500/15 border-rose-500/30 text-rose-400'
-                  : 'bg-sky-500/15 border-sky-500/30 text-sky-400'
-              }`}
+              className="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 bg-[var(--accent-soft)] border-[rgba(var(--accent-rgb),0.35)] text-[var(--accent)]"
             >
               {tone === 'danger' ? (
                 <AlertTriangle className="w-4 h-4" />
@@ -154,7 +150,7 @@ export const DiffConfirmModal: React.FC<DiffConfirmModalProps> = ({
                         <span
                           className={`px-2 py-0.5 rounded truncate max-w-[175px] inline-flex items-center ${
                             row.changed
-                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold'
+                              ? 'bg-[var(--accent-soft)] text-[var(--accent)] border border-[rgba(var(--accent-rgb),0.3)] font-semibold'
                               : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
                           }`}
                         >
@@ -178,7 +174,7 @@ export const DiffConfirmModal: React.FC<DiffConfirmModalProps> = ({
                 htmlFor="diff-confirm-word-input"
                 className="block text-xs font-medium text-[var(--text-secondary)]"
               >
-                Type <span className="font-mono font-bold text-rose-400">{requireWord}</span> to
+                Type <span className="font-mono font-bold text-[var(--accent)]">{requireWord}</span> to
                 confirm:
               </label>
               <input
@@ -194,7 +190,7 @@ export const DiffConfirmModal: React.FC<DiffConfirmModalProps> = ({
                   }
                 }}
                 placeholder={requireWord}
-                className="w-full px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-rose-400"
+                className="w-full px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
               />
             </div>
           )}
@@ -214,12 +210,12 @@ export const DiffConfirmModal: React.FC<DiffConfirmModalProps> = ({
               onClick={onConfirm}
               style={
                 tone === 'accent'
-                  ? { backgroundColor: 'var(--accent)', color: '#FFFFFF' }
+                  ? { backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }
                   : undefined
               }
               className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:pointer-events-none ${
                 tone === 'danger'
-                  ? 'bg-rose-500 hover:bg-rose-600 text-white'
+                  ? 'bg-[#D97706] hover:opacity-90 text-[#ECEAE4]'
                   : 'hover:opacity-90'
               }`}
             >

@@ -62,17 +62,7 @@ interface ButtonInspectorProps {
   onOpenMacroBuilder: () => void;
 }
 
-const COLOR_SWATCHES = [
-  '#F3F4F6',
-  '#38BDF8',
-  '#60A5FA',
-  '#818CF8',
-  '#A78BFA',
-  '#F472B6',
-  '#F87171',
-  '#FBBF24',
-  '#34D399'
-];
+const COLOR_SWATCHES = ['#ECEAE4', '#F2A33A', '#D97706', '#A3A6AD'];
 
 export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   keyConfig,
@@ -193,7 +183,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             <button
               type="button"
               onClick={onToggleProfileMode}
-              style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+              style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
             >
               <ArrowLeftRight className="w-4 h-4 shrink-0" />
@@ -427,28 +417,36 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           />
         ) : (
           <div className="space-y-5">
-            {/* Virtual OLED Preview Box */}
-            <div className="p-3.5 rounded-2xl bg-[#02060a] border border-cyan-500/35 flex flex-col items-center justify-center space-y-2 font-mono text-cyan-300">
-              <div className="w-full flex items-center justify-between text-[10px] border-b border-cyan-500/20 pb-1.5 text-cyan-400">
-                <span className="font-semibold">OLED Preview</span>
+            {/* Virtual 1-Bit OLED Preview Box */}
+            <div className="p-3.5 rounded-2xl bg-black border border-[#ECEAE4]/20 flex flex-col items-center justify-center space-y-2 font-mono text-[#ECEAE4]">
+              <div className="w-full flex items-center justify-between text-[10px] border-b border-[#ECEAE4]/15 pb-1.5 text-[#A3A6AD]">
+                <span className="font-semibold text-[#ECEAE4] flex items-center gap-1.5">
+                  <img
+                    src="/logo-mark-mono.svg"
+                    alt="OLED"
+                    referrerPolicy="no-referrer"
+                    className="w-3.5 h-3.5 object-contain"
+                  />
+                  <span>OLED Preview</span>
+                </span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] text-cyan-400/80">128×64 · {slotMeta.short}</span>
+                  <span className="text-[9px] text-[#A3A6AD]">128×64 1-bit · {slotMeta.short}</span>
                   {isBleHostProfile(activeProfileId) && (
-                    <span className="px-1.5 py-0.5 rounded bg-black border border-white/70 text-white font-mono text-[9px] font-bold leading-none tabular-nums">
+                    <span className="px-1.5 py-0.5 rounded bg-black border border-[#ECEAE4]/75 text-[#ECEAE4] font-mono text-[9px] font-bold leading-none tabular-nums">
                       [{profileShortTag(activeProfileId)}]
                     </span>
                   )}
                 </div>
               </div>
               <div className="py-2.5 flex flex-col items-center justify-center space-y-1.5">
-                <div className="w-12 h-12 rounded-xl bg-cyan-950/70 border border-cyan-500/45 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-xl bg-[#14161B] border border-[#ECEAE4]/30 flex items-center justify-center">
                   <KeycapIcon
                     icon={keyConfig.appearance.icon}
                     className="w-6 h-6"
-                    style={{ color: keyConfig.appearance.labelColor || '#38BDF8' }}
+                    style={{ color: '#ECEAE4' }}
                   />
                 </div>
-                <span className="text-xs font-bold tracking-wider text-cyan-100 truncate max-w-[200px]">
+                <span className="text-xs font-bold tracking-wider text-[#ECEAE4] truncate max-w-[200px]">
                   {keyConfig.appearance.label || slotMeta.short}
                 </span>
               </div>
@@ -504,20 +502,13 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                       onClick={() => onUpdateAppearance({ labelColor: hex })}
                       className={`w-6 h-6 rounded-full border transition-transform cursor-pointer ${
                         active
-                          ? 'scale-110 ring-2 ring-[var(--accent)] border-white'
-                          : 'border-black/15 dark:border-white/20 hover:scale-105'
+                          ? 'scale-110 ring-2 ring-[var(--accent)] border-[var(--text-primary)]'
+                          : 'border-[var(--border-strong)] hover:scale-105'
                       }`}
                       style={{ backgroundColor: hex }}
                     />
                   );
                 })}
-                <input
-                  type="color"
-                  value={keyConfig.appearance.labelColor}
-                  onChange={e => onUpdateAppearance({ labelColor: e.target.value })}
-                  className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
-                  title="Custom color"
-                />
               </div>
             </div>
 

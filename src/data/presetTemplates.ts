@@ -60,10 +60,10 @@ export const SLOT_TO_ACTION_KEY: Record<ButtonSlotId, ActionKeyId> = {
 };
 
 export const PROFILE_ACCENT_COLORS: Record<HardwareProfileId, string> = {
-  HOST1: '#3B82F6',
-  HOST2: '#6366F1',
-  HOST3: '#06B6D4',
-  TV: '#10B981'
+  HOST1: '#F2A33A',
+  HOST2: '#F2A33A',
+  HOST3: '#F2A33A',
+  TV: '#F2A33A'
 };
 
 export function emptyAction(): ActionBinding {
@@ -124,7 +124,7 @@ export function makeHardwareKey(
       appearance: {
         label: 'Mode',
         icon: 'layers',
-        labelColor: '#38BDF8'
+        labelColor: '#F2A33A'
       }
     };
   }
@@ -154,7 +154,7 @@ export function buildHardwareEncoder(
   dialAction = '',
   cwAction = '',
   ccwAction = '',
-  color = '#3B82F6',
+  color = '#F2A33A',
   dialRepeat?: TextMacroRepeatConfig,
   cwRepeat?: TextMacroRepeatConfig,
   ccwRepeat?: TextMacroRepeatConfig
@@ -279,7 +279,7 @@ export function buildHardwareProfile(
           slots?.dial2 || '',
           slots?.e2_cw || '',
           slots?.e2_ccw || '',
-          existingProfile?.layers[0]?.encoder2?.color || (id === 'TV' ? '#38BDF8' : '#10B981'),
+          existingProfile?.layers[0]?.encoder2?.color || '#F2A33A',
           repeatConfigs?.[`${id}:dial2`],
           repeatConfigs?.[`${id}:e2_cw`],
           repeatConfigs?.[`${id}:e2_ccw`]

@@ -500,7 +500,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[var(--bg-input)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer text-left"
                       >
                         <RefreshCw className="w-3.5 h-3.5 shrink-0" />
-                        <span>Read profiles from MacroPad</span>
+                        <span>Read profiles from BertoPad</span>
                       </button>
                       <button
                         type="button"
@@ -512,7 +512,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[var(--bg-input)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer text-left"
                       >
                         <Upload className="w-3.5 h-3.5 shrink-0" />
-                        <span>Write all 4 profiles to MacroPad</span>
+                        <span>Write all 4 profiles to BertoPad</span>
                       </button>
                     </>
                   )}
@@ -525,7 +525,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       setOverflowMenuOpen(false);
                       openResetAllConfirm();
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-rose-500/12 text-xs font-medium text-rose-600 dark:text-rose-400 transition-colors cursor-pointer text-left"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[var(--bg-input)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors cursor-pointer text-left"
                   >
                     <RotateCcw className="w-3.5 h-3.5 shrink-0" />
                     <span>Reset all 4 profiles to defaults…</span>
@@ -647,7 +647,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveMyPreset}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <BookmarkPlus className="w-3.5 h-3.5" />
                   <span>
@@ -657,7 +657,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </div>
 
               {matchingExistingPreset && (
-                <div className="text-[11px] text-amber-700 dark:text-amber-300">
+                <div className="text-[11px] text-[var(--accent)]">
                   {matchingExistingPreset.reason === 'identical_layout'
                     ? `Matches "${matchingExistingPreset.preset.name}" — saving updates it in place`
                     : `"${matchingExistingPreset.preset.name}" already exists — saving updates its 14 bindings`}
@@ -707,7 +707,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onDeleteUserSnapshot(snap.id)}
-                          className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-rose-600 dark:hover:text-rose-400 hover:bg-[var(--bg-input)] transition-colors cursor-pointer shrink-0"
+                          className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer shrink-0"
                           title="Delete snapshot"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -748,7 +748,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <button
                         type="button"
                         onClick={() => openMyPresetPreview(snap, defaultTarget)}
-                        className="flex-1 py-2 px-3 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+                        className="flex-1 py-2 px-3 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
                       >
                         Apply to {profileShortTag(defaultTarget)}
                       </button>
@@ -861,7 +861,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <button
                         type="button"
                         onClick={() => openCuratedPresetPreview(preset, primaryTarget)}
-                        className="flex-1 py-2 px-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap truncate"
+                        className="flex-1 py-2 px-2.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap truncate"
                         title={`Preview & apply to ${formatProfileLabel(primaryTarget)}`}
                       >
                         Apply to {profileShortTag(primaryTarget)}

@@ -171,7 +171,7 @@ export default function App() {
     onToast: showToast,
     onUpdateAvailableToast: (release, installed) => {
       showToast(
-        `New MacroPad update v${release.version} available (installed: ${installed})`
+        `New BertoPad update v${release.version} available (installed: ${installed})`
       );
     }
   });
@@ -250,7 +250,7 @@ export default function App() {
       await usbHardware.connectDemoMode({ setupMode: true });
       setSetupWizardTrigger('hardware');
       setSetupWizardOpen(true);
-      showToast('Demo MacroPad connected in Setup Mode');
+      showToast('Demo BertoPad connected in Setup Mode');
     } catch (err: any) {
       showToast(err?.message || 'Could not start Demo Setup Mode', 'error');
     }
@@ -293,7 +293,7 @@ export default function App() {
       const doneRes = await usbHardware.completeSetupMode();
       showToast(
         connection.connected
-          ? doneRes.message || 'Saved setup to MacroPad and exited Setup Mode'
+          ? doneRes.message || 'Saved setup to BertoPad and exited Setup Mode'
           : 'Saved setup to offline workspace'
       );
     },
@@ -327,7 +327,7 @@ export default function App() {
       const avail = getActionTestAvailability(binding.value, connection);
       if (!avail.canTest) {
         showToast(
-          avail.reason || 'Connect MacroPad via USB to test actions on hardware',
+          avail.reason || 'Connect BertoPad via USB to test actions on hardware',
           'error'
         );
         return false;
@@ -516,6 +516,7 @@ export default function App() {
       {/* Top Bar */}
       <TopBar
         connection={connection}
+        resolvedTheme={resolvedTheme}
         syncStatus={studio.syncStatus}
         currentRev={studio.currentRev}
         dirty={studio.dirty}
@@ -883,6 +884,7 @@ export default function App() {
       {/* USB WebSerial & Demo Mode Connection Modal */}
       <UsbConnectModal
         isOpen={connectModalOpen}
+        resolvedTheme={resolvedTheme}
         initialError={connectModalError}
         onClose={() => {
           setConnectModalOpen(false);
@@ -994,7 +996,7 @@ export default function App() {
             type="button"
             onClick={handleStopRepeat}
             title="Stop macro sequence immediately (Esc)"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-700 dark:text-rose-300 font-semibold transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--accent-soft)] hover:opacity-90 border border-[var(--accent)] text-[var(--accent)] font-semibold transition-colors cursor-pointer shrink-0 whitespace-nowrap"
           >
             <Square className="w-3 h-3 fill-current" />
             <span>Stop (Esc)</span>
@@ -1009,14 +1011,14 @@ export default function App() {
           aria-live="polite"
           className={`fixed bottom-16 sm:bottom-5 right-3 sm:right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border shadow-2xl text-xs font-medium max-w-[92vw] sm:max-w-md ${
             toast.variant === 'error'
-              ? 'border-rose-500/45 text-rose-700 dark:text-rose-200'
+              ? 'border-[var(--accent)] text-[var(--text-primary)]'
               : 'border-[var(--border-strong)] text-[var(--text-primary)]'
           }`}
         >
           {toast.variant === 'error' ? (
-            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-[var(--accent)] shrink-0" />
           ) : (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
           )}
           <span className="leading-snug">{toast.message}</span>
         </div>

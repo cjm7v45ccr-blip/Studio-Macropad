@@ -63,8 +63,8 @@ const STAGE_LABELS: Record<FirmwareInstallProgress['stage'], string> = {
   backing_up: 'Backing Up',
   downloading: 'Downloading',
   verifying_hash: 'Verifying',
-  flashing: 'Writing to MacroPad',
-  rebooting: 'Restarting MacroPad',
+  flashing: 'Writing to BertoPad',
+  rebooting: 'Restarting BertoPad',
   complete: 'Installation Complete',
   error: 'Update Interrupted'
 };
@@ -86,17 +86,23 @@ function getBannerVisualConfig(
   activeStage: FirmwareInstallProgress['stage'] | null,
   updateStatus: FirmwareUpdateState['status']
 ): BannerVisualConfig {
+  const accentVisual = {
+    iconColorClass: 'text-[var(--accent)]',
+    statusTextClass: 'text-[var(--accent)]',
+    strokeClass: 'stroke-[var(--accent)]',
+    fillClass: 'fill-[var(--accent)]',
+    compactSurfaceClass:
+      'bg-[var(--accent-soft)] border-b border-[rgba(var(--accent-rgb),0.32)]',
+    fullSurfaceClass:
+      'bg-[var(--accent-soft)] border border-[rgba(var(--accent-rgb),0.35)]',
+    dividerBorderClass: 'border-[rgba(var(--accent-rgb),0.25)]'
+  };
+
   if (activeStage === 'complete') {
     return {
       statusLabel: 'Installation Complete',
       Icon: CheckCircle2,
-      iconColorClass: 'text-emerald-600 dark:text-emerald-400',
-      statusTextClass: 'text-emerald-700 dark:text-emerald-400',
-      strokeClass: 'stroke-emerald-500 dark:stroke-emerald-400',
-      fillClass: 'fill-emerald-500 dark:fill-emerald-400',
-      compactSurfaceClass: 'bg-emerald-500/10 border-b border-emerald-500/30',
-      fullSurfaceClass: 'bg-emerald-500/10 border border-emerald-500/35',
-      dividerBorderClass: 'border-emerald-500/25'
+      ...accentVisual
     };
   }
 
@@ -104,13 +110,13 @@ function getBannerVisualConfig(
     return {
       statusLabel: 'Update Interrupted',
       Icon: AlertCircle,
-      iconColorClass: 'text-rose-600 dark:text-rose-400',
-      statusTextClass: 'text-rose-700 dark:text-rose-400',
-      strokeClass: 'stroke-rose-500 dark:stroke-rose-400',
-      fillClass: 'fill-rose-500/80 dark:fill-rose-400/80',
-      compactSurfaceClass: 'bg-rose-500/10 border-b border-rose-500/30',
-      fullSurfaceClass: 'bg-rose-500/10 border border-rose-500/35',
-      dividerBorderClass: 'border-rose-500/25'
+      iconColorClass: 'text-[#D97706]',
+      statusTextClass: 'text-[var(--text-primary)]',
+      strokeClass: 'stroke-[#D97706]',
+      fillClass: 'fill-[#D97706]',
+      compactSurfaceClass: 'bg-[var(--bg-elevated)] border-b border-[var(--border-strong)]',
+      fullSurfaceClass: 'bg-[var(--bg-elevated)] border border-[var(--border-strong)]',
+      dividerBorderClass: 'border-[var(--border-subtle)]'
     };
   }
 
@@ -118,13 +124,7 @@ function getBannerVisualConfig(
     return {
       statusLabel: 'Backing Up',
       Icon: Archive,
-      iconColorClass: 'text-sky-600 dark:text-sky-400',
-      statusTextClass: 'text-sky-700 dark:text-sky-400',
-      strokeClass: 'stroke-sky-500 dark:stroke-sky-400',
-      fillClass: 'fill-sky-500 dark:fill-sky-400',
-      compactSurfaceClass: 'bg-sky-500/10 border-b border-sky-500/30',
-      fullSurfaceClass: 'bg-sky-500/10 border border-sky-500/35',
-      dividerBorderClass: 'border-sky-500/25'
+      ...accentVisual
     };
   }
 
@@ -132,13 +132,7 @@ function getBannerVisualConfig(
     return {
       statusLabel: 'Downloading',
       Icon: Download,
-      iconColorClass: 'text-sky-600 dark:text-sky-400',
-      statusTextClass: 'text-sky-700 dark:text-sky-400',
-      strokeClass: 'stroke-sky-500 dark:stroke-sky-400',
-      fillClass: 'fill-sky-500 dark:fill-sky-400',
-      compactSurfaceClass: 'bg-sky-500/10 border-b border-sky-500/30',
-      fullSurfaceClass: 'bg-sky-500/10 border border-sky-500/35',
-      dividerBorderClass: 'border-sky-500/25'
+      ...accentVisual
     };
   }
 
@@ -146,44 +140,24 @@ function getBannerVisualConfig(
     return {
       statusLabel: 'Verifying',
       Icon: ShieldCheck,
-      iconColorClass: 'text-cyan-600 dark:text-cyan-400',
-      statusTextClass: 'text-cyan-700 dark:text-cyan-400',
-      strokeClass: 'stroke-cyan-500 dark:stroke-cyan-400',
-      fillClass: 'fill-cyan-500 dark:fill-cyan-400',
-      compactSurfaceClass: 'bg-cyan-500/10 border-b border-cyan-500/30',
-      fullSurfaceClass: 'bg-cyan-500/10 border border-cyan-500/35',
-      dividerBorderClass: 'border-cyan-500/25'
+      ...accentVisual
     };
   }
 
   if (activeStage === 'flashing') {
     return {
-      statusLabel: 'Writing to MacroPad',
+      statusLabel: 'Writing to BertoPad',
       Icon: Cpu,
-      iconColorClass: 'text-[var(--accent)]',
-      statusTextClass: 'text-[var(--accent)]',
-      strokeClass: 'stroke-[var(--accent)]',
-      fillClass: 'fill-[var(--accent)]',
-      compactSurfaceClass:
-        'bg-[rgba(var(--accent-rgb),0.10)] border-b border-[rgba(var(--accent-rgb),0.32)]',
-      fullSurfaceClass:
-        'bg-[rgba(var(--accent-rgb),0.09)] border border-[rgba(var(--accent-rgb),0.35)]',
-      dividerBorderClass: 'border-[rgba(var(--accent-rgb),0.25)]'
+      ...accentVisual
     };
   }
 
   if (activeStage === 'rebooting') {
     return {
-      statusLabel: 'Restarting MacroPad',
+      statusLabel: 'Restarting BertoPad',
       Icon: RefreshCw,
       spinIcon: true,
-      iconColorClass: 'text-violet-600 dark:text-violet-400',
-      statusTextClass: 'text-violet-700 dark:text-violet-400',
-      strokeClass: 'stroke-violet-500 dark:stroke-violet-400',
-      fillClass: 'fill-violet-500 dark:fill-violet-400',
-      compactSurfaceClass: 'bg-violet-500/10 border-b border-violet-500/30',
-      fullSurfaceClass: 'bg-violet-500/10 border border-violet-500/35',
-      dividerBorderClass: 'border-violet-500/25'
+      ...accentVisual
     };
   }
 
@@ -192,26 +166,14 @@ function getBannerVisualConfig(
       statusLabel: 'Checking Update',
       Icon: RefreshCw,
       spinIcon: true,
-      iconColorClass: 'text-sky-600 dark:text-sky-400',
-      statusTextClass: 'text-sky-700 dark:text-sky-400',
-      strokeClass: 'stroke-sky-500 dark:stroke-sky-400',
-      fillClass: 'fill-sky-500 dark:fill-sky-400',
-      compactSurfaceClass: 'bg-amber-500/10 border-b border-amber-500/30',
-      fullSurfaceClass: 'bg-amber-500/10 border border-amber-500/35',
-      dividerBorderClass: 'border-amber-500/20'
+      ...accentVisual
     };
   }
 
   return {
     statusLabel: 'Ready to Install',
     Icon: ArrowUpCircle,
-    iconColorClass: 'text-amber-600 dark:text-amber-400',
-    statusTextClass: 'text-amber-700 dark:text-amber-400',
-    strokeClass: 'stroke-amber-500 dark:stroke-amber-400',
-    fillClass: 'fill-amber-500 dark:fill-amber-400',
-    compactSurfaceClass: 'bg-amber-500/10 border-b border-amber-500/30',
-    fullSurfaceClass: 'bg-amber-500/10 border border-amber-500/35',
-    dividerBorderClass: 'border-amber-500/20'
+    ...accentVisual
   };
 }
 
@@ -378,7 +340,7 @@ const FirmwareStageTrail: React.FC<{
             <span
               className={`inline-flex items-center gap-1 ${
                 isDone
-                  ? 'text-emerald-700 dark:text-emerald-400 font-medium'
+                  ? 'text-[var(--accent)] font-medium'
                   : isCurrent
                   ? `${activeVisual.statusTextClass} font-semibold`
                   : 'text-[var(--text-muted)]'
@@ -410,10 +372,8 @@ const FirmwareProgressBox: React.FC<{
   return (
     <div
       className={`p-3 rounded-xl border space-y-2 text-xs ${
-        installProgress.stage === 'error'
-          ? 'bg-rose-500/10 border-rose-500/35 text-rose-800 dark:text-rose-200'
-          : installProgress.stage === 'complete'
-          ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-800 dark:text-emerald-200'
+        installProgress.stage === 'complete'
+          ? 'bg-[var(--accent-soft)] border-[rgba(var(--accent-rgb),0.35)] text-[var(--text-primary)]'
           : 'bg-[var(--bg-elevated)] border-[var(--border-strong)] text-[var(--text-primary)]'
       }`}
     >
@@ -444,7 +404,7 @@ const FirmwareProgressBox: React.FC<{
       <FirmwareLinearProgress
         percent={clamped}
         stage={installProgress.stage}
-        ariaLabel="MacroPad firmware write progress"
+        ariaLabel="BertoPad firmware write progress"
       />
 
       <div className="text-[11px] leading-relaxed opacity-90">
@@ -529,7 +489,7 @@ export const FirmwareUpdateBanner: React.FC<{
     return (
       <div
         role="region"
-        aria-label="MacroPad firmware update notification"
+        aria-label="BertoPad firmware update notification"
         className={`shrink-0 ${visual.compactSurfaceClass} px-3 sm:px-5 py-2.5 space-y-2 transition-colors`}
       >
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -566,7 +526,7 @@ export const FirmwareUpdateBanner: React.FC<{
                   ? `Firmware${targetVersion ? ` v${targetVersion}` : ''}`
                   : latestRelease
                   ? `Firmware v${latestRelease.version} available`
-                  : 'MacroPad firmware update'}
+                  : 'BertoPad firmware update'}
               </span>
 
               {activeStage ? (
@@ -619,7 +579,7 @@ export const FirmwareUpdateBanner: React.FC<{
                 type="button"
                 disabled={isUploadingFirmware || !primaryAsset}
                 onClick={onUploadToMacropad}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-60 transition-opacity cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-60 transition-opacity cursor-pointer whitespace-nowrap"
               >
                 {isUploadingFirmware ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -631,7 +591,7 @@ export const FirmwareUpdateBanner: React.FC<{
                     ? `${visual.statusLabel} ${clampedPercent}%…`
                     : isError
                     ? 'Retry Upload'
-                    : 'Upload to MacroPad'}
+                    : 'Upload to BertoPad'}
                 </span>
               </button>
             )}
@@ -664,7 +624,7 @@ export const FirmwareUpdateBanner: React.FC<{
           <FirmwareLinearProgress
             percent={clampedPercent}
             stage={activeStage}
-            ariaLabel="MacroPad firmware binary write progress"
+            ariaLabel="BertoPad firmware binary write progress"
           />
         )}
       </div>
@@ -676,7 +636,7 @@ export const FirmwareUpdateBanner: React.FC<{
   return (
     <div
       role="region"
-      aria-label="MacroPad firmware update available"
+      aria-label="BertoPad firmware update available"
       className={`p-4 sm:p-5 rounded-2xl ${visual.fullSurfaceClass} space-y-3 transition-colors`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -725,10 +685,10 @@ export const FirmwareUpdateBanner: React.FC<{
                 : isVerifying
                 ? `Verifying firmware${targetVersion ? ` v${targetVersion}` : ''} integrity`
                 : isWritingBinary
-                ? `Writing firmware${targetVersion ? ` v${targetVersion}` : ''} to MacroPad`
+                ? `Writing firmware${targetVersion ? ` v${targetVersion}` : ''} to BertoPad`
                 : isActiveTransfer && activeStage
-                ? `Installing firmware${targetVersion ? ` v${targetVersion}` : ''} on MacroPad`
-                : `New MacroPad firmware update available (v${targetVersion})`}
+                ? `Installing firmware${targetVersion ? ` v${targetVersion}` : ''} on BertoPad`
+                : `New BertoPad firmware update available (v${targetVersion})`}
             </div>
 
             <div className="flex items-center gap-2 flex-wrap font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
@@ -805,14 +765,14 @@ export const FirmwareUpdateBanner: React.FC<{
             thick
             percent={clampedPercent}
             stage={activeStage}
-            ariaLabel="MacroPad firmware binary write progress"
+            ariaLabel="BertoPad firmware binary write progress"
           />
 
           <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
             <span
               className={
                 isError
-                  ? 'text-rose-700 dark:text-rose-300'
+                  ? 'text-[var(--text-primary)] font-medium'
                   : 'text-[var(--text-secondary)]'
               }
             >
@@ -827,17 +787,17 @@ export const FirmwareUpdateBanner: React.FC<{
         </div>
       ) : (
         <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-          Press <span className="font-semibold text-[var(--text-primary)]">Upload to MacroPad</span>{' '}
+          Press <span className="font-semibold text-[var(--text-primary)]">Upload to BertoPad</span>{' '}
           below to install the update directly over USB — saved button profiles, Bluetooth hosts, and Wi-Fi settings stay intact.
         </p>
       )}
 
       {!activeStage && latestRelease?.notes && (
-        <div className="space-y-2 border-t border-amber-500/20 pt-2.5">
+        <div className="space-y-2 border-t border-[rgba(var(--accent-rgb),0.2)] pt-2.5">
           <button
             type="button"
             onClick={() => setShowReleaseNotes(v => !v)}
-            className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline cursor-pointer whitespace-nowrap"
+            className="text-xs font-medium text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap"
           >
             {showReleaseNotes ? 'Hide release notes' : 'View release notes'}
           </button>
@@ -854,7 +814,7 @@ export const FirmwareUpdateBanner: React.FC<{
           type="button"
           disabled={isUploadingFirmware || !primaryAsset}
           onClick={onUploadToMacropad}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-60 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-60 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
         >
           {isUploadingFirmware ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -866,7 +826,7 @@ export const FirmwareUpdateBanner: React.FC<{
               ? `${visual.statusLabel} (${clampedPercent}%)…`
               : isError
               ? `Retry Upload${targetVersion ? ` (v${targetVersion})` : ''}`
-              : `Upload v${targetVersion} to MacroPad`}
+              : `Upload v${targetVersion} to BertoPad`}
           </span>
         </button>
       </div>
@@ -989,7 +949,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
         `New update available: ${result.installedVersion} → v${result.latestRelease.version}`
       );
     } else if (result.status === 'up_to_date' || result.status === 'ahead') {
-      onToast(`MacroPad firmware (${result.installedVersion}) is up to date`);
+      onToast(`BertoPad firmware (${result.installedVersion}) is up to date`);
     } else if (result.latestRelease) {
       if (
         knownInstalledVersion &&
@@ -998,11 +958,11 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
         onToast(`Firmware (${knownInstalledVersion}) is up to date`);
       } else {
         onToast(
-          `Firmware v${result.latestRelease.version} available — connect MacroPad via USB to check or reinstall`
+          `Firmware v${result.latestRelease.version} available — connect BertoPad via USB to check or reinstall`
         );
       }
     } else {
-      onToast('Your MacroPad firmware is up to date');
+      onToast('Your BertoPad firmware is up to date');
     }
   };
 
@@ -1020,7 +980,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
                 firmwareUpdate.status === 'checking' ? 'animate-spin' : ''
               }`}
             />
-            <span>MacroPad Firmware</span>
+            <span>BertoPad Firmware</span>
           </div>
           <p className="text-xs text-[var(--text-muted)]">
             Updates over USB or Wi-Fi while preserving saved profiles, Bluetooth hosts, and SmartCast pairing.
@@ -1042,7 +1002,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
             <span
               className={`font-mono text-[11px] font-semibold ${
                 settings.autoCheckFirmwareUpdates
-                  ? 'text-emerald-600 dark:text-emerald-400'
+                  ? 'text-[var(--accent)]'
                   : 'text-[var(--text-muted)]'
               }`}
             >
@@ -1076,19 +1036,19 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
               Checking for firmware updates…
             </span>
           ) : firmwareUpdate.status === 'error' ? (
-            <span className="inline-flex items-center gap-1.5 text-rose-700 dark:text-rose-300">
-              <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
+            <span className="inline-flex items-center gap-1.5 text-[var(--text-primary)]">
+              <AlertCircle className="w-3.5 h-3.5 text-[#D97706] shrink-0" />
               <span>{firmwareUpdate.error}</span>
             </span>
           ) : isUpdateAvailable && latestRelease ? (
-            <span className="inline-flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-300">
-              <ArrowUpCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="inline-flex items-center gap-1.5 font-medium text-[var(--accent)]">
+              <ArrowUpCircle className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
               <span>
                 Update available · {firmwareUpdate.installedVersion} → v{latestRelease.version}
               </span>
             </span>
           ) : isFirmwareCurrent ? (
-            <span className="inline-flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-semibold">
+            <span className="inline-flex items-center gap-2 text-[var(--accent)] font-semibold">
               <Check className="w-4 h-4 shrink-0" />
               <span>Up to date ✓</span>
               {knownInstalledVersion && (
@@ -1100,8 +1060,8 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
           ) : (
             <span className="text-[var(--text-secondary)]">
               {latestRelease
-                ? `Latest release v${latestRelease.version} · Connect MacroPad via USB to verify installed version`
-                : 'Connect your MacroPad via USB to check installed firmware'}
+                ? `Latest release v${latestRelease.version} · Connect BertoPad via USB to verify installed version`
+                : 'Connect your BertoPad via USB to check installed firmware'}
             </span>
           )}
         </div>
@@ -1236,7 +1196,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
                 }
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   isUpdateAvailable
-                    ? 'bg-[var(--accent)] text-white hover:opacity-90'
+                    ? 'bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90'
                     : 'bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] border border-[var(--border-strong)] text-[var(--text-primary)]'
                 }`}
               >
@@ -1247,7 +1207,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
                 )}
                 <span>
                   {isUploadingFirmware && installProgress?.method === 'usb_serial'
-                    ? 'Uploading to MacroPad…'
+                    ? 'Uploading to BertoPad…'
                     : selectedRelease
                     ? !connection.connected
                       ? `Select USB Port & Upload (v${selectedRelease.version})`
@@ -1270,7 +1230,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
                     autoBackupBeforeFlash
                   })
                 }
-                title="MacroPad downloads and installs firmware over Wi-Fi"
+                title="BertoPad downloads and installs firmware over Wi-Fi"
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Wifi className="w-3.5 h-3.5 text-[var(--accent)]" />

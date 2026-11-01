@@ -70,7 +70,6 @@ import {
   FileText,
   Tv,
   Laptop,
-  Save,
   RefreshCw,
   AlertCircle,
   ChevronDown,
@@ -2003,7 +2002,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             {!isTvEnabled && actionContainsTvSteps(m.action, m.repeatConfig) && (
                               <>
                                 <span aria-hidden="true">·</span>
-                                <span className="text-amber-600 dark:text-amber-400 font-sans font-medium">
+                                <span className="text-[var(--accent)] font-sans font-medium">
                                   TV off
                                 </span>
                               </>
@@ -2034,7 +2033,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               onDeleteMacro(m.id);
                               if (selectedMacroId === m.id) setSelectedMacroId(null);
                             }}
-                            className="p-1 rounded-md text-[var(--text-muted)] hover:text-rose-400 hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
+                            className="p-1 rounded-md text-[var(--text-muted)] hover:text-[#D97706] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
                             title="Delete saved macro"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -2331,13 +2330,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
           {pendingNavigation && (
             <div
               role="alert"
-              className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/35 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+              className="p-3.5 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
             >
               <div className="space-y-0.5 min-w-0">
-                <div className="font-semibold text-amber-200">
+                <div className="font-semibold text-[var(--text-primary)]">
                   Unsaved changes in current macro
                 </div>
-                <p className="text-amber-200/80">
+                <p className="text-[var(--text-secondary)]">
                   Save your edits before switching to {pendingNavigation.label}, or discard them.
                 </p>
               </div>
@@ -2351,7 +2350,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       setPendingNavigation(null);
                       nextFn();
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
+                    className="px-3 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
                   >
                     Save & Switch
                   </button>
@@ -2363,7 +2362,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     setPendingNavigation(null);
                     nextFn();
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-200 font-semibold hover:bg-rose-500/25 cursor-pointer whitespace-nowrap shrink-0"
+                  className="px-3 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[#D97706] text-[var(--text-primary)] font-semibold hover:bg-[var(--accent-soft)] cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Discard Edits
                 </button>
@@ -2455,11 +2454,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   </span>
                   <span
                     title="Onboard macro slot storage usage (512 B max per key)"
-                    className={`px-2 py-0.5 rounded-md bg-[var(--bg-panel)] font-mono text-[11px] ${
+                    className={`font-mono text-[11px] ${
                       memoryOverflow
-                        ? 'text-rose-600 dark:text-rose-400 font-semibold'
+                        ? 'text-[#D97706] font-semibold'
                         : draftValidation.byteLength > 400
-                        ? 'text-amber-700 dark:text-amber-300'
+                        ? 'text-[var(--accent)] font-medium'
                         : 'text-[var(--text-secondary)]'
                     }`}
                   >
@@ -2470,7 +2469,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       <span className="text-[var(--text-muted)]" aria-hidden="true">
                         ·
                       </span>
-                      <span className="text-amber-700 dark:text-amber-300 font-medium">
+                      <span className="text-[var(--accent)] font-medium">
                         USB Assisted
                       </span>
                     </>
@@ -2480,7 +2479,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       <span className="text-[var(--text-muted)]" aria-hidden="true">
                         ·
                       </span>
-                      <span className="text-amber-600 dark:text-amber-400 font-medium">
+                      <span className="text-[var(--accent)] font-medium">
                         TV off
                       </span>
                     </>
@@ -2514,7 +2513,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       ))}
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded-md bg-[var(--bg-panel)] text-[11px] text-[var(--text-muted)]">
+                    <span className="text-[11px] text-[var(--text-muted)]">
                       Unassigned
                     </span>
                   )}
@@ -2548,9 +2547,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={onStopRepeat}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/40 hover:bg-rose-500/25 text-xs font-semibold text-rose-300 transition-colors cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[#D97706] hover:bg-[var(--accent-soft)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
                   >
-                    <Square className="w-3.5 h-3.5 fill-current" />
+                    <Square className="w-3.5 h-3.5 fill-current text-[#D97706]" />
                     <span>
                       Stop{isSimulating ? '' : ` (${activeRepeatJob?.currentIteration})`}
                     </span>
@@ -2562,12 +2561,12 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       onClick={() => handleToggleSequenceRecorder(false)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                         isRecordingSequence
-                          ? 'bg-rose-500/15 border-rose-500/45 text-rose-300 font-semibold'
+                          ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--text-primary)] font-semibold'
                           : 'bg-[var(--bg-panel)] border-[var(--border-subtle)] hover:border-[var(--accent)] text-[var(--text-primary)]'
                       }`}
                       title="Record live keystrokes with smart text coalescing"
                     >
-                      <Radio className="w-3.5 h-3.5 text-rose-400" />
+                      <Radio className="w-3.5 h-3.5 text-[var(--accent)]" />
                       <span>{isRecordingSequence ? 'Stop Rec' : 'Record'}</span>
                     </button>
 
@@ -2602,11 +2601,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       onClick={() => onTestBinding(builtBinding)}
                       title={
                         testAvail.reason ||
-                        'Connect MacroPad over USB or open Demo Mode to test live'
+                        'Connect BertoPad over USB or open Demo Mode to test live'
                       }
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
                     >
-                      <Play className="w-3.5 h-3.5 text-emerald-400" />
+                      <Play className="w-3.5 h-3.5 text-[var(--accent)]" />
                       <span>Test</span>
                     </button>
                   </>
@@ -2616,10 +2615,10 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
             {/* Live Multi-Step Sequence Recorder Banner */}
             {isRecordingSequence && (
-              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/35 space-y-2.5 text-xs">
+              <div className="p-3.5 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)] space-y-2.5 text-xs">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-2 text-rose-200 font-semibold">
-                    <Radio className="w-4 h-4 text-rose-400 shrink-0 animate-pulse" />
+                  <div className="flex items-center gap-2 text-[var(--text-primary)] font-semibold">
+                    <Radio className="w-4 h-4 text-[var(--accent)] shrink-0" />
                     <span>
                       Recording Smart Action ({sequenceRecordedCount}{' '}
                       {sequenceRecordedCount === 1 ? 'keystroke' : 'keystrokes'}) — type or press shortcuts
@@ -2636,14 +2635,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleToggleSequenceRecorder(false)}
-                      className="px-3 py-1 rounded-lg bg-rose-500 text-white font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap"
+                      className="px-3 py-1 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap"
                     >
                       Done (Esc)
                     </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 flex-wrap text-[11px] text-rose-200/90">
+                <div className="flex items-center gap-4 flex-wrap text-[11px] text-[var(--text-secondary)]">
                   <label className="inline-flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -2663,7 +2662,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     <span>Capture real millisecond delays</span>
                   </label>
                   {sequenceRecorderNotice && (
-                    <span className="text-amber-200">{sequenceRecorderNotice}</span>
+                    <span className="text-[var(--accent)] font-medium">
+                      {sequenceRecorderNotice}
+                    </span>
                   )}
                 </div>
               </div>
@@ -2839,7 +2840,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         type="button"
                         disabled={!formField1.trim() && !formField2.trim() && formStage2Mode === 'none'}
                         onClick={() => handleGenerateFormSteps(false)}
-                        className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-40 cursor-pointer"
                       >
                         Replace Sequence
                       </button>
@@ -2887,7 +2888,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           type="button"
                           disabled={!scriptLinesDraft.trim()}
                           onClick={() => handleGenerateScriptSteps(false)}
-                          className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 cursor-pointer"
+                          className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-40 cursor-pointer"
                         >
                           Build Steps
                         </button>
@@ -2900,21 +2901,21 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
             {/* Strict Completeness Validation Issues */}
             {!draftValidation.valid && draftValidation.issues.length > 0 && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1.5 text-xs text-amber-200">
+              <div className="p-3 rounded-xl bg-[var(--bg-panel)] border border-[#D97706] space-y-1.5 text-xs text-[var(--text-primary)]">
                 {draftValidation.issues.slice(0, 3).map((issue, idx) => (
                   <div
                     key={`${issue.stepId || 'seq'}-${idx}`}
                     className="flex items-center justify-between gap-3"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <AlertCircle className="w-4 h-4 text-[#D97706] shrink-0" />
                       <span className="truncate">{issue.message}</span>
                     </div>
                     {issue.stepId && expandedStepId !== issue.stepId && (
                       <button
                         type="button"
                         onClick={() => setExpandedStepId(issue.stepId!)}
-                        className="font-semibold text-amber-200 hover:underline cursor-pointer whitespace-nowrap shrink-0"
+                        className="font-semibold text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0"
                       >
                         Fix step
                       </button>
@@ -3010,7 +3011,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         targetExistingId: duplicateMacroMatch.item.id
                       })
                     }
-                    className="px-2.5 py-1.5 rounded-lg bg-[var(--accent)] text-white font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap"
+                    className="px-2.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap"
                   >
                     Update Existing
                   </button>
@@ -3220,7 +3221,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             isStepActive
                               ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.12)] shadow-sm'
                               : hasStepIssue
-                              ? 'border-amber-500/55 bg-amber-500/5'
+                              ? 'border-[#D97706] bg-[var(--accent-soft)]'
                               : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
                           } ${isDragged ? 'opacity-45 border-dashed' : ''}`}
                         >
@@ -3250,7 +3251,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               <span
                                 className={`text-sm font-medium truncate ${
                                   hasStepIssue
-                                    ? 'text-amber-700 dark:text-amber-200'
+                                    ? 'text-[var(--accent)]'
                                     : 'text-[var(--text-primary)]'
                                 }`}
                               >
@@ -3262,7 +3263,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                 </span>
                               )}
                               {!isTvEnabled && step.actionType === 'tv' && (
-                                <span className="text-[11px] text-amber-600 dark:text-amber-300 shrink-0">
+                                <span className="text-[11px] text-[var(--accent)] shrink-0">
                                   · TV off
                                 </span>
                               )}
@@ -3276,7 +3277,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                   Running…
                                 </span>
                               ) : hasStepIssue ? (
-                                <span className="text-amber-300 font-sans font-medium">
+                                <span className="text-[#D97706] font-sans font-medium">
                                   Incomplete
                                 </span>
                               ) : (
@@ -3294,11 +3295,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                   type="button"
                                   disabled={!stepCanTest}
                                   onClick={() => handleTestSingleStep(step)}
-                                  className="p-1 rounded text-[var(--text-muted)] hover:text-emerald-400 hover:bg-[var(--bg-input)] disabled:opacity-25 disabled:pointer-events-none cursor-pointer"
+                                  className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--bg-input)] disabled:opacity-25 disabled:pointer-events-none cursor-pointer"
                                   title={
                                     stepCanTest
-                                      ? 'Test only this step on MacroPad'
-                                      : 'Connect MacroPad or enable Demo Mode to test step'
+                                      ? 'Test only this step on BertoPad'
+                                      : 'Connect BertoPad or enable Demo Mode to test step'
                                   }
                                 >
                                   <Play className="w-3.5 h-3.5" />
@@ -3333,7 +3334,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => removeStep(step.id)}
-                                className="p-1 rounded text-[var(--text-muted)] hover:text-rose-400 hover:bg-[var(--bg-input)] cursor-pointer"
+                                className="p-1 rounded text-[var(--text-muted)] hover:text-[#D97706] hover:bg-[var(--bg-input)] cursor-pointer"
                                 title="Delete step"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -3350,7 +3351,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             isStepActive
                               ? 'border-[var(--accent)]'
                               : hasStepIssue
-                              ? 'border-amber-500/55'
+                              ? 'border-[#D97706]'
                               : 'border-[var(--border-strong)]'
                           } ${isDragged ? 'opacity-45 border-dashed' : ''}`}
                         >
@@ -3389,7 +3390,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                   className="px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-medium text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none flex items-center gap-1 cursor-pointer"
                                   title="Test this step immediately"
                                 >
-                                  <Play className="w-3 h-3 text-emerald-400" />
+                                  <Play className="w-3 h-3 text-[var(--accent)]" />
                                   <span>Test</span>
                                 </button>
                               )}
@@ -3422,7 +3423,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => removeStep(step.id)}
-                                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-rose-400 hover:bg-[var(--bg-input)] cursor-pointer"
+                                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[#D97706] hover:bg-[var(--bg-input)] cursor-pointer"
                                 title="Delete step"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -3491,7 +3492,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                   }}
                                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                                     recordingStepId === step.id
-                                      ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                      ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--text-primary)]'
                                       : 'bg-[var(--bg-panel)] border-[var(--border-strong)] hover:border-[var(--accent)] text-[var(--text-primary)]'
                                   }`}
                                 >
@@ -3557,7 +3558,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               </div>
 
                               {stepRecorderError?.stepId === step.id && (
-                                <p className="text-xs text-rose-400">
+                                <p className="text-xs text-[#D97706]">
                                   {stepRecorderError.message}
                                 </p>
                               )}
@@ -3573,7 +3574,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                 <span
                                   className={`font-mono tabular-nums ${
                                     !step.value || !textCheck.valid
-                                      ? 'text-rose-400 font-semibold'
+                                      ? 'text-[#D97706] font-semibold'
                                       : 'text-[var(--text-muted)]'
                                   }`}
                                 >
@@ -3588,17 +3589,17 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                 placeholder="e.g. git status"
                                 className={`w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border text-xs font-mono text-[var(--text-primary)] focus:outline-none ${
                                   !step.value || !textCheck.valid
-                                    ? 'border-amber-500/60'
+                                    ? 'border-[#D97706]'
                                     : 'border-[var(--border-subtle)] focus:border-[var(--accent)]'
                                 }`}
                               />
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 {!step.value ? (
-                                  <p className="text-xs text-amber-300">
+                                  <p className="text-xs text-[var(--accent)]">
                                     Enter at least 1 character to type, or remove this step.
                                   </p>
                                 ) : !textCheck.valid && textCheck.error ? (
-                                  <p className="text-xs text-rose-400">{textCheck.error}</p>
+                                  <p className="text-xs text-[#D97706]">{textCheck.error}</p>
                                 ) : (
                                   <span className="text-[11px] text-[var(--text-muted)]">
                                     Types ASCII characters in order over Bluetooth HID.
@@ -3685,7 +3686,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                     }}
                                     className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium cursor-pointer whitespace-nowrap ${
                                       recordingStepId === step.id
-                                        ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                        ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--text-primary)]'
                                         : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--accent)] text-[var(--text-primary)]'
                                     }`}
                                   >
@@ -3698,7 +3699,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               </div>
 
                               {stepRecorderError?.stepId === step.id && (
-                                <p className="text-xs text-rose-400">
+                                <p className="text-xs text-[#D97706]">
                                   {stepRecorderError.message}
                                 </p>
                               )}
@@ -3805,7 +3806,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           )}
 
                           {step.actionType === 'tv' && !isTvEnabled && (
-                            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                            <p className="text-xs text-[var(--accent)] leading-relaxed">
                               TV mode is off in Settings — this step stays saved in your macro and will be skipped until TV mode is turned back on.
                             </p>
                           )}
@@ -4346,9 +4347,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               )}
 
               {needsLiveRunner && (
-                <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                <p className="text-[11px] text-[var(--accent)] leading-relaxed">
                   {draftValidation.usbRequiredReason ||
-                    'Keep Studio MacroPad open over USB to stream remaining steps or repeats.'}
+                    'Keep BertoPad open over USB to stream remaining steps or repeats.'}
                 </p>
               )}
             </div>
@@ -4494,7 +4495,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               {justAssignedSlot &&
               justAssignedSlot.profile === targetProfile &&
               justAssignedSlot.slot === targetSlot ? (
-                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                <span className="text-[var(--accent)] font-semibold">
                   Assigned to {activeTargetProfileObj.name} · {SLOT_LABELS[targetSlot].short} ✓
                 </span>
               ) : (
@@ -4545,14 +4546,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   </button>
                 )}
 
-              {/* Secondary Actions Menu (Save as copy, New blank, Studio Sense, Delete) */}
+              {/* Secondary Actions Menu (Save as copy, New blank, BertoSense, Delete) */}
               <div className="relative" ref={builderMenuRef}>
                 <button
                   type="button"
                   onClick={() => setBuilderMenuOpen(v => !v)}
                   aria-label="More macro actions"
                   aria-expanded={builderMenuOpen}
-                  title="More macro actions (Save as copy, New blank, Studio Sense)"
+                  title="More macro actions (Save as copy, New blank, BertoSense)"
                   className="p-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0"
                 >
                   <MoreHorizontal className="w-4 h-4" />
@@ -4594,7 +4595,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       className="w-full px-3 py-2 text-left flex items-center gap-2 text-[var(--text-primary)] hover:bg-[var(--bg-input)] cursor-pointer whitespace-nowrap"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
-                      <span>Studio Sense suggestions…</span>
+                      <span>BertoSense suggestions…</span>
                     </button>
 
                     {selectedMacroId && (
@@ -4607,7 +4608,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             setSelectedMacroId(null);
                             setBuilderMenuOpen(false);
                           }}
-                          className="w-full px-3 py-2 text-left flex items-center gap-2 text-rose-600 dark:text-rose-400 hover:bg-[var(--bg-input)] cursor-pointer whitespace-nowrap"
+                          className="w-full px-3 py-2 text-left flex items-center gap-2 text-[#D97706] hover:bg-[var(--bg-input)] cursor-pointer whitespace-nowrap"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Delete from library</span>
@@ -4623,7 +4624,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 type="button"
                 disabled={!isSequenceValid}
                 onClick={handleAssignToControl}
-                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>

@@ -29,7 +29,7 @@ const NAV_ITEMS: {
   tooltip: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { id: 'device', label: 'Device', tooltip: 'Configure MacroPad keys & knob', icon: Grid3X3 },
+  { id: 'device', label: 'Device', tooltip: 'Configure BertoPad keys & knob', icon: Grid3X3 },
   { id: 'macros', label: 'Macros', tooltip: 'Macro Library & Sequence Builder', icon: Zap },
   { id: 'library', label: 'Profiles', tooltip: 'Profiles & Layout Presets', icon: Library },
   { id: 'settings', label: 'Settings', tooltip: 'Device Settings & Firmware', icon: Sliders }
@@ -76,7 +76,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 {showDot && (
                   <span
                     aria-label="Firmware update available"
-                    className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-amber-400"
+                    className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[var(--accent)]"
                   />
                 )}
               </span>
@@ -119,7 +119,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 {showDot && (
                   <span
                     aria-label="Firmware update available"
-                    className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-[var(--bg-panel)]"
+                    className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-[var(--accent)] ring-2 ring-[var(--bg-panel)]"
                   />
                 )}
               </span>

@@ -12,84 +12,36 @@ export interface PrefixTagTheme {
   border: string;
 }
 
-const PREFIX_STYLE_MAP: Record<string, PrefixTagTheme> = {
-  MEDIA: {
-    bg: 'bg-sky-500/15',
-    text: 'text-sky-700 dark:text-sky-300',
-    border: 'border-sky-500/35'
-  },
-  KEY: {
-    bg: 'bg-violet-500/15',
-    text: 'text-violet-700 dark:text-violet-300',
-    border: 'border-violet-500/35'
-  },
-  MACRO: {
-    bg: 'bg-indigo-500/15',
-    text: 'text-indigo-700 dark:text-indigo-300',
-    border: 'border-indigo-500/35'
-  },
-  WIN: {
-    bg: 'bg-blue-500/15',
-    text: 'text-blue-700 dark:text-blue-300',
-    border: 'border-blue-500/35'
-  },
-  BLE: {
-    bg: 'bg-cyan-500/15',
-    text: 'text-cyan-700 dark:text-cyan-300',
-    border: 'border-cyan-500/35'
-  },
-  SHORTCUT: {
-    bg: 'bg-amber-500/15',
-    text: 'text-amber-700 dark:text-amber-300',
-    border: 'border-amber-500/35'
-  },
-  TEXT: {
-    bg: 'bg-emerald-500/15',
-    text: 'text-emerald-700 dark:text-emerald-300',
-    border: 'border-emerald-500/35'
-  },
-  TV: {
-    bg: 'bg-teal-500/15',
-    text: 'text-teal-700 dark:text-teal-300',
-    border: 'border-teal-500/35'
-  },
-  TVKEY: {
-    bg: 'bg-teal-500/15',
-    text: 'text-teal-700 dark:text-teal-300',
-    border: 'border-teal-500/35'
-  },
-  APP: {
-    bg: 'bg-rose-500/15',
-    text: 'text-rose-700 dark:text-rose-300',
-    border: 'border-rose-500/35'
-  },
-  TVAPP: {
-    bg: 'bg-rose-500/15',
-    text: 'text-rose-700 dark:text-rose-300',
-    border: 'border-rose-500/35'
-  },
-  WAIT: {
-    bg: 'bg-slate-500/15',
-    text: 'text-slate-700 dark:text-slate-300',
-    border: 'border-slate-500/35'
-  },
-  DELAY: {
-    bg: 'bg-slate-500/15',
-    text: 'text-slate-700 dark:text-slate-300',
-    border: 'border-slate-500/35'
-  },
-  SEQ: {
-    bg: 'bg-fuchsia-500/15',
-    text: 'text-fuchsia-700 dark:text-fuchsia-300',
-    border: 'border-fuchsia-500/35'
-  }
+const NEUTRAL_PREFIX_STYLE: PrefixTagTheme = {
+  bg: 'bg-[var(--bg-elevated)]',
+  text: 'text-[var(--text-secondary)]',
+  border: 'border-[var(--border-subtle)]'
 };
 
-const DEFAULT_PREFIX_STYLE: PrefixTagTheme = {
-  bg: 'bg-sky-500/15',
-  text: 'text-sky-700 dark:text-sky-300',
-  border: 'border-sky-500/35'
+const ACCENT_PREFIX_STYLE: PrefixTagTheme = {
+  bg: 'bg-[var(--accent-soft)]',
+  text: 'text-[var(--accent)]',
+  border: 'border-[rgba(var(--accent-rgb),0.3)]'
 };
+
+const PREFIX_STYLE_MAP: Record<string, PrefixTagTheme> = {
+  MEDIA: NEUTRAL_PREFIX_STYLE,
+  KEY: NEUTRAL_PREFIX_STYLE,
+  MACRO: ACCENT_PREFIX_STYLE,
+  WIN: NEUTRAL_PREFIX_STYLE,
+  BLE: NEUTRAL_PREFIX_STYLE,
+  SHORTCUT: ACCENT_PREFIX_STYLE,
+  TEXT: NEUTRAL_PREFIX_STYLE,
+  TV: NEUTRAL_PREFIX_STYLE,
+  TVKEY: NEUTRAL_PREFIX_STYLE,
+  APP: NEUTRAL_PREFIX_STYLE,
+  TVAPP: NEUTRAL_PREFIX_STYLE,
+  WAIT: NEUTRAL_PREFIX_STYLE,
+  DELAY: NEUTRAL_PREFIX_STYLE,
+  SEQ: ACCENT_PREFIX_STYLE
+};
+
+const DEFAULT_PREFIX_STYLE: PrefixTagTheme = NEUTRAL_PREFIX_STYLE;
 
 export function getPrefixTagStyle(prefix: string | null | undefined): PrefixTagTheme {
   if (!prefix) return DEFAULT_PREFIX_STYLE;
@@ -169,7 +121,7 @@ export const ParsedActionBadge: React.FC<ParsedActionBadgeProps> = ({
             {matched.name}
           </span>
           {parsed.repeatBadge && (
-            <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold tabular-nums shrink-0">
+            <span className="text-[10px] text-[var(--accent)] font-semibold tabular-nums shrink-0">
               {parsed.repeatBadge}
             </span>
           )}
@@ -220,7 +172,7 @@ export const ParsedActionBadge: React.FC<ParsedActionBadgeProps> = ({
           </span>
         )}
         {parsed.repeatBadge && (
-          <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold tabular-nums shrink-0">
+          <span className="text-[10px] text-[var(--accent)] font-semibold tabular-nums shrink-0">
             {parsed.repeatBadge}
           </span>
         )}
@@ -246,7 +198,7 @@ export const ParsedActionBadge: React.FC<ParsedActionBadgeProps> = ({
         {mainLabel}
       </span>
       {parsed.repeatBadge && (
-        <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold tabular-nums shrink-0">
+        <span className="text-[10px] text-[var(--accent)] font-semibold tabular-nums shrink-0">
           {parsed.repeatBadge}
         </span>
       )}

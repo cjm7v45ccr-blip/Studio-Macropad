@@ -1,6 +1,6 @@
 {
   "name": "BertoPad - Studio MacroPad Pro",
-  "description": "Configure your ESP32 Studio MacroPad over Web Serial with 3-host Easy-Switch Bluetooth, OLED HUD preview, Smart Actions macros, rotary knob presets, and Smart TV control.",
+  "description": "Configure your ESP32 BertoPad over Web Serial with 3-host Easy-Switch Bluetooth, OLED HUD preview, Smart Actions macros, rotary knob presets, and Smart TV control.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

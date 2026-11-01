@@ -80,30 +80,38 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['apple-touch-icon.png', 'icon.svg'],
+        includeAssets: [
+          'favicon.svg',
+          'favicon.ico',
+          'apple-touch-icon-180.png',
+          'logo-mark-dark.svg',
+          'logo-mark-light.svg',
+          'logo-mark-mono.svg',
+          'icon.svg',
+        ],
         workbox: {
           globIgnores: ['**/*.bin', '**/firmware-catalog.json'],
           navigateFallbackDenylist: [/\.bin$/i, /firmware-catalog\.json$/i]
         },
         manifest: {
           id: '/',
-          name: 'Studio MacroPad',
-          short_name: 'StudioPad',
-          description: 'Flagship Hardware Control Center & KeyRemapper for ESP32 MacroPad.',
-          theme_color: '#08090d',
-          background_color: '#08090d',
+          name: 'BertoPad',
+          short_name: 'BertoPad',
+          description: 'Configure your ESP32 BertoPad over Web Serial with 3-host Easy-Switch Bluetooth, OLED HUD preview, Smart Actions macros, rotary knob presets, and Smart TV control.',
+          theme_color: '#14161B',
+          background_color: '#14161B',
           display: 'standalone',
           start_url: '/',
           scope: '/',
           icons: [
             {
-              src: '/pwa-192x192.png',
+              src: '/app-icon-192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-512x512.png',
+              src: '/app-icon-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',

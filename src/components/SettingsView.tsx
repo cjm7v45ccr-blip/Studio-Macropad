@@ -29,7 +29,6 @@ import {
   Volume2,
   VolumeX,
   RotateCcw,
-  Check,
   Wifi,
   Tv,
   Shield,
@@ -92,13 +91,13 @@ interface SettingsViewProps {
   onToast: (msg: string, variant?: ToastVariant) => void;
 }
 
-const ACCENT_PRESETS = [
-  { label: 'Cobalt Blue', hex: '#3B82F6' },
-  { label: 'Emerald', hex: '#10B981' },
-  { label: 'Violet', hex: '#8B5CF6' },
-  { label: 'Amber', hex: '#F59E0B' },
-  { label: 'Rose', hex: '#EC4899' },
-  { label: 'Cyan', hex: '#06B6D4' }
+const BERTOPAD_PALETTE = [
+  { label: 'Graphite', hex: '#14161B', role: 'Canvas' },
+  { label: 'Panel', hex: '#1E2128', role: 'Surface' },
+  { label: 'Bone', hex: '#ECEAE4', role: 'Text' },
+  { label: 'Muted', hex: '#A3A6AD', role: 'Secondary' },
+  { label: 'Amber', hex: '#F2A33A', role: 'Dark accent' },
+  { label: 'Amber deep', hex: '#D97706', role: 'Light accent' }
 ];
 
 const KEYBOARD_LAYOUTS: { id: KeyboardLayoutId; label: string }[] = [
@@ -287,7 +286,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       // Automatically run `/api/tv/test` after PIN submission and report pass/fail!
       const testRes = await usbHardware.testTv();
       if (isTvDisabledResponse(testRes)) {
-        const msg = `PIN saved to MacroPad. ${
+        const msg = `PIN saved to BertoPad. ${
           testRes?.message || 'TV mode is turned off on the pad.'
         }`;
         setTvTestResult({ ok: true, neutral: true, text: msg });
@@ -351,7 +350,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           });
         }
       }
-      onToast(res.message || 'Saved TV IP, port, and auth token to MacroPad');
+      onToast(res.message || 'Saved TV IP, port, and auth token to BertoPad');
     } catch (err: any) {
       onToast(err?.message || 'Failed to save TV configuration', 'error');
     } finally {
@@ -373,7 +372,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         'success'
       );
     } catch (err: any) {
-      onToast(err?.message || 'Could not update TV mode on MacroPad', 'error');
+      onToast(err?.message || 'Could not update TV mode on BertoPad', 'error');
     } finally {
       setTvModeBusy(false);
     }
@@ -414,7 +413,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setTvIp('');
       setTvToken('');
       setPairingActive(false);
-      onToast(res.message || 'Cleared TV settings on MacroPad');
+      onToast(res.message || 'Cleared TV settings on BertoPad');
     } catch (err: any) {
       onToast(err?.message || 'Failed to forget TV', 'error');
     } finally {
@@ -428,7 +427,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setHttpToken('');
     try {
       const res = await usbHardware.setHttpApiToken(tokenVal);
-      onToast(res.message || 'Updated HTTP API token on MacroPad');
+      onToast(res.message || 'Updated HTTP API token on BertoPad');
     } catch (err: any) {
       onToast(
         err?.message || 'Token must be 8–64 chars, or empty to disable',
@@ -611,7 +610,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="button"
                     onClick={onEnterHardwareSetupMode}
                     className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                    title="Put the connected MacroPad into on-device Setup Mode"
+                    title="Put the connected BertoPad into on-device Setup Mode"
                   >
                     Enter Setup Mode
                   </button>
@@ -619,7 +618,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={onOpenSetupWizard}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
                   <span>Open Guided Setup</span>
@@ -634,8 +633,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span
                     className={
                       telemetry?.setupMode
-                        ? 'text-amber-600 dark:text-amber-300 font-semibold'
-                        : 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                        ? 'text-[var(--accent)] font-semibold'
+                        : 'text-[var(--text-primary)] font-semibold'
                     }
                   >
                     {telemetry?.setupMode ? 'Setup Mode Active' : 'Provisioned (Normal)'}
@@ -684,12 +683,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         await usbHardware.fetchStatus();
                         onToast('Refreshed live hardware diagnostics');
                       } catch (err: any) {
-                        onToast(err?.message || 'Could not query MacroPad status', 'error');
+                        onToast(err?.message || 'Could not query BertoPad status', 'error');
                       } finally {
                         setDiagRefreshing(false);
                       }
                     }}
-                    title="Poll /api/status from MacroPad right now (also auto-updates every 4s)"
+                    title="Poll /api/status from BertoPad right now (also auto-updates every 4s)"
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <RefreshCw
@@ -753,7 +752,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               }`
                           : currentDeviceId
                           ? 'Cached offline workspace'
-                          : 'No MacroPad connected'}
+                          : 'No BertoPad connected'}
                       </div>
                     </div>
 
@@ -827,8 +826,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <span
                           className={
                             telemetry.bleConnected
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-amber-700 dark:text-amber-300'
+                              ? 'text-[var(--accent)] font-semibold'
+                              : 'text-[var(--text-muted)]'
                           }
                         >
                           H{telemetry.bleActiveHost} {telemetry.bleDeviceName} (
@@ -843,7 +842,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <span
                           className={
                             telemetry.wifiConnected
-                              ? 'text-emerald-600 dark:text-emerald-400'
+                              ? 'text-[var(--accent)] font-semibold'
                               : 'text-[var(--text-muted)]'
                           }
                         >
@@ -864,7 +863,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <span
                           className={
                             telemetry.tvPaired
-                              ? 'text-emerald-600 dark:text-emerald-400'
+                              ? 'text-[var(--accent)] font-semibold'
                               : 'text-[var(--text-muted)]'
                           }
                         >
@@ -967,12 +966,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
                     <Code2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
                     <span>ESP32 Firmware v4.7.0 Source Studio</span>
-                    <span className="font-mono text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                    <span className="font-mono text-[11px] font-medium text-[var(--text-muted)]">
                       · Arduino / PlatformIO
                     </span>
                   </div>
                   <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                    Complete C++ sketch engineered for your 9-button + dual rotary encoder ESP32 MacroPad with TV mode toggle, standalone macro delays, and hardware safety upgrades.
+                    Complete C++ sketch engineered for your 9-button + dual rotary encoder ESP32 BertoPad with TV mode toggle, standalone macro delays, and hardware safety upgrades.
                   </p>
                 </div>
 
@@ -998,7 +997,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="button"
                     disabled={sourceBusy}
                     onClick={handleDownloadV47Source}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Download StudioMacroPad_v4.7.0.ino</span>
@@ -1052,7 +1051,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div
                 className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
                   connection.connected && telemetry?.bleConnected
-                    ? 'bg-sky-500/15 border-sky-500/35 text-sky-400'
+                    ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--accent)]'
                     : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
                 }`}
               >
@@ -1078,8 +1077,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 !connection.connected
                   ? 'text-[var(--text-muted)]'
                   : telemetry?.bleConnected
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-amber-700 dark:text-amber-300'
+                  ? 'text-[var(--accent)]'
+                  : 'text-[var(--text-muted)]'
               }`}
             >
               {!connection.connected
@@ -1210,7 +1209,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4">
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <Tv className="w-4 h-4 text-purple-400 shrink-0" />
+                    <Tv className="w-4 h-4 text-[var(--accent)] shrink-0" />
                     <span
                       id="settings-tv-mode-label"
                       className="text-xs font-bold text-[var(--text-primary)]"
@@ -1240,20 +1239,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   onClick={handleToggleTvMode}
                   title={
                     !connection.connected
-                      ? 'Connect MacroPad via USB to toggle TV mode'
+                      ? 'Connect BertoPad via USB to toggle TV mode'
                       : isTvModeEnabled
                       ? 'Turn off TV mode'
                       : 'Turn on TV mode'
                   }
-                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                     !connection.connected || tvModeBusy
                       ? 'opacity-40 cursor-not-allowed'
                       : 'cursor-pointer'
-                  } ${isTvModeEnabled ? 'bg-[var(--accent)]' : 'bg-zinc-300 dark:bg-zinc-600'}`}
+                  } ${
+                    isTvModeEnabled
+                      ? 'bg-[var(--accent)] border-transparent'
+                      : 'bg-[var(--bg-input)] border-[var(--border-strong)]'
+                  }`}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                      isTvModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow-sm ring-0 transition duration-200 ease-in-out ${
+                      isTvModeEnabled
+                        ? 'translate-x-5 bg-[var(--accent-contrast)]'
+                        : 'translate-x-0 bg-[var(--text-secondary)]'
                     }`}
                   />
                 </button>
@@ -1264,17 +1269,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-              <Wifi className="w-4 h-4 text-emerald-400" />
+              <Wifi className="w-4 h-4 text-[var(--accent)]" />
               <span>Wi-Fi Network</span>
             </div>
             <div className="font-mono text-[11px] text-[var(--text-secondary)]">
               {connection.connected && telemetry ? (
                 telemetry.wifiConnected ? (
-                  <span className="text-emerald-600 dark:text-emerald-400">
+                  <span className="text-[var(--accent)] font-semibold">
                     Saved: {telemetry.ssid || 'Wi-Fi'} · IP {telemetry.ip}
                   </span>
                 ) : telemetry.ssid ? (
-                  <span className="text-amber-700 dark:text-amber-300">
+                  <span className="text-[var(--text-muted)]">
                     Saved network: {telemetry.ssid} (Disconnected)
                   </span>
                 ) : (
@@ -1312,7 +1317,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               type="button"
               disabled={!connection.connected || wifiBusy || !wifiSsid.trim()}
               onClick={handleSaveWifi}
-              className="py-2 px-4 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap"
+              className="py-2 px-4 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap"
             >
               {wifiBusy && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
               <span>{wifiBusy ? 'Connecting…' : 'Save & Connect'}</span>
@@ -1323,14 +1328,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div
               className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
                 wifiStatusBanner.ok
-                  ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-rose-500/12 border-rose-500/35 text-rose-700 dark:text-rose-300'
+                  ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--text-primary)]'
+                  : 'bg-[var(--bg-input)] border-[#D97706] text-[var(--text-primary)]'
               }`}
             >
               {wifiStatusBanner.ok ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
               )}
               <span>{wifiStatusBanner.text}</span>
             </div>
@@ -1341,7 +1346,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-              <Tv className="w-4 h-4 text-purple-400" />
+              <Tv className="w-4 h-4 text-[var(--accent)]" />
               <span>Vizio SmartCast TV Pairing</span>
             </div>
             <span className="font-mono text-[11px] text-[var(--text-secondary)]">
@@ -1381,7 +1386,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               type="button"
               disabled={!connection.connected || tvBusy || !tvIp.trim()}
               onClick={handleStartTvPairing}
-              className="px-3.5 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer whitespace-nowrap"
+              className="px-3.5 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer whitespace-nowrap"
             >
               Start pairing
             </button>
@@ -1409,7 +1414,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               type="button"
               disabled={!connection.connected || tvBusy}
               onClick={() => setForgetTvModalOpen(true)}
-              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-medium text-rose-600 dark:text-rose-400 disabled:opacity-40 cursor-pointer whitespace-nowrap ml-auto"
+              className="px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[#D97706] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap ml-auto"
             >
               Forget TV
             </button>
@@ -1439,7 +1444,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="button"
                   disabled={tvBusy || !tvPin.trim()}
                   onClick={handleSubmitTvPinAndAutoTest}
-                  className="px-4 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                  className="px-4 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-40 cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
                 >
                   {tvBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   <span>Submit PIN & Test</span>
@@ -1468,7 +1473,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="button"
                   disabled={!connection.connected || tvBusy || !tvIp.trim() || !tvToken.trim()}
                   onClick={handleSaveTvManualToken}
-                  className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold disabled:opacity-40 cursor-pointer whitespace-nowrap"
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-40 cursor-pointer whitespace-nowrap"
                 >
                   Save IP, Port & Token
                 </button>
@@ -1482,16 +1487,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 tvTestResult.neutral
                   ? 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
                   : tvTestResult.ok
-                  ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-rose-500/12 border-rose-500/35 text-rose-700 dark:text-rose-300'
+                  ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--text-primary)]'
+                  : 'bg-[var(--bg-input)] border-[#D97706] text-[var(--text-primary)]'
               }`}
             >
               {tvTestResult.neutral ? (
                 <Tv className="w-4 h-4 text-[var(--text-muted)] shrink-0 mt-0.5" />
               ) : tvTestResult.ok ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
               )}
               <span>{tvTestResult.text}</span>
             </div>
@@ -1502,7 +1507,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-                <Shield className="w-4 h-4 text-sky-400" />
+                <Shield className="w-4 h-4 text-[var(--accent)]" />
                 <span>Local Network API Access</span>
               </div>
               <span className="font-mono text-[10px] text-[var(--text-muted)]">
@@ -1577,32 +1582,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-            {ACCENT_PRESETS.map(item => {
-              const active =
-                settings.accentColor.toLowerCase() === item.hex.toLowerCase();
-              return (
-                <button
-                  key={item.hex}
-                  type="button"
-                  onClick={() => onUpdateSettings({ accentColor: item.hex })}
-                  className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
-                    active
-                      ? 'bg-[var(--bg-elevated)] border-[var(--border-strong)] text-[var(--text-primary)]'
-                      : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
-                  }`}
+          <div className="space-y-2 pt-3 border-t border-[var(--border-subtle)]">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs font-medium text-[var(--text-secondary)]">
+                BertoPad Brand Palette
+              </span>
+              <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+                Accent adapts automatically (#F2A33A dark · #D97706 light)
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              {BERTOPAD_PALETTE.map(swatch => (
+                <div
+                  key={swatch.hex}
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]"
                 >
-                  <span className="flex items-center gap-2 truncate">
-                    <span
-                      className="w-3.5 h-3.5 rounded-full shrink-0"
-                      style={{ backgroundColor: item.hex }}
-                    />
-                    <span className="truncate">{item.label}</span>
-                  </span>
-                  {active && <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />}
-                </button>
-              );
-            })}
+                  <span
+                    className="w-4 h-4 rounded-md border border-[var(--border-strong)] shrink-0"
+                    style={{ backgroundColor: swatch.hex }}
+                  />
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                      {swatch.label}
+                    </div>
+                    <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                      {swatch.hex}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-[var(--border-subtle)]">
@@ -1622,7 +1631,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <Activity
                     className={`w-4 h-4 ${
                       settings.liveEventsEnabled
-                        ? 'text-emerald-600 dark:text-emerald-400'
+                        ? 'text-[var(--accent)]'
                         : 'text-[var(--text-muted)]'
                     }`}
                   />
@@ -1648,7 +1657,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               >
                 <span className="flex items-center gap-2">
                   {settings.soundEnabled ? (
-                    <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <Volume2 className="w-4 h-4 text-[var(--accent)]" />
                   ) : (
                     <VolumeX className="w-4 h-4 text-[var(--text-muted)]" />
                   )}
@@ -1751,29 +1760,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
 
-          <div className="h-44 overflow-y-auto rounded-xl bg-[#090B0F] border border-[var(--border-subtle)] p-3 font-mono text-[11px] space-y-1 tabular-nums">
+          <div className="h-44 overflow-y-auto rounded-xl bg-[#14161B] border border-[var(--border-subtle)] p-3 font-mono text-[11px] space-y-1 tabular-nums">
             {debugLogs.length === 0 ? (
-              <div className="text-zinc-500 py-4 text-center">
+              <div className="text-[#A3A6AD] py-4 text-center">
                 No serial traffic logged yet. Connect the USB pad or start demo mode to inspect JSON lines.
               </div>
             ) : (
               debugLogs.map(entry => (
                 <div key={entry.id} className="flex items-start gap-2 leading-relaxed break-all">
-                  <span className="text-zinc-500 shrink-0">{entry.timestamp}</span>
+                  <span className="text-[#A3A6AD] shrink-0">{entry.timestamp}</span>
                   <span
                     className={`uppercase font-bold shrink-0 ${
                       entry.direction === 'tx'
-                        ? 'text-sky-400'
+                        ? 'text-[#F2A33A]'
                         : entry.direction === 'rx'
-                        ? 'text-emerald-400'
+                        ? 'text-[#ECEAE4]'
                         : entry.direction === 'error'
-                        ? 'text-rose-400'
-                        : 'text-amber-300'
+                        ? 'text-[#D97706]'
+                        : 'text-[#A3A6AD]'
                     }`}
                   >
                     {entry.direction}
                   </span>
-                  <span className="text-zinc-300">{entry.line}</span>
+                  <span className="text-[#ECEAE4]">{entry.line}</span>
                 </div>
               ))
             )}
@@ -1836,9 +1845,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <button
               type="button"
               onClick={() => setResetProfilesModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/12 hover:bg-rose-500/20 border border-rose-500/35 text-xs font-semibold text-rose-600 dark:text-rose-300 cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--accent-soft)] border border-[var(--border-strong)] hover:border-[#D97706] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-3.5 h-3.5 text-[#D97706]" />
               <span>Reset all profiles</span>
             </button>
           </div>
@@ -1857,7 +1866,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setConfirmClearLocal(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-rose-500/40 text-xs font-semibold text-[var(--text-secondary)] hover:text-rose-400 cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[#D97706] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Clear Local Cache</span>
@@ -1870,7 +1879,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onClearLocalCache();
                     setConfirmClearLocal(false);
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-rose-500 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                  className="px-3.5 py-2 rounded-xl bg-[#D97706] text-[#14161B] text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Confirm Clear
                 </button>
@@ -1892,7 +1901,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <DiffConfirmModal
         isOpen={forgetTvModalOpen}
         title="Forget SmartCast TV?"
-        description="This clears the saved TV IP, port, and pairing token on your Studio MacroPad."
+        description="This clears the saved TV IP, port, and pairing token on your BertoPad."
         confirmLabel="Forget TV"
         tone="danger"
         requireWord="FORGET"

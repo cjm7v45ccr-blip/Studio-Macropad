@@ -30,6 +30,7 @@ import {
 
 interface TopBarProps {
   connection: DeviceConnectionInfo;
+  resolvedTheme?: 'light' | 'dark';
   syncStatus: SyncStatusPill;
   currentRev: number;
   dirty: boolean;
@@ -58,6 +59,7 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({
   connection,
+  resolvedTheme = 'dark',
   syncStatus,
   currentRev,
   dirty,
@@ -141,13 +143,14 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div className="flex items-center gap-3 min-w-0">
         <div className="flex items-center gap-2 shrink-0">
           <img
-            src="/logo-mark-dark.svg"
+            src={resolvedTheme === 'light' ? '/logo-mark-light.svg' : '/logo-mark-dark.svg'}
             alt="BertoPad"
-            className="w-7 h-7 rounded-lg object-contain shrink-0"
-            onError={e => {
-              // Fallback if svg file is missing until user uploads it
-              (e.currentTarget as HTMLElement).style.display = 'none';
-            }}
+            referrerPolicy="no-referrer"
+            className={`w-7 h-7 rounded-lg object-contain shrink-0 ${
+              connection.connecting || isSyncingUsb || syncStatus === 'Saving'
+                ? 'animate-[spin_3s_linear_infinite]'
+                : ''
+            }`}
           />
           <span className="text-sm font-bold tracking-tight hidden xl:inline whitespace-nowrap">
             <span className="text-[var(--text-primary)]">Berto</span>
@@ -203,7 +206,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   {tabLabel}
                 </span>
                 {isLiveOnPad && (
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium shrink-0">
+                  <span className="text-[10px] text-[var(--accent)] font-medium shrink-0">
                     · Live
                   </span>
                 )}
@@ -230,14 +233,14 @@ export const TopBar: React.FC<TopBarProps> = ({
               aria-label="Rename profile"
               placeholder="1–20 chars"
               className={`w-28 sm:w-32 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border text-xs text-[var(--text-primary)] focus:outline-none ${
-                renameError ? 'border-rose-500' : 'border-[var(--accent)]'
+                renameError ? 'border-[var(--border-strong)]' : 'border-[var(--accent)]'
               }`}
             />
             <button
               type="button"
               onClick={commitRename}
               title="Save name"
-              className="p-1.5 rounded-md text-emerald-600 dark:text-emerald-400 hover:bg-[var(--bg-input)] cursor-pointer"
+              className="p-1.5 rounded-md text-[var(--accent)] hover:bg-[var(--bg-input)] cursor-pointer"
             >
               <Check className="w-3.5 h-3.5" />
             </button>
@@ -422,12 +425,12 @@ export const TopBar: React.FC<TopBarProps> = ({
               <button
                 type="button"
                 onClick={connection.connecting ? onOpenConnectModal : onConnectUsbPad}
-                style={{ backgroundColor: 'var(--accent)', color: '#FFFFFF' }}
+                style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shadow-xs hover:opacity-95"
                 title={
                   connection.connecting
                     ? 'Opening USB port & syncing profiles…'
-                    : 'Connect MacroPad via USB'
+                    : 'Connect BertoPad via USB'
                 }
               >
                 <Usb className="w-3.5 h-3.5 shrink-0" />
@@ -448,7 +451,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               onClick={needsSave ? onSaveToDevice : onOpenConnectModal}
               style={
                 needsSave
-                  ? { backgroundColor: 'var(--accent)', color: '#FFFFFF' }
+                  ? { backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }
                   : undefined
               }
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
@@ -464,11 +467,9 @@ export const TopBar: React.FC<TopBarProps> = ({
             >
               <span
                 className={`w-2 h-2 rounded-full shrink-0 ${
-                  isSaving || needsSave
-                    ? 'bg-amber-400'
-                    : isDemo
-                    ? 'bg-sky-400'
-                    : 'bg-emerald-500'
+                  needsSave
+                    ? 'bg-[var(--accent-contrast)]'
+                    : 'bg-[var(--accent)]'
                 }`}
               />
               <span className="tabular-nums">

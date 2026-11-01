@@ -11,7 +11,7 @@ dotenv.config();
 function getGenAiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error('Studio Sense AI requires GEMINI_API_KEY to be configured on the server.');
+    throw new Error('BertoSense AI requires GEMINI_API_KEY to be configured on the server.');
   }
   return new GoogleGenAI({
     apiKey,
@@ -107,8 +107,8 @@ ${userContext || 'No additional context provided.'}`;
 
       res.json(parsed);
     } catch (err: any) {
-      console.error('Studio Sense error:', err);
-      res.status(500).json({ error: err?.message || 'Failed to generate Studio Sense analysis' });
+      console.error('BertoSense error:', err);
+      res.status(500).json({ error: err?.message || 'Failed to generate BertoSense analysis' });
     }
   });
 
@@ -136,7 +136,7 @@ ${userContext || 'No additional context provided.'}`;
 
   const port = process.env.PORT || 3000;
   app.listen(Number(port), '0.0.0.0', () => {
-    console.log(`Studio MacroPad server running on http://localhost:${port}`);
+    console.log(`BertoPad server running on http://localhost:${port}`);
   });
 }
 

@@ -334,7 +334,7 @@ class PadLinkService {
     connected: false,
     connecting: false,
     transport: 'disconnected',
-    deviceName: 'Studio MacroPad',
+    deviceName: 'BertoPad',
     firmwareVersion: '—'
   };
 
@@ -580,14 +580,14 @@ class PadLinkService {
       this.pending = null;
       this.pendingReject = null;
       this.pendingSilentLog = false;
-      rej(new Error('MacroPad USB disconnected'));
+      rej(new Error('BertoPad USB disconnected'));
     }
 
     this.connectionInfo = {
       connected: false,
       connecting: false,
       transport: 'disconnected',
-      deviceName: 'Studio MacroPad',
+      deviceName: 'BertoPad',
       firmwareVersion: '—',
       telemetry: undefined
     };
@@ -987,8 +987,8 @@ class PadLinkService {
       ssid: d.ssid,
       device: {
         id: 'demo-pad',
-        name: 'Studio MacroPad (Demo)',
-        firmware: d.firmware || '4.7.0',
+        name: 'BertoPad (Demo)',
+        firmware: d.firmware || '4.7.1',
         connection_type: 'DEMO',
         setup_mode: d.setupMode
       },
@@ -3152,7 +3152,7 @@ class PadLinkService {
             supportsV45Engine: params.supportsV45Engine
           });
         }
-        params.onProgress?.(95, 'Waiting for ESP32 reboot & PadLink handshake…', 'rebooting');
+        params.onProgress?.(95, 'Waiting for ESP32 reboot & BertoLink handshake…', 'rebooting');
         await new Promise(r => setTimeout(r, 2600));
         await this.call(
           { path: '/api/events/set', enabled: this.desiredEventsEnabled ? 1 : 0 },
