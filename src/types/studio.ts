@@ -562,6 +562,13 @@ export interface HardwareTelemetry {
   tvEnabled: boolean;
   capabilities: string[];
   connectionType: string;
+  motion?: {
+    present: boolean;
+    enabled: boolean;
+    wake: boolean;
+    sensitivity: number;
+    who?: number;
+  };
 }
 
 export interface DeviceConnectionInfo {
