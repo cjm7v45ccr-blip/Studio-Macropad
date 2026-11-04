@@ -360,10 +360,10 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             </div>
             <div className="min-w-0">
               <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                {slotMeta.full}
+                {keyConfig.appearance.label || slotMeta.full}
               </h2>
               <p className="text-xs text-[var(--text-muted)] truncate tabular-nums">
-                {activeProfileName} · {profileShortTag(activeProfileId)} · {slotMeta.short}
+                {slotMeta.full} · {activeProfileName} · {effectiveTrigger === 'hold' ? 'Hold' : 'Tap'}
               </p>
             </div>
           </div>

@@ -1351,6 +1351,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
   return (
     <div className="flex-1 @container flex flex-col items-center p-4 sm:p-6 lg:overflow-y-auto relative min-w-0">
+      <div className="w-full max-w-2xl mb-4 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] px-3.5 py-3 text-xs">
+        {viewMode === 'edit' ? (
+          <>
+            <ol aria-label="Key editing workflow" className="flex flex-wrap gap-x-3 gap-y-1 font-medium">
+              <li className="text-[var(--accent)]">1 · Select a control</li>
+              <li>2 · Assign an action</li>
+              <li>3 · Preview & test</li>
+              <li>4 · {connection.connected ? 'Auto-save' : 'Connect & save'}</li>
+            </ol>
+            <p className="text-[var(--text-muted)] mt-1.5">Click a key, knob, or gesture to edit it in the inspector. {connection.connected ? (connection.transport === 'demo' ? 'Demo edits never change physical hardware.' : 'Assignments auto-save to your connected pad; they do not execute the action.') : 'Offline edits stay in your draft until you connect and save.'}</p>
+          </>
+        ) : (
+          <p className="text-[var(--text-secondary)]"><strong className="text-[var(--accent)]">{connection.transport === 'demo' ? 'Demo controls — no physical output.' : connection.connected ? 'Live device testing.' : 'Offline simulation.'}</strong> {connection.connected && connection.transport !== 'demo' ? 'Click an assigned control to review its timeline and confirm before sending real actions. Physical pad presses still execute normally.' : 'Use Configure to edit assignments, or click controls to simulate input.'}</p>
+        )}
+      </div>
       {/* Top Canvas Toolbar (Clean Filled Controls, Minimal Outlines) */}
       <div className="w-full max-w-2xl flex items-center justify-between gap-2 flex-wrap shrink-0">
         <div className="flex items-center p-1 rounded-xl bg-[var(--bg-panel)] shadow-2xs">
@@ -1376,7 +1391,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             }`}
           >
             <Play className="w-3.5 h-3.5" />
-            <span>Test</span>
+            <span>Test controls</span>
           </button>
         </div>
 

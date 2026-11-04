@@ -26,7 +26,6 @@ import {
   findEquivalentBuiltInSpec,
   firmwareActionToBinding,
   formatDurationCompact,
-  getActionTestAvailability,
   getMacroCanonicalSignature,
   getShortcutsForHostOs,
   isSupportedFirmwareKey,
@@ -183,6 +182,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
 
   const [activeTab, setActiveTab] = useState<PickerCategoryTab>(deriveTabForBinding);
   const [searchQuery, setSearchQuery] = useState('');
+  const [moreCategoriesOpen, setMoreCategoriesOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [shortcutError, setShortcutError] = useState<string | null>(null);
 
@@ -329,8 +329,6 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     return null;
   }, [binding.value]);
 
-  const mainTestAvail = getActionTestAvailability(binding.value, connection);
-
   const parsedKeyDelay = Math.max(
     0,
     Math.min(MAX_FIRMWARE_DELAY_STEP_MS, parseInt(keyDelayInput, 10) || 0)
@@ -367,10 +365,6 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
   const canApplyTextMacro =
     textValidation.valid && isValidFirmwareAction(draftTextFirmwareAction);
   const needsUsbForDraftRepeat = requiresUsbSequenceExecution(draftTextConfig);
-  const draftTextTestAvail = getActionTestAvailability(
-    draftTextFirmwareAction,
-    connection
-  );
 
   const shouldStoreDraftRepeatMeta =
     Boolean(draftTextConfig.followUpKey) ||
@@ -395,7 +389,6 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     !Number.isNaN(csNum) && csNum >= 0 && !Number.isNaN(cdNum) && cdNum >= 0
       ? `TVKEY:${csNum}:${cdNum}`
       : '';
-  const tvKeyTestAvail = getActionTestAvailability(draftTvKeyAction, connection);
   const isTvKeyDraftUnsaved =
     activeTab === 'tv' &&
     Boolean(draftTvKeyAction) &&
@@ -411,7 +404,6 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
         ? `TVAPP:${cleanTvAppId}:${nsNum}:${cleanTvAppUrl}`
         : `TVAPP:${cleanTvAppId}:${nsNum}`
       : '';
-  const tvAppTestAvail = getActionTestAvailability(draftTvAppAction, connection);
   const isTvAppDraftUnsaved =
     activeTab === 'tv_app' &&
     Boolean(draftTvAppAction) &&
@@ -644,12 +636,16 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
 
   return (
     <div className="space-y-3">
-      {/* Compact Assigned Action Bar */}
+      <div className="text-[11px] text-[var(--text-secondary)] flex items-center justify-between gap-2">
+        <span className="font-semibold">Current action</span>
+        <span>{connection.connected ? (connection.transport === 'demo' ? 'Changes save to demo' : 'Changes auto-save to device') : 'Editing an offline draft'}</span>
+      </div>
+      {/* Assigned action stays visible above common assignments. */}
       <div
         title={binding.value ? `Raw action: ${binding.value}` : 'Unassigned'}
-        className="px-3 py-2.5 rounded-xl bg-[var(--bg-input)] flex items-center justify-between gap-2.5"
+        className="px-3 py-2.5 rounded-xl bg-[var(--bg-input)] flex flex-wrap items-center justify-between gap-2.5"
       >
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 w-full">
           <div className="flex items-center gap-1.5 min-w-0">
             {binding.value ? (
               <ParsedActionBadge
@@ -705,16 +701,14 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             isValidFirmwareAction(binding.value) && (
               <button
                 type="button"
-                disabled={!mainTestAvail.canTest}
                 onClick={() => onTestBinding(binding)}
                 title={
-                  mainTestAvail.reason ||
-                  'Connect BertoPad via USB to test actions on hardware'
+                  'Review a safe dry-run timeline before optionally running real actions'
                 }
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] text-[11px] font-semibold text-[var(--text-primary)] disabled:opacity-40 shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Play className="w-3 h-3 text-[var(--accent)]" />
-                <span>Test</span>
+                <span>Preview & test</span>
               </button>
             )
           )}
@@ -755,7 +749,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
           aria-label="Action categories"
           className="w-[116px] sm:w-[124px] shrink-0 flex flex-col gap-0.5 p-1 rounded-xl bg-[var(--bg-input)]"
         >
-          {ACTION_TABS.filter(t => isTvEnabled || (t.id !== 'tv' && t.id !== 'tv_app')).map(tab => {
+          {ACTION_TABS.filter(t => isTvEnabled || (t.id !== 'tv' && t.id !== 'tv_app')).filter(t => moreCategoriesOpen || ['my_macros', 'os_shortcuts', 'media', 'shortcut', 'text'].includes(t.id) || t.id === effectiveTab).map(tab => {
             const Icon = tab.icon;
             const active = !trimmedQuery && effectiveTab === tab.id;
             return (
@@ -789,6 +783,14 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             );
           })}
 
+          <button
+            type="button"
+            aria-expanded={moreCategoriesOpen}
+            onClick={() => setMoreCategoriesOpen(open => !open)}
+            className="px-2.5 py-2 text-left text-[11px] font-medium text-[var(--accent)] rounded-lg hover:bg-[var(--bg-elevated)] cursor-pointer"
+          >
+            {moreCategoriesOpen ? 'Fewer categories' : 'More categories…'}
+          </button>
           {onToggleAdvancedIds && (
             <div className="pt-1.5 mt-1 border-t border-[var(--border-subtle)]">
               <button
@@ -802,7 +804,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 }`}
               >
                 <Code2 className="w-3 h-3 shrink-0" />
-                <span>{showAdvancedIds ? 'IDs Shown' : 'Advanced'}</span>
+                <span>{showAdvancedIds ? 'Hide IDs' : 'Show IDs'}</span>
               </button>
             </div>
           )}
@@ -1430,159 +1432,168 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--border-subtle)]">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-[var(--text-muted)]">
-                        Follow-up Key
-                      </label>
-                      <select
-                        value={followUpKey}
-                        onChange={e => setFollowUpKey(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-                      >
-                        <option value="">None</option>
-                        {FIRMWARE_SUPPORTED_KEYS.map(k => (
-                          <option key={k} value={k}>
-                            {k.toUpperCase()}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-[var(--text-muted)]">
-                        Wait (max 10s)
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={MAX_FIRMWARE_DELAY_STEP_MS}
-                        step={50}
-                        disabled={!followUpKey || textDraft.length === 0}
-                        value={keyDelayInput}
-                        onChange={e => setKeyDelayInput(e.target.value)}
-                        onBlur={() =>
-                          setKeyDelayInput(
-                            String(
-                              Math.max(
-                                0,
-                                Math.min(
-                                  MAX_FIRMWARE_DELAY_STEP_MS,
-                                  parseInt(keyDelayInput, 10) || 0
-                                )
-                              )
-                            )
-                          )
-                        }
-                        placeholder="0"
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-40 focus:outline-none focus:border-[var(--accent)] tabular-nums"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-[var(--border-subtle)]">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]">
-                        <Repeat className="w-3 h-3 text-[var(--accent)]" />
-                        <span>Repeat</span>
-                      </span>
-
-                      <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[var(--bg-elevated)]">
-                        <button
-                          type="button"
-                          onClick={() => setLoopUntilStopped(false)}
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors cursor-pointer ${
-                            !loopUntilStopped
-                              ? 'bg-[var(--bg-panel)] text-[var(--text-primary)] shadow-2xs'
-                              : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                          }`}
-                        >
-                          Count
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setLoopUntilStopped(true)}
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors cursor-pointer ${
-                            loopUntilStopped
-                              ? 'bg-[var(--bg-panel)] text-[var(--text-primary)] shadow-2xs'
-                              : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                          }`}
-                        >
-                          Loop
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
+                  <details
+                    open={Boolean(followUpKey || loopUntilStopped || (parseInt(repeatCountInput, 10) || 1) > 1) || undefined}
+                    className="rounded-xl border border-[var(--border-subtle)] p-2.5"
+                  >
+                    <summary className="text-[11px] font-semibold text-[var(--text-secondary)] cursor-pointer">
+                      Timing & repeat <span className="font-normal text-[var(--text-muted)]">· optional follow-up key, delays, loops</span>
+                    </summary>
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--border-subtle)]">
                       <div className="space-y-1">
-                        <label className="text-[10px] text-[var(--text-muted)]">
-                          {loopUntilStopped ? 'Mode' : 'Count'}
+                        <label className="text-[11px] font-medium text-[var(--text-muted)]">
+                          Follow-up Key
                         </label>
-                        {loopUntilStopped ? (
-                          <div className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] text-xs font-mono text-[var(--accent)]">
-                            Until Stopped
-                          </div>
-                        ) : (
-                          <input
-                            type="number"
-                            min={1}
-                            max={999}
-                            value={repeatCountInput}
-                            onChange={e => setRepeatCountInput(e.target.value)}
-                            onBlur={() =>
-                              setRepeatCountInput(
-                                String(
-                                  Math.max(
-                                    1,
-                                    Math.min(999, parseInt(repeatCountInput, 10) || 1)
-                                  )
-                                )
-                              )
-                            }
-                            className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
-                          />
-                        )}
+                        <select
+                          value={followUpKey}
+                          onChange={e => setFollowUpKey(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                        >
+                          <option value="">None</option>
+                          {FIRMWARE_SUPPORTED_KEYS.map(k => (
+                            <option key={k} value={k}>
+                              {k.toUpperCase()}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] text-[var(--text-muted)]">
-                          Cycle Delay (ms)
+                        <label className="text-[11px] font-medium text-[var(--text-muted)]">
+                          Wait (max 10s)
                         </label>
                         <input
                           type="number"
-                          min={10}
+                          min={0}
                           max={MAX_FIRMWARE_DELAY_STEP_MS}
                           step={50}
-                          disabled={
-                            !loopUntilStopped && (parseInt(repeatCountInput, 10) || 1) <= 1
-                          }
-                          value={repeatDelayInput}
-                          onChange={e => setRepeatDelayInput(e.target.value)}
+                          disabled={!followUpKey || textDraft.length === 0}
+                          value={keyDelayInput}
+                          onChange={e => setKeyDelayInput(e.target.value)}
                           onBlur={() =>
-                            setRepeatDelayInput(
+                            setKeyDelayInput(
                               String(
                                 Math.max(
-                                  10,
+                                  0,
                                   Math.min(
                                     MAX_FIRMWARE_DELAY_STEP_MS,
-                                    parseInt(repeatDelayInput, 10) || 500
+                                    parseInt(keyDelayInput, 10) || 0
                                   )
                                 )
                               )
                             )
                           }
-                          placeholder="500"
+                          placeholder="0"
                           className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-40 focus:outline-none focus:border-[var(--accent)] tabular-nums"
                         />
                       </div>
                     </div>
 
-                    {needsUsbForDraftRepeat && (
-                      <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                        Loops stream over USB when pressed. Press the key again or click Stop to halt.
-                      </p>
-                    )}
-                  </div>
+                    <div className="space-y-2 pt-2 border-t border-[var(--border-subtle)]">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]">
+                          <Repeat className="w-3 h-3 text-[var(--accent)]" />
+                          <span>Repeat</span>
+                        </span>
+
+                        <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[var(--bg-elevated)]">
+                          <button
+                            type="button"
+                            onClick={() => setLoopUntilStopped(false)}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors cursor-pointer ${
+                              !loopUntilStopped
+                                ? 'bg-[var(--bg-panel)] text-[var(--text-primary)] shadow-2xs'
+                                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                            }`}
+                          >
+                            Count
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLoopUntilStopped(true)}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors cursor-pointer ${
+                              loopUntilStopped
+                                ? 'bg-[var(--bg-panel)] text-[var(--text-primary)] shadow-2xs'
+                                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                            }`}
+                          >
+                            Loop
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-[var(--text-muted)]">
+                            {loopUntilStopped ? 'Mode' : 'Count'}
+                          </label>
+                          {loopUntilStopped ? (
+                            <div className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] text-xs font-mono text-[var(--accent)]">
+                              Until Stopped
+                            </div>
+                          ) : (
+                            <input
+                              type="number"
+                              min={1}
+                              max={999}
+                              value={repeatCountInput}
+                              onChange={e => setRepeatCountInput(e.target.value)}
+                              onBlur={() =>
+                                setRepeatCountInput(
+                                  String(
+                                    Math.max(
+                                      1,
+                                      Math.min(999, parseInt(repeatCountInput, 10) || 1)
+                                    )
+                                  )
+                                )
+                              }
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
+                            />
+                          )}
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-[var(--text-muted)]">
+                            Cycle Delay (ms)
+                          </label>
+                          <input
+                            type="number"
+                            min={10}
+                            max={MAX_FIRMWARE_DELAY_STEP_MS}
+                            step={50}
+                            disabled={
+                              !loopUntilStopped && (parseInt(repeatCountInput, 10) || 1) <= 1
+                            }
+                            value={repeatDelayInput}
+                            onChange={e => setRepeatDelayInput(e.target.value)}
+                            onBlur={() =>
+                              setRepeatDelayInput(
+                                String(
+                                  Math.max(
+                                    10,
+                                    Math.min(
+                                      MAX_FIRMWARE_DELAY_STEP_MS,
+                                      parseInt(repeatDelayInput, 10) || 500
+                                    )
+                                  )
+                                )
+                              )
+                            }
+                            placeholder="500"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-40 focus:outline-none focus:border-[var(--accent)] tabular-nums"
+                          />
+                        </div>
+                      </div>
+
+                      {needsUsbForDraftRepeat && (
+                        <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                          Loops stream over USB when pressed. Press the key again or click Stop to halt.
+                        </p>
+                      )}
+                    </div>
+
+                  </details>
 
                   {isTextDraftUnsaved && (
                     <div className="text-[11px] text-[var(--accent)]">
@@ -1590,7 +1601,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                     </div>
                   )}
 
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button
                       type="button"
                       disabled={!canApplyTextMacro}
@@ -1604,13 +1615,13 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                     {onTestBinding && (
                       <button
                         type="button"
-                        disabled={!canApplyTextMacro || !draftTextTestAvail.canTest}
+                        disabled={!canApplyTextMacro}
                         onClick={handleTestDraftTextMacro}
-                        title={draftTextTestAvail.reason || 'Test this text action now'}
+                        title="Safely preview this text action before choosing to run it"
                         className="px-3 py-2 rounded-lg bg-[var(--bg-elevated)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
                       >
                         <Play className="w-3 h-3 text-[var(--accent)]" />
-                        <span>Test</span>
+                        <span>Preview & test</span>
                       </button>
                     )}
                   </div>
@@ -1667,15 +1678,15 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                     {onTestBinding && (
                       <button
                         type="button"
-                        disabled={!draftTvKeyAction || !tvKeyTestAvail.canTest}
+                        disabled={!draftTvKeyAction}
                         onClick={() =>
                            onTestBinding({ type: 'tv', value: draftTvKeyAction })
                         }
-                        title={tvKeyTestAvail.reason || 'Test custom remote code'}
+                        title="Preview this remote code before choosing to send it"
                         className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
                       >
                         <Play className="w-3 h-3 text-[var(--accent)]" />
-                        <span>Test</span>
+                        <span>Preview & test</span>
                       </button>
                     )}
                   </div>
@@ -1739,15 +1750,15 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                     {onTestBinding && (
                       <button
                         type="button"
-                        disabled={!draftTvAppAction || !tvAppTestAvail.canTest}
+                        disabled={!draftTvAppAction}
                         onClick={() =>
                           onTestBinding({ type: 'tv_app', value: draftTvAppAction })
                         }
-                        title={tvAppTestAvail.reason || 'Test custom SmartCast app'}
+                        title="Preview this app action before choosing to send it"
                         className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
                       >
                         <Play className="w-3 h-3 text-[var(--accent)]" />
-                        <span>Test</span>
+                        <span>Preview & test</span>
                       </button>
                     )}
                   </div>

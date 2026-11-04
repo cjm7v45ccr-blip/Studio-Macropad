@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   ActionBinding,
   ActiveRepeatJob,
@@ -49,6 +49,8 @@ import {
   KEY_TO_SLOT,
   SLOT_TO_ACTION_KEY
 } from './data/presetTemplates';
+import { MacroTestModal } from './components/MacroTestModal';
+import { buildMacroPreview } from './utils/macroPreview';
 import { TopBar } from './components/TopBar';
 import { LeftSidebar } from './components/LeftSidebar';
 import { MacropadCanvas } from './components/MacropadCanvas';
@@ -71,6 +73,24 @@ export default function App() {
     message: string;
     variant: ToastVariant;
   } | null>(null);
+  const [pendingTest, setPendingTest] = useState<{ binding: ActionBinding; id: number } | null>(null);
+  const testRequestId = useRef(0);
+  const pendingTestResolver = useRef<((sent: boolean) => void) | null>(null);
+
+  const handleReviewBinding = useCallback((binding: ActionBinding): Promise<boolean> => {
+    pendingTestResolver.current?.(false);
+    setPendingTest({ binding: structuredClone(binding), id: ++testRequestId.current });
+    return new Promise(resolve => { pendingTestResolver.current = resolve; });
+  }, []);
+
+  const handleCloseTest = useCallback(() => {
+    pendingTestResolver.current?.(false);
+    pendingTestResolver.current = null;
+    setPendingTest(null);
+  }, []);
+
+  useEffect(() => () => { pendingTestResolver.current?.(false); }, []);
+
   const [isSyncingUsb, setIsSyncingUsb] = useState(false);
 
   const showToast = useCallback((message: string, variant: ToastVariant = 'success') => {
@@ -120,6 +140,19 @@ export default function App() {
   const [activeSection, setActiveSection] = useState<SidebarSection>('device');
   const [selectedControl, setSelectedControl] = useState<ControlId>('k1');
   const [viewMode, setViewMode] = useState<CanvasViewMode>('edit');
+  const deviceWorkspaceRef = useRef<HTMLDivElement>(null);
+  const inspectorAnchorRef = useRef<HTMLDivElement>(null);
+  const handleSelectCanvasControl = useCallback((control: ControlId) => {
+    setSelectedControl(control);
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      requestAnimationFrame(() => {
+        deviceWorkspaceRef.current?.scrollTo({
+          top: inspectorAnchorRef.current?.offsetTop || 0,
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'
+        });
+      });
+    }
+  }, []);
   const [externalMacroTarget, setExternalMacroTarget] =
     useState<MacroEditorExternalTarget | null>(null);
   const [connectModalOpen, setConnectModalOpen] = useState(false);
@@ -209,12 +242,13 @@ export default function App() {
     Boolean(firmwareUpdater.updateState.latestRelease);
 
   const handleStopRepeat = useCallback(() => {
+    const wasPreview = repeatMacroRunner.activeJob?.id.startsWith('sim-');
     const stoppedLocal = repeatMacroRunner.stop();
-    if (connection.connected) {
+    if (connection.connected && !wasPreview) {
       usbHardware.cancelRunningMacro().catch(() => {});
     }
     if (stoppedLocal) {
-      showToast('Stopped repeat sequence');
+      showToast(wasPreview ? 'Stopped dry run — no actions sent' : 'Stopped macro sequence');
     }
   }, [connection.connected, showToast]);
 
@@ -351,7 +385,7 @@ export default function App() {
 
   const handleExecuteHardwareBinding = useCallback(
     async (binding: ActionBinding): Promise<boolean> => {
-      const avail = getActionTestAvailability(binding.value, connection);
+      const avail = getActionTestAvailability(binding.value, usbHardware.info);
       if (!avail.canTest) {
         showToast(
           avail.reason || 'Connect BertoPad via USB to test actions on hardware',
@@ -360,9 +394,15 @@ export default function App() {
         return false;
       }
 
-      if (binding.repeatConfig && isMultiStepOrTimedMacro(binding.value, binding.repeatConfig)) {
+      if (repeatMacroRunner.activeJob) {
+        showToast('Stop the current sequence before starting another test', 'error');
+        return false;
+      }
+      const preview = buildMacroPreview(binding);
+      if (preview.timeline.length > 1 || (binding.repeatConfig && isMultiStepOrTimedMacro(binding.value, binding.repeatConfig))) {
+        const config = { ...preview.simulationConfig, ...binding.repeatConfig, steps: preview.simulationConfig.steps };
         repeatMacroRunner
-          .runFromUiTest(binding.repeatConfig)
+          .runFromUiTest(config)
           .catch((err: any) => {
             showToast(
               err?.message || 'Hardware could not complete repeat sequence',
@@ -631,7 +671,7 @@ export default function App() {
               setActiveSection('device');
             }}
             onTestBinding={binding => {
-              handleExecuteHardwareBinding(binding);
+              handleReviewBinding(binding);
             }}
           />
         }
@@ -654,7 +694,7 @@ export default function App() {
         />
 
         {activeSection === 'device' && (
-          <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-w-0">
+          <div ref={deviceWorkspaceRef} className="relative flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-w-0">
             <MacropadCanvas
               activeProfileId={studio.activeProfile.id}
               activeProfileName={studio.activeProfile.name}
@@ -668,7 +708,7 @@ export default function App() {
               connection={connection}
               tvEnabled={studio.tvEnabled}
               isSyncedWithHardware={studio.isSyncedWithHardware}
-              onSelectControl={setSelectedControl}
+              onSelectControl={handleSelectCanvasControl}
               onChangeViewMode={setViewMode}
               onChangeEncoderPlacement={placement =>
                 studio.updateSettings({ encoderPlacement: placement })
@@ -678,12 +718,16 @@ export default function App() {
               onConnectUsbPad={handleConnectUsbPad}
               onStartDemoMode={handleStartDemoMode}
               onPullFromUsb={handlePullFromUsb}
-              onExecuteHardwareBinding={handleExecuteHardwareBinding}
+              onExecuteHardwareBinding={handleReviewBinding}
               onSwitchBleHost={handleSwitchBleHost}
               onOpenSetupWizard={handleOpenSetupWizard}
               onOpenCheatSheet={() => setCheatSheetOpen(true)}
             />
 
+            <div ref={inspectorAnchorRef} className="lg:hidden shrink-0 flex items-center justify-between px-4 py-2 bg-[var(--bg-panel)] border-t border-[var(--border-subtle)] text-xs">
+              <span className="text-[var(--text-secondary)]">Selected control</span>
+              <button type="button" onClick={() => deviceWorkspaceRef.current?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })} className="text-[var(--accent)] font-semibold px-2 py-1 cursor-pointer">Back to pad ↑</button>
+            </div>
             {isEncoderControlSelected ? (
               <EncoderInspector
                 encoder={
@@ -757,7 +801,7 @@ export default function App() {
                   studio.updateEncoderColor(color, selectedEncoderIndex)
                 }
                 onTestBinding={binding => {
-                  handleExecuteHardwareBinding(binding);
+                  handleReviewBinding(binding);
                 }}
                 onStopRepeat={handleStopRepeat}
                 onOpenMacroBuilder={() => {
@@ -814,7 +858,7 @@ export default function App() {
                   studio.clearSlot(studio.activeProfile.id, slot)
                 }
                 onTestBinding={binding => {
-                  handleExecuteHardwareBinding(binding);
+                  handleReviewBinding(binding);
                 }}
                 onStopRepeat={handleStopRepeat}
                 onOpenMacroBuilder={() => {
@@ -888,7 +932,7 @@ export default function App() {
                   onSelectProfile={studio.selectProfile}
                   onSwitchBleHost={handleSwitchBleHost}
                   onTestBinding={binding => {
-                    handleExecuteHardwareBinding(binding);
+                    handleReviewBinding(binding);
                   }}
                   onStopRepeat={handleStopRepeat}
                   onOpenMacroBuilder={() => {
@@ -927,7 +971,7 @@ export default function App() {
             onImportMacrosFile={studio.importMacrosFile}
             onAssignSlot={studio.assignSlotAction}
             onTestBinding={binding => {
-              handleExecuteHardwareBinding(binding);
+              handleReviewBinding(binding);
             }}
             onStopRepeat={handleStopRepeat}
             onPullFromUsb={handlePullFromUsb}
@@ -1088,13 +1132,29 @@ export default function App() {
         onJumpToControl={handleJumpToSlotControl}
       />
 
+      {pendingTest && (
+        <MacroTestModal
+          key={pendingTest.id}
+          binding={pendingTest.binding}
+          connection={connection}
+          activeJob={activeRepeatJob}
+          onClose={handleCloseTest}
+          onRun={binding => {
+            const resolve = pendingTestResolver.current;
+            pendingTestResolver.current = null;
+            setPendingTest(null);
+            handleExecuteHardwareBinding(binding).then(sent => resolve?.(sent));
+          }}
+        />
+      )}
+
       {/* Active Repeat Macro Floating Bar with Instant Stop */}
-      {activeRepeatJob && (
-        <div className="fixed bottom-16 sm:bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-2xl text-xs max-w-[94vw]">
+      {activeRepeatJob && !(pendingTest && activeRepeatJob.id.startsWith('sim-')) && (
+        <div className="fixed bottom-16 sm:bottom-5 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-2xl text-xs max-w-[94vw]">
           <Repeat className="w-4 h-4 text-[var(--accent)] animate-spin shrink-0" />
           <div className="flex items-center gap-2 text-[var(--text-primary)] min-w-0">
             <span className="font-semibold truncate max-w-[140px] sm:max-w-[200px]">
-              {activeRepeatJob.label}
+              {activeRepeatJob.id.startsWith('sim-') ? 'Dry run · no output' : connection.transport === 'demo' ? 'Demo test' : 'Live · ' + activeRepeatJob.label}
             </span>
             <span className="text-[var(--text-muted)]" aria-hidden="true">
               ·

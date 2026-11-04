@@ -35,7 +35,6 @@ import {
   firmwareSupportsNativeDelay,
   formatShortcutPretty,
   fwKeyToPrintableAscii,
-  getActionTestAvailability,
   getMacroCanonicalSignature,
   getShortcutsForHostOs,
   isGenericMacroName,
@@ -1676,13 +1675,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   const needsLiveRunner = requiresUsbSequenceExecution(effectiveRepeatConfig, {
     nativeDelay: nativeDelaySupported
   });
-  const testAvail = getActionTestAvailability(builtAction, connection);
   const isSimulating = Boolean(activeRepeatJob?.id.startsWith('sim-'));
   const isJobRunning = Boolean(activeRepeatJob);
 
   const handlePreviewSimulation = () => {
-    if (!isSequenceValid) return;
-    repeatMacroRunner.simulateInUi(builtRepeatConfig).catch(() => {});
+    if (!isSequenceValid || repeatMacroRunner.activeJob) return;
+    repeatMacroRunner.simulateInUi({ ...builtRepeatConfig, repeatCount: 1, loopUntilStopped: false })
+      .catch(() => onToast('Could not complete dry run. No actions were sent.', 'error'));
   };
 
   const handleTestSingleStep = (step: MacroStepConfig) => {
@@ -2612,25 +2611,24 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       type="button"
                       disabled={!isSequenceValid}
                       onClick={handlePreviewSimulation}
-                      title="Animate each step in order to verify flow and timing"
+                      title="Preview one cycle safely: no keystrokes or device commands are sent"
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
                     >
                       <Eye className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-                      <span>Preview</span>
+                      <span>Dry run · no output</span>
                     </button>
 
                     <button
                       type="button"
-                      disabled={!isSequenceValid || !testAvail.canTest}
+                      disabled={!isSequenceValid}
                       onClick={() => onTestBinding(builtBinding)}
                       title={
-                        testAvail.reason ||
-                        'Connect BertoPad over USB or open Demo Mode to test live'
+                        'Review the timeline and confirm before sending real actions'
                       }
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
                     >
                       <Play className="w-3.5 h-3.5 text-[var(--accent)]" />
-                      <span>Test</span>
+                      <span>Preview & test</span>
                     </button>
                   </>
                 )}
@@ -3176,9 +3174,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     step.actionType !== 'delay'
                       ? canonicalizeFirmwareAction(stepToFirmwareAction(step))
                       : '';
-                  const stepCanTest =
-                    Boolean(stepTestAction) &&
-                    getActionTestAvailability(stepTestAction, connection).canTest;
+                  const stepCanTest = Boolean(stepTestAction);
 
                   return (
                     <div
@@ -3322,8 +3318,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                   className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--bg-input)] disabled:opacity-25 disabled:pointer-events-none cursor-pointer"
                                   title={
                                     stepCanTest
-                                      ? 'Test only this step on BertoPad'
-                                      : 'Connect BertoPad or enable Demo Mode to test step'
+                                      ? 'Preview and optionally run only this step'
+                                      : 'Complete this step before previewing'
                                   }
                                 >
                                   <Play className="w-3.5 h-3.5" />
@@ -3412,10 +3408,10 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                   disabled={!stepCanTest}
                                   onClick={() => handleTestSingleStep(step)}
                                   className="px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-medium text-[var(--text-primary)] disabled:opacity-35 disabled:pointer-events-none flex items-center gap-1 cursor-pointer"
-                                  title="Test this step immediately"
+                                  title="Preview this step before optionally sending real actions"
                                 >
                                   <Play className="w-3 h-3 text-[var(--accent)]" />
-                                  <span>Test</span>
+                                  <span>Preview & test</span>
                                 </button>
                               )}
                               <button
