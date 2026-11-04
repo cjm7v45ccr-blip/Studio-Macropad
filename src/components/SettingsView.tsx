@@ -9,6 +9,7 @@ import {
   FirmwareUpdateState,
   HostOsType,
   KeyboardLayoutId,
+  MotionSlotId,
   StudioProfile,
   StudioSettings,
   SyncStatusPill,
@@ -90,6 +91,7 @@ interface SettingsViewProps {
   onOpenSetupWizard?: () => void;
   onEnterHardwareSetupMode?: () => Promise<void> | void;
   onExportBackupFile?: () => Promise<void> | void;
+  onJumpToMotionSlot?: (slot: MotionSlotId) => void;
   onToast: (msg: string, variant?: ToastVariant) => void;
 }
 
@@ -116,12 +118,13 @@ type SettingsSectionTab =
   | 'all'
   | 'connection'
   | 'display'
+  | 'motion'
   | 'firmware'
   | 'wifi_tv'
   | 'preferences'
   | 'console';
 
-const SETTINGS_TABS: { id: SettingsSectionTab; label: string }[] = [
+const BASE_SETTINGS_TABS: { id: SettingsSectionTab; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'connection', label: 'Connection & Hosts' },
   { id: 'display', label: 'Display' },
@@ -206,6 +209,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onOpenSetupWizard,
   onEnterHardwareSetupMode,
   onExportBackupFile,
+  onJumpToMotionSlot,
   onToast
 }) => {
   const [firmwareBinGuideOpen, setFirmwareBinGuideOpen] = useState<boolean>(false);
@@ -281,6 +285,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     !telemetry ||
     telemetry.capabilities.includes('display_power') ||
     typeof telemetry.displayDimSeconds === 'number';
+  const supportsMotion = Boolean(telemetry?.capabilities?.includes('motion'));
+  const visibleSettingsTabs = supportsMotion
+    ? [
+        BASE_SETTINGS_TABS[0],
+        BASE_SETTINGS_TABS[1],
+        BASE_SETTINGS_TABS[2],
+        { id: 'motion' as const, label: 'Motion' },
+        ...BASE_SETTINGS_TABS.slice(3)
+      ]
+    : BASE_SETTINGS_TABS;
+
+  useEffect(() => {
+    if (settingsTab === 'motion' && !supportsMotion) {
+      setSettingsTab('all');
+    }
+  }, [settingsTab, supportsMotion]);
+
   const isTvModeEnabled =
     connection.connected && telemetry
       ? telemetry.tvEnabled !== false
@@ -650,6 +671,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const showConnection = settingsTab === 'all' || settingsTab === 'connection';
   const showDisplay = settingsTab === 'all' || settingsTab === 'display';
+  const showMotion = (settingsTab === 'all' || settingsTab === 'motion') && supportsMotion;
   const showFirmware = settingsTab === 'all' || settingsTab === 'firmware';
   const showWifiTv = settingsTab === 'all' || settingsTab === 'wifi_tv';
   const showPreferences = settingsTab === 'all' || settingsTab === 'preferences';
@@ -665,7 +687,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Settings & Diagnostics
               </h1>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Device diagnostics, OLED display power, firmware updates, Bluetooth hosts, Wi-Fi, SmartCast TV pairing, preferences, and serial console.
+                Device diagnostics, OLED display power, motion gestures, firmware updates, Bluetooth hosts, Wi-Fi, SmartCast TV pairing, preferences, and serial console.
               </p>
             </div>
             {connection.connected && (
@@ -684,7 +706,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             aria-label="Settings sections"
             className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-x-auto"
           >
-            {SETTINGS_TABS.map(tab => {
+            {visibleSettingsTabs.map(tab => {
               const active = settingsTab === tab.id;
               return (
                 <button
@@ -1160,7 +1182,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         firmwareVersion:
                           connection.firmwareVersion === 'v1.0.0' ||
                           connection.firmwareVersion === '1.0.0'
-                            ? '4.8.0'
+                            ? '4.9.0'
                             : '1.0.0'
                       })
                     }
@@ -1170,7 +1192,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     Simulate FW (
                     {connection.firmwareVersion === 'v1.0.0' ||
                     connection.firmwareVersion === '1.0.0'
-                      ? 'Restore 4.8.0'
+                      ? 'Restore 4.9.0'
                       : 'Set 1.0.0'}
                     )
                   </button>
@@ -1671,13 +1693,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </section>
         )}
 
-        {showDisplay && (
-          <MotionSettings
-            motion={telemetry?.motion}
-            supported={Boolean(telemetry?.capabilities?.includes('motion') || !connection.connected)}
-            connected={connection.connected}
-            onToast={onToast}
-          />
+        {/* Motion Sensor Section (shown strictly when `capabilities` includes `"motion"`) */}
+        {showMotion && (
+          <section aria-labelledby="settings-motion-heading" className="space-y-4">
+            <div className="flex items-center justify-between gap-2 px-0.5">
+              <h2
+                id="settings-motion-heading"
+                className="text-xs font-bold tracking-tight text-[var(--text-secondary)]"
+              >
+                Motion
+              </h2>
+              <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                {connection.connected ? 'Stored on pad NVS' : 'Connect USB pad to manage'}
+              </span>
+            </div>
+
+            <MotionSettings
+              motion={telemetry?.motion}
+              supported={supportsMotion}
+              connected={connection.connected}
+              onToast={onToast}
+              onJumpToMotionSlot={onJumpToMotionSlot}
+            />
+          </section>
         )}
 
         {/* Wi-Fi & TV Section */}

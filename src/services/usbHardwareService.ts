@@ -18,9 +18,11 @@ import {
   HARDWARE_SLOTS,
   HOLD_SLOTS,
   MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES,
+  MOTION_SLOTS,
   STANDALONE_TICK_MS,
   isFirmwareAtLeast,
   isHoldSlot,
+  isMotionSlot,
   isTvFirmwareAction,
   isValidFirmwareAction,
   isValidFirmwareAlias,
@@ -84,6 +86,13 @@ export interface FirmwareStatusPacket {
     dim_s?: number;
     off_s?: number;
     contrast?: number;
+  };
+  motion?: {
+    present?: boolean;
+    enabled?: boolean;
+    wake?: boolean;
+    sensitivity?: number;
+    who?: number;
   };
   capabilities?: string[];
   tv?: {
@@ -196,6 +205,11 @@ interface VirtualDemoPadState {
   displayDimSec: number;
   displayOffSec: number;
   displayContrast: number;
+  motionPresent: boolean;
+  motionEnabled: boolean;
+  motionWake: boolean;
+  motionSensitivity: number;
+  motionWho: number;
   bootStartedAt: number;
   abnormalResets: number;
   lastAbnormalReset: string;
@@ -787,7 +801,7 @@ class PadLinkService {
 
       this.demoPad = {
         rev,
-        firmware: '4.8.0',
+        firmware: '4.9.0',
         setupMode: Boolean(opts?.setupMode),
         mode,
         h1Name,
@@ -816,6 +830,11 @@ class PadLinkService {
         displayDimSec: 60,
         displayOffSec: 300,
         displayContrast: 255,
+        motionPresent: true,
+        motionEnabled: true,
+        motionWake: true,
+        motionSensitivity: 3,
+        motionWho: 0x68,
         bootStartedAt: Date.now(),
         abnormalResets: 0,
         lastAbnormalReset: ''
@@ -970,6 +989,10 @@ class PadLinkService {
       return;
     }
 
+    if (isMotionSlot(slot) && (!this.demoPad.motionPresent || !this.demoPad.motionEnabled)) {
+      return;
+    }
+
     const activeProf: HardwareProfileId =
       this.demoPad.mode === 'TV' ? 'TV' : bleSlotToProfileId(this.demoPad.bleSlot);
     const activeMap = this.getDemoProfileSlots(this.demoPad, activeProf);
@@ -1003,6 +1026,14 @@ class PadLinkService {
       };
       this.logSerial('rx', JSON.stringify(holdEvt));
       this.handleHardwareEvent(holdEvt);
+    } else if (isMotionSlot(slot)) {
+      const gestureEvt: HardwareEventPacket = {
+        event: 'gesture',
+        type: slot === 'g_shake' ? 'shake' : slot === 'g_down' ? 'down' : 'up',
+        action
+      };
+      this.logSerial('rx', JSON.stringify(gestureEvt));
+      this.handleHardwareEvent(gestureEvt);
     } else {
       const pressEvt: HardwareEventPacket = {
         event: 'press',
@@ -1019,9 +1050,10 @@ class PadLinkService {
     const activeHostProf = bleSlotToProfileId(d.bleSlot);
     const activeHostSlots = this.getDemoProfileSlots(d, activeHostProf);
     const activeProf: HardwareProfileId = d.mode === 'TV' ? 'TV' : activeHostProf;
-    const fw = d.firmware || '4.8.0';
+    const fw = d.firmware || '4.9.0';
     const is45Plus = isFirmwareAtLeast(fw, 4, 5, 0);
     const is48Plus = isFirmwareAtLeast(fw, 4, 8, 0);
+    const is49Plus = isFirmwareAtLeast(fw, 4, 9, 0);
 
     const nonEmptyBindings = [d.h1, d.h2, d.h3, d.tv].reduce(
       (sum, map) => sum + HARDWARE_SLOTS.filter(s => Boolean(map[s])).length,
@@ -1045,7 +1077,8 @@ class PadLinkService {
           'key_hold',
           'display_power',
           'nvs_stats',
-          'brightness'
+          'brightness',
+          ...(is49Plus && d.motionPresent ? ['motion'] : [])
         ]
       : is45Plus
       ? [
@@ -1113,6 +1146,17 @@ class PadLinkService {
               dim_s: d.displayDimSec,
               off_s: d.displayOffSec,
               contrast: d.displayContrast
+            }
+          }
+        : {}),
+      ...(is49Plus
+        ? {
+            motion: {
+              present: d.motionPresent,
+              enabled: d.motionEnabled,
+              wake: d.motionWake,
+              sensitivity: d.motionSensitivity,
+              who: d.motionWho
             }
           }
         : {}),
@@ -1572,30 +1616,81 @@ class PadLinkService {
     }
 
     if (path === '/api/display/set') {
-      const dim = Number(obj.dim ?? -1);
-      const off = Number(obj.off ?? -1);
-      const contrast = Number(obj.contrast ?? -1);
-      if (
-        !Number.isFinite(dim) ||
-        !Number.isFinite(off) ||
-        !Number.isFinite(contrast) ||
-        dim < 0 ||
-        dim > 36000 ||
-        off < 0 ||
-        off > 36000 ||
-        contrast < 0 ||
-        contrast > 255
-      ) {
-        return reply({
-          ok: false,
-          message: 'dim and off are 0-36000 seconds; contrast is 0-255.'
-        });
+      if (obj.dim !== undefined) {
+        const dim = Number(obj.dim);
+        if (!Number.isFinite(dim) || dim < 0 || dim > 36000) {
+          return reply({
+            ok: false,
+            message: 'dim and off are 0-36000 seconds; contrast is 0-255.'
+          });
+        }
+        d.displayDimSec = Math.round(dim);
       }
-      d.displayDimSec = Math.round(dim);
-      d.displayOffSec = Math.round(off);
-      d.displayContrast = Math.round(contrast);
+      if (obj.off !== undefined) {
+        const off = Number(obj.off);
+        if (!Number.isFinite(off) || off < 0 || off > 36000) {
+          return reply({
+            ok: false,
+            message: 'dim and off are 0-36000 seconds; contrast is 0-255.'
+          });
+        }
+        d.displayOffSec = Math.round(off);
+      }
+      if (obj.contrast !== undefined) {
+        const contrast = Number(obj.contrast);
+        if (!Number.isFinite(contrast) || contrast < 0 || contrast > 255) {
+          return reply({
+            ok: false,
+            message: 'dim and off are 0-36000 seconds; contrast is 0-255.'
+          });
+        }
+        d.displayContrast = Math.round(contrast);
+      }
       this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       return reply({ ok: true, message: 'Display settings saved.' });
+    }
+
+    if (path === '/api/motion/set') {
+      if (obj.enabled !== undefined) {
+        d.motionEnabled = Boolean(obj.enabled);
+      }
+      if (obj.wake !== undefined) {
+        d.motionWake = Boolean(obj.wake);
+      }
+      if (obj.sensitivity !== undefined) {
+        const sens = Number(obj.sensitivity);
+        if (!Number.isFinite(sens) || sens < 1 || sens > 5) {
+          return reply({ ok: false, message: 'Sensitivity must be between 1 and 5.' });
+        }
+        d.motionSensitivity = Math.round(sens);
+      }
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      return reply({ ok: true, message: 'Motion settings saved.' });
+    }
+
+    if (path === '/api/motion/calibrate') {
+      if (!d.motionPresent) {
+        return reply({ ok: false, message: 'Motion sensor is not detected.' });
+      }
+      return reply({
+        ok: true,
+        message: 'Current position saved as flat, face-up.'
+      });
+    }
+
+    if (path === '/api/motion/read') {
+      if (!d.motionPresent) {
+        return reply({ ok: false, message: 'Motion sensor is not detected.' });
+      }
+      const now = Date.now();
+      return reply({
+        ok: true,
+        ax: Math.round(Math.sin(now / 900) * 65),
+        ay: Math.round(Math.cos(now / 1100) * 55),
+        az: 996,
+        temp_c: 27.4,
+        face_up: 1.0
+      });
     }
 
     if (path === '/api/encoder/set') {
@@ -2320,6 +2415,18 @@ class PadLinkService {
         typeof pkt.display?.off_s === 'number' ? pkt.display.off_s : undefined,
       displayContrast:
         typeof pkt.display?.contrast === 'number' ? pkt.display.contrast : undefined,
+      motion: pkt.motion
+        ? {
+            present: Boolean(pkt.motion.present),
+            enabled: pkt.motion.enabled !== false,
+            wake: pkt.motion.wake !== false,
+            sensitivity: Math.max(
+              1,
+              Math.min(5, Math.round(Number(pkt.motion.sensitivity ?? 3)))
+            ),
+            who: typeof pkt.motion.who === 'number' ? pkt.motion.who : undefined
+          }
+        : undefined,
       httpApiEnabled: Boolean(pkt.diagnostics?.http_api_enabled),
       tvConfigured: Boolean(pkt.tv?.configured),
       tvPaired: Boolean(pkt.tv?.paired ?? pkt.has_auth),
@@ -2532,11 +2639,13 @@ class PadLinkService {
     const isPushTurnSlot = slot === 'push_cw' || slot === 'push_ccw';
     const isEncoder2Slot = slot === 'dial2' || slot === 'e2_cw' || slot === 'e2_ccw';
     const isKeyHoldSlot = isHoldSlot(slot);
+    const isMotionGestureSlot = isMotionSlot(slot);
     const unsupportedOptionalSlot =
       !this.demoModeActive &&
       ((isPushTurnSlot && !caps.includes('push_turn')) ||
         (isEncoder2Slot && !caps.includes('encoder2')) ||
-        (isKeyHoldSlot && !caps.includes('key_hold')));
+        (isKeyHoldSlot && !caps.includes('key_hold')) ||
+        (isMotionGestureSlot && !caps.includes('motion')));
 
     if (unsupportedOptionalSlot && !wireAction) {
       return { ok: true, rev: this.connectionInfo.rev };
@@ -2572,6 +2681,7 @@ class PadLinkService {
     const includePushTurn = this.demoModeActive || caps.includes('push_turn');
     const includeEnc2 = this.demoModeActive || caps.includes('encoder2');
     const includeKeyHold = this.demoModeActive || caps.includes('key_hold');
+    const includeMotion = this.demoModeActive || caps.includes('motion');
 
     const baseReqObj = {
       path: '/api/profile/save',
@@ -2607,6 +2717,11 @@ class PadLinkService {
         ? Object.fromEntries(
             HOLD_SLOTS.map(s => [s, this.adaptActionForConnectedFirmware(slots[s])])
           )
+        : {}),
+      ...(includeMotion
+        ? Object.fromEntries(
+            MOTION_SLOTS.map(s => [s, this.adaptActionForConnectedFirmware(slots[s])])
+          )
         : {})
     };
 
@@ -2631,7 +2746,10 @@ class PadLinkService {
 
     const res = await this.call(reqObj);
     if (!res?.ok) {
-      if (!this.demoModeActive && (includePushTurn || includeEnc2 || includeKeyHold)) {
+      if (
+        !this.demoModeActive &&
+        (includePushTurn || includeEnc2 || includeKeyHold || includeMotion)
+      ) {
         const fallbackRes = await this.call(baseReqObj);
         if (fallbackRes?.ok) {
           return fallbackRes;
@@ -3081,10 +3199,18 @@ class PadLinkService {
       },
       5000
     );
-    if (!res?.ok) {
-      throw new Error(res?.message || 'Motion calibration failed.');
+    const ok = Boolean(res?.ok);
+    if (ok) {
+      await this.fetchStatus().catch(() => {});
     }
-    return res;
+    return {
+      ok,
+      message:
+        res?.message ||
+        (ok
+          ? 'Current position saved as flat, face-up.'
+          : 'Keep the pad still while calibrating.')
+    };
   }
 
   public async readMotion(): Promise<{
@@ -3096,9 +3222,13 @@ class PadLinkService {
     face_up?: number;
     message?: string;
   }> {
-    return await this.call({
-      path: '/api/motion/read'
-    });
+    return await this.call(
+      {
+        path: '/api/motion/read'
+      },
+      2000,
+      { silentLog: true }
+    );
   }
 
   public async resetHardwareDefaults(): Promise<{ ok: boolean; rev?: number; message: string }> {
@@ -3124,20 +3254,26 @@ class PadLinkService {
     return res;
   }
 
-  public async setDisplaySettings(params: {
-    dim: number;
-    off: number;
-    contrast: number;
-  }): Promise<{ ok: boolean; message: string }> {
-    const dim = Math.max(0, Math.min(36000, Math.round(Number(params.dim) || 0)));
-    const off = Math.max(0, Math.min(36000, Math.round(Number(params.off) || 0)));
-    const contrast = Math.max(0, Math.min(255, Math.round(Number(params.contrast) || 0)));
-    const res = await this.call({
-      path: '/api/display/set',
-      dim,
-      off,
-      contrast
-    });
+  public async setDisplaySettings(
+    params: Partial<{
+      dim: number;
+      off: number;
+      contrast: number;
+    }>
+  ): Promise<{ ok: boolean; message: string }> {
+    const payload: Record<string, any> = {
+      path: '/api/display/set'
+    };
+    if (params.dim !== undefined) {
+      payload.dim = Math.max(0, Math.min(36000, Math.round(Number(params.dim) || 0)));
+    }
+    if (params.off !== undefined) {
+      payload.off = Math.max(0, Math.min(36000, Math.round(Number(params.off) || 0)));
+    }
+    if (params.contrast !== undefined) {
+      payload.contrast = Math.max(0, Math.min(255, Math.round(Number(params.contrast) || 0)));
+    }
+    const res = await this.call(payload);
     if (!res?.ok) {
       throw new Error(res?.message || 'Device rejected display settings.');
     }

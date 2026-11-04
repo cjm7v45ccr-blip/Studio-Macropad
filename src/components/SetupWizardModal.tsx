@@ -77,7 +77,10 @@ const EMPTY_HOLD_SLOTS = {
   b5h: '',
   b6h: '',
   b7h: '',
-  b8h: ''
+  b8h: '',
+  g_shake: '',
+  g_down: '',
+  g_up: ''
 } as const;
 
 const HOST_PRESET_SLOTS: Record<Exclude<HostOsPresetId, 'keep'>, Record<HardwareSlotId, string>> = {

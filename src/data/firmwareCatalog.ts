@@ -11,6 +11,7 @@ import {
   KeyboardLayoutId,
   MacroStepActionType,
   MacroStepConfig,
+  MotionSlotId,
   SlotRepeatMap,
   TextMacroRepeatConfig,
   defaultProfileAlias
@@ -46,7 +47,7 @@ export const BASE_16_SLOTS: readonly HardwareSlotId[] = [
   'e2_ccw'
 ] as const;
 
-export const MOTION_SLOTS: readonly ('g_shake' | 'g_down' | 'g_up')[] = [
+export const MOTION_SLOTS: readonly MotionSlotId[] = [
   'g_shake',
   'g_down',
   'g_up'
@@ -60,6 +61,18 @@ export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
 
 export function isHoldSlot(slot: string): slot is HoldSlotId {
   return (HOLD_SLOTS as readonly string[]).includes(slot);
+}
+
+export function isMotionSlot(slot: string): slot is MotionSlotId {
+  return (MOTION_SLOTS as readonly string[]).includes(slot);
+}
+
+export function gestureTypeToMotionSlot(type?: string | null): MotionSlotId | null {
+  const clean = String(type || '').trim().toLowerCase();
+  if (clean === 'shake' || clean === 'g_shake') return 'g_shake';
+  if (clean === 'down' || clean === 'g_down') return 'g_down';
+  if (clean === 'up' || clean === 'g_up') return 'g_up';
+  return null;
 }
 
 export function hasKeyHoldCapability(
@@ -176,7 +189,10 @@ export const FACTORY_DEFAULT_SLOTS: Record<
     b5h: '',
     b6h: '',
     b7h: '',
-    b8h: ''
+    b8h: '',
+    g_shake: '',
+    g_down: '',
+    g_up: ''
   }
 };
 

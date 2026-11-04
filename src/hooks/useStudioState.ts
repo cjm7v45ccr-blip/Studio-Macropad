@@ -18,6 +18,7 @@ import {
   HostOsType,
   KeyAppearance,
   KeyId,
+  MotionControlConfig,
   SerializedPadProfiles,
   SlotRepeatMap,
   StoredPadRecord,
@@ -47,6 +48,7 @@ import {
   HARDWARE_SLOTS,
   MAX_NVS_ACTION_BYTES,
   MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES,
+  MOTION_SLOTS,
   SLOT_LABELS,
   actionToMacroSteps,
   bindingToFirmwareAction,
@@ -58,10 +60,12 @@ import {
   firmwareActionToBinding,
   firmwareSupports512ByteSlotSave,
   firmwareSupportsNativeDelay,
+  gestureTypeToMotionSlot,
   getMacroCanonicalSignature,
   getProfilePresetSignature,
   inferHostOsFromSlots,
   isGenericMacroName,
+  isMotionSlot,
   isMultiStepOrTimedMacro,
   isValidFirmwareAction,
   isValidSlotAssignment,
@@ -238,7 +242,10 @@ export function extractProfileSlots(profile: StudioProfile): Record<HardwareSlot
     b5h: bindingToFirmwareAction(layer.keys.k5.triggers.hold ?? emptyBind),
     b6h: bindingToFirmwareAction(layer.keys.k6.triggers.hold ?? emptyBind),
     b7h: bindingToFirmwareAction(layer.keys.k7.triggers.hold ?? emptyBind),
-    b8h: bindingToFirmwareAction(layer.keys.k8.triggers.hold ?? emptyBind)
+    b8h: bindingToFirmwareAction(layer.keys.k8.triggers.hold ?? emptyBind),
+    g_shake: bindingToFirmwareAction(layer.motion?.g_shake ?? emptyBind),
+    g_down: bindingToFirmwareAction(layer.motion?.g_down ?? emptyBind),
+    g_up: bindingToFirmwareAction(layer.motion?.g_up ?? emptyBind)
   };
 }
 
@@ -280,6 +287,10 @@ export function extractRepeatMapFromProfiles(
     if (layer.encoder2.ccw.repeatConfig) {
       map[`${prof.id}:e2_ccw`] = layer.encoder2.ccw.repeatConfig;
     }
+    MOTION_SLOTS.forEach(mSlot => {
+      const mRc = layer.motion?.[mSlot]?.repeatConfig;
+      if (mRc) map[`${prof.id}:${mSlot}`] = mRc;
+    });
   }
   return map;
 }
@@ -299,6 +310,9 @@ export function getBindingForProfileSlot(
   if (slot in HOLD_SLOT_TO_ACTION_KEY) {
     const kid = HOLD_SLOT_TO_ACTION_KEY[slot as HoldSlotId];
     return layer.keys[kid].triggers.hold;
+  }
+  if (isMotionSlot(slot)) {
+    return layer.motion?.[slot];
   }
   if (slot === 'dial') return layer.encoder.dial;
   if (slot === 'enc_cw') return layer.encoder.cw;
@@ -402,7 +416,19 @@ export function statusPacketToSerializedProfiles(
       b5h: item?.controls?.b5h ?? (useMacFallback ? (pkt as any).mac_b5h : undefined) ?? defaults.b5h,
       b6h: item?.controls?.b6h ?? (useMacFallback ? (pkt as any).mac_b6h : undefined) ?? defaults.b6h,
       b7h: item?.controls?.b7h ?? (useMacFallback ? (pkt as any).mac_b7h : undefined) ?? defaults.b7h,
-      b8h: item?.controls?.b8h ?? (useMacFallback ? (pkt as any).mac_b8h : undefined) ?? defaults.b8h
+      b8h: item?.controls?.b8h ?? (useMacFallback ? (pkt as any).mac_b8h : undefined) ?? defaults.b8h,
+      g_shake:
+        item?.controls?.g_shake ??
+        (useMacFallback ? (pkt as any).mac_g_shake : undefined) ??
+        defaults.g_shake,
+      g_down:
+        item?.controls?.g_down ??
+        (useMacFallback ? (pkt as any).mac_g_down : undefined) ??
+        defaults.g_down,
+      g_up:
+        item?.controls?.g_up ??
+        (useMacFallback ? (pkt as any).mac_g_up : undefined) ??
+        defaults.g_up
     };
   };
 
@@ -456,7 +482,12 @@ export function statusPacketToSerializedProfiles(
       b5h: tvItem?.controls?.b5h ?? (pkt as any).tv_b5h ?? FACTORY_DEFAULT_SLOTS.TV.b5h,
       b6h: tvItem?.controls?.b6h ?? (pkt as any).tv_b6h ?? FACTORY_DEFAULT_SLOTS.TV.b6h,
       b7h: tvItem?.controls?.b7h ?? (pkt as any).tv_b7h ?? FACTORY_DEFAULT_SLOTS.TV.b7h,
-      b8h: tvItem?.controls?.b8h ?? (pkt as any).tv_b8h ?? FACTORY_DEFAULT_SLOTS.TV.b8h
+      b8h: tvItem?.controls?.b8h ?? (pkt as any).tv_b8h ?? FACTORY_DEFAULT_SLOTS.TV.b8h,
+      g_shake:
+        tvItem?.controls?.g_shake ?? (pkt as any).tv_g_shake ?? FACTORY_DEFAULT_SLOTS.TV.g_shake,
+      g_down:
+        tvItem?.controls?.g_down ?? (pkt as any).tv_g_down ?? FACTORY_DEFAULT_SLOTS.TV.g_down,
+      g_up: tvItem?.controls?.g_up ?? (pkt as any).tv_g_up ?? FACTORY_DEFAULT_SLOTS.TV.g_up
     }
   };
 }
@@ -1440,7 +1471,12 @@ export function useStudioState(
         return;
       }
 
-      if (e.event === 'press' || e.event === 'turn' || e.event === 'hold') {
+      if (
+        e.event === 'press' ||
+        e.event === 'turn' ||
+        e.event === 'hold' ||
+        e.event === 'gesture'
+      ) {
         const rawSlot = String(e.slot || '').toLowerCase();
         const rawDir = String(e.dir || '').toLowerCase();
         let hwSlot: HardwareSlotId | null = null;
@@ -1455,9 +1491,12 @@ export function useStudioState(
           rawSlot === 'ccw2' ||
           e.encoder === 2;
 
-        if (
+        if (e.event === 'gesture') {
+          hwSlot = gestureTypeToMotionSlot(e.type || rawSlot);
+        } else if (
           rawSlot in SLOT_TO_ACTION_KEY ||
           rawSlot in HOLD_SLOT_TO_ACTION_KEY ||
+          isMotionSlot(rawSlot) ||
           rawSlot === 'dial' ||
           rawSlot === 'dial2' ||
           rawSlot === 'push_cw' ||
@@ -2172,6 +2211,22 @@ export function useStudioState(
           };
         }
 
+        if (isMotionSlot(slot)) {
+          const nextMotion: MotionControlConfig = {
+            ...layer.motion,
+            [slot]: normalizedBinding
+          };
+          return {
+            ...prof,
+            layers: [
+              {
+                ...layer,
+                motion: nextMotion
+              }
+            ] as [typeof layer]
+          };
+        }
+
         if (slot === 'dial2' || slot === 'e2_cw' || slot === 'e2_ccw') {
           const nextEncoder2: EncoderControlConfig = {
             ...layer.encoder2,
@@ -2755,6 +2810,7 @@ export function useStudioState(
 
               const nextEncoder: EncoderControlConfig = { ...layer.encoder };
               const nextEncoder2: EncoderControlConfig = { ...layer.encoder2 };
+              const nextMotion: MotionControlConfig = { ...layer.motion };
               if (actionChanged) {
                 (['dial', 'cw', 'ccw'] as const).forEach(encKey => {
                   const hwSlot: HardwareSlotId =
@@ -2802,6 +2858,21 @@ export function useStudioState(
                     nextEncoder[pushKey] = updatedBinding;
                   }
                 });
+
+                MOTION_SLOTS.forEach(mSlot => {
+                  const bind = layer.motion?.[mSlot];
+                  if (!bind) return;
+                  const bindSig = getMacroCanonicalSignature(
+                    bindingToFirmwareAction(bind),
+                    bind.repeatConfig
+                  );
+                  if (bindSig && bindSig === oldSig) {
+                    profChanged = true;
+                    updatedSlotCount += 1;
+                    slotsToPush.push({ profileId: prof.id, slot: mSlot });
+                    nextMotion[mSlot] = updatedBinding;
+                  }
+                });
               }
 
               if (!profChanged) return prof;
@@ -2812,7 +2883,8 @@ export function useStudioState(
                     ...layer,
                     keys: nextKeys,
                     encoder: nextEncoder,
-                    encoder2: nextEncoder2
+                    encoder2: nextEncoder2,
+                    motion: nextMotion
                   }
                 ] as [typeof layer]
               };

@@ -17,7 +17,10 @@ const EMPTY_HOLD_BINDINGS = {
   b5h: '',
   b6h: '',
   b7h: '',
-  b8h: ''
+  b8h: '',
+  g_shake: '',
+  g_down: '',
+  g_up: ''
 } as const;
 
 export const CURATED_PRESETS: ProfilePreset[] = [

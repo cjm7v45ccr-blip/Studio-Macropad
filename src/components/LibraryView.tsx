@@ -18,11 +18,13 @@ import {
   FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
   HOLD_SLOTS,
+  MOTION_SLOTS,
   SLOT_LABELS,
   describeFirmwareAction,
   getProfilePresetSignature,
   getVisibleHardwareSlots,
-  hasKeyHoldCapability
+  hasKeyHoldCapability,
+  hasMotionCapability
 } from '../data/firmwareCatalog';
 import {
   extractProfileSlots,
@@ -484,6 +486,29 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         ))}
       </div>
+
+      {hasMotionCapability(capabilities) && (
+        <div className="pt-1.5 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+          {MOTION_SLOTS.map(slot => (
+            <div
+              key={slot}
+              className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-1.5 min-w-0"
+            >
+              <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums whitespace-nowrap">
+                {SLOT_LABELS[slot].short}
+              </span>
+              <ParsedActionBadge
+                action={resolveAction(slot)}
+                repeatConfig={resolveRepeat?.(slot)}
+                showRawId={showAdvancedIds}
+                customMacros={customMacros}
+                maxSteps={1}
+                className="min-w-0 flex-1"
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 

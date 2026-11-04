@@ -1,295 +1,589 @@
-import React, { useState, useEffect } from 'react';
-import { Compass, Activity, RefreshCw, Sliders, ShieldAlert, Zap } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Compass, Activity, RefreshCw, SlidersHorizontal, ShieldAlert } from 'lucide-react';
+import { ToastVariant } from '../hooks/useStudioState';
+import { MotionSlotId } from '../types/studio';
+import { gestureTypeToMotionSlot, SLOT_LABELS } from '../data/firmwareCatalog';
 import { usbHardware } from '../services/usbHardwareService';
 
+export interface MotionTelemetryState {
+  present: boolean;
+  enabled: boolean;
+  wake: boolean;
+  sensitivity: number;
+  who?: number;
+}
+
 interface MotionSettingsProps {
-  motion?: {
-    present: boolean;
-    enabled: boolean;
-    wake: boolean;
-    sensitivity: number;
-    who?: number;
-  };
+  motion?: MotionTelemetryState;
   supported: boolean;
   connected: boolean;
-  onToast: (msg: string, variant?: any) => void;
+  onToast: (msg: string, variant?: ToastVariant) => void;
+  onJumpToMotionSlot?: (slot: MotionSlotId) => void;
 }
+
+const SENSITIVITY_LABELS: Record<number, string> = {
+  1: 'Least sensitive (firm)',
+  2: 'Low',
+  3: 'Balanced (default)',
+  4: 'High',
+  5: 'Most sensitive'
+};
 
 export const MotionSettings: React.FC<MotionSettingsProps> = ({
   motion,
   supported,
   connected,
   onToast,
+  onJumpToMotionSlot
 }) => {
-  if (!supported || !motion) return null;
+  const effectivePresent = motion?.present ?? true;
+  const effectiveEnabled = motion?.enabled ?? true;
+  const effectiveWake = motion?.wake ?? true;
+  const effectiveSensitivity = Math.max(1, Math.min(5, Math.round(motion?.sensitivity ?? 3)));
+  const effectiveWho = motion?.who ?? 0x68;
 
-  const [enabled, setEnabled] = useState(motion.enabled);
-  const [wake, setWake] = useState(motion.wake);
-  const [sensitivity, setSensitivity] = useState(motion.sensitivity || 3);
-  const [calibrating, setCalibrating] = useState(false);
+  const [enabled, setEnabled] = useState<boolean>(effectiveEnabled);
+  const [wake, setWake] = useState<boolean>(effectiveWake);
+  const [sensitivity, setSensitivity] = useState<number>(effectiveSensitivity);
+  const [savingBusy, setSavingBusy] = useState<boolean>(false);
+  const [calibrating, setCalibrating] = useState<boolean>(false);
+  const [calibrationStatus, setCalibrationStatus] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+  const [testActive, setTestActive] = useState<boolean>(false);
   const [reading, setReading] = useState<{
-    ax?: number;
-    ay?: number;
-    az?: number;
+    ax: number;
+    ay: number;
+    az: number;
     temp_c?: number;
     face_up?: number;
   } | null>(null);
-  const [testActive, setTestActive] = useState(false);
-  const [lastGesture, setLastGesture] = useState<string | null>(null);
-  const [flashGesture, setFlashGesture] = useState<string | null>(null);
+  const [flashedSlot, setFlashedSlot] = useState<MotionSlotId | null>(null);
+  const [lastGestureSlot, setLastGestureSlot] = useState<MotionSlotId | null>(null);
+
+  const committedSensitivityRef = useRef<number>(effectiveSensitivity);
+  const flashTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setEnabled(motion.enabled);
-    setWake(motion.wake);
-    setSensitivity(motion.sensitivity || 3);
-  }, [motion]);
+    setEnabled(effectiveEnabled);
+  }, [effectiveEnabled]);
 
   useEffect(() => {
-    if (!testActive || !connected || !motion.present) return;
-    const interval = setInterval(async () => {
+    setWake(effectiveWake);
+  }, [effectiveWake]);
+
+  useEffect(() => {
+    setSensitivity(effectiveSensitivity);
+    committedSensitivityRef.current = effectiveSensitivity;
+  }, [effectiveSensitivity]);
+
+  useEffect(() => {
+    if (!connected) {
+      setTestActive(false);
+    }
+  }, [connected]);
+
+  useEffect(() => {
+    if (!supported || !testActive || !connected || !effectivePresent) {
+      return;
+    }
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const pollOnce = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
       try {
         const res = await usbHardware.readMotion();
-        if (res?.ok) {
-          setReading(res);
+        if (!cancelled && res?.ok) {
+          setReading({
+            ax: typeof res.ax === 'number' ? res.ax : 0,
+            ay: typeof res.ay === 'number' ? res.ay : 0,
+            az: typeof res.az === 'number' ? res.az : 1000,
+            temp_c: typeof res.temp_c === 'number' ? res.temp_c : undefined,
+            face_up: typeof res.face_up === 'number' ? res.face_up : undefined
+          });
         }
-      } catch {}
-    }, 250);
-    return () => clearInterval(interval);
-  }, [testActive, connected, motion.present]);
+      } catch {
+        // Ignore transient read errors while polling live test panel
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    pollOnce();
+    const timer = window.setInterval(pollOnce, 250);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [supported, testActive, connected, effectivePresent]);
 
   useEffect(() => {
+    if (!supported) return;
     const unsub = usbHardware.onHardwareEvent(pkt => {
-      if (pkt.event === 'gesture' && pkt.type) {
-        setLastGesture(pkt.type);
-        setFlashGesture(pkt.type);
-        setTimeout(() => setFlashGesture(null), 1200);
+      if (pkt.event === 'gesture') {
+        const slot = gestureTypeToMotionSlot(pkt.type);
+        if (!slot) return;
+        setLastGestureSlot(slot);
+        setFlashedSlot(slot);
+        if (flashTimerRef.current !== null) {
+          window.clearTimeout(flashTimerRef.current);
+        }
+        flashTimerRef.current = window.setTimeout(() => {
+          flashTimerRef.current = null;
+          setFlashedSlot(null);
+        }, 900);
       }
     });
-    return unsub;
-  }, []);
+    return () => {
+      unsub();
+      if (flashTimerRef.current !== null) {
+        window.clearTimeout(flashTimerRef.current);
+      }
+    };
+  }, [supported]);
 
-  const handleSave = async (patch: { enabled?: boolean; wake?: boolean; sensitivity?: number }) => {
-    try {
-      const res = await usbHardware.setMotionSettings(patch);
-      onToast(res.message || 'Motion settings saved', 'success');
-    } catch (err: any) {
-      onToast(err?.message || 'Failed to save motion settings', 'error');
-    }
+  const applyMotionPatch = useCallback(
+    async (patch: { enabled?: boolean; wake?: boolean; sensitivity?: number }) => {
+      if (!connected) return;
+      setSavingBusy(true);
+      try {
+        const res = await usbHardware.setMotionSettings(patch);
+        onToast(res.message || 'Motion settings saved.', 'success');
+      } catch (err: any) {
+        onToast(err?.message || 'Could not update motion settings on BertoPad', 'error');
+      } finally {
+        setSavingBusy(false);
+      }
+    },
+    [connected, onToast]
+  );
+
+  const commitSensitivityIfChanged = useCallback(
+    (rawNext: number) => {
+      if (!connected) return;
+      const clamped = Math.max(1, Math.min(5, Math.round(rawNext || 3)));
+      setSensitivity(clamped);
+      if (clamped === committedSensitivityRef.current) return;
+      committedSensitivityRef.current = clamped;
+      applyMotionPatch({ sensitivity: clamped });
+    },
+    [connected, applyMotionPatch]
+  );
+
+  const handleToggleEnabled = () => {
+    if (!connected || savingBusy) return;
+    const nextVal = !enabled;
+    setEnabled(nextVal);
+    applyMotionPatch({ enabled: nextVal });
+  };
+
+  const handleToggleWake = () => {
+    if (!connected || savingBusy) return;
+    const nextVal = !wake;
+    setWake(nextVal);
+    applyMotionPatch({ wake: nextVal });
   };
 
   const handleCalibrate = async () => {
+    if (!connected || calibrating) return;
     setCalibrating(true);
+    setCalibrationStatus(null);
     try {
       const res = await usbHardware.calibrateMotion();
-      onToast(res.message || 'Current position saved as flat.', 'success');
+      const msg =
+        res.message ||
+        (res.ok
+          ? 'Current position saved as flat, face-up.'
+          : 'Keep the pad still while calibrating.');
+      setCalibrationStatus({ ok: Boolean(res.ok), message: msg });
+      onToast(msg, res.ok ? 'success' : 'error');
     } catch (err: any) {
-      onToast(err?.message || 'Calibration failed', 'error');
+      const msg = err?.message || 'Keep the pad still while calibrating.';
+      setCalibrationStatus({ ok: false, message: msg });
+      onToast(msg, 'error');
     } finally {
       setCalibrating(false);
     }
   };
 
+  if (!supported) {
+    return null;
+  }
+
+  const controlsDisabled = !connected || !effectivePresent;
+  const bubbleOffsetX = Math.max(-34, Math.min(34, ((reading?.ax ?? 0) / 1000) * 34));
+  const bubbleOffsetY = Math.max(-34, Math.min(34, ((reading?.ay ?? 0) / 1000) * 34));
+
   return (
-    <div className="bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded-2xl p-5 space-y-6 shadow-sm">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center text-[var(--accent)]">
-            <Compass className="w-5 h-5" />
+    <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="space-y-1 min-w-0">
+          <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
+            <Compass className="w-4 h-4 text-[var(--accent)] shrink-0" />
+            <span>Motion &amp; Orientation Sensor</span>
+            <span className="font-mono text-[11px] font-normal text-[var(--text-muted)] tabular-nums">
+              ·{' '}
+              {effectivePresent
+                ? `GY-521 · 0x${effectiveWho.toString(16).toUpperCase()}`
+                : 'Sensor offline'}
+            </span>
           </div>
-          <div>
-            <h3 className="text-base font-semibold text-[var(--text-primary)]">
-              Gyroscope &amp; Motion Sensor (GY-521 / MPU-6050)
-            </h3>
-            <p className="text-xs text-[var(--text-muted)] font-mono">
-              {motion.present
-                ? `Connected · Chip ID (WHO_AM_I): 0x${(motion.who || 0x68).toString(16)}`
-                : 'No motion sensor detected. Check I2C wiring (SDA 21, SCL 22).'}
-            </p>
-          </div>
+          <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+            Configure shake and face-up / face-down tilt gestures, pick-up screen wake, sensitivity, and flat desk calibration.
+          </p>
         </div>
 
-        {motion.present && (
+        {effectivePresent && (
           <button
             type="button"
-            onClick={() => setTestActive(!testActive)}
-            className={`text-xs px-3.5 py-2 rounded-xl border font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              testActive
-                ? 'bg-[var(--accent)] text-[var(--accent-contrast)] border-[var(--accent)]'
-                : 'bg-[var(--bg-input)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:border-[var(--accent)]'
+            disabled={!connected}
+            onClick={() => setTestActive(v => !v)}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+              !connected
+                ? 'opacity-45 cursor-not-allowed bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
+                : testActive
+                ? 'bg-[var(--accent)] text-[var(--accent-contrast)] border-[var(--accent)] cursor-pointer'
+                : 'bg-[var(--bg-input)] hover:border-[var(--border-strong)] text-[var(--text-primary)] border-[var(--border-subtle)] cursor-pointer'
             }`}
           >
-            <Activity className="w-4 h-4" />
-            <span>{testActive ? 'Test Sensor Active' : 'Test Sensor & Bubble Level'}</span>
+            <Activity className="w-3.5 h-3.5" />
+            <span>{testActive ? 'Close Test Sensor' : 'Test Sensor'}</span>
           </button>
         )}
       </div>
 
-      {motion.present ? (
+      {!effectivePresent ? (
+        <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-start gap-2.5 text-xs text-[var(--text-secondary)]">
+          <ShieldAlert className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
+          <span>
+            No MPU-6050 / GY-521 sensor responded on I2C (SDA GPIO 21, SCL GPIO 22). Check wiring and refresh status to enable motion controls.
+          </span>
+        </div>
+      ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Enable Motion Detection */}
-            <div className="p-4 bg-[var(--bg-input)] rounded-xl border border-[var(--border-subtle)] flex items-center justify-between gap-4">
-              <div>
-                <span className="text-sm font-semibold text-[var(--text-primary)] block">Motion Detection</span>
-                <span className="text-xs text-[var(--text-muted)]">Trigger actions on shake, tilt down, or tilt up</span>
-              </div>
-              <input
-                type="checkbox"
-                disabled={!connected}
-                checked={enabled}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setEnabled(val);
-                  handleSave({ enabled: val });
-                }}
-                className="w-4 h-4 rounded border-[var(--border-subtle)] text-[var(--accent)] focus:ring-[var(--accent)] bg-[var(--bg-panel)] cursor-pointer"
-              />
-            </div>
-
-            {/* Wake on Shake/Pick-up */}
-            <div className="p-4 bg-[var(--bg-input)] rounded-xl border border-[var(--border-subtle)] flex items-center justify-between gap-4">
-              <div>
-                <span className="text-sm font-semibold text-[var(--text-primary)] block">Wake on Pick-Up</span>
-                <span className="text-xs text-[var(--text-muted)]">Wake OLED screen when moved or shaken</span>
-              </div>
-              <input
-                type="checkbox"
-                disabled={!connected}
-                checked={wake}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setWake(val);
-                  handleSave({ wake: val });
-                }}
-                className="w-4 h-4 rounded border-[var(--border-subtle)] text-[var(--accent)] focus:ring-[var(--accent)] bg-[var(--bg-panel)] cursor-pointer"
-              />
-            </div>
-          </div>
-
-          {/* Sensitivity Slider (1 to 5) */}
-          <div className="p-4 bg-[var(--bg-input)] rounded-xl border border-[var(--border-subtle)] space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-[var(--accent)]" /> Motion Sensitivity (1 = Least, 5 = Most)
-              </span>
-              <span className="text-sm font-mono text-[var(--accent)] font-bold tabular-nums">Level {sensitivity}</span>
-            </div>
-            <input
-              type="range"
-              disabled={!connected}
-              min={1}
-              max={5}
-              step={1}
-              value={sensitivity}
-              onChange={(e) => setSensitivity(Number(e.target.value))}
-              onPointerUp={() => handleSave({ sensitivity })}
-              onBlur={() => handleSave({ sensitivity })}
-              className="w-full accent-[var(--accent)] bg-[var(--bg-panel)] h-2 rounded-lg cursor-pointer"
-            />
-            <div className="flex justify-between text-xs text-[var(--text-muted)] font-mono">
-              <span>1 (Firm)</span>
-              <span>3 (Default)</span>
-              <span>5 (Ultra Sensitive)</span>
-            </div>
-          </div>
-
-          {/* Calibration & Gesture Status */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 bg-[var(--bg-input)] rounded-xl border border-[var(--border-subtle)] flex items-center justify-between gap-4">
-              <div>
-                <h4 className="text-sm font-semibold text-[var(--text-primary)]">Reference Calibration</h4>
-                <p className="text-xs text-[var(--text-muted)]">Keep pad still on desk and save flat position</p>
+          {/* Enabled & Wake Switches */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <div
+                  id="motion-enabled-label"
+                  className="text-xs font-semibold text-[var(--text-primary)]"
+                >
+                  Motion gestures
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] leading-snug">
+                  Fire assigned actions on shake, face-down, and face-up tilts
+                </p>
               </div>
               <button
                 type="button"
-                disabled={!connected || calibrating}
-                onClick={handleCalibrate}
-                className="px-4 py-2 bg-[var(--accent)] hover:opacity-90 text-[var(--accent-contrast)] text-xs font-semibold rounded-xl flex items-center gap-2 transition-colors disabled:opacity-50 cursor-pointer whitespace-nowrap shrink-0"
+                role="switch"
+                aria-labelledby="motion-enabled-label"
+                aria-checked={enabled}
+                disabled={controlsDisabled || savingBusy}
+                onClick={handleToggleEnabled}
+                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                  controlsDisabled || savingBusy
+                    ? 'opacity-40 cursor-not-allowed'
+                    : 'cursor-pointer'
+                } ${
+                  enabled
+                    ? 'bg-[var(--accent)] border-transparent'
+                    : 'bg-[var(--bg-panel)] border-[var(--border-strong)]'
+                }`}
               >
-                {calibrating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Compass className="w-4 h-4" />}
-                {calibrating ? 'Calibrating...' : 'Calibrate Flat'}
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow-sm ring-0 transition duration-200 ease-in-out ${
+                    enabled
+                      ? 'translate-x-5 bg-[var(--accent-contrast)]'
+                      : 'translate-x-0 bg-[var(--text-secondary)]'
+                  }`}
+                />
               </button>
             </div>
 
-            <div className="p-4 bg-[var(--bg-input)] rounded-xl border border-[var(--border-subtle)] flex items-center justify-between gap-4">
-              <div>
-                <h4 className="text-sm font-semibold text-[var(--text-primary)]">Last Detected Gesture</h4>
-                <p className="text-xs text-[var(--text-muted)]">Live gesture event stream</p>
+            <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <div
+                  id="motion-wake-label"
+                  className="text-xs font-semibold text-[var(--text-primary)]"
+                >
+                  Wake screen on pick-up
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] leading-snug">
+                  Wake dimmed or sleeping OLED when the pad is moved
+                </p>
               </div>
-              <span className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold uppercase transition-all ${
-                flashGesture ? 'bg-[var(--accent)] text-[var(--accent-contrast)] scale-105 shadow-md' : 'bg-[var(--bg-panel)] text-[var(--text-secondary)]'
-              }`}>
-                {lastGesture || 'None'}
-              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-labelledby="motion-wake-label"
+                aria-checked={wake}
+                disabled={controlsDisabled || savingBusy}
+                onClick={handleToggleWake}
+                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                  controlsDisabled || savingBusy
+                    ? 'opacity-40 cursor-not-allowed'
+                    : 'cursor-pointer'
+                } ${
+                  wake
+                    ? 'bg-[var(--accent)] border-transparent'
+                    : 'bg-[var(--bg-panel)] border-[var(--border-strong)]'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow-sm ring-0 transition duration-200 ease-in-out ${
+                    wake
+                      ? 'translate-x-5 bg-[var(--accent-contrast)]'
+                      : 'translate-x-0 bg-[var(--text-secondary)]'
+                  }`}
+                />
+              </button>
             </div>
           </div>
 
-          {/* Test Sensor Panel with Live Bubble Level */}
-          {testActive && (
-            <div className="p-5 bg-[var(--bg-input)] rounded-xl border border-[var(--accent)] space-y-4 animate-fade-in">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-                  <Zap className="w-4 h-4 text-[var(--accent)] animate-pulse" />
-                  <span>Sensor Test Panel &amp; Live Bubble Level</span>
+          {/* Sensitivity Slider (1–5, commits on release to protect NVS flash) */}
+          <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <label
+                htmlFor="motion-sensitivity-range"
+                className="text-xs font-medium text-[var(--text-primary)] flex items-center gap-1.5"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                <span>Gesture sensitivity</span>
+              </label>
+              <span className="font-mono text-[11px] text-[var(--accent)] font-semibold tabular-nums">
+                {sensitivity} / 5 · {SENSITIVITY_LABELS[sensitivity] || 'Balanced'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+              <input
+                id="motion-sensitivity-range"
+                type="range"
+                min={1}
+                max={5}
+                step={1}
+                disabled={controlsDisabled}
+                value={sensitivity}
+                onChange={e =>
+                  setSensitivity(Math.max(1, Math.min(5, Math.round(Number(e.target.value) || 3))))
+                }
+                onPointerUp={e => commitSensitivityIfChanged(Number(e.currentTarget.value))}
+                onKeyUp={e => commitSensitivityIfChanged(Number(e.currentTarget.value))}
+                onBlur={e => commitSensitivityIfChanged(Number(e.currentTarget.value))}
+                className="flex-1 min-w-[140px] accent-[var(--accent)] cursor-pointer disabled:opacity-45"
+              />
+
+              <div className="flex items-center gap-1 shrink-0">
+                {([1, 2, 3, 4, 5] as const).map(lvl => {
+                  const active = sensitivity === lvl;
+                  return (
+                    <button
+                      key={lvl}
+                      type="button"
+                      disabled={controlsDisabled}
+                      onClick={() => commitSensitivityIfChanged(lvl)}
+                      className={`w-7 h-7 rounded-lg font-mono text-[11px] transition-colors cursor-pointer tabular-nums disabled:opacity-45 ${
+                        active
+                          ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
+                          : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                      title={`Sensitivity ${lvl}: ${SENSITIVITY_LABELS[lvl]}`}
+                    >
+                      {lvl}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+              <span>1 · Least sensitive</span>
+              <span>3 · Default</span>
+              <span>5 · Most sensitive</span>
+            </div>
+          </div>
+
+          {/* Flat Reference Calibration */}
+          <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <div className="text-xs font-medium text-[var(--text-primary)]">
+                  Flat reference calibration
                 </div>
-                <span className="font-mono text-xs text-[var(--accent)]">
-                  {reading ? `${reading.temp_c ?? 25}°C` : 'Polling live...'}
+                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                  Rest the pad flat, face-up on your desk and save its current orientation. Keep the pad still while sampling.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={controlsDisabled || calibrating}
+                onClick={handleCalibrate}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 shrink-0 ${calibrating ? 'animate-spin' : ''}`}
+                />
+                <span>{calibrating ? 'Calibrating…' : 'Calibrate Flat'}</span>
+              </button>
+            </div>
+
+            {calibrationStatus && (
+              <div
+                role="status"
+                className={`text-xs font-mono px-3 py-2 rounded-xl bg-[var(--bg-input)] border ${
+                  calibrationStatus.ok
+                    ? 'border-[var(--accent)] text-[var(--text-primary)]'
+                    : 'border-[#D97706] text-[var(--text-primary)]'
+                }`}
+              >
+                {calibrationStatus.message}
+              </div>
+            )}
+          </div>
+
+          {/* Live Gesture Action Slots Flash Strip */}
+          <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="font-medium text-[var(--text-secondary)]">
+                Gesture slots (flashes on live event)
+              </span>
+              <span className="font-mono text-[var(--text-muted)] tabular-nums">
+                {lastGestureSlot
+                  ? `Last: ${SLOT_LABELS[lastGestureSlot].short}`
+                  : 'Waiting for gesture'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {(['g_shake', 'g_down', 'g_up'] as const).map(slot => {
+                const isFlashing = flashedSlot === slot;
+                const meta =
+                  slot === 'g_shake'
+                    ? { title: 'Shake', idLabel: 'g_shake' }
+                    : slot === 'g_down'
+                    ? { title: 'Face Down', idLabel: 'g_down' }
+                    : { title: 'Face Up', idLabel: 'g_up' };
+
+                return (
+                  <button
+                    key={slot}
+                    type="button"
+                    disabled={!onJumpToMotionSlot}
+                    onClick={() => onJumpToMotionSlot?.(slot)}
+                    className={`px-3 py-2 rounded-xl border text-left flex items-center justify-between gap-2 transition-colors ${
+                      onJumpToMotionSlot ? 'cursor-pointer' : 'cursor-default'
+                    } ${
+                      isFlashing
+                        ? 'bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-contrast)]'
+                        : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-primary)]'
+                    }`}
+                  >
+                    <span className="text-xs font-semibold truncate">{meta.title}</span>
+                    <span
+                      className={`font-mono text-[10px] tabular-nums shrink-0 ${
+                        isFlashing ? 'text-[var(--accent-contrast)]' : 'text-[var(--text-muted)]'
+                      }`}
+                    >
+                      {meta.idLabel}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Opt-in Live Sensor Test & Bubble Level (`GET /api/motion/read`) */}
+          {testActive && (
+            <div className="pt-3 border-t border-[var(--border-subtle)] space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-[var(--text-primary)]">
+                  Live Sensor Readout &amp; Bubble Level
+                </span>
+                <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+                  {reading && typeof reading.temp_c === 'number'
+                    ? `${reading.temp_c.toFixed(1)} °C`
+                    : 'Sampling /api/motion/read…'}
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-                {/* Acceleration Telemetry */}
-                <div className="space-y-1.5 font-mono text-xs bg-[var(--bg-panel)] p-3.5 rounded-xl border border-[var(--border-subtle)]">
-                  <div className="text-[11px] font-semibold text-[var(--text-primary)] mb-1">Raw Acceleration (milli-g)</div>
-                  <div className="flex justify-between text-[var(--text-secondary)]">
-                    <span>AX:</span>
-                    <span className="text-[var(--text-primary)] font-bold">{reading?.ax ?? 0} mg</span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-stretch">
+                <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-xs space-y-1.5 tabular-nums flex flex-col justify-center">
+                  <div className="text-[11px] font-sans font-medium text-[var(--text-muted)]">
+                    Acceleration (milli-g)
                   </div>
-                  <div className="flex justify-between text-[var(--text-secondary)]">
-                    <span>AY:</span>
-                    <span className="text-[var(--text-primary)] font-bold">{reading?.ay ?? 0} mg</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--text-secondary)]">AX</span>
+                    <span className="font-bold text-[var(--text-primary)]">
+                      {reading?.ax ?? 0} mg
+                    </span>
                   </div>
-                  <div className="flex justify-between text-[var(--text-secondary)]">
-                    <span>AZ:</span>
-                    <span className="text-[var(--text-primary)] font-bold">{reading?.az ?? 1000} mg</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--text-secondary)]">AY</span>
+                    <span className="font-bold text-[var(--text-primary)]">
+                      {reading?.ay ?? 0} mg
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--text-secondary)]">AZ</span>
+                    <span className="font-bold text-[var(--text-primary)]">
+                      {reading?.az ?? 1000} mg
+                    </span>
                   </div>
                 </div>
 
-                {/* Face Up Alignment */}
-                <div className="space-y-1.5 font-mono text-xs bg-[var(--bg-panel)] p-3.5 rounded-xl border border-[var(--border-subtle)]">
-                  <div className="text-[11px] font-semibold text-[var(--text-primary)] mb-1">Orientation State</div>
-                  <div className="flex justify-between text-[var(--text-secondary)]">
-                    <span>Alignment:</span>
-                    <span className="text-[var(--accent)] font-bold">
+                <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-xs space-y-1.5 tabular-nums flex flex-col justify-center">
+                  <div className="text-[11px] font-sans font-medium text-[var(--text-muted)]">
+                    Orientation vs. calibrated flat
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--text-secondary)]">State</span>
+                    <span className="font-bold text-[var(--accent)]">
                       {reading?.face_up !== undefined
-                        ? reading.face_up > 0.7
+                        ? reading.face_up > 0.65
                           ? 'Face Up'
-                          : reading.face_up < -0.7
+                          : reading.face_up < -0.65
                           ? 'Face Down'
                           : 'Tilted'
                         : '—'}
                     </span>
                   </div>
-                  <div className="flex justify-between text-[var(--text-secondary)]">
-                    <span>Dot product:</span>
-                    <span className="text-[var(--text-primary)] font-bold">{reading?.face_up ?? 1.00}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--text-secondary)]">face_up</span>
+                    <span className="font-bold text-[var(--text-primary)]">
+                      {reading?.face_up !== undefined ? reading.face_up.toFixed(2) : '1.00'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--text-secondary)]">Die temp</span>
+                    <span className="font-bold text-[var(--text-primary)]">
+                      {reading?.temp_c !== undefined ? `${reading.temp_c.toFixed(1)} °C` : '—'}
+                    </span>
                   </div>
                 </div>
 
-                {/* Visual Bubble Level */}
-                <div className="flex flex-col items-center justify-center p-3 bg-[var(--bg-panel)] rounded-xl border border-[var(--border-subtle)]">
-                  <div className="text-[11px] font-semibold text-[var(--text-muted)] mb-2">Live Bubble Level</div>
-                  <div className="relative w-24 h-24 rounded-full bg-[var(--bg-input)] border-2 border-[var(--border-strong)] flex items-center justify-center overflow-hidden shadow-inner">
-                    {/* Crosshairs */}
+                <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col items-center justify-center gap-2">
+                  <span className="text-[11px] font-medium text-[var(--text-muted)]">
+                    Bubble level
+                  </span>
+                  <div
+                    aria-label="2D accelerometer bubble level"
+                    className="relative w-24 h-24 rounded-full bg-[var(--bg-panel)] border border-[var(--border-strong)] flex items-center justify-center overflow-hidden"
+                  >
                     <div className="absolute inset-x-0 top-1/2 h-px bg-[var(--border-subtle)]" />
                     <div className="absolute inset-y-0 left-1/2 w-px bg-[var(--border-subtle)]" />
                     <div className="absolute w-8 h-8 rounded-full border border-dashed border-[var(--border-strong)] pointer-events-none" />
-                    {/* Moving Bubble */}
                     <div
-                      className="absolute w-5 h-5 rounded-full bg-[var(--accent)] shadow-md transition-all duration-75"
                       style={{
-                        transform: `translate(${Math.max(-36, Math.min(36, (reading?.ax || 0) / 12))}px, ${Math.max(-36, Math.min(36, (reading?.ay || 0) / 12))}px)`
+                        transform: `translate(${bubbleOffsetX.toFixed(1)}px, ${bubbleOffsetY.toFixed(1)}px)`
                       }}
+                      className="w-4 h-4 rounded-full bg-[var(--accent)] transition-transform duration-75"
                     />
                   </div>
                 </div>
@@ -297,13 +591,6 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
             </div>
           )}
         </>
-      ) : (
-        <div className="p-4 bg-[var(--bg-input)] rounded-xl border border-amber-500/30 flex items-center gap-3 text-amber-400 text-xs">
-          <ShieldAlert className="w-5 h-5 flex-shrink-0" />
-          <span>
-            GY-521 (MPU-6050) motion sensor not detected on I2C bus (SDA: GPIO 21, SCL: GPIO 22). Connect the sensor to enable shake, face-down, and face-up trigger actions.
-          </span>
-        </div>
       )}
     </div>
   );

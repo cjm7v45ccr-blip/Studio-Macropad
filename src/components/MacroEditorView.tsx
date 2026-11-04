@@ -52,7 +52,9 @@ import {
   validateTextMacroInput,
   getVisibleHardwareSlots,
   hasKeyHoldCapability,
-  isHoldSlot
+  hasMotionCapability,
+  isHoldSlot,
+  MOTION_SLOTS
 } from '../data/firmwareCatalog';
 import {
   ButtonSlotId,
@@ -4549,6 +4551,51 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   ))}
                 </div>
               </div>
+
+              {hasMotionCapability(connection.telemetry?.capabilities) && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                  {MOTION_SLOTS.map(slot => {
+                    const act = targetProfileSlots[slot];
+                    const slotBind = getBindingForProfileSlot(
+                      profiles,
+                      targetProfile,
+                      slot
+                    );
+                    const isSelected = targetSlot === slot;
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => setTargetSlot(slot)}
+                        className={`px-2.5 py-1.5 rounded-lg border text-left flex items-center justify-between gap-1.5 transition-colors cursor-pointer min-w-0 ${
+                          isSelected
+                            ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                            : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                        }`}
+                      >
+                        <span className="font-mono text-[10px] text-[var(--text-muted)] whitespace-nowrap shrink-0">
+                          {SLOT_LABELS[slot].short}
+                        </span>
+                        <div className="min-w-0 truncate">
+                          {act ? (
+                            <ParsedActionBadge
+                              action={act}
+                              repeatConfig={slotBind?.repeatConfig}
+                              maxSteps={1}
+                              showRawId={showAdvancedIds}
+                              customMacros={customMacros}
+                            />
+                          ) : (
+                            <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                              Empty
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </section>
         </div>

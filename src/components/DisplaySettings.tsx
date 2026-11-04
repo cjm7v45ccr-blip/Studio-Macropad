@@ -21,13 +21,16 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
   connected,
   send,
 }) => {
-  if (!supported || !display) return null;
-
-  const [contrastVal, setContrastVal] = useState<number>(display.contrast);
-  const [dimVal, setDimVal] = useState<number>(display.dim_s > 0 ? display.dim_s : recall('dim', 60));
-  const [offVal, setOffVal] = useState<number>(display.off_s > 0 ? display.off_s : recall('off', 300));
+  const [contrastVal, setContrastVal] = useState<number>(display?.contrast ?? 255);
+  const [dimVal, setDimVal] = useState<number>(
+    display && display.dim_s > 0 ? display.dim_s : recall('dim', 60)
+  );
+  const [offVal, setOffVal] = useState<number>(
+    display && display.off_s > 0 ? display.off_s : recall('off', 300)
+  );
 
   useEffect(() => {
+    if (!display) return;
     if (display.contrast !== undefined) {
       setContrastVal(display.contrast);
     }
@@ -38,6 +41,8 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
       setOffVal(display.off_s);
     }
   }, [display]);
+
+  if (!supported || !display) return null;
 
   const apply = (p: Patch) => send('/api/display/set', p);
   const dimOn = display.dim_s > 0;
@@ -100,8 +105,8 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
           </div>
         </div>
         {!connected && (
-          <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 font-medium">
-            Disconnected (Last Known Values)
+          <span className="text-xs text-[#A3A6AD] font-mono">
+            Disconnected · Last known values
           </span>
         )}
       </div>
@@ -179,7 +184,7 @@ export const DisplaySettings: React.FC<DisplaySettingsProps> = ({
                   onBlur={(e) => handleSetOff(Number(e.target.value))}
                   className="w-28 bg-[#1E2128] border border-[#2B2F3A] rounded-md px-3 py-1.5 text-sm text-[#ECEAE4] focus:outline-none focus:border-[#F2A33A]"
                 />
-                <span className="text-xs text-[#A3A6AD]">seconds (must be > dim)</span>
+                <span className="text-xs text-[#A3A6AD]">seconds (must be &gt; dim)</span>
               </div>
             </div>
           )}

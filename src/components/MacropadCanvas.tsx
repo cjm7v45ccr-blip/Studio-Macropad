@@ -15,6 +15,7 @@ import {
   KeyId,
   LayerConfig,
   LiveInputEvent,
+  MotionSlotId,
   bleSlotToProfileId,
   defaultProfileAlias,
   isBleHostProfile,
@@ -24,8 +25,12 @@ import {
 import { KeycapIcon, summarizeAction } from '../data/iconRegistry';
 import {
   HOLD_SLOTS,
+  MOTION_SLOTS,
+  SLOT_LABELS,
   describeFirmwareAction,
+  gestureTypeToMotionSlot,
   hasKeyHoldCapability,
+  hasMotionCapability,
   isHoldSlot
 } from '../data/firmwareCatalog';
 import {
@@ -49,7 +54,10 @@ import {
   Wifi,
   PlayCircle,
   Disc,
-  BookOpen
+  BookOpen,
+  Compass,
+  ArrowDown,
+  ArrowUp
 } from 'lucide-react';
 
 interface MacropadCanvasProps {
@@ -134,6 +142,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
   const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
   const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
+  const hasMotion = hasMotionCapability(connection.telemetry?.capabilities);
 
   useEffect(() => {
     const slotFromProf = profileIdToBleSlot(activeProfileId);
@@ -310,6 +319,43 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           `Switched BLE to BertoPad ${hostNum} (Device ${hostNum})`,
           'hardware'
         );
+        return;
+      }
+
+      if (e.event === 'gesture') {
+        const motionSlot = gestureTypeToMotionSlot(e.type);
+        if (!motionSlot) return;
+        const currLayer = layerRef.current;
+        const macros = customMacrosRef.current;
+        soundEngine.playKeyClick();
+        triggerSlotFlash(motionSlot);
+
+        const motionBinding = currLayer.motion?.[motionSlot] ?? {
+          type: 'none' as const,
+          value: ''
+        };
+        const actionDesc = motionBinding.repeatConfig
+          ? summarizeAction(motionBinding, macros)
+          : e.action
+          ? describeFirmwareAction(e.action, undefined, macros).fullLabel
+          : summarizeAction(motionBinding, macros);
+        const gestureTitle =
+          motionSlot === 'g_shake'
+            ? 'SHAKE'
+            : motionSlot === 'g_down'
+            ? 'FACE DOWN'
+            : 'FACE UP';
+        const shortToast = e.action
+          ? describeFirmwareAction(e.action, undefined, macros).shortLabel
+          : motionBinding.value
+          ? describeFirmwareAction(
+              motionBinding.value,
+              motionBinding.repeatConfig,
+              macros
+            ).shortLabel
+          : gestureTitle;
+        triggerOledToast('GESTURE', shortToast);
+        pushLog(SLOT_LABELS[motionSlot].short, 'Gesture', actionDesc, 'hardware');
         return;
       }
 
@@ -1583,6 +1629,127 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
       </div>
 
+      {/* Motion Gestures Strip (shown strictly when capabilities includes "motion") */}
+      {hasMotion && (
+        <div className="w-full max-w-2xl rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-3 space-y-2 shrink-0">
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-1.5 font-semibold text-[var(--text-primary)]">
+              <Compass className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+              <span>Motion Gestures</span>
+              {connection.telemetry?.motion && !connection.telemetry.motion.enabled && (
+                <span className="font-mono text-[11px] font-normal text-[var(--text-muted)]">
+                  · Off in Settings
+                </span>
+              )}
+            </div>
+            <span className="text-[11px] text-[var(--text-muted)]">
+              {viewMode === 'edit' ? 'Select a gesture to bind' : 'Click or move pad to test'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {(
+              [
+                { slot: 'g_shake' as MotionSlotId, label: 'Shake', Icon: Compass },
+                { slot: 'g_down' as MotionSlotId, label: 'Face Down', Icon: ArrowDown },
+                { slot: 'g_up' as MotionSlotId, label: 'Face Up', Icon: ArrowUp }
+              ]
+            ).map(({ slot, label, Icon }) => {
+              const binding = layer.motion?.[slot] ?? { type: 'none' as const, value: '' };
+              const isFlashed = flashedSlots.has(slot);
+              const isSelected = viewMode === 'edit' && selectedControl === slot;
+              const summary = binding.value
+                ? describeFirmwareAction(binding.value, binding.repeatConfig, customMacros)
+                    .shortLabel
+                : 'Unassigned';
+
+              return (
+                <button
+                  key={slot}
+                  type="button"
+                  onClick={() => {
+                    if (viewMode === 'edit') {
+                      onSelectControl(slot);
+                      return;
+                    }
+                    if (connection.transport === 'demo') {
+                      usbHardware.simulateDemoPadInput(slot);
+                      return;
+                    }
+                    soundEngine.playKeyClick();
+                    setFlashedSlots(prev => {
+                      const next = new Set(prev);
+                      next.add(slot);
+                      return next;
+                    });
+                    if (flashTimersRef.current[slot]) {
+                      window.clearTimeout(flashTimersRef.current[slot]);
+                    }
+                    flashTimersRef.current[slot] = window.setTimeout(() => {
+                      setFlashedSlots(prev => {
+                        const next = new Set(prev);
+                        next.delete(slot);
+                        return next;
+                      });
+                    }, 260);
+                    if (connection.connected && binding.value) {
+                      onExecuteHardwareBinding(binding);
+                      pushLog(
+                        SLOT_LABELS[slot].short,
+                        'Gesture',
+                        summarizeAction(binding, customMacros),
+                        'usb-test'
+                      );
+                    } else {
+                      pushLog(
+                        SLOT_LABELS[slot].short,
+                        'Gesture',
+                        summarizeAction(binding, customMacros),
+                        'sim'
+                      );
+                    }
+                  }}
+                  className={`px-3 py-2 rounded-lg border text-left transition-all cursor-pointer flex items-center justify-between gap-2 min-w-0 ${
+                    isFlashed
+                      ? 'bg-[var(--accent-soft)] border-[var(--accent)] ring-1 ring-[var(--accent)]'
+                      : isSelected
+                      ? 'bg-[var(--accent-soft)] border-[var(--accent)]'
+                      : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Icon
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        isFlashed || isSelected
+                          ? 'text-[var(--accent)]'
+                          : 'text-[var(--text-muted)]'
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                        {label}
+                      </div>
+                      <div
+                        className={`text-[11px] truncate ${
+                          binding.value
+                            ? 'text-[var(--text-secondary)]'
+                            : 'text-[var(--text-muted)]'
+                        }`}
+                      >
+                        {summary}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0">
+                    {slot}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Bottom: Conflict Alert or Test View Feed */}
       {(conflicts.length > 0 && viewMode === 'edit') || viewMode === 'test' ? (
         <div className="w-full max-w-2xl space-y-2 shrink-0">
@@ -1642,6 +1809,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                           { slot: 'dial2', label: 'Knob 2' },
                           { slot: 'e2_ccw', label: 'K2 Left' },
                           { slot: 'e2_cw', label: 'K2 Right' },
+                          ...(hasMotion
+                            ? MOTION_SLOTS.map(ms => ({
+                                slot: ms,
+                                label:
+                                  ms === 'g_shake'
+                                    ? 'Shake'
+                                    : ms === 'g_down'
+                                    ? 'Face Down'
+                                    : 'Face Up'
+                              }))
+                            : []),
                           { slot: 'mode', label: 'Mode' }
                         ] as { slot: HardwareFlashSlot; label: string }[]
                       ).map(btn => (

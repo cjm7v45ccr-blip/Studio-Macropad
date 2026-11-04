@@ -90,6 +90,7 @@ export default defineConfig(() => {
           'icon.svg',
         ],
         workbox: {
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           globIgnores: ['**/*.bin', '**/firmware-catalog.json'],
           navigateFallbackDenylist: [/\.bin$/i, /firmware-catalog\.json$/i]
         },

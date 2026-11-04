@@ -1,10 +1,17 @@
 export type KeyId = 'k1' | 'k2' | 'k3' | 'k4' | 'k5' | 'k6' | 'k7' | 'k8' | 'k9';
 export type HoldSlotId = 'b1h' | 'b2h' | 'b3h' | 'b4h' | 'b5h' | 'b6h' | 'b7h' | 'b8h';
+export type MotionSlotId = 'g_shake' | 'g_down' | 'g_up';
 export type EncoderIndex = 1 | 2;
 export type Encoder1SubControlId = 'dial' | 'enc_cw' | 'enc_ccw' | 'push_cw' | 'push_ccw';
 export type Encoder2SubControlId = 'dial2' | 'e2_cw' | 'e2_ccw';
 export type EncoderSubControlId = Encoder1SubControlId | Encoder2SubControlId;
-export type ControlId = KeyId | HoldSlotId | 'encoder' | 'encoder2' | EncoderSubControlId;
+export type ControlId =
+  | KeyId
+  | HoldSlotId
+  | MotionSlotId
+  | 'encoder'
+  | 'encoder2'
+  | EncoderSubControlId;
 
 export type BleHostSlot = 1 | 2 | 3;
 
@@ -213,6 +220,12 @@ export interface EncoderControlConfig {
   color: string;
 }
 
+export interface MotionControlConfig {
+  g_shake: ActionBinding;
+  g_down: ActionBinding;
+  g_up: ActionBinding;
+}
+
 export interface LayerConfig {
   id: string;
   name: string;
@@ -220,6 +233,7 @@ export interface LayerConfig {
   keys: Record<KeyId, KeyControlConfig>;
   encoder: EncoderControlConfig;
   encoder2: EncoderControlConfig;
+  motion: MotionControlConfig;
 }
 
 export interface StudioProfile {
@@ -276,6 +290,7 @@ export interface HardwareEventPacket {
     | 'press'
     | 'hold'
     | 'turn'
+    | 'gesture'
     | 'profile'
     | 'connection'
     | 'config'
@@ -286,6 +301,7 @@ export interface HardwareEventPacket {
     | 'tv'
     | 'macro_cancel'
     | string;
+  type?: 'shake' | 'down' | 'up' | string;
   mode?: string;
   enabled?: boolean;
   setup_mode?: boolean;

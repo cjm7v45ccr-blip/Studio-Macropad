@@ -13,6 +13,7 @@ import {
   HardwareSlotId,
   HostOsType,
   KeyId,
+  MotionSlotId,
   SidebarSection,
   bleSlotToProfileId,
   isBleHostProfile,
@@ -34,7 +35,9 @@ import {
   getMacroCanonicalSignature,
   getVisibleHardwareSlots,
   hasKeyHoldCapability,
+  hasMotionCapability,
   isHoldSlot,
+  isMotionSlot,
   isMultiStepOrTimedMacro,
   suggestSmartMacroName
 } from './data/firmwareCatalog';
@@ -51,6 +54,7 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { MacropadCanvas } from './components/MacropadCanvas';
 import { ButtonInspector } from './components/ButtonInspector';
 import { EncoderInspector } from './components/EncoderInspector';
+import { MotionInspector } from './components/MotionInspector';
 import { MacroEditorExternalTarget, MacroEditorView } from './components/MacroEditorView';
 import { GlobalMacroSearch } from './components/GlobalMacroSearch';
 import { LibraryView } from './components/LibraryView';
@@ -161,6 +165,7 @@ export default function App() {
   }, []);
 
   const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
+  const hasMotion = hasMotionCapability(connection.telemetry?.capabilities);
   const visibleSlots = useMemo(
     () => getVisibleHardwareSlots(connection.telemetry?.capabilities),
     [connection.telemetry?.capabilities]
@@ -171,6 +176,12 @@ export default function App() {
       setSelectedControl(HOLD_SLOT_TO_ACTION_KEY[selectedControl]);
     }
   }, [hasKeyHold, selectedControl]);
+
+  useEffect(() => {
+    if (!hasMotion && isMotionSlot(selectedControl)) {
+      setSelectedControl('k1');
+    }
+  }, [hasMotion, selectedControl]);
 
   useEffect(() => {
     if (!studio.tvEnabled && studio.activeProfile.id === 'TV') {
@@ -246,7 +257,7 @@ export default function App() {
       setConnectModalError(null);
       await usbHardware.connectDemoMode();
       setConnectModalOpen(false);
-      showToast('Started Demo Mode — all 24 controls and settings are active');
+      showToast('Started Demo Mode — all hardware controls, motion gestures, and settings are active');
     } catch (err: any) {
       showToast(err?.message || 'Could not start Demo Mode', 'error');
     }
@@ -435,18 +446,24 @@ export default function App() {
     ? 'push_ccw'
     : 'dial';
 
-  const selectedKeyId: KeyId = !isEncoderControlSelected
-    ? isHoldSlot(selectedControl)
-      ? HOLD_SLOT_TO_ACTION_KEY[selectedControl]
-      : (selectedControl as KeyId)
-    : 'k1';
+  const isMotionControlSelected = isMotionSlot(selectedControl) && hasMotion;
 
-  const selectedKeyConfig = !isEncoderControlSelected
-    ? studio.activeLayer.keys[selectedKeyId] || studio.activeLayer.keys.k1
-    : null;
+  const selectedKeyId: KeyId =
+    !isEncoderControlSelected && !isMotionControlSelected
+      ? isHoldSlot(selectedControl)
+        ? HOLD_SLOT_TO_ACTION_KEY[selectedControl]
+        : (selectedControl as KeyId)
+      : 'k1';
+
+  const selectedKeyConfig =
+    !isEncoderControlSelected && !isMotionControlSelected
+      ? studio.activeLayer.keys[selectedKeyId] || studio.activeLayer.keys.k1
+      : null;
 
   const selectedHardwareSlot: HardwareSlotId = isEncoderControlSelected
     ? selectedEncoderSubControl
+    : isMotionSlot(selectedControl)
+    ? selectedControl
     : isHoldSlot(selectedControl)
     ? selectedControl
     : selectedControl === 'k9'
@@ -503,6 +520,8 @@ export default function App() {
         slot === 'e2_ccw'
       ) {
         setSelectedControl(slot);
+      } else if (isMotionSlot(slot)) {
+        setSelectedControl(hasMotion ? slot : 'k1');
       } else if (isHoldSlot(slot)) {
         setSelectedControl(hasKeyHold ? slot : HOLD_SLOT_TO_ACTION_KEY[slot]);
       } else {
@@ -510,7 +529,7 @@ export default function App() {
       }
       setActiveSection('device');
     },
-    [hasKeyHold, studio]
+    [hasKeyHold, hasMotion, studio]
   );
 
   const pendingCopyLabels = useMemo(() => {
@@ -761,6 +780,53 @@ export default function App() {
                   handleOpenMacroBuilderForSlot(selectedEncoderSubControl, activeBind);
                 }}
               />
+            ) : isMotionControlSelected ? (
+              <MotionInspector
+                motionConfig={studio.activeLayer.motion}
+                selectedSlot={selectedControl as MotionSlotId}
+                onSelectSlot={slot => setSelectedControl(slot)}
+                activeProfileId={studio.activeProfile.id}
+                activeProfileName={studio.activeProfile.name}
+                activeHostOs={activeHostOs}
+                tvEnabled={studio.tvEnabled}
+                onChangeHostOs={
+                  isBleHostProfile(studio.activeProfile.id)
+                    ? os => studio.setHostOs(studio.activeProfile.id as BleHostProfileId, os)
+                    : undefined
+                }
+                showAdvancedIds={studio.settings.showAdvancedIds}
+                onToggleAdvancedIds={() =>
+                  studio.updateSettings({
+                    showAdvancedIds: !studio.settings.showAdvancedIds
+                  })
+                }
+                customMacros={studio.customMacros}
+                keyboardLayout={studio.settings.keyboardLayout}
+                connection={connection}
+                activeRepeatJob={activeRepeatJob}
+                onUpdateSlot={(slot, binding) =>
+                  studio.assignSlotAction(studio.activeProfile.id, slot, binding)
+                }
+                onResetSlotToDefault={slot =>
+                  studio.resetSlotToDefault(studio.activeProfile.id, slot)
+                }
+                onClearSlot={slot =>
+                  studio.clearSlot(studio.activeProfile.id, slot)
+                }
+                onTestBinding={binding => {
+                  handleExecuteHardwareBinding(binding);
+                }}
+                onStopRepeat={handleStopRepeat}
+                onOpenMacroBuilder={() => {
+                  const slot = selectedControl as MotionSlotId;
+                  const bind = studio.activeLayer.motion[slot] ?? {
+                    type: 'none',
+                    value: ''
+                  };
+                  handleOpenMacroBuilderForSlot(slot, bind);
+                }}
+                onOpenMotionSettings={() => setActiveSection('settings')}
+              />
             ) : (
               selectedKeyConfig && (
                 <ButtonInspector
@@ -920,6 +986,9 @@ export default function App() {
             onOpenSetupWizard={handleOpenSetupWizard}
             onEnterHardwareSetupMode={handleEnterHardwareSetupMode}
             onExportBackupFile={studio.exportHardwareBackupFile}
+            onJumpToMotionSlot={slot =>
+              handleJumpToSlotControl(studio.activeProfile.id, slot)
+            }
             onToast={showToast}
           />
         )}

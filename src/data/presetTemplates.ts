@@ -8,6 +8,7 @@ import {
   KeyAppearance,
   KeyControlConfig,
   KeyId,
+  MotionControlConfig,
   SlotRepeatMap,
   StudioProfile,
   TextMacroRepeatConfig,
@@ -226,6 +227,33 @@ export function buildHardwareEncoder(
   };
 }
 
+export function buildHardwareMotion(
+  shakeAction = '',
+  downAction = '',
+  upAction = '',
+  shakeRepeat?: TextMacroRepeatConfig,
+  downRepeat?: TextMacroRepeatConfig,
+  upRepeat?: TextMacroRepeatConfig
+): MotionControlConfig {
+  const matchedShake = resolveMatchingRepeatConfig(shakeAction, shakeRepeat);
+  const matchedDown = resolveMatchingRepeatConfig(downAction, downRepeat);
+  const matchedUp = resolveMatchingRepeatConfig(upAction, upRepeat);
+  return {
+    g_shake: firmwareActionToBinding(
+      resolveUpgradedActionStr(shakeAction, matchedShake),
+      matchedShake
+    ),
+    g_down: firmwareActionToBinding(
+      resolveUpgradedActionStr(downAction, matchedDown),
+      matchedDown
+    ),
+    g_up: firmwareActionToBinding(
+      resolveUpgradedActionStr(upAction, matchedUp),
+      matchedUp
+    )
+  };
+}
+
 export function buildHardwareProfile(
   id: HardwareProfileId,
   name: string,
@@ -350,6 +378,14 @@ export function buildHardwareProfile(
           repeatConfigs?.[`${id}:dial2`],
           repeatConfigs?.[`${id}:e2_cw`],
           repeatConfigs?.[`${id}:e2_ccw`]
+        ),
+        motion: buildHardwareMotion(
+          slots?.g_shake || '',
+          slots?.g_down || '',
+          slots?.g_up || '',
+          repeatConfigs?.[`${id}:g_shake`],
+          repeatConfigs?.[`${id}:g_down`],
+          repeatConfigs?.[`${id}:g_up`]
         )
       }
     ]

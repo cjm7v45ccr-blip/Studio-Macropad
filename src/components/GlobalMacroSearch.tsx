@@ -30,7 +30,8 @@ import {
   getShortcutsForHostOs,
   getVisibleHardwareSlots,
   hasKeyHoldCapability,
-  isHoldSlot
+  isHoldSlot,
+  isMotionSlot
 } from '../data/firmwareCatalog';
 import { extractProfileSlots, getBindingForProfileSlot } from '../hooks/useStudioState';
 import {
@@ -117,7 +118,7 @@ const CATALOG_CATEGORY_LABELS: Record<string, string> = {
 };
 
 function controlToHardwareSlot(control: ControlId): HardwareSlotId {
-  if (isHoldSlot(control)) return control;
+  if (isHoldSlot(control) || isMotionSlot(control)) return control;
   if (
     control === 'k1' ||
     control === 'k2' ||
@@ -142,7 +143,7 @@ function controlToHardwareSlot(control: ControlId): HardwareSlotId {
 }
 
 function hardwareSlotToControl(slot: HardwareSlotId): ControlId {
-  if (isHoldSlot(slot)) return slot;
+  if (isHoldSlot(slot) || isMotionSlot(slot)) return slot;
   if (slot === 'dial') return 'dial';
   if (slot === 'enc_cw') return 'enc_cw';
   if (slot === 'enc_ccw') return 'enc_ccw';
