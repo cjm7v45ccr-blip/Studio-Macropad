@@ -29,35 +29,26 @@ function button(markup: string, label: string) {
   return match;
 }
 
-test('offline draft has a separate connect control and disabled save action', () => {
+test('offline draft shows Connect USB without manual save button or background save status text', () => {
   const html = header({ dirty: true, syncStatus: 'Out of sync' });
   assert.match(html, /Connect USB/);
-  assert.match(html, /Unsaved changes/);
-  assert.match(html, /Not saved to a device/);
-  assert.match(button(html, 'Save to device'), /disabled=""/);
+  assert.doesNotMatch(html, /Save to device/);
+  assert.doesNotMatch(html, /Unsaved changes/);
+  assert.doesNotMatch(html, /Not saved to a device/);
 });
 
-test('connected unsaved changes enable Save to device, not a renamed connection button', () => {
+test('connected state shows USB connected without manual save button or status clutter', () => {
   const html = header({ connection: { ...disconnected, connected: true, transport: 'webserial' }, dirty: true, syncStatus: 'Out of sync' });
   assert.match(html, /USB connected/);
-  assert.match(html, /Unsaved changes/);
-  assert.match(html, /Edits auto-save/);
-  assert.doesNotMatch(button(html, 'Save to device'), /disabled=""/);
+  assert.doesNotMatch(html, /Save to device/);
+  assert.doesNotMatch(html, /Edits auto-save/);
 });
 
-test('saving disables duplicate saves while retaining a stable save label', () => {
-  const html = header({ connection: { ...disconnected, connected: true, transport: 'webserial' }, syncStatus: 'Saving', dirty: true });
-  assert.match(html, /Saving…/);
-  assert.match(button(html, 'Save to device'), /disabled=""/);
-});
-
-test('saved demo state cannot be mistaken for saved physical hardware', () => {
+test('demo state is clearly labeled Demo mode without physical USB or manual save controls', () => {
   const html = header({ connection: { ...disconnected, connected: true, transport: 'demo' }, syncStatus: 'Synced' });
   assert.match(html, /Demo mode/);
-  assert.match(html, /Saved to demo/);
-  assert.match(html, /No physical device/);
-  assert.match(button(html, 'Save to demo'), /disabled=""/);
-  assert.doesNotMatch(html, />Saved to device</);
+  assert.doesNotMatch(html, /USB connected/);
+  assert.doesNotMatch(html, /Save to demo/);
 });
 
 function modal(connection: DeviceConnectionInfo) {
