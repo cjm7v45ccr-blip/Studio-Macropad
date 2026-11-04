@@ -16,7 +16,6 @@ import {
 } from '../types/studio';
 import {
   FIRMWARE_STATIC_CATALOG,
-  HARDWARE_SLOTS,
   SLOT_LABELS,
   actionContainsTvSteps,
   actionToMacroSteps,
@@ -28,7 +27,10 @@ import {
   formatDurationCompact,
   getActionTestAvailability,
   getMacroCanonicalSignature,
-  getShortcutsForHostOs
+  getShortcutsForHostOs,
+  getVisibleHardwareSlots,
+  hasKeyHoldCapability,
+  isHoldSlot
 } from '../data/firmwareCatalog';
 import { extractProfileSlots, getBindingForProfileSlot } from '../hooks/useStudioState';
 import {
@@ -115,6 +117,7 @@ const CATALOG_CATEGORY_LABELS: Record<string, string> = {
 };
 
 function controlToHardwareSlot(control: ControlId): HardwareSlotId {
+  if (isHoldSlot(control)) return control;
   if (
     control === 'k1' ||
     control === 'k2' ||
@@ -129,6 +132,8 @@ function controlToHardwareSlot(control: ControlId): HardwareSlotId {
   }
   if (control === 'enc_cw') return 'enc_cw';
   if (control === 'enc_ccw') return 'enc_ccw';
+  if (control === 'push_cw') return 'push_cw';
+  if (control === 'push_ccw') return 'push_ccw';
   if (control === 'dial' || control === 'encoder') return 'dial';
   if (control === 'e2_cw') return 'e2_cw';
   if (control === 'e2_ccw') return 'e2_ccw';
@@ -137,9 +142,12 @@ function controlToHardwareSlot(control: ControlId): HardwareSlotId {
 }
 
 function hardwareSlotToControl(slot: HardwareSlotId): ControlId {
+  if (isHoldSlot(slot)) return slot;
   if (slot === 'dial') return 'dial';
   if (slot === 'enc_cw') return 'enc_cw';
   if (slot === 'enc_ccw') return 'enc_ccw';
+  if (slot === 'push_cw') return 'push_cw';
+  if (slot === 'push_ccw') return 'push_ccw';
   if (slot === 'dial2') return 'dial2';
   if (slot === 'e2_cw') return 'e2_cw';
   if (slot === 'e2_ccw') return 'e2_ccw';
@@ -222,13 +230,26 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
   }, []);
 
+  const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
+  const visibleSlots = useMemo(
+    () => getVisibleHardwareSlots(connection.telemetry?.capabilities),
+    [connection.telemetry?.capabilities]
+  );
+
   useEffect(() => {
     setAssignProfile(activeProfileId === 'TV' && !isTvEnabled ? 'HOST1' : activeProfileId);
   }, [activeProfileId, isTvEnabled]);
 
   useEffect(() => {
-    setAssignSlot(controlToHardwareSlot(selectedControl));
-  }, [selectedControl]);
+    const mapped = controlToHardwareSlot(selectedControl);
+    setAssignSlot(!hasKeyHold && isHoldSlot(mapped) ? 'b1' : mapped);
+  }, [selectedControl, hasKeyHold]);
+
+  useEffect(() => {
+    if (!hasKeyHold && isHoldSlot(assignSlot)) {
+      setAssignSlot('b1');
+    }
+  }, [hasKeyHold, assignSlot]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -346,7 +367,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
     sortedProfiles.forEach(prof => {
       const slots = extractProfileSlots(prof);
-      HARDWARE_SLOTS.forEach(slot => {
+      visibleSlots.forEach(slot => {
         const rawAction = slots[slot] || '';
         const binding = getBindingForProfileSlot(profiles, prof.id, slot);
         const controlId = hardwareSlotToControl(slot);
@@ -513,7 +534,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     activeHostOs,
     isTvEnabled,
     customMacros,
-    customMacroBySignature
+    customMacroBySignature,
+    visibleSlots
   ]);
 
   const { filteredEntries, tabCounts } = useMemo(() => {
@@ -895,7 +917,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                     }}
                     className="px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
                   >
-                    {HARDWARE_SLOTS.map(slot => (
+                    {visibleSlots.map(slot => (
                       <option key={slot} value={slot}>
                         {SLOT_LABELS[slot].short}
                       </option>

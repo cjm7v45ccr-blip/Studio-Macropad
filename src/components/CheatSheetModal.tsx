@@ -6,7 +6,12 @@ import {
   isBleHostProfile,
   profileShortTag
 } from '../types/studio';
-import { HARDWARE_SLOTS, SLOT_LABELS } from '../data/firmwareCatalog';
+import {
+  HOLD_SLOTS,
+  SLOT_LABELS,
+  getVisibleHardwareSlots,
+  hasKeyHoldCapability
+} from '../data/firmwareCatalog';
 import {
   extractProfileSlots,
   getBindingForProfileSlot
@@ -28,6 +33,7 @@ interface CheatSheetModalProps {
   profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
   tvEnabled?: boolean;
+  capabilities?: string[];
   onClose: () => void;
   onJumpToControl: (profileId: HardwareProfileId, slot: HardwareSlotId) => void;
 }
@@ -43,7 +49,7 @@ const KEY_SLOTS: readonly HardwareSlotId[] = [
   'b8'
 ] as const;
 
-const KNOB_1_SLOTS: {
+const KNOB_1_BASE_SLOTS: {
   slot: HardwareSlotId;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -51,6 +57,15 @@ const KNOB_1_SLOTS: {
   { slot: 'dial', label: 'K1 Press', icon: Disc },
   { slot: 'enc_ccw', label: 'K1 Left', icon: RotateCcw },
   { slot: 'enc_cw', label: 'K1 Right', icon: RotateCw }
+];
+
+const KNOB_1_HOLD_SLOTS: {
+  slot: HardwareSlotId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { slot: 'push_ccw', label: 'K1 Hold+Left', icon: RotateCcw },
+  { slot: 'push_cw', label: 'K1 Hold+Right', icon: RotateCw }
 ];
 
 const KNOB_2_SLOTS: {
@@ -68,10 +83,14 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
   profiles,
   activeProfileId,
   tvEnabled = true,
+  capabilities,
   onClose,
   onJumpToControl
 }) => {
   const [labelMode, setLabelMode] = useState<'friendly' | 'value'>('friendly');
+  const hasKeyHold = hasKeyHoldCapability(capabilities);
+  const visibleSlots = getVisibleHardwareSlots(capabilities);
+  const controlCount = visibleSlots.length;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -113,7 +132,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                 All-Host Desk Reference
               </h2>
               <p className="text-xs text-[var(--text-muted)] truncate tabular-nums">
-                4 profiles · 56 programmable controls · Click any slot to configure on canvas
+                4 profiles · {controlCount * 4} programmable controls · Click any slot to configure on canvas
               </p>
             </div>
           </div>
@@ -175,7 +194,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
             const isBle = isBleHostProfile(prof.id);
             const ProfileIcon = isBle ? Bluetooth : Tv;
             const isActive = prof.id === activeProfileId;
-            const assignedCount = HARDWARE_SLOTS.filter(s =>
+            const assignedCount = visibleSlots.filter(s =>
               Boolean(slots[s])
             ).length;
 
@@ -212,81 +231,168 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                       </span>
                     )}
                     <span className="text-[var(--text-muted)]">
-                      {assignedCount}/14 mapped
+                      {assignedCount}/{controlCount} mapped
                     </span>
                   </div>
                 </div>
 
-                {/* 8 Mechanical Keys (2x4 Grid) */}
+                {/* 8 Mechanical Keys (2x4 Grid with capability-gated Hold row under each key) */}
                 <div className="grid grid-cols-2 gap-1.5">
                   {KEY_SLOTS.map((slot, idx) => {
                     const act = slots[slot];
                     const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+                    const holdSlot = HOLD_SLOTS[idx];
+                    const holdAct = slots[holdSlot];
+                    const holdBind = getBindingForProfileSlot(profiles, prof.id, holdSlot);
                     return (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => {
-                          onJumpToControl(prof.id, slot);
-                          onClose();
-                        }}
-                        title={`Configure ${prof.name} · ${SLOT_LABELS[slot].short}`}
-                        className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex items-center justify-between gap-2 text-left transition-colors cursor-pointer min-w-0"
-                      >
-                        <span className="font-mono text-[10px] font-semibold text-[var(--text-muted)] tabular-nums shrink-0">
-                          K{idx + 1}
-                        </span>
-                        <div className="min-w-0 flex-1 flex justify-end overflow-hidden">
-                          <ParsedActionBadge
-                            action={act}
-                            repeatConfig={bind?.repeatConfig}
-                            labelMode={labelMode}
-                            maxSteps={1}
-                          />
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                      <div key={slot} className="flex flex-col gap-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onJumpToControl(prof.id, slot);
+                            onClose();
+                          }}
+                          title={`Configure ${prof.name} · ${SLOT_LABELS[slot].short}`}
+                          className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex items-center justify-between gap-2 text-left transition-colors cursor-pointer min-w-0"
+                        >
+                          <span className="font-mono text-[10px] font-semibold text-[var(--text-muted)] tabular-nums shrink-0">
+                            K{idx + 1}
+                          </span>
+                          <div className="min-w-0 flex-1 flex justify-end overflow-hidden">
+                            <ParsedActionBadge
+                              action={act}
+                              repeatConfig={bind?.repeatConfig}
+                              labelMode={labelMode}
+                              maxSteps={1}
+                            />
+                          </div>
+                        </button>
 
-                {/* Dual Rotary Dial Controls (Knob 1 & Knob 2) */}
-                <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1.5">
-                  {[KNOB_1_SLOTS, KNOB_2_SLOTS].map((knobGroup, groupIdx) => (
-                    <div
-                      key={groupIdx}
-                      className="grid grid-cols-1 sm:grid-cols-3 gap-1.5"
-                    >
-                      {knobGroup.map(({ slot, label, icon: KnobIcon }) => {
-                        const act = slots[slot];
-                        const bind = getBindingForProfileSlot(profiles, prof.id, slot);
-                        return (
+                        {hasKeyHold && (
                           <button
-                            key={slot}
                             type="button"
                             onClick={() => {
-                              onJumpToControl(prof.id, slot);
+                              onJumpToControl(prof.id, holdSlot);
                               onClose();
                             }}
-                            title={`Configure ${prof.name} · ${SLOT_LABELS[slot].full}`}
-                            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
+                            title={`Configure ${prof.name} · ${SLOT_LABELS[holdSlot].short}`}
+                            className="px-2.5 py-1 rounded-md bg-[var(--bg-panel)]/75 hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex items-center justify-between gap-2 text-left transition-colors cursor-pointer min-w-0"
                           >
-                            <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
-                              <KnobIcon className="w-3 h-3 shrink-0" />
-                              <span className="truncate">{label}</span>
-                            </div>
-                            <div className="min-w-0 overflow-hidden">
+                            <span className="font-mono text-[9px] font-medium text-[var(--text-muted)] shrink-0">
+                              Hold
+                            </span>
+                            <div className="min-w-0 flex-1 flex justify-end overflow-hidden">
                               <ParsedActionBadge
-                                action={act}
-                                repeatConfig={bind?.repeatConfig}
+                                action={holdAct}
+                                repeatConfig={holdBind?.repeatConfig}
                                 labelMode={labelMode}
                                 maxSteps={1}
                               />
                             </div>
                           </button>
-                        );
-                      })}
-                    </div>
-                  ))}
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Dual Rotary Dial Controls (Knob 1 Press/Turn + Hold+Turn & Knob 2) */}
+                <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                    {KNOB_1_BASE_SLOTS.map(({ slot, label, icon: KnobIcon }) => {
+                      const act = slots[slot];
+                      const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => {
+                            onJumpToControl(prof.id, slot);
+                            onClose();
+                          }}
+                          title={`Configure ${prof.name} · ${SLOT_LABELS[slot].full}`}
+                          className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
+                        >
+                          <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
+                            <KnobIcon className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{label}</span>
+                          </div>
+                          <div className="min-w-0 overflow-hidden">
+                            <ParsedActionBadge
+                              action={act}
+                              repeatConfig={bind?.repeatConfig}
+                              labelMode={labelMode}
+                              maxSteps={1}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {KNOB_1_HOLD_SLOTS.map(({ slot, label, icon: KnobIcon }) => {
+                      const act = slots[slot];
+                      const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => {
+                            onJumpToControl(prof.id, slot);
+                            onClose();
+                          }}
+                          title={`Configure ${prof.name} · ${SLOT_LABELS[slot].full}`}
+                          className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
+                        >
+                          <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
+                            <KnobIcon className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{label}</span>
+                          </div>
+                          <div className="min-w-0 overflow-hidden">
+                            <ParsedActionBadge
+                              action={act}
+                              repeatConfig={bind?.repeatConfig}
+                              labelMode={labelMode}
+                              maxSteps={1}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                    {KNOB_2_SLOTS.map(({ slot, label, icon: KnobIcon }) => {
+                      const act = slots[slot];
+                      const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => {
+                            onJumpToControl(prof.id, slot);
+                            onClose();
+                          }}
+                          title={`Configure ${prof.name} · ${SLOT_LABELS[slot].full}`}
+                          className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
+                        >
+                          <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
+                            <KnobIcon className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{label}</span>
+                          </div>
+                          <div className="min-w-0 overflow-hidden">
+                            <ParsedActionBadge
+                              action={act}
+                              repeatConfig={bind?.repeatConfig}
+                              labelMode={labelMode}
+                              maxSteps={1}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </section>
             );

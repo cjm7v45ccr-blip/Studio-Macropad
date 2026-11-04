@@ -99,12 +99,16 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   const cwSlot: EncoderSubControlId = encoderIndex === 2 ? 'e2_cw' : 'enc_cw';
   const ccwSlot: EncoderSubControlId = encoderIndex === 2 ? 'e2_ccw' : 'enc_ccw';
 
-  const activeBinding =
+  const activeBinding: ActionBinding =
     selectedSubControl === 'dial' || selectedSubControl === 'dial2'
       ? encoder.dial
       : selectedSubControl === 'enc_cw' || selectedSubControl === 'e2_cw'
       ? encoder.cw
-      : encoder.ccw;
+      : selectedSubControl === 'enc_ccw' || selectedSubControl === 'e2_ccw'
+      ? encoder.ccw
+      : selectedSubControl === 'push_cw'
+      ? encoder.pushCw || { type: 'none', value: '' }
+      : encoder.pushCcw || { type: 'none', value: '' };
 
   const selectionKey = `${activeProfileId}:${selectedSubControl}`;
   const [trackedKey, setTrackedKey] = useState(selectionKey);
@@ -220,6 +224,35 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   };
 
   const handleSwapDirections = () => {
+    const isHoldTurn =
+      encoderIndex === 1 &&
+      (selectedSubControl === 'push_cw' || selectedSubControl === 'push_ccw');
+
+    if (isHoldTurn) {
+      const pushCwBind = encoder.pushCw || { type: 'none', value: '' };
+      const pushCcwBind = encoder.pushCcw || { type: 'none', value: '' };
+      const pushCwAct = bindingToFirmwareAction(pushCwBind);
+      const pushCcwAct = bindingToFirmwareAction(pushCcwBind);
+
+      const repeatOverrides: SlotRepeatMap = {};
+      if (pushCcwBind.repeatConfig) {
+        repeatOverrides[`${activeProfileId}:push_cw`] = pushCcwBind.repeatConfig;
+      }
+      if (pushCwBind.repeatConfig) {
+        repeatOverrides[`${activeProfileId}:push_ccw`] = pushCwBind.repeatConfig;
+      }
+
+      onApplyKnobSlots(
+        {
+          push_cw: pushCcwAct,
+          push_ccw: pushCwAct
+        },
+        'Swapped Knob 1 Hold+Left & Hold+Right directions',
+        repeatOverrides
+      );
+      return;
+    }
+
     const cwAct =
       bindingToFirmwareAction(encoder.cw) ||
       FACTORY_DEFAULT_SLOTS[activeProfileId][cwSlot];
@@ -270,6 +303,29 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
       binding: encoder.ccw
     }
   ];
+
+  const holdTurnCards: {
+    id: EncoderSubControlId;
+    title: string;
+    icon: React.ComponentType<{ className?: string }>;
+    binding: ActionBinding;
+  }[] =
+    encoderIndex === 1
+      ? [
+          {
+            id: 'push_ccw',
+            title: 'Hold + Left',
+            icon: RotateCcw,
+            binding: encoder.pushCcw || { type: 'none', value: '' }
+          },
+          {
+            id: 'push_cw',
+            title: 'Hold + Right',
+            icon: RotateCw,
+            binding: encoder.pushCw || { type: 'none', value: '' }
+          }
+        ]
+      : [];
 
   return (
     <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
@@ -365,44 +421,87 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
           })}
         </div>
 
-        {/* 3 Real Hardware Encoder Controls Selector */}
-        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[var(--bg-input)]">
-          {slotCards.map(card => {
-            const Icon = card.icon;
-            const active = selectedSubControl === card.id;
-            return (
-              <button
-                key={card.id}
-                type="button"
-                onClick={() => onSelectSubControl(card.id)}
-                className={`flex flex-col items-start gap-1 px-2.5 py-2 rounded-lg text-left transition-all cursor-pointer min-w-0 ${
-                  active
-                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-2xs ring-1 ring-[var(--accent)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 w-full min-w-0">
-                  <Icon
-                    className={`w-3.5 h-3.5 shrink-0 ${
-                      active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
+        {/* Hardware Encoder Controls Selector (3 primary + 2 Hold+Turn on Knob 1) */}
+        <div className="p-1 rounded-xl bg-[var(--bg-input)] space-y-1">
+          <div className="grid grid-cols-3 gap-1.5">
+            {slotCards.map(card => {
+              const Icon = card.icon;
+              const active = selectedSubControl === card.id;
+              return (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => onSelectSubControl(card.id)}
+                  className={`flex flex-col items-start gap-1 px-2.5 py-2 rounded-lg text-left transition-all cursor-pointer min-w-0 ${
+                    active
+                      ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-2xs ring-1 ring-[var(--accent)]'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 w-full min-w-0">
+                    <Icon
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
+                      }`}
+                    />
+                    <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                      {card.title}
+                    </span>
+                  </div>
+                  <div className="w-full min-w-0 truncate">
+                    <ParsedActionBadge
+                      action={card.binding.value}
+                      repeatConfig={card.binding.repeatConfig}
+                      customMacros={customMacros}
+                      showRawId={showAdvancedIds}
+                      maxSteps={1}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {holdTurnCards.length > 0 && (
+            <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
+              {holdTurnCards.map(card => {
+                const Icon = card.icon;
+                const active = selectedSubControl === card.id;
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => onSelectSubControl(card.id)}
+                    className={`flex flex-col items-start gap-1 px-2.5 py-2 rounded-lg text-left transition-all cursor-pointer min-w-0 ${
+                      active
+                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-2xs ring-1 ring-[var(--accent)]'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
-                  />
-                  <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
-                    {card.title}
-                  </span>
-                </div>
-                <div className="w-full min-w-0 truncate">
-                  <ParsedActionBadge
-                    action={card.binding.value}
-                    repeatConfig={card.binding.repeatConfig}
-                    customMacros={customMacros}
-                    showRawId={showAdvancedIds}
-                    maxSteps={1}
-                  />
-                </div>
-              </button>
-            );
-          })}
+                  >
+                    <div className="flex items-center gap-1.5 w-full min-w-0">
+                      <Icon
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
+                        }`}
+                      />
+                      <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                        {card.title}
+                      </span>
+                    </div>
+                    <div className="w-full min-w-0 truncate">
+                      <ParsedActionBadge
+                        action={card.binding.value}
+                        repeatConfig={card.binding.repeatConfig}
+                        customMacros={customMacros}
+                        showRawId={showAdvancedIds}
+                        maxSteps={1}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 

@@ -9,6 +9,17 @@ export interface ProfilePreset {
   bindings: Record<HardwareSlotId, string>;
 }
 
+const EMPTY_HOLD_BINDINGS = {
+  b1h: '',
+  b2h: '',
+  b3h: '',
+  b4h: '',
+  b5h: '',
+  b6h: '',
+  b7h: '',
+  b8h: ''
+} as const;
+
 export const CURATED_PRESETS: ProfilePreset[] = [
   {
     id: 'universal-multi-host',
@@ -16,7 +27,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: 'OS-Neutral Media & Host Cycle',
     mode: 'HOST1',
     description:
-      'OS-neutral consumer media transport, F13–F15 macro triggers, 1-tap Next BLE Host switching, plus dual knobs for volume and track skip.',
+      'OS-neutral consumer media transport, F13–F15 macro triggers, 1-tap Next BLE Host switching, plus dual knobs and dial hold-turn chords.',
     bindings: {
       b1: 'MEDIA:PLAY_PAUSE',
       b2: 'MEDIA:NEXT',
@@ -29,9 +40,12 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       dial: 'MEDIA:MUTE',
       enc_cw: 'MEDIA:VOL_UP',
       enc_ccw: 'MEDIA:VOL_DOWN',
+      push_cw: 'MEDIA:NEXT',
+      push_ccw: 'MEDIA:PREV',
       dial2: 'MEDIA:PLAY_PAUSE',
       e2_cw: 'MEDIA:NEXT',
-      e2_ccw: 'MEDIA:PREV'
+      e2_ccw: 'MEDIA:PREV',
+      ...EMPTY_HOLD_BINDINGS
     }
   },
   {
@@ -40,7 +54,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: 'Media, Clipboard & Spotlight',
     mode: 'HOST1',
     description:
-      'Play/pause, track transport, Spotlight search, copy/paste/undo, Mac lock, speaker volume on Knob 1, and tab cycling on Knob 2.',
+      'Play/pause, track transport, Spotlight search, copy/paste/undo, Mac lock, speaker volume + brightness chords on Knob 1, and tab cycling on Knob 2.',
     bindings: {
       b1: 'MEDIA:PLAY_PAUSE',
       b2: 'MEDIA:PREV',
@@ -53,9 +67,12 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       dial: 'MEDIA:MUTE',
       enc_cw: 'MEDIA:VOL_UP',
       enc_ccw: 'MEDIA:VOL_DOWN',
+      push_cw: 'MEDIA:BRIGHT_UP',
+      push_ccw: 'MEDIA:BRIGHT_DOWN',
       dial2: 'MACRO:NEW_TAB',
       e2_cw: 'SHORTCUT:cmd,shift:]',
-      e2_ccw: 'SHORTCUT:cmd,shift:['
+      e2_ccw: 'SHORTCUT:cmd,shift:[',
+      ...EMPTY_HOLD_BINDINGS
     }
   },
   {
@@ -64,7 +81,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: 'Snip, Explorer & Dual Audio',
     mode: 'HOST2',
     description:
-      'Screen snip, File Explorer, Task Manager, desktop toggle, Windows copy/paste/undo, PC lock, track skip on Knob 1, and volume on Knob 2.',
+      'Screen snip, File Explorer, Task Manager, desktop toggle, Windows copy/paste/undo, PC lock, track skip + zoom chords on Knob 1, and volume on Knob 2.',
     bindings: {
       b1: 'WIN:SNIP',
       b2: 'WIN:EXPLORER',
@@ -77,9 +94,12 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       dial: 'MEDIA:PLAY_PAUSE',
       enc_cw: 'MEDIA:NEXT',
       enc_ccw: 'MEDIA:PREV',
+      push_cw: 'SHORTCUT:ctrl:=',
+      push_ccw: 'SHORTCUT:ctrl:-',
       dial2: 'MEDIA:MUTE',
       e2_cw: 'MEDIA:VOL_UP',
-      e2_ccw: 'MEDIA:VOL_DOWN'
+      e2_ccw: 'MEDIA:VOL_DOWN',
+      ...EMPTY_HOLD_BINDINGS
     }
   },
   {
@@ -88,7 +108,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: 'Cut, Scrub & Monitor Volume',
     mode: 'HOST1',
     description:
-      'Cut, copy, paste, select all, undo/redo, marker F13, quick save, frame scrubbing on Knob 1, and monitor volume on Knob 2.',
+      'Cut, copy, paste, select all, undo/redo, marker F13, quick save, frame scrubbing + timeline zoom chords on Knob 1, and monitor volume on Knob 2.',
     bindings: {
       b1: 'MACRO:CUT',
       b2: 'MACRO:COPY',
@@ -101,9 +121,12 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       dial: 'MEDIA:PLAY_PAUSE',
       enc_cw: 'SHORTCUT::right',
       enc_ccw: 'SHORTCUT::left',
+      push_cw: 'SHORTCUT:cmd:=',
+      push_ccw: 'SHORTCUT:cmd:-',
       dial2: 'MEDIA:MUTE',
       e2_cw: 'MEDIA:VOL_UP',
-      e2_ccw: 'MEDIA:VOL_DOWN'
+      e2_ccw: 'MEDIA:VOL_DOWN',
+      ...EMPTY_HOLD_BINDINGS
     }
   },
   {
@@ -112,7 +135,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: 'Code, Snip & Tab Cycling',
     mode: 'HOST3',
     description:
-      'Copy/paste, open/close tabs, undo/redo, Spotlight, screenshot snip, tab cycling on Knob 1, and history/audio control on Knob 2.',
+      'Copy/paste, open/close tabs, undo/redo, Spotlight, screenshot snip, tab cycling + zoom chords on Knob 1, and history/audio control on Knob 2.',
     bindings: {
       b1: 'MACRO:COPY',
       b2: 'MACRO:PASTE',
@@ -125,9 +148,12 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       dial: 'MACRO:SAVE',
       enc_cw: 'SHORTCUT:cmd,shift:]',
       enc_ccw: 'SHORTCUT:cmd,shift:[',
+      push_cw: 'SHORTCUT:cmd:=',
+      push_ccw: 'SHORTCUT:cmd:-',
       dial2: 'MEDIA:MUTE',
       e2_cw: 'MACRO:REDO',
-      e2_ccw: 'MACRO:UNDO'
+      e2_ccw: 'MACRO:UNDO',
+      ...EMPTY_HOLD_BINDINGS
     }
   },
   {
@@ -136,7 +162,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: 'Zoom, Brightness & Creative',
     mode: 'HOST1',
     description:
-      'Zoom in/out/100% on keys and Knob 1, screen brightness up/down on Knob 2, plus screenshot, undo/redo, and save.',
+      'Zoom in/out/100% on keys and Knob 1, volume chords on Knob 1 hold-turn, screen brightness up/down on Knob 2, plus screenshot, undo/redo, and save.',
     bindings: {
       b1: 'SHORTCUT:cmd:=',
       b2: 'SHORTCUT:cmd:-',
@@ -149,9 +175,12 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       dial: 'SHORTCUT:cmd:0',
       enc_cw: 'SHORTCUT:cmd:=',
       enc_ccw: 'SHORTCUT:cmd:-',
+      push_cw: 'MEDIA:VOL_UP',
+      push_ccw: 'MEDIA:VOL_DOWN',
       dial2: 'MEDIA:MUTE',
       e2_cw: 'MEDIA:BRIGHT_UP',
-      e2_ccw: 'MEDIA:BRIGHT_DOWN'
+      e2_ccw: 'MEDIA:BRIGHT_DOWN',
+      ...EMPTY_HOLD_BINDINGS
     }
   },
   {
@@ -160,7 +189,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: '6 Apps, Volume & Channels',
     mode: 'TV',
     description:
-      'TV power toggle, YouTube, Netflix, Disney+, Prime Video, Apple TV+, Home, and Back with TV volume on Knob 1 and channels on Knob 2.',
+      'TV power toggle, YouTube, Netflix, Disney+, Prime Video, Apple TV+, Home, and Back with TV volume + channel chords on Knob 1 and channels on Knob 2.',
     bindings: {
       b1: 'TV:POWER',
       b2: 'APP:YOUTUBE',
@@ -173,9 +202,12 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       dial: 'TV:MUTE',
       enc_cw: 'TV:VOL_UP',
       enc_ccw: 'TV:VOL_DOWN',
+      push_cw: 'TV:CH_UP',
+      push_ccw: 'TV:CH_DOWN',
       dial2: 'TV:OK',
       e2_cw: 'TV:CH_UP',
-      e2_ccw: 'TV:CH_DOWN'
+      e2_ccw: 'TV:CH_DOWN',
+      ...EMPTY_HOLD_BINDINGS
     }
   },
   {
@@ -184,7 +216,7 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     subtitle: 'Guide, Channels & Volume',
     mode: 'TV',
     description:
-      'Power, program guide, HDMI input cycle, last channel, closed captions, info banner, OK, Exit, channel surf on Knob 1, and volume on Knob 2.',
+      'Power, program guide, HDMI input cycle, last channel, closed captions, info banner, OK, Exit, channel surf + volume chords on Knob 1, and volume on Knob 2.',
     bindings: {
       b1: 'TV:POWER',
       b2: 'TV:GUIDE',
@@ -197,9 +229,12 @@ export const CURATED_PRESETS: ProfilePreset[] = [
       dial: 'TV:MUTE',
       enc_cw: 'TV:CH_UP',
       enc_ccw: 'TV:CH_DOWN',
+      push_cw: 'TV:VOL_UP',
+      push_ccw: 'TV:VOL_DOWN',
       dial2: 'TV:INPUT',
       e2_cw: 'TV:VOL_UP',
-      e2_ccw: 'TV:VOL_DOWN'
+      e2_ccw: 'TV:VOL_DOWN',
+      ...EMPTY_HOLD_BINDINGS
     }
   }
 ];

@@ -21,8 +21,10 @@ import { ICON_LIBRARY, KeycapIcon } from '../data/iconRegistry';
 import {
   FACTORY_DEFAULT_SLOTS,
   SLOT_LABELS,
-  describeFirmwareAction
+  describeFirmwareAction,
+  hasKeyHoldCapability
 } from '../data/firmwareCatalog';
+import { ActionKeyId, KEY_TO_HOLD_SLOT } from '../data/presetTemplates';
 import { ActionPickerControl } from './ActionPickerControl';
 import {
   RotateCcw,
@@ -49,7 +51,10 @@ interface ButtonInspectorProps {
   keyboardLayout: KeyboardLayoutId;
   connection: DeviceConnectionInfo;
   activeRepeatJob?: ActiveRepeatJob | null;
+  activeTrigger?: 'tap' | 'hold';
+  onSelectTrigger?: (trigger: 'tap' | 'hold') => void;
   onUpdateBinding: (binding: ActionBinding) => void;
+  onUpdateHoldBinding?: (binding: ActionBinding) => void;
   onResetSlotToDefault: (slot: HardwareSlotId) => void;
   onClearSlot?: (slot: HardwareSlotId) => void;
   onUpdateAppearance: (patch: Partial<KeyAppearance>) => void;
@@ -78,7 +83,10 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   keyboardLayout,
   connection,
   activeRepeatJob,
+  activeTrigger = 'tap',
+  onSelectTrigger,
   onUpdateBinding,
+  onUpdateHoldBinding,
   onResetSlotToDefault,
   onClearSlot,
   onUpdateAppearance,
@@ -95,18 +103,31 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   const [iconCategory, setIconCategory] = useState<string>('All');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const selectionKey = `${activeProfileId}:${keyConfig.id}`;
+  const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
+  const effectiveTrigger: 'tap' | 'hold' =
+    hasKeyHold && activeTrigger === 'hold' ? 'hold' : 'tap';
+  const currentTap = keyConfig.triggers.tap;
+  const currentHold: ActionBinding = keyConfig.triggers.hold || {
+    type: 'none',
+    value: ''
+  };
+  const activeBinding = effectiveTrigger === 'hold' ? currentHold : currentTap;
+
+  const selectionKey = `${activeProfileId}:${keyConfig.id}:${effectiveTrigger}`;
   const [trackedSelectionKey, setTrackedSelectionKey] = useState(selectionKey);
   const [initialBindingOnSelect, setInitialBindingOnSelect] = useState<ActionBinding>(
-    keyConfig.triggers.tap
+    activeBinding
   );
 
   useEffect(() => {
     if (trackedSelectionKey !== selectionKey) {
       setTrackedSelectionKey(selectionKey);
-      setInitialBindingOnSelect(keyConfig.triggers.tap);
+      setInitialBindingOnSelect(activeBinding);
+      if (effectiveTrigger === 'hold') {
+        setInspectorSection('action');
+      }
     }
-  }, [selectionKey, trackedSelectionKey, keyConfig.triggers.tap]);
+  }, [selectionKey, trackedSelectionKey, activeBinding, effectiveTrigger]);
 
   const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
   const activeBleHost: BleHostSlot =
@@ -201,7 +222,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               </div>
               <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
                 {connection.connected
-                  ? connection.telemetry?.bleDeviceName || `Studio Pad ${activeBleHost}`
+                  ? connection.telemetry?.bleDeviceName || `BertoPad ${activeBleHost}`
                   : 'Select host'}
               </span>
             </div>
@@ -250,9 +271,12 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     );
   }
 
-  const slotId = keyConfig.slot || 'b1';
+  const tapSlotId: HardwareSlotId = keyConfig.slot || 'b1';
+  const holdSlotId: HardwareSlotId =
+    keyConfig.holdSlot || KEY_TO_HOLD_SLOT[keyConfig.id];
+  const slotId: HardwareSlotId =
+    effectiveTrigger === 'hold' ? holdSlotId : tapSlotId;
   const slotMeta = SLOT_LABELS[slotId];
-  const currentTap = keyConfig.triggers.tap;
   const factoryDefaultAction = FACTORY_DEFAULT_SLOTS[activeProfileId][slotId];
   const factoryDesc = describeFirmwareAction(
     factoryDefaultAction,
@@ -260,15 +284,32 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     customMacros
   );
 
+  const tapDesc = currentTap.value
+    ? describeFirmwareAction(currentTap.value, currentTap.repeatConfig, customMacros)
+        .shortLabel
+    : 'Unassigned';
+  const holdDesc = currentHold.value
+    ? describeFirmwareAction(currentHold.value, currentHold.repeatConfig, customMacros)
+        .shortLabel
+    : 'Unassigned';
+
+  const handleActiveBindingChange = (next: ActionBinding) => {
+    if (effectiveTrigger === 'hold' && onUpdateHoldBinding) {
+      onUpdateHoldBinding(next);
+    } else {
+      onUpdateBinding(next);
+    }
+  };
+
   const canUndoSelection =
-    currentTap.value !== initialBindingOnSelect.value ||
-    JSON.stringify(currentTap.repeatConfig || null) !==
+    activeBinding.value !== initialBindingOnSelect.value ||
+    JSON.stringify(activeBinding.repeatConfig || null) !==
       JSON.stringify(initialBindingOnSelect.repeatConfig || null);
 
   const isAlreadyFactoryDefault =
-    currentTap.value === factoryDefaultAction && !currentTap.repeatConfig;
+    activeBinding.value === factoryDefaultAction && !activeBinding.repeatConfig;
 
-  const isAlreadyUnassigned = !currentTap.value && !currentTap.repeatConfig;
+  const isAlreadyUnassigned = !activeBinding.value && !activeBinding.repeatConfig;
 
   const categories = [
     'All',
@@ -332,7 +373,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             <button
               type="button"
               disabled={!canUndoSelection}
-              onClick={() => onUpdateBinding(initialBindingOnSelect)}
+              onClick={() => handleActiveBindingChange(initialBindingOnSelect)}
               title="Undo changes to this key"
               className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
             >
@@ -346,9 +387,9 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               onClick={() =>
                 onClearSlot
                   ? onClearSlot(slotId)
-                  : onUpdateBinding({ type: 'none', value: '' })
+                  : handleActiveBindingChange({ type: 'none', value: '' })
               }
-              title="Clear this key so pressing it sends nothing"
+              title="Clear this control so triggering it sends nothing"
               className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
             >
               <XCircle className="w-3 h-3 shrink-0" />
@@ -359,7 +400,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               type="button"
               disabled={isAlreadyFactoryDefault}
               onClick={() => onResetSlotToDefault(slotId)}
-              title={`Reset to default: ${factoryDesc.fullLabel}`}
+              title={`Reset to default: ${factoryDesc.fullLabel || 'Unassigned'}`}
               className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
             >
               <RotateCcw className="w-3 h-3 shrink-0" />
@@ -367,6 +408,55 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Capability-gated Press vs Hold Trigger Row Selector */}
+        {hasKeyHold && (
+          <div
+            role="group"
+            aria-label="Key trigger type"
+            className="p-1 rounded-xl bg-[var(--bg-input)] space-y-1"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                onSelectTrigger?.('tap');
+                setInspectorSection('action');
+              }}
+              className={`w-full px-3 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer ${
+                effectiveTrigger === 'tap'
+                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold ring-1 ring-[var(--accent)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+              }`}
+            >
+              <span className="font-mono text-[11px] whitespace-nowrap shrink-0">
+                Press · {SLOT_LABELS[tapSlotId].short}
+              </span>
+              <span className="truncate text-[11px] text-[var(--text-secondary)]">
+                {tapDesc}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onSelectTrigger?.('hold');
+                setInspectorSection('action');
+              }}
+              className={`w-full px-3 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer ${
+                effectiveTrigger === 'hold'
+                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold ring-1 ring-[var(--accent)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+              }`}
+            >
+              <span className="font-mono text-[11px] whitespace-nowrap shrink-0">
+                Hold · 500 ms
+              </span>
+              <span className="truncate text-[11px] text-[var(--text-secondary)]">
+                {holdDesc}
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Section Switcher: Action vs Keycap Legend */}
         <div className="grid grid-cols-2 p-1 rounded-xl bg-[var(--bg-input)]">
@@ -379,7 +469,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
-            Action
+            {hasKeyHold && effectiveTrigger === 'hold' ? 'Hold Action' : 'Action'}
           </button>
           <button
             type="button"
@@ -399,8 +489,8 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
       <div key={selectionKey} className="p-4 sm:p-5 space-y-5 animate-panel-in">
         {inspectorSection === 'action' ? (
           <ActionPickerControl
-            binding={keyConfig.triggers.tap}
-            onChange={onUpdateBinding}
+            binding={activeBinding}
+            onChange={handleActiveBindingChange}
             customMacros={customMacros}
             keyboardLayout={keyboardLayout}
             connection={connection}

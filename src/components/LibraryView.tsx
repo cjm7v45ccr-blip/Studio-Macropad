@@ -7,6 +7,7 @@ import {
   HardwareSlotId,
   SlotRepeatMap,
   StudioProfile,
+  TextMacroRepeatConfig,
   UserPreset,
   isBleHostProfile,
   normalizeHardwareProfileId,
@@ -16,9 +17,12 @@ import { CURATED_PRESETS, ProfilePreset } from '../data/presetProfiles';
 import {
   FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
+  HOLD_SLOTS,
   SLOT_LABELS,
   describeFirmwareAction,
-  getProfilePresetSignature
+  getProfilePresetSignature,
+  getVisibleHardwareSlots,
+  hasKeyHoldCapability
 } from '../data/firmwareCatalog';
 import {
   extractProfileSlots,
@@ -49,6 +53,7 @@ interface LibraryViewProps {
   userPresets: UserPreset[];
   customMacros: CustomMacroItem[];
   isConnected: boolean;
+  capabilities?: string[];
   showAdvancedIds?: boolean;
   onPullFromUsb: () => void;
   onPushAllToUsb: () => void;
@@ -98,13 +103,36 @@ type PendingModalAction =
       rows: DiffPreviewRow[];
     };
 
+const KEY_TAP_SLOTS: readonly HardwareSlotId[] = [
+  'b1',
+  'b2',
+  'b3',
+  'b4',
+  'b5',
+  'b6',
+  'b7',
+  'b8'
+] as const;
+
+const DIAL_SLOTS: readonly HardwareSlotId[] = [
+  'dial',
+  'enc_ccw',
+  'enc_cw',
+  'push_ccw',
+  'push_cw',
+  'dial2',
+  'e2_ccw',
+  'e2_cw'
+] as const;
+
 function buildSlotDiffRows(
   profileLabel: string,
   beforeSlots: Record<HardwareSlotId, string>,
   afterSlots: Record<HardwareSlotId, string>,
-  customMacros: CustomMacroItem[]
+  customMacros: CustomMacroItem[],
+  slotsToCompare: readonly HardwareSlotId[]
 ): DiffPreviewRow[] {
-  return HARDWARE_SLOTS.map(slot => {
+  return slotsToCompare.map(slot => {
     const beforeRaw = beforeSlots[slot] || '';
     const afterRaw = afterSlots[slot] || '';
     const beforeDesc = beforeRaw
@@ -156,6 +184,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   userPresets,
   customMacros,
   isConnected,
+  capabilities,
   showAdvancedIds = false,
   onPullFromUsb,
   onPushAllToUsb,
@@ -178,6 +207,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [copyTarget, setCopyTarget] = useState<HardwareProfileId>('HOST2');
   const [pendingAction, setPendingAction] = useState<PendingModalAction | null>(null);
   const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
+
+  const hasKeyHold = hasKeyHoldCapability(capabilities);
+  const visibleSlots = useMemo(
+    () => getVisibleHardwareSlots(capabilities),
+    [capabilities]
+  );
+  const controlCount = visibleSlots.length;
 
   const importBackupRef = useRef<HTMLInputElement>(null);
   const overflowContainerRef = useRef<HTMLDivElement>(null);
@@ -254,14 +290,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       if (modeFilter === 'ble' && !blePreset) return false;
       if (modeFilter === 'tv' && blePreset) return false;
       if (!normalizedQuery) return true;
-      const slotText = HARDWARE_SLOTS.map(
-        s => describeFirmwareAction(preset.bindings[s], undefined, customMacros).shortLabel
-      ).join(' ');
+      const slotText = visibleSlots
+        .map(s => describeFirmwareAction(preset.bindings[s], undefined, customMacros).shortLabel)
+        .join(' ');
       const blob =
         `${preset.title} ${preset.subtitle} ${preset.description} ${slotText}`.toLowerCase();
       return blob.includes(normalizedQuery);
     });
-  }, [modeFilter, normalizedQuery, customMacros]);
+  }, [modeFilter, normalizedQuery, customMacros, visibleSlots]);
 
   const filteredUserPresets = useMemo(() => {
     return userPresets.filter(snap => {
@@ -271,20 +307,22 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       if (modeFilter === 'tv' && bleSnap) return false;
       if (!normalizedQuery) return true;
       const slotText = snap.profileSlots
-        ? HARDWARE_SLOTS.map(
-            s =>
-              describeFirmwareAction(
-                snap.profileSlots![s] || '',
-                undefined,
-                customMacros
-              ).shortLabel
-          ).join(' ')
+        ? visibleSlots
+            .map(
+              s =>
+                describeFirmwareAction(
+                  snap.profileSlots![s] || '',
+                  undefined,
+                  customMacros
+                ).shortLabel
+            )
+            .join(' ')
         : '';
       return `${snap.name} ${profileShortTag(target)} ${slotText}`
         .toLowerCase()
         .includes(normalizedQuery);
     });
-  }, [userPresets, modeFilter, normalizedQuery, customMacros]);
+  }, [userPresets, modeFilter, normalizedQuery, customMacros, visibleSlots]);
 
   const handleSaveMyPreset = () => {
     const fallbackName = `${getProfile(saveProfileTarget).name} Layout`;
@@ -302,7 +340,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       formatProfileLabel(targetProfId),
       beforeSlots,
       preset.bindings,
-      customMacros
+      customMacros,
+      visibleSlots
     );
     setPendingAction({
       kind: 'curated_preset',
@@ -326,7 +365,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       formatProfileLabel(targetProfId),
       beforeSlots,
       savedSlots,
-      customMacros
+      customMacros,
+      visibleSlots
     );
     setPendingAction({
       kind: 'my_preset',
@@ -347,7 +387,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       formatProfileLabel(target),
       tgtSlots,
       srcSlots,
-      customMacros
+      customMacros,
+      visibleSlots
     );
     setPendingAction({
       kind: 'copy_profile',
@@ -366,7 +407,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           formatProfileLabel(id),
           extractProfileSlots(prof),
           FACTORY_DEFAULT_SLOTS[id],
-          customMacros
+          customMacros,
+          visibleSlots
         )
       );
     }
@@ -375,6 +417,75 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       rows: allRows
     });
   };
+
+  const renderProfileSlotGrid = (
+    resolveAction: (slot: HardwareSlotId) => string,
+    resolveRepeat?: (slot: HardwareSlotId) => TextMacroRepeatConfig | undefined
+  ) => (
+    <div className="space-y-2 pt-0.5 text-[11px]">
+      {/* Keys 1–8 with capability-gated Hold row directly under each key */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {KEY_TAP_SLOTS.map((tapSlot, idx) => {
+          const holdSlot = HOLD_SLOTS[idx];
+          return (
+            <div key={tapSlot} className="flex flex-col gap-1 min-w-0">
+              <div className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-1.5 min-w-0">
+                <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums whitespace-nowrap">
+                  {SLOT_LABELS[tapSlot].short}
+                </span>
+                <ParsedActionBadge
+                  action={resolveAction(tapSlot)}
+                  repeatConfig={resolveRepeat?.(tapSlot)}
+                  showRawId={showAdvancedIds}
+                  customMacros={customMacros}
+                  maxSteps={1}
+                  className="min-w-0 flex-1"
+                />
+              </div>
+
+              {hasKeyHold && (
+                <div className="px-2.5 py-1 rounded-md bg-[var(--bg-input)]/70 border border-[var(--border-subtle)] flex items-center gap-1.5 min-w-0">
+                  <span className="font-mono text-[9px] text-[var(--text-muted)] shrink-0 whitespace-nowrap">
+                    Hold
+                  </span>
+                  <ParsedActionBadge
+                    action={resolveAction(holdSlot)}
+                    repeatConfig={resolveRepeat?.(holdSlot)}
+                    showRawId={showAdvancedIds}
+                    customMacros={customMacros}
+                    maxSteps={1}
+                    className="min-w-0 flex-1"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Rotary Dials: Knob 1 (Press, Left, Right, Hold+Left, Hold+Right) & Knob 2 */}
+      <div className="pt-1.5 border-t border-[var(--border-subtle)] grid grid-cols-2 gap-1.5">
+        {DIAL_SLOTS.map(slot => (
+          <div
+            key={slot}
+            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-1.5 min-w-0"
+          >
+            <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums whitespace-nowrap">
+              {SLOT_LABELS[slot].short}
+            </span>
+            <ParsedActionBadge
+              action={resolveAction(slot)}
+              repeatConfig={resolveRepeat?.(slot)}
+              showRawId={showAdvancedIds}
+              customMacros={customMacros}
+              maxSteps={1}
+              className="min-w-0 flex-1"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   const handleConfirmPendingAction = () => {
     if (!pendingAction) return;
@@ -421,8 +532,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <h1 className="text-lg font-bold text-[var(--text-primary)]">
               Profiles &amp; Presets
             </h1>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Apply 14-control layouts across Devices 1–3 and Smart TV, save snapshots, or clone profiles.
+            <p className="text-xs text-[var(--text-muted)] mt-0.5 tabular-nums">
+              Apply {controlCount}-control layouts across Devices 1–3 and Smart TV, save snapshots, or clone profiles.
             </p>
           </div>
 
@@ -610,8 +721,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <h2 className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
                 Saved Snapshots ({filteredUserPresets.length})
               </h2>
-              <p className="text-xs text-[var(--text-muted)]">
-                Save any profile&apos;s 14 controls so you can switch or reapply layouts anytime.
+              <p className="text-xs text-[var(--text-muted)] tabular-nums">
+                Save any profile&apos;s {controlCount} controls so you can switch or reapply layouts anytime.
               </p>
             </div>
 
@@ -657,10 +768,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </div>
 
               {matchingExistingPreset && (
-                <div className="text-[11px] text-[var(--accent)]">
+                <div className="text-[11px] text-[var(--accent)] tabular-nums">
                   {matchingExistingPreset.reason === 'identical_layout'
                     ? `Matches "${matchingExistingPreset.preset.name}" — saving updates it in place`
-                    : `"${matchingExistingPreset.preset.name}" already exists — saving updates its 14 bindings`}
+                    : `"${matchingExistingPreset.preset.name}" already exists — saving updates its ${controlCount} bindings`}
                 </div>
               )}
             </div>
@@ -714,34 +825,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         </button>
                       </div>
 
-                      {snap.profileSlots && (
-                        <div className="grid grid-cols-2 gap-1.5 text-[11px] pt-0.5">
-                          {HARDWARE_SLOTS.map(s => (
-                            <div
-                              key={s}
-                              className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-2 min-w-0"
-                            >
-                              <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums whitespace-nowrap">
-                                {SLOT_LABELS[s].short}
-                              </span>
-                              <ParsedActionBadge
-                                action={
-                                  snap.profileSlots![s] ||
-                                  FACTORY_DEFAULT_SLOTS[defaultTarget][s]
-                                }
-                                repeatConfig={
-                                  snap.repeatConfigs?.[`${defaultTarget}:${s}`] ||
-                                  snap.repeatConfigs?.[`MAC:${s}`]
-                                }
-                                showRawId={showAdvancedIds}
-                                customMacros={customMacros}
-                                maxSteps={1}
-                                className="min-w-0 flex-1"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {snap.profileSlots &&
+                        renderProfileSlotGrid(
+                          s =>
+                            snap.profileSlots![s] ??
+                            FACTORY_DEFAULT_SLOTS[defaultTarget][s] ??
+                            '',
+                          s =>
+                            snap.repeatConfigs?.[`${defaultTarget}:${s}`] ||
+                            snap.repeatConfigs?.[`MAC:${s}`]
+                        )}
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -787,8 +880,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <h2 className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
               Starter Presets ({filteredCuratedPresets.length})
             </h2>
-            <p className="text-xs text-[var(--text-muted)]">
-              Preview all 14 control changes before applying a layout to Device 1, Device 2, Device 3, or Smart TV.
+            <p className="text-xs text-[var(--text-muted)] tabular-nums">
+              Preview all {controlCount} control changes before applying a layout to Device 1, Device 2, Device 3, or Smart TV.
             </p>
           </div>
 
@@ -836,25 +929,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         {preset.description}
                       </p>
 
-                      <div className="grid grid-cols-2 gap-1.5 text-[11px] pt-0.5">
-                        {HARDWARE_SLOTS.map(slot => (
-                          <div
-                            key={slot}
-                            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-1.5 min-w-0"
-                          >
-                            <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums whitespace-nowrap">
-                              {SLOT_LABELS[slot].short}
-                            </span>
-                            <ParsedActionBadge
-                              action={preset.bindings[slot]}
-                              showRawId={showAdvancedIds}
-                              customMacros={customMacros}
-                              maxSteps={1}
-                              className="min-w-0 flex-1"
-                            />
-                          </div>
-                        ))}
-                      </div>
+                      {renderProfileSlotGrid(slot => preset.bindings[slot] || '')}
                     </div>
 
                     <div className="flex items-center gap-1.5 pt-1">
@@ -892,8 +967,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <Copy className="w-4 h-4 text-[var(--accent)]" />
               <span>Clone Bindings Between Profiles</span>
             </div>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              Copy all 14 button and dual rotary dial assignments from one profile onto another with a diff preview before writing.
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed tabular-nums">
+              Copy all {controlCount} button and dual rotary dial assignments from one profile onto another with a diff preview before writing.
             </p>
           </div>
 
@@ -990,17 +1065,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         }
         description={
           pendingAction?.kind === 'curated_preset' || pendingAction?.kind === 'my_preset'
-            ? `Review the 14 control changes that will be written to ${formatProfileLabel(pendingAction.targetProfile)}.`
+            ? `Review the ${controlCount} control changes that will be written to ${formatProfileLabel(pendingAction.targetProfile)}.`
             : pendingAction?.kind === 'copy_profile'
-            ? `All 14 controls on ${formatProfileLabel(pendingAction.target)} will be overwritten with ${formatProfileLabel(pendingAction.source)}'s bindings.`
-            : 'This restores all 56 controls across Device 1, Device 2, Device 3, and Smart TV to factory defaults. Wi-Fi and TV pairing are preserved.'
+            ? `All ${controlCount} controls on ${formatProfileLabel(pendingAction.target)} will be overwritten with ${formatProfileLabel(pendingAction.source)}'s bindings.`
+            : `This restores all ${controlCount * 4} controls across Device 1, Device 2, Device 3, and Smart TV to factory defaults. Wi-Fi and TV pairing are preserved.`
         }
         confirmLabel={
           pendingAction?.kind === 'reset_all'
             ? 'Reset All 4 Profiles'
             : pendingAction?.kind === 'copy_profile'
             ? `Copy ${profileShortTag(pendingAction.source)} → ${profileShortTag(pendingAction.target)}`
-            : 'Apply Preset (14 Controls)'
+            : `Apply Preset (${controlCount} Controls)`
         }
         tone={pendingAction?.kind === 'reset_all' ? 'danger' : 'accent'}
         requireWord={pendingAction?.kind === 'reset_all' ? 'RESET' : undefined}

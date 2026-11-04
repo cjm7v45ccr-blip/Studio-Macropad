@@ -22,7 +22,17 @@ import {
   profileIdToBleSlot
 } from '../types/studio';
 import { KeycapIcon, summarizeAction } from '../data/iconRegistry';
-import { describeFirmwareAction } from '../data/firmwareCatalog';
+import {
+  HOLD_SLOTS,
+  describeFirmwareAction,
+  hasKeyHoldCapability,
+  isHoldSlot
+} from '../data/firmwareCatalog';
+import {
+  ActionKeyId,
+  HOLD_SLOT_TO_ACTION_KEY,
+  KEY_TO_HOLD_SLOT
+} from '../data/presetTemplates';
 import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
 import {
@@ -123,6 +133,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [flashedSlots, setFlashedSlots] = useState<Set<HardwareFlashSlot>>(new Set());
   const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
   const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
+  const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
 
   useEffect(() => {
     const slotFromProf = profileIdToBleSlot(activeProfileId);
@@ -292,22 +303,82 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         const hostNum = e.ble_slot === 2 ? 2 : e.ble_slot === 3 ? 3 : 1;
         triggerSlotFlash('mode');
         soundEngine.playDialTick();
-        triggerOledToast(`HOST ${hostNum}`, `Studio Pad ${hostNum}`);
+        triggerOledToast(`HOST ${hostNum}`, `BertoPad ${hostNum}`);
         pushLog(
           'Mode + Dial',
           `[H${hostNum}]`,
-          `Switched BLE to Studio Pad ${hostNum} (Device ${hostNum})`,
+          `Switched BLE to BertoPad ${hostNum} (Device ${hostNum})`,
           'hardware'
         );
         return;
       }
 
-      if (e.event !== 'press' && e.event !== 'turn') return;
+      if (e.event !== 'press' && e.event !== 'turn' && e.event !== 'hold') return;
 
       const rawSlot = String(e.slot || '').toLowerCase();
       const rawDir = String(e.dir || '').toLowerCase();
       const currLayer = layerRef.current;
       const macros = customMacrosRef.current;
+
+      if (rawSlot === 'push_cw' || rawSlot === 'push_ccw') {
+        const isCcw = rawSlot === 'push_ccw' || rawDir === 'ccw';
+        const flashId: HardwareFlashSlot = isCcw ? 'push_ccw' : 'push_cw';
+        const mult = recordKnobVelocity(1, e.accel);
+
+        queueKnobAngleDelta(1, (isCcw ? -24 : 24) * mult);
+        soundEngine.playDialTick();
+        triggerSlotFlash(flashId);
+
+        const binding =
+          (isCcw ? currLayer.encoder.pushCcw : currLayer.encoder.pushCw) ?? {
+            type: 'none' as const,
+            value: ''
+          };
+        const actionDesc = binding.repeatConfig
+          ? summarizeAction(binding, macros)
+          : e.action
+          ? describeFirmwareAction(e.action, undefined, macros).fullLabel
+          : summarizeAction(binding, macros);
+        const shortToast = e.action
+          ? describeFirmwareAction(e.action, undefined, macros).shortLabel
+          : describeFirmwareAction(binding.value, binding.repeatConfig, macros).shortLabel;
+        triggerOledToast(
+          `${isCcw ? 'HOLD CCW' : 'HOLD CW'}${mult > 1 ? ` ${mult}x` : ''}`,
+          shortToast
+        );
+        pushLog(
+          `Knob 1 Hold+${isCcw ? 'Left' : 'Right'}`,
+          mult > 1 ? `Hold+${isCcw ? 'CCW' : 'CW'} ${mult}×` : `Hold+${isCcw ? 'CCW' : 'CW'}`,
+          actionDesc,
+          'hardware'
+        );
+        return;
+      }
+
+      if (isHoldSlot(rawSlot)) {
+        soundEngine.playKeyClick();
+        triggerSlotFlash(rawSlot);
+        const parentKey = HOLD_SLOT_TO_ACTION_KEY[rawSlot];
+        const keyCfg = currLayer.keys[parentKey];
+        const keyNum = parentKey.slice(1);
+        const holdBinding = keyCfg?.triggers.hold ?? {
+          type: 'none' as const,
+          value: ''
+        };
+        const actionDesc = holdBinding.repeatConfig
+          ? summarizeAction(holdBinding, macros)
+          : e.action
+          ? describeFirmwareAction(e.action, undefined, macros).fullLabel
+          : summarizeAction(holdBinding, macros);
+        const shortToast = e.action
+          ? describeFirmwareAction(e.action, undefined, macros).shortLabel
+          : describeFirmwareAction(holdBinding.value, holdBinding.repeatConfig, macros)
+              .shortLabel;
+        triggerOledToast(`HOLD K${keyNum}`, shortToast);
+        pushLog(`Key ${keyNum} Hold`, 'Hold', actionDesc, 'hardware');
+        return;
+      }
+
       const isEnc2 =
         rawSlot === 'dial2' ||
         rawSlot === 'e2_cw' ||
@@ -518,6 +589,55 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
   };
 
+  const activateKeyHoldControl = async (kid: ActionKeyId) => {
+    soundEngine.playKeyClick();
+    const holdSlot = KEY_TO_HOLD_SLOT[kid];
+
+    if (viewMode === 'edit') {
+      onSelectControl(holdSlot);
+      return;
+    }
+
+    if (connection.transport === 'demo') {
+      usbHardware.simulateDemoPadInput(holdSlot);
+      return;
+    }
+
+    const cfg = layer.keys[kid];
+    if (!cfg) return;
+
+    const keyNum = kid.slice(1);
+    const keyLabel = `Key ${keyNum} Hold`;
+    const holdBinding = cfg.triggers.hold ?? { type: 'none' as const, value: '' };
+    const summary = summarizeAction(holdBinding, customMacros);
+    const shortToast = describeFirmwareAction(
+      holdBinding.value,
+      holdBinding.repeatConfig,
+      customMacros
+    ).shortLabel;
+    triggerOledToast(`HOLD K${keyNum}`, shortToast);
+
+    if (connection.connected && holdBinding.value) {
+      const sent = await onExecuteHardwareBinding(holdBinding);
+      pushLog(keyLabel, 'Hold', summary, sent ? 'usb-test' : 'sim');
+    } else {
+      if (
+        holdBinding.value === 'BLE:HOST1' ||
+        holdBinding.value === 'BLE:HOST2' ||
+        holdBinding.value === 'BLE:HOST3'
+      ) {
+        const targetSlot = Number(holdBinding.value.slice(-1)) as BleHostSlot;
+        setOfflineBleHost(targetSlot);
+        onSelectProfile(bleSlotToProfileId(targetSlot));
+      } else if (holdBinding.value === 'BLE:NEXT_HOST') {
+        const nextSlot = (((activeBleHost % 3) + 1) as BleHostSlot);
+        setOfflineBleHost(nextSlot);
+        onSelectProfile(bleSlotToProfileId(nextSlot));
+      }
+      pushLog(keyLabel, 'Hold', summary, 'sim');
+    }
+  };
+
   const viewedBleHost = profileIdToBleSlot(activeProfileId);
   const activeBleHost: BleHostSlot = connection.connected
     ? connection.telemetry?.bleActiveHost ?? 1
@@ -540,14 +660,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const baseHost = viewedBleHost ?? activeBleHost;
     const nextIdx = (baseHost - 1 + (delta > 0 ? 1 : 2)) % 3;
     const nextSlot = (nextIdx + 1) as BleHostSlot;
-    triggerOledToast(`HOST ${nextSlot}`, `Studio Pad ${nextSlot}`);
+    triggerOledToast(`HOST ${nextSlot}`, `BertoPad ${nextSlot}`);
 
     if (connection.connected) {
       await onSwitchBleHost(nextSlot);
       pushLog(
         'Mode + Dial',
         `[H${nextSlot}]`,
-        `Switched BLE to Studio Pad ${nextSlot} (Device ${nextSlot})`,
+        `Switched BLE to BertoPad ${nextSlot} (Device ${nextSlot})`,
         'usb-test'
       );
     } else {
@@ -556,7 +676,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       pushLog(
         'Mode + Dial',
         `[H${nextSlot}]`,
-        `Switched workspace to Device ${nextSlot} (Studio Pad ${nextSlot})`,
+        `Switched workspace to Device ${nextSlot} (BertoPad ${nextSlot})`,
         'sim'
       );
     }
@@ -629,8 +749,66 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
   };
 
+  const triggerEncoderHoldSpin = async (dir: 'cw' | 'ccw') => {
+    const subId: HardwareFlashSlot & ControlId = dir === 'cw' ? 'push_cw' : 'push_ccw';
+
+    if (viewMode === 'edit') {
+      queueKnobAngleDelta(1, dir === 'cw' ? 24 : -24);
+      soundEngine.playDialTick();
+      onSelectControl(subId);
+      return;
+    }
+
+    if (connection.transport === 'demo') {
+      usbHardware.simulateDemoPadInput(subId);
+      return;
+    }
+
+    const mult = recordKnobVelocity(1);
+    queueKnobAngleDelta(1, (dir === 'cw' ? 24 : -24) * mult);
+    soundEngine.playDialTick();
+
+    const binding =
+      (dir === 'cw' ? layer.encoder.pushCw : layer.encoder.pushCcw) ?? {
+        type: 'none' as const,
+        value: ''
+      };
+    const summary = summarizeAction(binding, customMacros);
+    const shortToast = describeFirmwareAction(
+      binding.value,
+      binding.repeatConfig,
+      customMacros
+    ).shortLabel;
+    const label = `Knob 1 Hold+${dir === 'cw' ? 'Right' : 'Left'}`;
+    triggerOledToast(
+      `HOLD ${dir.toUpperCase()}${mult > 1 ? ` ${mult}x` : ''}`,
+      shortToast
+    );
+
+    if (connection.connected && binding.value) {
+      const sent = await onExecuteHardwareBinding(binding);
+      pushLog(
+        label,
+        mult > 1 ? `Hold+${dir.toUpperCase()} ${mult}×` : `Hold+${dir.toUpperCase()}`,
+        summary,
+        sent ? 'usb-test' : 'sim'
+      );
+    } else {
+      pushLog(
+        label,
+        mult > 1 ? `Hold+${dir.toUpperCase()} ${mult}×` : `Hold+${dir.toUpperCase()}`,
+        summary,
+        'sim'
+      );
+    }
+  };
+
   const handleEncoderWheel = (encoderIndex: EncoderIndex, e: React.WheelEvent) => {
     e.preventDefault();
+    if (encoderIndex === 1 && e.altKey) {
+      triggerEncoderHoldSpin(e.deltaY > 0 ? 'cw' : 'ccw');
+      return;
+    }
     triggerEncoderSpin(encoderIndex, e.deltaY > 0 ? 'cw' : 'ccw', e.shiftKey);
   };
 
@@ -712,6 +890,23 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const isDialUnassigned = !encCfg.dial.value;
     const isCwUnassigned = !encCfg.cw.value;
     const isCcwUnassigned = !encCfg.ccw.value;
+
+    const pushCwBind = encCfg.pushCw ?? { type: 'none' as const, value: '' };
+    const pushCcwBind = encCfg.pushCcw ?? { type: 'none' as const, value: '' };
+    const isPushCwSelected = selectedControl === 'push_cw' && viewMode === 'edit';
+    const isPushCcwSelected = selectedControl === 'push_ccw' && viewMode === 'edit';
+    const isPushCwFlashed = flashedSlots.has('push_cw');
+    const isPushCcwFlashed = flashedSlots.has('push_ccw');
+    const pushCwInfo = describeFirmwareAction(
+      pushCwBind.value,
+      pushCwBind.repeatConfig,
+      customMacros
+    );
+    const pushCcwInfo = describeFirmwareAction(
+      pushCcwBind.value,
+      pushCcwBind.repeatConfig,
+      customMacros
+    );
 
     const ringAccent = encCfg.color || '#F2A33A';
 
@@ -907,6 +1102,43 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             {cwInfo.shortLabel} ↻
           </button>
         </div>
+
+        {encoderIndex === 1 && (
+          <div className="flex items-center gap-1 text-[10px] text-[#A3A6AD] text-center max-w-[178px] truncate">
+            <span className="font-mono text-[9px] text-[#A3A6AD]/75 shrink-0">Hold:</span>
+            <button
+              type="button"
+              onClick={() => triggerEncoderHoldSpin('ccw')}
+              title={`Knob 1 Hold + Turn Left: ${pushCcwInfo.fullLabel}`}
+              className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
+                isPushCcwSelected || isPushCcwFlashed
+                  ? 'text-[#F2A33A] font-semibold'
+                  : !pushCcwBind.value
+                  ? 'text-[#A3A6AD]/65'
+                  : ''
+              }`}
+            >
+              ↺ {pushCcwBind.value ? pushCcwInfo.shortLabel : '—'}
+            </button>
+            <span aria-hidden="true" className="text-[#A3A6AD]/50">
+              ·
+            </span>
+            <button
+              type="button"
+              onClick={() => triggerEncoderHoldSpin('cw')}
+              title={`Knob 1 Hold + Turn Right: ${pushCwInfo.fullLabel}`}
+              className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
+                isPushCwSelected || isPushCwFlashed
+                  ? 'text-[#F2A33A] font-semibold'
+                  : !pushCwBind.value
+                  ? 'text-[#A3A6AD]/65'
+                  : ''
+              }`}
+            >
+              {pushCwBind.value ? pushCwInfo.shortLabel : '—'} ↻
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -923,96 +1155,149 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const isUnassigned = !cfg.isModeSwitch && !cfg.triggers.tap.value;
 
     const badgeText = cfg.isModeSwitch ? 'MODE' : `K${index + 1}`;
+    const showHoldRow = !cfg.isModeSwitch && kid !== 'k9' && hasKeyHold;
+    const actionKid = kid as ActionKeyId;
+    const holdSlot = showHoldRow ? KEY_TO_HOLD_SLOT[actionKid] : null;
+    const holdBinding = cfg.triggers.hold ?? { type: 'none' as const, value: '' };
+    const holdInfo = describeFirmwareAction(
+      holdBinding.value,
+      holdBinding.repeatConfig,
+      customMacros
+    );
+    const isHoldSelected =
+      Boolean(holdSlot && selectedControl === holdSlot) && viewMode === 'edit';
+    const isHoldFlashed = Boolean(holdSlot && flashedSlots.has(holdSlot));
+    const holdConflict = Boolean(holdSlot && hasConflict(holdSlot));
 
     return (
-      <button
-        key={kid}
-        type="button"
-        aria-label={`${badgeText}: ${cfg.appearance.label}`}
-        title={
-          cfg.isModeSwitch
-            ? (tvEnabled ?? (connection.telemetry?.tvEnabled !== false))
-              ? 'Mode Switch (short press: Host/TV, hold+dial: Host 1–3)'
-              : 'Mode Switch (short press: flash current host, hold+dial: Host 1–3)'
-            : isUnassigned
-            ? `Key ${index + 1} — Unassigned`
-            : `Key ${index + 1}: ${summarizeAction(cfg.triggers.tap, customMacros)}`
-        }
-        onMouseDown={() => setPressedKey(kid)}
-        onMouseUp={() => setPressedKey(null)}
-        onMouseLeave={() => {
-          if (pressedKey === kid) setPressedKey(null);
-        }}
-        onClick={() => activateKeyControl(kid)}
-        style={{
-          borderColor: isFlashed
-            ? '#F2A33A'
-            : isSelected
-            ? 'var(--accent)'
-            : conflict
-            ? '#F2A33A'
-            : cfg.isModeSwitch
-            ? 'rgba(242, 163, 58, 0.35)'
-            : 'rgba(236, 234, 228, 0.08)',
-          boxShadow: isFlashed
-            ? '0 0 0 4px rgba(242, 163, 58, 0.4), 0 0 24px rgba(242, 163, 58, 0.32)'
-            : isSelected
-            ? undefined
-            : isDown
-            ? '0 2px 4px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.4)'
-            : '0 6px 0 #14161B, 0 10px 18px rgba(0,0,0,0.46), inset 0 1px 0 rgba(236,234,228,0.08)'
-        }}
-        className={`relative shrink-0 w-[86px] h-[86px] sm:w-[96px] sm:h-[96px] xl:w-[106px] xl:h-[106px] 2xl:w-[112px] 2xl:h-[112px] rounded-2xl bg-[#1E2128] border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none transition-all duration-150 ease-out cursor-pointer ${
-          isSelected && !isFlashed ? 'keycap-selected-glow -translate-y-0.5' : ''
-        } ${isDown ? 'translate-y-1' : !isSelected ? 'hover:-translate-y-0.5' : ''} ${
-          isUnassigned && !isSelected && !isFlashed
-            ? 'opacity-40 hover:opacity-75'
-            : ''
-        }`}
-      >
-        <div className="w-full flex items-center justify-between">
-          <span
-            className={`font-mono text-[9px] sm:text-[10px] leading-none font-medium tabular-nums ${
-              isFlashed || cfg.isModeSwitch
-                ? 'text-[#F2A33A]'
-                : isSelected
-                ? 'text-[#ECEAE4]'
-                : 'text-[#A3A6AD]'
-            }`}
-          >
-            {badgeText}
-          </span>
-          {conflict ? (
-            <span title="Duplicate action warning">
-              <AlertTriangle className="w-3 h-3 text-[#F2A33A] shrink-0" />
-            </span>
-          ) : null}
-        </div>
-
-        <div className="my-auto flex items-center justify-center">
-          <KeycapIcon
-            icon={cfg.appearance.icon}
-            className={`w-6 h-6 sm:w-7 sm:h-7 transition-transform duration-150 ${
-              isFlashed || isSelected ? 'scale-105' : ''
-            }`}
-            style={{
-              color: isFlashed
-                ? '#F2A33A'
-                : isUnassigned
-                ? '#A3A6AD'
-                : cfg.appearance.labelColor || '#ECEAE4'
-            }}
-          />
-        </div>
-
-        <span
-          className={`text-[11px] sm:text-xs font-medium truncate max-w-full tracking-tight ${
-            isUnassigned ? 'text-[#A3A6AD]' : 'text-[#ECEAE4]'
+      <div key={kid} className="flex flex-col items-center gap-1.5">
+        <button
+          type="button"
+          aria-label={`${badgeText}: ${cfg.appearance.label}`}
+          title={
+            cfg.isModeSwitch
+              ? (tvEnabled ?? (connection.telemetry?.tvEnabled !== false))
+                ? 'Mode Switch (short press: Host/TV, hold+dial: Host 1–3)'
+                : 'Mode Switch (short press: flash current host, hold+dial: Host 1–3)'
+              : isUnassigned
+              ? `Key ${index + 1} — Unassigned`
+              : `Key ${index + 1}: ${summarizeAction(cfg.triggers.tap, customMacros)}`
+          }
+          onMouseDown={() => setPressedKey(kid)}
+          onMouseUp={() => setPressedKey(null)}
+          onMouseLeave={() => {
+            if (pressedKey === kid) setPressedKey(null);
+          }}
+          onClick={() => activateKeyControl(kid)}
+          style={{
+            borderColor: isFlashed
+              ? '#F2A33A'
+              : isSelected
+              ? 'var(--accent)'
+              : conflict
+              ? '#F2A33A'
+              : cfg.isModeSwitch
+              ? 'rgba(242, 163, 58, 0.35)'
+              : 'rgba(236, 234, 228, 0.08)',
+            boxShadow: isFlashed
+              ? '0 0 0 4px rgba(242, 163, 58, 0.4), 0 0 24px rgba(242, 163, 58, 0.32)'
+              : isSelected
+              ? undefined
+              : isDown
+              ? '0 2px 4px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.4)'
+              : '0 6px 0 #14161B, 0 10px 18px rgba(0,0,0,0.46), inset 0 1px 0 rgba(236,234,228,0.08)'
+          }}
+          className={`relative shrink-0 w-[86px] h-[86px] sm:w-[96px] sm:h-[96px] xl:w-[106px] xl:h-[106px] 2xl:w-[112px] 2xl:h-[112px] rounded-2xl bg-[#1E2128] border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none transition-all duration-150 ease-out cursor-pointer ${
+            isSelected && !isFlashed ? 'keycap-selected-glow -translate-y-0.5' : ''
+          } ${isDown ? 'translate-y-1' : !isSelected ? 'hover:-translate-y-0.5' : ''} ${
+            isUnassigned && !isSelected && !isFlashed
+              ? 'opacity-40 hover:opacity-75'
+              : ''
           }`}
         >
-          {cfg.appearance.label}
-        </span>
-      </button>
+          <div className="w-full flex items-center justify-between">
+            <span
+              className={`font-mono text-[9px] sm:text-[10px] leading-none font-medium tabular-nums ${
+                isFlashed || cfg.isModeSwitch
+                  ? 'text-[#F2A33A]'
+                  : isSelected
+                  ? 'text-[#ECEAE4]'
+                  : 'text-[#A3A6AD]'
+              }`}
+            >
+              {badgeText}
+            </span>
+            {conflict ? (
+              <span title="Duplicate action warning">
+                <AlertTriangle className="w-3 h-3 text-[#F2A33A] shrink-0" />
+              </span>
+            ) : null}
+          </div>
+
+          <div className="my-auto flex items-center justify-center">
+            <KeycapIcon
+              icon={cfg.appearance.icon}
+              className={`w-6 h-6 sm:w-7 sm:h-7 transition-transform duration-150 ${
+                isFlashed || isSelected ? 'scale-105' : ''
+              }`}
+              style={{
+                color: isFlashed
+                  ? '#F2A33A'
+                  : isUnassigned
+                  ? '#A3A6AD'
+                  : cfg.appearance.labelColor || '#ECEAE4'
+              }}
+            />
+          </div>
+
+          <span
+            className={`text-[11px] sm:text-xs font-medium truncate max-w-full tracking-tight ${
+              isUnassigned ? 'text-[#A3A6AD]' : 'text-[#ECEAE4]'
+            }`}
+          >
+            {cfg.appearance.label}
+          </span>
+        </button>
+
+        {showHoldRow && holdSlot && (
+          <button
+            type="button"
+            aria-label={`Key ${index + 1} Hold: ${holdInfo.fullLabel}`}
+            title={
+              holdBinding.value
+                ? `Key ${index + 1} Hold (500 ms): ${summarizeAction(holdBinding, customMacros)}`
+                : `Key ${index + 1} Hold (500 ms) — Unassigned`
+            }
+            onClick={() => activateKeyHoldControl(actionKid)}
+            className={`w-[86px] sm:w-[96px] xl:w-[106px] 2xl:w-[112px] px-2 py-1 rounded-lg bg-[#1E2128] border flex items-center justify-between gap-1 text-left select-none transition-colors duration-150 cursor-pointer ${
+              isHoldFlashed
+                ? 'border-[#F2A33A] bg-[#F2A33A]/15 text-[#ECEAE4]'
+                : isHoldSelected
+                ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.16)] text-[#ECEAE4]'
+                : holdConflict
+                ? 'border-[#F2A33A]/75 text-[#F2A33A]'
+                : holdBinding.value
+                ? 'border-[#ECEAE4]/12 hover:border-[#ECEAE4]/30 text-[#ECEAE4]'
+                : 'border-[#ECEAE4]/8 hover:border-[#ECEAE4]/22 text-[#A3A6AD]/75'
+            }`}
+          >
+            <span
+              className={`font-mono text-[9px] font-medium shrink-0 tabular-nums ${
+                isHoldFlashed || isHoldSelected ? 'text-[#F2A33A]' : 'text-[#A3A6AD]'
+              }`}
+            >
+              Hold
+            </span>
+            <span
+              className={`text-[10px] font-medium truncate ${
+                holdBinding.value ? 'text-[#ECEAE4]' : 'text-[#A3A6AD]/65 font-mono'
+              }`}
+            >
+              {holdBinding.value ? holdInfo.shortLabel : '—'}
+            </span>
+          </button>
+        )}
+      </div>
     );
   };
 
@@ -1209,8 +1494,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     }`}
                     title={
                       telemetry?.bleConnected
-                        ? `BLE Connected · ${telemetry.bleDeviceName || `Studio Pad ${activeBleHost}`}`
-                        : `BLE Disconnected · ${telemetry?.bleDeviceName || `Studio Pad ${activeBleHost}`}`
+                        ? `BLE Connected · ${telemetry.bleDeviceName || `BertoPad ${activeBleHost}`}`
+                        : `BLE Disconnected · ${telemetry?.bleDeviceName || `BertoPad ${activeBleHost}`}`
                     }
                   >
                     <Bluetooth className="w-3 h-3" />
@@ -1259,7 +1544,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   }}
                   title={
                     connection.connected
-                      ? `Device ${oledBadgeHost} (Studio Pad ${oledBadgeHost}) — click to switch host`
+                      ? `Device ${oledBadgeHost} (BertoPad ${oledBadgeHost}) — click to switch host`
                       : `Viewing Device ${oledBadgeHost} — click to cycle H1–H3`
                   }
                   className={`px-1.5 py-0.5 rounded bg-black border font-mono text-[10px] font-bold leading-none tracking-tight transition-colors cursor-pointer tabular-nums shrink-0 ${
@@ -1276,17 +1561,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
           {encoderPlacement === 'top' ? (
             <div className="flex flex-col items-center gap-5 sm:gap-6">
-              <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+              <div className="flex flex-wrap items-start justify-center gap-4 sm:gap-6">
                 {renderEncoderUnit(1)}
                 {renderEncoderUnit(2)}
               </div>
-              <div className="grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center shrink-0">
+              <div className="grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center items-start shrink-0">
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
             </div>
           ) : (
             <div className="flex flex-col @[580px]:flex-row items-center justify-center gap-5 @[580px]:gap-6">
-              <div className="order-2 @[580px]:order-1 grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center shrink-0">
+              <div className="order-2 @[580px]:order-1 grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center items-start shrink-0">
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
               <div className="order-1 @[580px]:order-2 shrink-0 flex flex-row flex-wrap @[580px]:flex-col items-center justify-center gap-4 sm:gap-5 @[580px]:pl-6 @[580px]:border-l @[580px]:border-[#ECEAE4]/10 @[580px]:self-stretch">
@@ -1343,14 +1628,22 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                           { slot: 'b6', label: 'Key 6' },
                           { slot: 'b7', label: 'Key 7' },
                           { slot: 'b8', label: 'Key 8' },
+                          ...(hasKeyHold
+                            ? HOLD_SLOTS.map((hs, i) => ({
+                                slot: hs,
+                                label: `K${i + 1} Hold`
+                              }))
+                            : []),
                           { slot: 'dial', label: 'Knob 1' },
                           { slot: 'enc_ccw', label: 'K1 Left' },
                           { slot: 'enc_cw', label: 'K1 Right' },
+                          { slot: 'push_ccw', label: 'K1 Hold+L' },
+                          { slot: 'push_cw', label: 'K1 Hold+R' },
                           { slot: 'dial2', label: 'Knob 2' },
                           { slot: 'e2_ccw', label: 'K2 Left' },
                           { slot: 'e2_cw', label: 'K2 Right' },
                           { slot: 'mode', label: 'Mode' }
-                        ] as const
+                        ] as { slot: HardwareFlashSlot; label: string }[]
                       ).map(btn => (
                         <button
                           key={btn.slot}

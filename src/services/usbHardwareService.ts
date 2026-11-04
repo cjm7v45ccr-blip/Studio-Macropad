@@ -16,8 +16,11 @@ import {
 import {
   FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
+  HOLD_SLOTS,
   MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES,
   STANDALONE_TICK_MS,
+  isFirmwareAtLeast,
+  isHoldSlot,
   isTvFirmwareAction,
   isValidFirmwareAction,
   isValidFirmwareAlias,
@@ -66,6 +69,21 @@ export interface FirmwareStatusPacket {
     http_api_enabled?: boolean;
     events_enabled?: boolean;
     setup_mode?: boolean;
+    boot_reason?: string;
+    abnormal_resets?: number;
+    last_abnormal_reset?: string;
+    min_free_heap?: number;
+    nvs_used?: number;
+    nvs_free?: number;
+    uptime_s?: number;
+  };
+  encoder?: {
+    accel?: boolean;
+  };
+  display?: {
+    dim_s?: number;
+    off_s?: number;
+    contrast?: number;
   };
   capabilities?: string[];
   tv?: {
@@ -174,6 +192,13 @@ interface VirtualDemoPadState {
   eventsEnabled: boolean;
   pairingPendingHost: string;
   pairingPendingPort: number;
+  encoderAccel: boolean;
+  displayDimSec: number;
+  displayOffSec: number;
+  displayContrast: number;
+  bootStartedAt: number;
+  abnormalResets: number;
+  lastAbnormalReset: string;
 }
 
 const MAX_DEBUG_LOGS = 250;
@@ -762,7 +787,7 @@ class PadLinkService {
 
       this.demoPad = {
         rev,
-        firmware: '4.7.0',
+        firmware: '4.8.0',
         setupMode: Boolean(opts?.setupMode),
         mode,
         h1Name,
@@ -786,7 +811,14 @@ class PadLinkService {
         httpApiEnabled: false,
         eventsEnabled: this.desiredEventsEnabled,
         pairingPendingHost: '',
-        pairingPendingPort: 7345
+        pairingPendingPort: 7345,
+        encoderAccel: true,
+        displayDimSec: 60,
+        displayOffSec: 300,
+        displayContrast: 255,
+        bootStartedAt: Date.now(),
+        abnormalResets: 0,
+        lastAbnormalReset: ''
       };
     } else if (typeof opts?.setupMode === 'boolean') {
       this.demoPad.setupMode = opts.setupMode;
@@ -794,7 +826,7 @@ class PadLinkService {
 
     this.logSerial(
       'info',
-      `Started Demo Mode (virtual Studio Pad · firmware ${this.demoPad.firmware}${
+      `Started Demo Mode (virtual BertoPad · firmware ${this.demoPad.firmware}${
         this.demoPad.setupMode ? ' · Setup Mode active' : ' · 3 BLE Hosts + TV'
       })`
     );
@@ -950,6 +982,8 @@ class PadLinkService {
     if (
       slot === 'enc_cw' ||
       slot === 'enc_ccw' ||
+      slot === 'push_cw' ||
+      slot === 'push_ccw' ||
       slot === 'e2_cw' ||
       slot === 'e2_ccw'
     ) {
@@ -961,6 +995,14 @@ class PadLinkService {
       };
       this.logSerial('rx', JSON.stringify(turnEvt));
       this.handleHardwareEvent(turnEvt);
+    } else if (isHoldSlot(slot)) {
+      const holdEvt: HardwareEventPacket = {
+        event: 'hold',
+        slot,
+        action
+      };
+      this.logSerial('rx', JSON.stringify(holdEvt));
+      this.handleHardwareEvent(holdEvt);
     } else {
       const pressEvt: HardwareEventPacket = {
         event: 'press',
@@ -977,9 +1019,52 @@ class PadLinkService {
     const activeHostProf = bleSlotToProfileId(d.bleSlot);
     const activeHostSlots = this.getDemoProfileSlots(d, activeHostProf);
     const activeProf: HardwareProfileId = d.mode === 'TV' ? 'TV' : activeHostProf;
+    const fw = d.firmware || '4.8.0';
+    const is45Plus = isFirmwareAtLeast(fw, 4, 5, 0);
+    const is48Plus = isFirmwareAtLeast(fw, 4, 8, 0);
+
+    const nonEmptyBindings = [d.h1, d.h2, d.h3, d.tv].reduce(
+      (sum, map) => sum + HARDWARE_SLOTS.filter(s => Boolean(map[s])).length,
+      0
+    );
+    const nvsUsed = 28 + nonEmptyBindings;
+    const nvsFree = Math.max(32, 630 - nvsUsed);
+    const uptimeSec = Math.max(1, Math.floor((Date.now() - d.bootStartedAt) / 1000));
+
+    const capabilities = is48Plus
+      ? [
+          'delay',
+          'repeat',
+          'macro_abort',
+          'macro_trace',
+          'push_turn',
+          'encoder_accel',
+          'diagnostics',
+          'tv_toggle',
+          'encoder2',
+          'key_hold',
+          'display_power',
+          'nvs_stats',
+          'brightness'
+        ]
+      : is45Plus
+      ? [
+          'delay',
+          'repeat',
+          'macro_abort',
+          'macro_trace',
+          'push_turn',
+          'encoder_accel',
+          'diagnostics',
+          'tv_toggle',
+          'encoder2',
+          'brightness'
+        ]
+      : [];
+
     return {
       ok: true,
-      api_version: 2,
+      api_version: is45Plus ? 2 : 1,
       rev: d.rev,
       mode: d.setupMode ? 'setup' : 'ready',
       setup_mode: d.setupMode,
@@ -988,7 +1073,7 @@ class PadLinkService {
       device: {
         id: 'demo-pad',
         name: 'BertoPad (Demo)',
-        firmware: d.firmware || '4.7.1',
+        firmware: fw,
         connection_type: 'DEMO',
         setup_mode: d.setupMode
       },
@@ -1000,15 +1085,38 @@ class PadLinkService {
       ble: {
         active_host: d.bleSlot,
         max_hosts: 3,
-        device_name: `Studio Pad ${d.bleSlot}`
+        device_name: `BertoPad ${d.bleSlot}`
       },
       diagnostics: {
         free_heap: 184320,
+        min_free_heap: 162400,
         http_api_enabled: d.httpApiEnabled,
         events_enabled: d.eventsEnabled,
-        setup_mode: d.setupMode
+        setup_mode: d.setupMode,
+        boot_reason: 'power_on',
+        abnormal_resets: d.abnormalResets,
+        last_abnormal_reset: d.lastAbnormalReset,
+        ...(is48Plus
+          ? {
+              nvs_used: nvsUsed,
+              nvs_free: nvsFree,
+              uptime_s: uptimeSec
+            }
+          : {
+              uptime_s: uptimeSec
+            })
       },
-      capabilities: ['delay', 'repeat', 'macro_abort', 'macro_trace', 'push_turn', 'encoder_accel', 'diagnostics', 'tv_toggle', 'encoder2', 'brightness'],
+      ...(is45Plus ? { encoder: { accel: d.encoderAccel } } : {}),
+      ...(is48Plus
+        ? {
+            display: {
+              dim_s: d.displayDimSec,
+              off_s: d.displayOffSec,
+              contrast: d.displayContrast
+            }
+          }
+        : {}),
+      capabilities,
       tv: {
         configured: d.tvConfigured,
         paired: d.tvPaired,
@@ -1189,22 +1297,16 @@ class PadLinkService {
           });
         }
       }
-      const nextSlots: Record<HardwareSlotId, string> = {
-        b1: String(obj.b1 ?? ''),
-        b2: String(obj.b2 ?? ''),
-        b3: String(obj.b3 ?? ''),
-        b4: String(obj.b4 ?? ''),
-        b5: String(obj.b5 ?? ''),
-        b6: String(obj.b6 ?? ''),
-        b7: String(obj.b7 ?? ''),
-        b8: String(obj.b8 ?? ''),
-        dial: String(obj.dial ?? ''),
-        enc_cw: String(obj.enc_cw ?? ''),
-        enc_ccw: String(obj.enc_ccw ?? ''),
-        dial2: String(obj.dial2 ?? ''),
-        e2_cw: String(obj.e2_cw ?? obj.enc2_cw ?? ''),
-        e2_ccw: String(obj.e2_ccw ?? obj.enc2_ccw ?? '')
-      };
+      const currentSlots = this.getDemoProfileSlots(d, prof);
+      const nextSlots: Record<HardwareSlotId, string> = { ...currentSlots };
+      for (const s of HARDWARE_SLOTS) {
+        const legacyVal =
+          s === 'e2_cw' ? obj.enc2_cw : s === 'e2_ccw' ? obj.enc2_ccw : undefined;
+        const incoming = obj[s] ?? legacyVal;
+        if (incoming !== undefined) {
+          nextSlots[s] = String(incoming ?? '');
+        }
+      }
       this.setDemoProfileSlots(d, prof, nextSlots);
       d.rev += 1;
       this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
@@ -1249,77 +1351,12 @@ class PadLinkService {
         h1_name: d.h1Name,
         h2_name: d.h2Name,
         h3_name: d.h3Name,
-        h1_b1: d.h1.b1,
-        h1_b2: d.h1.b2,
-        h1_b3: d.h1.b3,
-        h1_b4: d.h1.b4,
-        h1_b5: d.h1.b5,
-        h1_b6: d.h1.b6,
-        h1_b7: d.h1.b7,
-        h1_b8: d.h1.b8,
-        h1_dial: d.h1.dial,
-        h1_enc_cw: d.h1.enc_cw,
-        h1_enc_ccw: d.h1.enc_ccw,
-        h1_dial2: d.h1.dial2,
-        h1_e2_cw: d.h1.e2_cw,
-        h1_e2_ccw: d.h1.e2_ccw,
-        h2_b1: d.h2.b1,
-        h2_b2: d.h2.b2,
-        h2_b3: d.h2.b3,
-        h2_b4: d.h2.b4,
-        h2_b5: d.h2.b5,
-        h2_b6: d.h2.b6,
-        h2_b7: d.h2.b7,
-        h2_b8: d.h2.b8,
-        h2_dial: d.h2.dial,
-        h2_enc_cw: d.h2.enc_cw,
-        h2_enc_ccw: d.h2.enc_ccw,
-        h2_dial2: d.h2.dial2,
-        h2_e2_cw: d.h2.e2_cw,
-        h2_e2_ccw: d.h2.e2_ccw,
-        h3_b1: d.h3.b1,
-        h3_b2: d.h3.b2,
-        h3_b3: d.h3.b3,
-        h3_b4: d.h3.b4,
-        h3_b5: d.h3.b5,
-        h3_b6: d.h3.b6,
-        h3_b7: d.h3.b7,
-        h3_b8: d.h3.b8,
-        h3_dial: d.h3.dial,
-        h3_enc_cw: d.h3.enc_cw,
-        h3_enc_ccw: d.h3.enc_ccw,
-        h3_dial2: d.h3.dial2,
-        h3_e2_cw: d.h3.e2_cw,
-        h3_e2_ccw: d.h3.e2_ccw,
-        tv_b1: d.tv.b1,
-        tv_b2: d.tv.b2,
-        tv_b3: d.tv.b3,
-        tv_b4: d.tv.b4,
-        tv_b5: d.tv.b5,
-        tv_b6: d.tv.b6,
-        tv_b7: d.tv.b7,
-        tv_b8: d.tv.b8,
-        tv_dial: d.tv.dial,
-        tv_enc_cw: d.tv.enc_cw,
-        tv_enc_ccw: d.tv.enc_ccw,
-        tv_dial2: d.tv.dial2,
-        tv_e2_cw: d.tv.e2_cw,
-        tv_e2_ccw: d.tv.e2_ccw,
+        ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`h1_${s}`, d.h1[s]])),
+        ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`h2_${s}`, d.h2[s]])),
+        ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`h3_${s}`, d.h3[s]])),
+        ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`tv_${s}`, d.tv[s]])),
         mac_name: activeHostName,
-        mac_b1: activeHostSlots.b1,
-        mac_b2: activeHostSlots.b2,
-        mac_b3: activeHostSlots.b3,
-        mac_b4: activeHostSlots.b4,
-        mac_b5: activeHostSlots.b5,
-        mac_b6: activeHostSlots.b6,
-        mac_b7: activeHostSlots.b7,
-        mac_b8: activeHostSlots.b8,
-        mac_dial: activeHostSlots.dial,
-        mac_enc_cw: activeHostSlots.enc_cw,
-        mac_enc_ccw: activeHostSlots.enc_ccw,
-        mac_dial2: activeHostSlots.dial2,
-        mac_e2_cw: activeHostSlots.e2_cw,
-        mac_e2_ccw: activeHostSlots.e2_ccw
+        ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`mac_${s}`, activeHostSlots[s]]))
       };
       return reply(payload);
     }
@@ -1382,7 +1419,7 @@ class PadLinkService {
         this.applyDemoBleActionSideEffect(act);
         return reply({
           ok: true,
-          message: `Switched to Studio Pad ${d.bleSlot} (Host ${d.bleSlot})`
+          message: `Switched to BertoPad ${d.bleSlot} (Host ${d.bleSlot})`
         });
       }
       const isTv = isTvFirmwareAction(act);
@@ -1532,6 +1569,46 @@ class PadLinkService {
         ok: true,
         message: d.httpApiEnabled ? 'HTTP API token updated.' : 'HTTP API disabled.'
       });
+    }
+
+    if (path === '/api/display/set') {
+      const dim = Number(obj.dim ?? -1);
+      const off = Number(obj.off ?? -1);
+      const contrast = Number(obj.contrast ?? -1);
+      if (
+        !Number.isFinite(dim) ||
+        !Number.isFinite(off) ||
+        !Number.isFinite(contrast) ||
+        dim < 0 ||
+        dim > 36000 ||
+        off < 0 ||
+        off > 36000 ||
+        contrast < 0 ||
+        contrast > 255
+      ) {
+        return reply({
+          ok: false,
+          message: 'dim and off are 0-36000 seconds; contrast is 0-255.'
+        });
+      }
+      d.displayDimSec = Math.round(dim);
+      d.displayOffSec = Math.round(off);
+      d.displayContrast = Math.round(contrast);
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      return reply({ ok: true, message: 'Display settings saved.' });
+    }
+
+    if (path === '/api/encoder/set') {
+      d.encoderAccel = Boolean(obj.accel);
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      return reply({ ok: true, accel: d.encoderAccel });
+    }
+
+    if (path === '/api/diagnostics/clear') {
+      d.abnormalResets = 0;
+      d.lastAbnormalReset = '';
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      return reply({ ok: true, message: 'Crash counter cleared.' });
     }
 
     if (path === '/api/setup/complete') {
@@ -1700,7 +1777,7 @@ class PadLinkService {
       connected: false,
       connecting: true,
       transport: 'disconnected',
-      deviceName: 'Studio MacroPad',
+      deviceName: 'BertoPad',
       firmwareVersion: 'Connecting…',
       vendorProduct
     };
@@ -2128,7 +2205,7 @@ class PadLinkService {
         telemetry: {
           ...this.connectionInfo.telemetry,
           bleActiveHost: nextSlot,
-          bleDeviceName: `Studio Pad ${nextSlot}`,
+          bleDeviceName: `BertoPad ${nextSlot}`,
           activeProfile: wasTv ? 'TV' : bleSlotToProfileId(nextSlot)
         }
       };
@@ -2173,7 +2250,7 @@ class PadLinkService {
     const rawSlot = Number(pkt.ble?.active_host ?? pkt.ble_slot ?? 1);
     const activeHost: BleHostSlot = rawSlot === 2 ? 2 : rawSlot === 3 ? 3 : 1;
     const maxHosts = Number(pkt.ble?.max_hosts ?? 3);
-    const bleDeviceName = pkt.ble?.device_name || `Studio Pad ${activeHost}`;
+    const bleDeviceName = pkt.ble?.device_name || `BertoPad ${activeHost}`;
     const activeProfile = normalizeHardwareProfileId(
       pkt.profiles?.active,
       activeHost
@@ -2213,6 +2290,36 @@ class PadLinkService {
       bleMaxHosts: maxHosts,
       bleDeviceName,
       freeHeap: Number(pkt.diagnostics?.free_heap ?? pkt.heap ?? 0),
+      minFreeHeap:
+        typeof pkt.diagnostics?.min_free_heap === 'number'
+          ? pkt.diagnostics.min_free_heap
+          : undefined,
+      nvsUsed:
+        typeof pkt.diagnostics?.nvs_used === 'number'
+          ? pkt.diagnostics.nvs_used
+          : undefined,
+      nvsFree:
+        typeof pkt.diagnostics?.nvs_free === 'number'
+          ? pkt.diagnostics.nvs_free
+          : undefined,
+      uptimeSeconds:
+        typeof pkt.diagnostics?.uptime_s === 'number'
+          ? pkt.diagnostics.uptime_s
+          : undefined,
+      bootReason: pkt.diagnostics?.boot_reason || undefined,
+      abnormalResets:
+        typeof pkt.diagnostics?.abnormal_resets === 'number'
+          ? pkt.diagnostics.abnormal_resets
+          : undefined,
+      lastAbnormalReset: pkt.diagnostics?.last_abnormal_reset || undefined,
+      encoderAccel:
+        typeof pkt.encoder?.accel === 'boolean' ? pkt.encoder.accel : undefined,
+      displayDimSeconds:
+        typeof pkt.display?.dim_s === 'number' ? pkt.display.dim_s : undefined,
+      displayOffSeconds:
+        typeof pkt.display?.off_s === 'number' ? pkt.display.off_s : undefined,
+      displayContrast:
+        typeof pkt.display?.contrast === 'number' ? pkt.display.contrast : undefined,
       httpApiEnabled: Boolean(pkt.diagnostics?.http_api_enabled),
       tvConfigured: Boolean(pkt.tv?.configured),
       tvPaired: Boolean(pkt.tv?.paired ?? pkt.has_auth),
@@ -2231,7 +2338,7 @@ class PadLinkService {
       rev: typeof pkt.rev === 'number' ? pkt.rev : this.connectionInfo.rev ?? 0,
       deviceName:
         pkt.device?.name ||
-        (this.demoModeActive ? 'Studio MacroPad (Demo)' : 'Studio MacroPad'),
+        (this.demoModeActive ? 'BertoPad (Demo)' : 'BertoPad'),
       firmwareVersion: fw,
       vendorProduct: vendorProduct ?? this.connectionInfo.vendorProduct,
       lastSyncedAt: new Date().toLocaleTimeString(),
@@ -2421,10 +2528,20 @@ class PadLinkService {
       throw new Error(`Unsupported firmware action: ${action}`);
     }
     const wireAction = this.adaptActionForConnectedFirmware(action);
+    const caps = this.connectionInfo.telemetry?.capabilities || [];
+    const isPushTurnSlot = slot === 'push_cw' || slot === 'push_ccw';
     const isEncoder2Slot = slot === 'dial2' || slot === 'e2_cw' || slot === 'e2_ccw';
-    const supportsDualEnc = Boolean(
-      this.connectionInfo.telemetry?.capabilities?.includes('encoder2')
-    );
+    const isKeyHoldSlot = isHoldSlot(slot);
+    const unsupportedOptionalSlot =
+      !this.demoModeActive &&
+      ((isPushTurnSlot && !caps.includes('push_turn')) ||
+        (isEncoder2Slot && !caps.includes('encoder2')) ||
+        (isKeyHoldSlot && !caps.includes('key_hold')));
+
+    if (unsupportedOptionalSlot && !wireAction) {
+      return { ok: true, rev: this.connectionInfo.rev };
+    }
+
     const res = await this.call({
       path: '/api/customizer/save',
       profile,
@@ -2432,7 +2549,7 @@ class PadLinkService {
       action: wireAction
     });
     if (!res?.ok) {
-      if (!this.demoModeActive && isEncoder2Slot && !supportsDualEnc) {
+      if (unsupportedOptionalSlot) {
         return { ok: true, rev: this.connectionInfo.rev };
       }
       throw new Error(res?.message || 'Device rejected slot assignment.');
@@ -2451,6 +2568,11 @@ class PadLinkService {
         );
       }
     }
+    const caps = this.connectionInfo.telemetry?.capabilities || [];
+    const includePushTurn = this.demoModeActive || caps.includes('push_turn');
+    const includeEnc2 = this.demoModeActive || caps.includes('encoder2');
+    const includeKeyHold = this.demoModeActive || caps.includes('key_hold');
+
     const baseReqObj = {
       path: '/api/profile/save',
       profile,
@@ -2468,9 +2590,24 @@ class PadLinkService {
     };
     const reqObj = {
       ...baseReqObj,
-      dial2: this.adaptActionForConnectedFirmware(slots.dial2),
-      e2_cw: this.adaptActionForConnectedFirmware(slots.e2_cw),
-      e2_ccw: this.adaptActionForConnectedFirmware(slots.e2_ccw)
+      ...(includePushTurn
+        ? {
+            push_cw: this.adaptActionForConnectedFirmware(slots.push_cw),
+            push_ccw: this.adaptActionForConnectedFirmware(slots.push_ccw)
+          }
+        : {}),
+      ...(includeEnc2
+        ? {
+            dial2: this.adaptActionForConnectedFirmware(slots.dial2),
+            e2_cw: this.adaptActionForConnectedFirmware(slots.e2_cw),
+            e2_ccw: this.adaptActionForConnectedFirmware(slots.e2_ccw)
+          }
+        : {}),
+      ...(includeKeyHold
+        ? Object.fromEntries(
+            HOLD_SLOTS.map(s => [s, this.adaptActionForConnectedFirmware(slots[s])])
+          )
+        : {})
     };
 
     // ESP32 v4.7+ Serial RX line buffer accepts up to 8192 bytes, and /api/profile/save allows
@@ -2494,10 +2631,7 @@ class PadLinkService {
 
     const res = await this.call(reqObj);
     if (!res?.ok) {
-      const supportsDualEnc = Boolean(
-        this.connectionInfo.telemetry?.capabilities?.includes('encoder2')
-      );
-      if (!this.demoModeActive && !supportsDualEnc) {
+      if (!this.demoModeActive && (includePushTurn || includeEnc2 || includeKeyHold)) {
         const fallbackRes = await this.call(baseReqObj);
         if (fallbackRes?.ok) {
           return fallbackRes;
@@ -2680,7 +2814,7 @@ class PadLinkService {
         telemetry: {
           ...this.connectionInfo.telemetry,
           bleActiveHost: slot,
-          bleDeviceName: `Studio Pad ${slot}`,
+          bleDeviceName: `BertoPad ${slot}`,
           activeProfile: wasTv ? 'TV' : bleSlotToProfileId(slot)
         }
       };
@@ -2690,7 +2824,7 @@ class PadLinkService {
     if (!this.demoModeActive && activePort && prevHost !== slot) {
       this.logSerial(
         'info',
-        `ESP32 rebooting into Host ${slot} (Studio Pad ${slot}) — resyncing in ~2.0s`
+        `ESP32 rebooting into Host ${slot} (BertoPad ${slot}) — resyncing in ~2.0s`
       );
       this.schedulePostRebootResync(activePort);
     }
@@ -2700,8 +2834,8 @@ class PadLinkService {
       slot,
       message:
         prevHost === slot
-          ? `Host ${slot} (Studio Pad ${slot}) is already active.`
-          : `Switched to Host ${slot} (Studio Pad ${slot}).`
+          ? `Host ${slot} (BertoPad ${slot}) is already active.`
+          : `Switched to Host ${slot} (BertoPad ${slot}).`
     };
   }
 
@@ -2945,6 +3079,50 @@ class PadLinkService {
     }
     await this.fetchStatus().catch(() => {});
     return res;
+  }
+
+  public async setDisplaySettings(params: {
+    dim: number;
+    off: number;
+    contrast: number;
+  }): Promise<{ ok: boolean; message: string }> {
+    const dim = Math.max(0, Math.min(36000, Math.round(Number(params.dim) || 0)));
+    const off = Math.max(0, Math.min(36000, Math.round(Number(params.off) || 0)));
+    const contrast = Math.max(0, Math.min(255, Math.round(Number(params.contrast) || 0)));
+    const res = await this.call({
+      path: '/api/display/set',
+      dim,
+      off,
+      contrast
+    });
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Device rejected display settings.');
+    }
+    await this.fetchStatus().catch(() => {});
+    return { ok: true, message: res.message || 'Display settings saved.' };
+  }
+
+  public async setEncoderAcceleration(accel: boolean): Promise<{ ok: boolean; accel: boolean }> {
+    const res = await this.call({
+      path: '/api/encoder/set',
+      accel: accel ? 1 : 0
+    });
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Device rejected encoder acceleration setting.');
+    }
+    await this.fetchStatus().catch(() => {});
+    return { ok: true, accel: Boolean(res.accel ?? accel) };
+  }
+
+  public async clearCrashDiagnostics(): Promise<{ ok: boolean; message: string }> {
+    const res = await this.call({
+      path: '/api/diagnostics/clear'
+    });
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Could not clear crash counter.');
+    }
+    await this.fetchStatus().catch(() => {});
+    return { ok: true, message: res.message || 'Crash counter cleared.' };
   }
 
   /**

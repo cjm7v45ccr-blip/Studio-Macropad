@@ -49,8 +49,16 @@ import {
   stepToFirmwareAction,
   suggestSmartMacroName,
   validateMacroSequenceDraft,
-  validateTextMacroInput
+  validateTextMacroInput,
+  getVisibleHardwareSlots,
+  hasKeyHoldCapability,
+  isHoldSlot
 } from '../data/firmwareCatalog';
+import {
+  ButtonSlotId,
+  KEY_TO_HOLD_SLOT,
+  SLOT_TO_ACTION_KEY
+} from '../data/presetTemplates';
 import {
   extractProfileSlots,
   getBindingForProfileSlot,
@@ -173,7 +181,9 @@ const ENCODER_SLOTS: {
 }[] = [
   { slot: 'dial', shortTitle: 'K1 Press', icon: Disc },
   { slot: 'enc_ccw', shortTitle: 'K1 Left', icon: RotateCcw },
-  { slot: 'enc_cw', shortTitle: 'K1 Right', icon: RotateCw }
+  { slot: 'enc_cw', shortTitle: 'K1 Right', icon: RotateCw },
+  { slot: 'push_ccw', shortTitle: 'K1 Hold+L', icon: RotateCcw },
+  { slot: 'push_cw', shortTitle: 'K1 Hold+R', icon: RotateCw }
 ];
 
 const ENCODER_2_SLOTS: {
@@ -777,9 +787,21 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     }
   }, [isTvEnabled, recipeCategoryFilter, targetProfile, importProfileId]);
 
+  const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
+  const visibleSlots = useMemo(
+    () => getVisibleHardwareSlots(connection.telemetry?.capabilities),
+    [connection.telemetry?.capabilities]
+  );
+
   useEffect(() => {
-    setTargetSlot(initialTargetSlot);
-  }, [initialTargetSlot]);
+    setTargetSlot(!hasKeyHold && isHoldSlot(initialTargetSlot) ? 'b1' : initialTargetSlot);
+  }, [initialTargetSlot, hasKeyHold]);
+
+  useEffect(() => {
+    if (!hasKeyHold && isHoldSlot(targetSlot)) {
+      setTargetSlot('b1');
+    }
+  }, [hasKeyHold, targetSlot]);
 
   useEffect(() => {
     if (!justSavedFeedback) return;
@@ -1598,7 +1620,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     >();
     profiles.forEach(prof => {
       const slots = extractProfileSlots(prof);
-      HARDWARE_SLOTS.forEach(slot => {
+      visibleSlots.forEach(slot => {
         const act = slots[slot];
         if (!act) return;
         const bind = getBindingForProfileSlot(profiles, prof.id, slot);
@@ -1610,7 +1632,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
       });
     });
     return map;
-  }, [profiles]);
+  }, [profiles, visibleSlots]);
 
   const activeMacroBoundSlots = useMemo(() => {
     if (selectedMacroId) {
@@ -2199,7 +2221,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  {HARDWARE_SLOTS.map(slot => {
+                  {visibleSlots.map(slot => {
                     const act = importProfileSlots[slot];
                     const slotBind = getBindingForProfileSlot(
                       profiles,
@@ -4390,7 +4412,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
               {/* Mini Physical Layout: 2x4 Keys + Dual Rotary Knob Slots */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                <div className="sm:col-span-7 grid grid-cols-4 gap-1.5">
+                <div className="sm:col-span-7 grid grid-cols-4 gap-1.5 items-start">
                   {BUTTON_GRID_SLOTS.map((slot, i) => {
                     const act = targetProfileSlots[slot];
                     const slotBind = getBindingForProfileSlot(
@@ -4399,36 +4421,79 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       slot
                     );
                     const isSelected = targetSlot === slot;
+                    const holdSlot =
+                      KEY_TO_HOLD_SLOT[SLOT_TO_ACTION_KEY[slot as ButtonSlotId]];
+                    const holdAct = targetProfileSlots[holdSlot];
+                    const holdBind = getBindingForProfileSlot(
+                      profiles,
+                      targetProfile,
+                      holdSlot
+                    );
+                    const isHoldSelected = targetSlot === holdSlot;
+
                     return (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => setTargetSlot(slot)}
-                        className={`p-2 rounded-lg border text-left transition-colors cursor-pointer min-w-0 ${
-                          isSelected
-                            ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
-                            : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
-                        }`}
-                      >
-                        <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-                          K{i + 1}
-                        </div>
-                        <div className="mt-1 min-w-0 truncate">
-                          {act ? (
-                            <ParsedActionBadge
-                              action={act}
-                              repeatConfig={slotBind?.repeatConfig}
-                              maxSteps={1}
-                              showRawId={showAdvancedIds}
-                              customMacros={customMacros}
-                            />
-                          ) : (
-                            <span className="text-[10px] font-mono text-[var(--text-muted)]">
-                              Empty
+                      <div key={slot} className="flex flex-col gap-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setTargetSlot(slot)}
+                          className={`p-2 rounded-lg border text-left transition-colors cursor-pointer min-w-0 ${
+                            isSelected
+                              ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                              : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                          }`}
+                        >
+                          <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                            K{i + 1}
+                          </div>
+                          <div className="mt-1 min-w-0 truncate">
+                            {act ? (
+                              <ParsedActionBadge
+                                action={act}
+                                repeatConfig={slotBind?.repeatConfig}
+                                maxSteps={1}
+                                showRawId={showAdvancedIds}
+                                customMacros={customMacros}
+                              />
+                            ) : (
+                              <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                                Empty
+                              </span>
+                            )}
+                          </div>
+                        </button>
+
+                        {hasKeyHold && (
+                          <button
+                            type="button"
+                            onClick={() => setTargetSlot(holdSlot)}
+                            title={`Key ${i + 1} Hold (500 ms)`}
+                            className={`px-2 py-1 rounded-md border text-left flex items-center justify-between gap-1 transition-colors cursor-pointer min-w-0 ${
+                              isHoldSelected
+                                ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                                : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                            }`}
+                          >
+                            <span className="font-mono text-[9px] text-[var(--text-muted)] shrink-0">
+                              Hold
                             </span>
-                          )}
-                        </div>
-                      </button>
+                            <div className="min-w-0 truncate">
+                              {holdAct ? (
+                                <ParsedActionBadge
+                                  action={holdAct}
+                                  repeatConfig={holdBind?.repeatConfig}
+                                  maxSteps={1}
+                                  showRawId={showAdvancedIds}
+                                  customMacros={customMacros}
+                                />
+                              ) : (
+                                <span className="text-[9px] font-mono text-[var(--text-muted)]">
+                                  —
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

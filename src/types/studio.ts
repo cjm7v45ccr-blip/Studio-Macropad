@@ -1,9 +1,10 @@
 export type KeyId = 'k1' | 'k2' | 'k3' | 'k4' | 'k5' | 'k6' | 'k7' | 'k8' | 'k9';
+export type HoldSlotId = 'b1h' | 'b2h' | 'b3h' | 'b4h' | 'b5h' | 'b6h' | 'b7h' | 'b8h';
 export type EncoderIndex = 1 | 2;
-export type Encoder1SubControlId = 'dial' | 'enc_cw' | 'enc_ccw';
+export type Encoder1SubControlId = 'dial' | 'enc_cw' | 'enc_ccw' | 'push_cw' | 'push_ccw';
 export type Encoder2SubControlId = 'dial2' | 'e2_cw' | 'e2_ccw';
 export type EncoderSubControlId = Encoder1SubControlId | Encoder2SubControlId;
-export type ControlId = KeyId | 'encoder' | 'encoder2' | EncoderSubControlId;
+export type ControlId = KeyId | HoldSlotId | 'encoder' | 'encoder2' | EncoderSubControlId;
 
 export type BleHostSlot = 1 | 2 | 3;
 
@@ -90,9 +91,19 @@ export type HardwareSlotId =
   | 'dial'
   | 'enc_cw'
   | 'enc_ccw'
+  | 'push_cw'
+  | 'push_ccw'
   | 'dial2'
   | 'e2_cw'
-  | 'e2_ccw';
+  | 'e2_ccw'
+  | 'b1h'
+  | 'b2h'
+  | 'b3h'
+  | 'b4h'
+  | 'b5h'
+  | 'b6h'
+  | 'b7h'
+  | 'b8h';
 export type HardwareFlashSlot = HardwareSlotId | 'mode';
 
 export type SyncStatusPill = 'Synced' | 'Saving' | 'Out of sync' | 'Disconnected';
@@ -101,7 +112,7 @@ export type SidebarSection = 'device' | 'macros' | 'library' | 'settings';
 export type CanvasViewMode = 'edit' | 'test';
 export type EncoderPlacement = 'grid' | 'top';
 
-export type TriggerType = 'tap';
+export type TriggerType = 'tap' | 'hold';
 
 export type ActionType =
   | 'mac_macro'
@@ -181,9 +192,11 @@ export interface KeyAppearance {
 export interface KeyControlConfig {
   id: KeyId;
   slot?: 'b1' | 'b2' | 'b3' | 'b4' | 'b5' | 'b6' | 'b7' | 'b8';
+  holdSlot?: HoldSlotId;
   isModeSwitch?: boolean;
   triggers: {
     tap: ActionBinding;
+    hold?: ActionBinding;
   };
   appearance: KeyAppearance;
 }
@@ -192,6 +205,8 @@ export interface EncoderControlConfig {
   dial: ActionBinding;
   cw: ActionBinding;
   ccw: ActionBinding;
+  pushCw?: ActionBinding;
+  pushCcw?: ActionBinding;
   color: string;
 }
 
@@ -256,6 +271,7 @@ export interface SyncConflictState {
 export interface HardwareEventPacket {
   event:
     | 'press'
+    | 'hold'
     | 'turn'
     | 'profile'
     | 'connection'
@@ -370,17 +386,19 @@ export interface HardwareBackupPayload {
   mac_dial2?: string;
   mac_e2_cw?: string;
   mac_e2_ccw?: string;
-  tv_b1: string;
-  tv_b2: string;
-  tv_b3: string;
-  tv_b4: string;
+  tv_b1?: string;
+  tv_b2?: string;
+  tv_b3?: string;
+  tv_b4?: string;
   tv_b5?: string;
   tv_b6?: string;
   tv_b7?: string;
   tv_b8?: string;
-  tv_dial: string;
+  tv_dial?: string;
   tv_enc_cw?: string;
   tv_enc_ccw?: string;
+  tv_push_cw?: string;
+  tv_push_ccw?: string;
   tv_dial2?: string;
   tv_e2_cw?: string;
   tv_e2_ccw?: string;
@@ -522,6 +540,17 @@ export interface HardwareTelemetry {
   bleMaxHosts: number;
   bleDeviceName: string;
   freeHeap: number;
+  minFreeHeap?: number;
+  nvsUsed?: number;
+  nvsFree?: number;
+  uptimeSeconds?: number;
+  bootReason?: string;
+  abnormalResets?: number;
+  lastAbnormalReset?: string;
+  encoderAccel?: boolean;
+  displayDimSeconds?: number;
+  displayOffSeconds?: number;
+  displayContrast?: number;
   httpApiEnabled: boolean;
   tvConfigured: boolean;
   tvPaired: boolean;

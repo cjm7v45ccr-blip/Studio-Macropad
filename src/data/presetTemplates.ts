@@ -4,6 +4,7 @@ import {
   EncoderControlConfig,
   HardwareProfileId,
   HardwareSlotId,
+  HoldSlotId,
   KeyAppearance,
   KeyControlConfig,
   KeyId,
@@ -57,6 +58,28 @@ export const SLOT_TO_ACTION_KEY: Record<ButtonSlotId, ActionKeyId> = {
   b6: 'k6',
   b7: 'k7',
   b8: 'k8'
+};
+
+export const KEY_TO_HOLD_SLOT: Record<ActionKeyId, HoldSlotId> = {
+  k1: 'b1h',
+  k2: 'b2h',
+  k3: 'b3h',
+  k4: 'b4h',
+  k5: 'b5h',
+  k6: 'b6h',
+  k7: 'b7h',
+  k8: 'b8h'
+};
+
+export const HOLD_SLOT_TO_ACTION_KEY: Record<HoldSlotId, ActionKeyId> = {
+  b1h: 'k1',
+  b2h: 'k2',
+  b3h: 'k3',
+  b4h: 'k4',
+  b5h: 'k5',
+  b6h: 'k6',
+  b7h: 'k7',
+  b8h: 'k8'
 };
 
 export const PROFILE_ACCENT_COLORS: Record<HardwareProfileId, string> = {
@@ -114,13 +137,15 @@ export function makeHardwareKey(
   actionStr: string,
   existingAppearance?: KeyAppearance,
   repeatConfig?: TextMacroRepeatConfig,
-  customMacros?: CustomMacroItem[]
+  customMacros?: CustomMacroItem[],
+  holdActionStr = '',
+  holdRepeatConfig?: TextMacroRepeatConfig
 ): KeyControlConfig {
   if (id === 'k9') {
     return {
       id: 'k9',
       isModeSwitch: true,
-      triggers: { tap: emptyAction() },
+      triggers: { tap: emptyAction(), hold: emptyAction() },
       appearance: {
         label: 'Mode',
         icon: 'layers',
@@ -130,9 +155,15 @@ export function makeHardwareKey(
   }
 
   const slot = KEY_TO_SLOT[id];
+  const holdSlot = KEY_TO_HOLD_SLOT[id];
   const matchedRepeat = resolveMatchingRepeatConfig(actionStr, repeatConfig);
   const upgradedAction = resolveUpgradedActionStr(actionStr, matchedRepeat);
   const binding = firmwareActionToBinding(upgradedAction, matchedRepeat);
+
+  const matchedHoldRepeat = resolveMatchingRepeatConfig(holdActionStr, holdRepeatConfig);
+  const upgradedHoldAction = resolveUpgradedActionStr(holdActionStr, matchedHoldRepeat);
+  const holdBinding = firmwareActionToBinding(upgradedHoldAction, matchedHoldRepeat);
+
   const appearance = deriveAppearanceForAction(
     upgradedAction,
     existingAppearance,
@@ -143,8 +174,10 @@ export function makeHardwareKey(
   return {
     id,
     slot,
+    holdSlot,
     triggers: {
-      tap: binding
+      tap: binding,
+      hold: holdBinding
     },
     appearance
   };
@@ -157,11 +190,17 @@ export function buildHardwareEncoder(
   color = '#F2A33A',
   dialRepeat?: TextMacroRepeatConfig,
   cwRepeat?: TextMacroRepeatConfig,
-  ccwRepeat?: TextMacroRepeatConfig
+  ccwRepeat?: TextMacroRepeatConfig,
+  pushCwAction = '',
+  pushCcwAction = '',
+  pushCwRepeat?: TextMacroRepeatConfig,
+  pushCcwRepeat?: TextMacroRepeatConfig
 ): EncoderControlConfig {
   const matchedDial = resolveMatchingRepeatConfig(dialAction, dialRepeat);
   const matchedCw = resolveMatchingRepeatConfig(cwAction, cwRepeat);
   const matchedCcw = resolveMatchingRepeatConfig(ccwAction, ccwRepeat);
+  const matchedPushCw = resolveMatchingRepeatConfig(pushCwAction, pushCwRepeat);
+  const matchedPushCcw = resolveMatchingRepeatConfig(pushCcwAction, pushCcwRepeat);
   return {
     dial: firmwareActionToBinding(
       resolveUpgradedActionStr(dialAction, matchedDial),
@@ -174,6 +213,14 @@ export function buildHardwareEncoder(
     ccw: firmwareActionToBinding(
       resolveUpgradedActionStr(ccwAction, matchedCcw),
       matchedCcw
+    ),
+    pushCw: firmwareActionToBinding(
+      resolveUpgradedActionStr(pushCwAction, matchedPushCw),
+      matchedPushCw
+    ),
+    pushCcw: firmwareActionToBinding(
+      resolveUpgradedActionStr(pushCcwAction, matchedPushCcw),
+      matchedPushCcw
     ),
     color
   };
@@ -202,56 +249,72 @@ export function buildHardwareProfile(
       slots?.b1 || '',
       prevAppFor('k1'),
       repeatConfigs?.[`${id}:b1`],
-      customMacros
+      customMacros,
+      slots?.b1h || '',
+      repeatConfigs?.[`${id}:b1h`]
     ),
     k2: makeHardwareKey(
       'k2',
       slots?.b2 || '',
       prevAppFor('k2'),
       repeatConfigs?.[`${id}:b2`],
-      customMacros
+      customMacros,
+      slots?.b2h || '',
+      repeatConfigs?.[`${id}:b2h`]
     ),
     k3: makeHardwareKey(
       'k3',
       slots?.b3 || '',
       prevAppFor('k3'),
       repeatConfigs?.[`${id}:b3`],
-      customMacros
+      customMacros,
+      slots?.b3h || '',
+      repeatConfigs?.[`${id}:b3h`]
     ),
     k4: makeHardwareKey(
       'k4',
       slots?.b4 || '',
       prevAppFor('k4'),
       repeatConfigs?.[`${id}:b4`],
-      customMacros
+      customMacros,
+      slots?.b4h || '',
+      repeatConfigs?.[`${id}:b4h`]
     ),
     k5: makeHardwareKey(
       'k5',
       slots?.b5 || '',
       prevAppFor('k5'),
       repeatConfigs?.[`${id}:b5`],
-      customMacros
+      customMacros,
+      slots?.b5h || '',
+      repeatConfigs?.[`${id}:b5h`]
     ),
     k6: makeHardwareKey(
       'k6',
       slots?.b6 || '',
       prevAppFor('k6'),
       repeatConfigs?.[`${id}:b6`],
-      customMacros
+      customMacros,
+      slots?.b6h || '',
+      repeatConfigs?.[`${id}:b6h`]
     ),
     k7: makeHardwareKey(
       'k7',
       slots?.b7 || '',
       prevAppFor('k7'),
       repeatConfigs?.[`${id}:b7`],
-      customMacros
+      customMacros,
+      slots?.b7h || '',
+      repeatConfigs?.[`${id}:b7h`]
     ),
     k8: makeHardwareKey(
       'k8',
       slots?.b8 || '',
       prevAppFor('k8'),
       repeatConfigs?.[`${id}:b8`],
-      customMacros
+      customMacros,
+      slots?.b8h || '',
+      repeatConfigs?.[`${id}:b8h`]
     ),
     k9: makeHardwareKey('k9', '')
   };
@@ -273,7 +336,11 @@ export function buildHardwareProfile(
           existingProfile?.layers[0]?.encoder.color || accent,
           repeatConfigs?.[`${id}:dial`],
           repeatConfigs?.[`${id}:enc_cw`],
-          repeatConfigs?.[`${id}:enc_ccw`]
+          repeatConfigs?.[`${id}:enc_ccw`],
+          slots?.push_cw || '',
+          slots?.push_ccw || '',
+          repeatConfigs?.[`${id}:push_cw`],
+          repeatConfigs?.[`${id}:push_ccw`]
         ),
         encoder2: buildHardwareEncoder(
           slots?.dial2 || '',

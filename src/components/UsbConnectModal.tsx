@@ -203,7 +203,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                 <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[var(--border-subtle)] font-mono text-[10px]">
                   <div
                     className="flex items-center gap-1.5 text-[var(--text-secondary)]"
-                    title={telemetry.bleDeviceName || `Studio Pad ${telemetry.bleActiveHost}`}
+                    title={telemetry.bleDeviceName || `BertoPad ${telemetry.bleActiveHost}`}
                   >
                     <Bluetooth
                       className={`w-3.5 h-3.5 shrink-0 ${

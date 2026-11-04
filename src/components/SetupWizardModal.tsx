@@ -69,6 +69,17 @@ interface SetupWizardModalProps {
   onToast: (msg: string, variant?: ToastVariant) => void;
 }
 
+const EMPTY_HOLD_SLOTS = {
+  b1h: '',
+  b2h: '',
+  b3h: '',
+  b4h: '',
+  b5h: '',
+  b6h: '',
+  b7h: '',
+  b8h: ''
+} as const;
+
 const HOST_PRESET_SLOTS: Record<Exclude<HostOsPresetId, 'keep'>, Record<HardwareSlotId, string>> = {
   universal: { ...UNIVERSAL_BLE_DEFAULT_SLOTS },
   windows: {
@@ -83,9 +94,12 @@ const HOST_PRESET_SLOTS: Record<Exclude<HostOsPresetId, 'keep'>, Record<Hardware
     dial: 'MEDIA:MUTE',
     enc_cw: 'MEDIA:VOL_UP',
     enc_ccw: 'MEDIA:VOL_DOWN',
+    push_cw: 'MEDIA:BRIGHT_UP',
+    push_ccw: 'MEDIA:BRIGHT_DOWN',
     dial2: 'MEDIA:PLAY_PAUSE',
     e2_cw: 'MEDIA:NEXT',
-    e2_ccw: 'MEDIA:PREV'
+    e2_ccw: 'MEDIA:PREV',
+    ...EMPTY_HOLD_SLOTS
   },
   macos: {
     b1: 'MEDIA:PLAY_PAUSE',
@@ -99,9 +113,12 @@ const HOST_PRESET_SLOTS: Record<Exclude<HostOsPresetId, 'keep'>, Record<Hardware
     dial: 'MEDIA:MUTE',
     enc_cw: 'MEDIA:VOL_UP',
     enc_ccw: 'MEDIA:VOL_DOWN',
+    push_cw: 'MEDIA:BRIGHT_UP',
+    push_ccw: 'MEDIA:BRIGHT_DOWN',
     dial2: 'MEDIA:PLAY_PAUSE',
     e2_cw: 'MEDIA:NEXT',
-    e2_ccw: 'MEDIA:PREV'
+    e2_ccw: 'MEDIA:PREV',
+    ...EMPTY_HOLD_SLOTS
   },
   linux: {
     b1: 'MEDIA:PLAY_PAUSE',
@@ -115,9 +132,12 @@ const HOST_PRESET_SLOTS: Record<Exclude<HostOsPresetId, 'keep'>, Record<Hardware
     dial: 'MEDIA:MUTE',
     enc_cw: 'MEDIA:VOL_UP',
     enc_ccw: 'MEDIA:VOL_DOWN',
+    push_cw: 'MEDIA:BRIGHT_UP',
+    push_ccw: 'MEDIA:BRIGHT_DOWN',
     dial2: 'MEDIA:PLAY_PAUSE',
     e2_cw: 'MEDIA:NEXT',
-    e2_ccw: 'MEDIA:PREV'
+    e2_ccw: 'MEDIA:PREV',
+    ...EMPTY_HOLD_SLOTS
   }
 };
 
@@ -134,9 +154,12 @@ const TV_PRESET_SLOTS: Record<Exclude<TvPresetChoiceId, 'keep'>, Record<Hardware
     dial: 'TV:MUTE',
     enc_cw: 'TV:VOL_UP',
     enc_ccw: 'TV:VOL_DOWN',
+    push_cw: '',
+    push_ccw: '',
     dial2: 'TV:OK',
     e2_cw: 'TV:CH_UP',
-    e2_ccw: 'TV:CH_DOWN'
+    e2_ccw: 'TV:CH_DOWN',
+    ...EMPTY_HOLD_SLOTS
   },
   live_tv: {
     b1: 'TV:POWER',
@@ -150,9 +173,12 @@ const TV_PRESET_SLOTS: Record<Exclude<TvPresetChoiceId, 'keep'>, Record<Hardware
     dial: 'TV:MUTE',
     enc_cw: 'TV:CH_UP',
     enc_ccw: 'TV:CH_DOWN',
+    push_cw: '',
+    push_ccw: '',
     dial2: 'TV:INPUT',
     e2_cw: 'TV:VOL_UP',
-    e2_ccw: 'TV:VOL_DOWN'
+    e2_ccw: 'TV:VOL_DOWN',
+    ...EMPTY_HOLD_SLOTS
   }
 };
 
@@ -316,7 +342,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const unsub = usbHardware.onHardwareEvent((e: HardwareEventPacket) => {
-      if (e.event !== 'press' && e.event !== 'turn') return;
+      if (e.event !== 'press' && e.event !== 'turn' && e.event !== 'hold') return;
       const rawSlot = String(e.slot || '').toLowerCase();
       let slotLabel = rawSlot.toUpperCase() || 'Input';
       if (rawSlot === 'mode') {
@@ -330,6 +356,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         ? describeFirmwareAction(String(e.action)).shortLabel
         : e.event === 'turn'
         ? 'Rotary Encoder'
+        : e.event === 'hold'
+        ? 'Key Hold (500 ms)'
         : 'Hardware Switch';
       const now = new Date().toTimeString().slice(0, 8);
       setDetectedInput({
@@ -538,20 +566,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
           ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`h2_${s}`, h2Slots[s]])),
           ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`h3_${s}`, h3Slots[s]])),
           ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`mac_${s}`, h1Slots[s]])),
-          tv_b1: tvSlots.b1,
-          tv_b2: tvSlots.b2,
-          tv_b3: tvSlots.b3,
-          tv_b4: tvSlots.b4,
-          tv_b5: tvSlots.b5,
-          tv_b6: tvSlots.b6,
-          tv_b7: tvSlots.b7,
-          tv_b8: tvSlots.b8,
-          tv_dial: tvSlots.dial,
-          tv_enc_cw: tvSlots.enc_cw,
-          tv_enc_ccw: tvSlots.enc_ccw,
-          tv_dial2: tvSlots.dial2,
-          tv_e2_cw: tvSlots.e2_cw,
-          tv_e2_ccw: tvSlots.e2_ccw
+          ...Object.fromEntries(HARDWARE_SLOTS.map(s => [`tv_${s}`, tvSlots[s]]))
         };
 
         await onCompleteSetup({
@@ -817,7 +832,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     [
                       {
                         slot: 'H1',
-                        label: 'Studio Pad 1',
+                        label: 'BertoPad 1',
                         name: h1Name,
                         setName: setH1Name,
                         preset: h1Preset,
@@ -826,7 +841,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       },
                       {
                         slot: 'H2',
-                        label: 'Studio Pad 2',
+                        label: 'BertoPad 2',
                         name: h2Name,
                         setName: setH2Name,
                         preset: h2Preset,
@@ -835,7 +850,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       },
                       {
                         slot: 'H3',
-                        label: 'Studio Pad 3',
+                        label: 'BertoPad 3',
                         name: h3Name,
                         setName: setH3Name,
                         preset: h3Preset,
@@ -954,7 +969,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   02. Pair Bluetooth Hosts
                 </h3>
                 <p className="text-xs text-[var(--text-muted)]">
-                  Your BertoPad advertises 3 independent Bluetooth identities (<span className="font-mono">Studio Pad 1–3</span>) so you can switch between your computer, laptop, and phone without re-pairing.
+                  Your BertoPad advertises 3 independent Bluetooth identities (<span className="font-mono">BertoPad 1–3</span>) so you can switch between your computer, laptop, and phone without re-pairing.
                 </p>
               </div>
 
@@ -970,7 +985,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     />
                     <div>
                       <div className="text-xs font-semibold text-[var(--text-primary)]">
-                        Active Radio: Studio Pad {activeBleSlot} ([H{activeBleSlot}])
+                        Active Radio: BertoPad {activeBleSlot} ([H{activeBleSlot}])
                       </div>
                       <div className="text-[11px] font-mono text-[var(--text-muted)] tabular-nums">
                         {!connection.connected
@@ -1017,7 +1032,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                           {alias || `Host ${slot}`}
                         </div>
                         <div className="text-[11px] font-mono text-[var(--text-muted)] truncate">
-                          BLE: Studio Pad {slot}
+                          BLE: BertoPad {slot}
                         </div>
                       </button>
                     );
@@ -1051,7 +1066,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 <p>
                   1. Open Bluetooth settings on Windows, macOS, Linux, iOS, or Android and select{' '}
                   <span className="font-mono text-[var(--text-primary)]">
-                    Studio Pad {activeBleSlot}
+                    BertoPad {activeBleSlot}
                   </span>
                   .
                 </p>
@@ -1326,19 +1341,19 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
               {/* Clean Summary Grid */}
               <div className="rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] text-xs">
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 1 ([H1] Studio Pad 1)</span>
+                  <span className="text-[var(--text-muted)]">Host 1 ([H1] BertoPad 1)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h1Name, 'HOST1')} · {presetLabel(h1Preset)}
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 2 ([H2] Studio Pad 2)</span>
+                  <span className="text-[var(--text-muted)]">Host 2 ([H2] BertoPad 2)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h2Name, 'HOST2')} · {presetLabel(h2Preset)}
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 3 ([H3] Studio Pad 3)</span>
+                  <span className="text-[var(--text-muted)]">Host 3 ([H3] BertoPad 3)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h3Name, 'HOST3')} · {presetLabel(h3Preset)}
                   </span>

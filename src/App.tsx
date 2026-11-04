@@ -27,18 +27,22 @@ import { useFirmwareUpdateCheck } from './hooks/useFirmwareUpdateCheck';
 import { usbHardware } from './services/usbHardwareService';
 import { repeatMacroRunner } from './services/repeatMacroRunner';
 import {
-  HARDWARE_SLOTS,
   SLOT_LABELS,
   actionToMacroSteps,
   describeFirmwareAction,
   getActionTestAvailability,
   getMacroCanonicalSignature,
+  getVisibleHardwareSlots,
+  hasKeyHoldCapability,
+  isHoldSlot,
   isMultiStepOrTimedMacro,
   suggestSmartMacroName
 } from './data/firmwareCatalog';
 import {
   ActionKeyId,
   ButtonSlotId,
+  HOLD_SLOT_TO_ACTION_KEY,
+  KEY_TO_HOLD_SLOT,
   KEY_TO_SLOT,
   SLOT_TO_ACTION_KEY
 } from './data/presetTemplates';
@@ -156,6 +160,18 @@ export default function App() {
     };
   }, []);
 
+  const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
+  const visibleSlots = useMemo(
+    () => getVisibleHardwareSlots(connection.telemetry?.capabilities),
+    [connection.telemetry?.capabilities]
+  );
+
+  useEffect(() => {
+    if (!hasKeyHold && isHoldSlot(selectedControl)) {
+      setSelectedControl(HOLD_SLOT_TO_ACTION_KEY[selectedControl]);
+    }
+  }, [hasKeyHold, selectedControl]);
+
   useEffect(() => {
     if (!studio.tvEnabled && studio.activeProfile.id === 'TV') {
       const fallbackSlot = connection.telemetry?.bleActiveHost ?? 1;
@@ -230,7 +246,7 @@ export default function App() {
       setConnectModalError(null);
       await usbHardware.connectDemoMode();
       setConnectModalOpen(false);
-      showToast('Started Demo Mode — all 14 controls and settings are active');
+      showToast('Started Demo Mode — all 24 controls and settings are active');
     } catch (err: any) {
       showToast(err?.message || 'Could not start Demo Mode', 'error');
     }
@@ -378,7 +394,7 @@ export default function App() {
       try {
         const res = await usbHardware.switchBleHost(slot);
         studio.selectProfile(targetProfId);
-        showToast(res.message || `Switched to ${friendlyName} (Studio Pad ${slot})`);
+        showToast(res.message || `Switched to ${friendlyName} (BertoPad ${slot})`);
       } catch (err: any) {
         showToast(err?.message || 'Could not switch Bluetooth host', 'error');
       }
@@ -397,7 +413,9 @@ export default function App() {
     selectedControl === 'encoder' ||
     selectedControl === 'dial' ||
     selectedControl === 'enc_cw' ||
-    selectedControl === 'enc_ccw';
+    selectedControl === 'enc_ccw' ||
+    selectedControl === 'push_cw' ||
+    selectedControl === 'push_ccw';
 
   const selectedEncoderIndex: EncoderIndex = isEncoder2Selected ? 2 : 1;
 
@@ -411,15 +429,26 @@ export default function App() {
     ? 'enc_cw'
     : selectedControl === 'enc_ccw'
     ? 'enc_ccw'
+    : selectedControl === 'push_cw'
+    ? 'push_cw'
+    : selectedControl === 'push_ccw'
+    ? 'push_ccw'
     : 'dial';
 
+  const selectedKeyId: KeyId = !isEncoderControlSelected
+    ? isHoldSlot(selectedControl)
+      ? HOLD_SLOT_TO_ACTION_KEY[selectedControl]
+      : (selectedControl as KeyId)
+    : 'k1';
+
   const selectedKeyConfig = !isEncoderControlSelected
-    ? studio.activeLayer.keys[selectedControl as KeyId] ||
-      studio.activeLayer.keys.k1
+    ? studio.activeLayer.keys[selectedKeyId] || studio.activeLayer.keys.k1
     : null;
 
   const selectedHardwareSlot: HardwareSlotId = isEncoderControlSelected
     ? selectedEncoderSubControl
+    : isHoldSlot(selectedControl)
+    ? selectedControl
     : selectedControl === 'k9'
     ? 'b1'
     : KEY_TO_SLOT[selectedControl as ActionKeyId] || 'b1';
@@ -467,17 +496,21 @@ export default function App() {
         slot === 'dial' ||
         slot === 'enc_cw' ||
         slot === 'enc_ccw' ||
+        slot === 'push_cw' ||
+        slot === 'push_ccw' ||
         slot === 'dial2' ||
         slot === 'e2_cw' ||
         slot === 'e2_ccw'
       ) {
         setSelectedControl(slot);
+      } else if (isHoldSlot(slot)) {
+        setSelectedControl(hasKeyHold ? slot : HOLD_SLOT_TO_ACTION_KEY[slot]);
       } else {
         setSelectedControl(SLOT_TO_ACTION_KEY[slot as ButtonSlotId] || 'k1');
       }
       setActiveSection('device');
     },
-    [studio]
+    [hasKeyHold, studio]
   );
 
   const pendingCopyLabels = useMemo(() => {
@@ -498,7 +531,7 @@ export default function App() {
     if (!pendingCopyPair || !pendingCopyLabels) return [];
     const srcSlots = extractProfileSlots(pendingCopyLabels.srcProf);
     const tgtSlots = extractProfileSlots(pendingCopyLabels.tgtProf);
-    return HARDWARE_SLOTS.map(slot => ({
+    return visibleSlots.map(slot => ({
       id: `${pendingCopyPair.target}-${slot}`,
       slotLabel: `${profileShortTag(pendingCopyPair.target)} · ${SLOT_LABELS[slot].short}`,
       beforeLabel: tgtSlots[slot]
@@ -509,7 +542,7 @@ export default function App() {
         : 'Unassigned',
       changed: tgtSlots[slot] !== srcSlots[slot]
     }));
-  }, [pendingCopyPair, pendingCopyLabels]);
+  }, [pendingCopyPair, pendingCopyLabels, visibleSlots]);
 
   return (
     <div className="h-[100dvh] w-full max-w-[100vw] overflow-x-hidden overflow-y-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)] flex flex-col">
@@ -645,9 +678,11 @@ export default function App() {
                 onSelectEncoder={idx => {
                   const isCw =
                     selectedEncoderSubControl === 'enc_cw' ||
+                    selectedEncoderSubControl === 'push_cw' ||
                     selectedEncoderSubControl === 'e2_cw';
                   const isCcw =
                     selectedEncoderSubControl === 'enc_ccw' ||
+                    selectedEncoderSubControl === 'push_ccw' ||
                     selectedEncoderSubControl === 'e2_ccw';
                   setSelectedControl(
                     idx === 2
@@ -718,6 +753,10 @@ export default function App() {
                       : selectedEncoderSubControl === 'enc_cw' ||
                         selectedEncoderSubControl === 'e2_cw'
                       ? activeEnc.cw
+                      : selectedEncoderSubControl === 'push_cw'
+                      ? activeEnc.pushCw ?? { type: 'none', value: '' }
+                      : selectedEncoderSubControl === 'push_ccw'
+                      ? activeEnc.pushCcw ?? { type: 'none', value: '' }
                       : activeEnc.ccw;
                   handleOpenMacroBuilderForSlot(selectedEncoderSubControl, activeBind);
                 }}
@@ -733,6 +772,15 @@ export default function App() {
                   keyboardLayout={studio.settings.keyboardLayout}
                   connection={connection}
                   activeRepeatJob={activeRepeatJob}
+                  activeTrigger={isHoldSlot(selectedControl) ? 'hold' : 'tap'}
+                  onSelectTrigger={trig => {
+                    if (selectedKeyConfig.id === 'k9') return;
+                    setSelectedControl(
+                      trig === 'hold'
+                        ? KEY_TO_HOLD_SLOT[selectedKeyConfig.id as ActionKeyId]
+                        : selectedKeyConfig.id
+                    );
+                  }}
                   activeHostOs={activeHostOs}
                   tvEnabled={studio.tvEnabled}
                   onChangeHostOs={
@@ -748,6 +796,12 @@ export default function App() {
                   }
                   onUpdateBinding={binding =>
                     studio.updateKeyBinding(
+                      selectedKeyConfig.id,
+                      binding
+                    )
+                  }
+                  onUpdateHoldBinding={binding =>
+                    studio.updateKeyHoldBinding(
                       selectedKeyConfig.id,
                       binding
                     )
@@ -771,12 +825,16 @@ export default function App() {
                     handleExecuteHardwareBinding(binding);
                   }}
                   onStopRepeat={handleStopRepeat}
-                  onOpenMacroBuilder={() =>
-                    handleOpenMacroBuilderForSlot(
-                      KEY_TO_SLOT[selectedKeyConfig.id as ActionKeyId] || 'b1',
-                      selectedKeyConfig.triggers.tap
-                    )
-                  }
+                  onOpenMacroBuilder={() => {
+                    const isHold = isHoldSlot(selectedControl) && hasKeyHold;
+                    const slot = isHold
+                      ? (selectedControl as HardwareSlotId)
+                      : KEY_TO_SLOT[selectedKeyConfig.id as ActionKeyId] || 'b1';
+                    const bind = isHold
+                      ? selectedKeyConfig.triggers.hold ?? { type: 'none', value: '' }
+                      : selectedKeyConfig.triggers.tap;
+                    handleOpenMacroBuilderForSlot(slot, bind);
+                  }}
                 />
               )
             )}
@@ -819,6 +877,7 @@ export default function App() {
             userPresets={studio.userPresets}
             customMacros={studio.customMacros}
             isConnected={connection.connected}
+            capabilities={connection.telemetry?.capabilities}
             showAdvancedIds={studio.settings.showAdvancedIds}
             onPullFromUsb={handlePullFromUsb}
             onPushAllToUsb={handleSaveToDevice}
@@ -922,7 +981,7 @@ export default function App() {
         }
         description={
           pendingCopyLabels
-            ? `All 14 controls on ${pendingCopyLabels.tgtLabel} will be overwritten with ${pendingCopyLabels.srcLabel}'s bindings.`
+            ? `All ${visibleSlots.length} controls on ${pendingCopyLabels.tgtLabel} will be overwritten with ${pendingCopyLabels.srcLabel}'s bindings.`
             : ''
         }
         confirmLabel={
@@ -955,6 +1014,7 @@ export default function App() {
         profiles={studio.profiles}
         activeProfileId={studio.activeProfile.id}
         tvEnabled={studio.tvEnabled}
+        capabilities={connection.telemetry?.capabilities}
         onClose={() => setCheatSheetOpen(false)}
         onJumpToControl={handleJumpToSlotControl}
       />

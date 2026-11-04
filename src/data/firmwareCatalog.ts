@@ -5,6 +5,7 @@ import {
   DeviceConnectionInfo,
   HardwareProfileId,
   HardwareSlotId,
+  HoldSlotId,
   HostOsType,
   KeyAppearance,
   KeyboardLayoutId,
@@ -15,7 +16,18 @@ import {
   defaultProfileAlias
 } from '../types/studio';
 
-export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
+export const HOLD_SLOTS: readonly HoldSlotId[] = [
+  'b1h',
+  'b2h',
+  'b3h',
+  'b4h',
+  'b5h',
+  'b6h',
+  'b7h',
+  'b8h'
+] as const;
+
+export const BASE_16_SLOTS: readonly HardwareSlotId[] = [
   'b1',
   'b2',
   'b3',
@@ -27,10 +39,35 @@ export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
   'dial',
   'enc_cw',
   'enc_ccw',
+  'push_cw',
+  'push_ccw',
   'dial2',
   'e2_cw',
   'e2_ccw'
 ] as const;
+
+export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
+  ...BASE_16_SLOTS,
+  ...HOLD_SLOTS
+] as const;
+
+export function isHoldSlot(slot: string): slot is HoldSlotId {
+  return (HOLD_SLOTS as readonly string[]).includes(slot);
+}
+
+export function hasKeyHoldCapability(
+  capabilities?: readonly string[] | null
+): boolean {
+  return Boolean(capabilities?.includes('key_hold'));
+}
+
+export function getVisibleHardwareSlots(
+  capabilities?: readonly string[] | null
+): HardwareSlotId[] {
+  return hasKeyHoldCapability(capabilities)
+    ? [...HARDWARE_SLOTS]
+    : [...BASE_16_SLOTS];
+}
 
 export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; pin: string }> = {
   b1: { short: 'Key 1', full: 'Key 1 (B1)', pin: '' },
@@ -44,9 +81,19 @@ export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; 
   dial: { short: 'K1 Press', full: 'Knob 1 Press (Dial 1)', pin: 'GPIO 25' },
   enc_cw: { short: 'K1 Right', full: 'Knob 1 Turn Right (CW)', pin: 'GPIO 32 / 33' },
   enc_ccw: { short: 'K1 Left', full: 'Knob 1 Turn Left (CCW)', pin: 'GPIO 32 / 33' },
+  push_cw: { short: 'K1 Hold+Right', full: 'Knob 1 Hold + Turn Right (Push CW)', pin: 'GPIO 25 + 32 / 33' },
+  push_ccw: { short: 'K1 Hold+Left', full: 'Knob 1 Hold + Turn Left (Push CCW)', pin: 'GPIO 25 + 32 / 33' },
   dial2: { short: 'K2 Press', full: 'Knob 2 Press (Dial 2)', pin: 'GPIO 15' },
   e2_cw: { short: 'K2 Right', full: 'Knob 2 Turn Right (CW)', pin: 'GPIO 34 / 35' },
-  e2_ccw: { short: 'K2 Left', full: 'Knob 2 Turn Left (CCW)', pin: 'GPIO 34 / 35' }
+  e2_ccw: { short: 'K2 Left', full: 'Knob 2 Turn Left (CCW)', pin: 'GPIO 34 / 35' },
+  b1h: { short: 'Key 1 Hold', full: 'Key 1 Hold (B1H · 500 ms)', pin: '' },
+  b2h: { short: 'Key 2 Hold', full: 'Key 2 Hold (B2H · 500 ms)', pin: '' },
+  b3h: { short: 'Key 3 Hold', full: 'Key 3 Hold (B3H · 500 ms)', pin: '' },
+  b4h: { short: 'Key 4 Hold', full: 'Key 4 Hold (B4H · 500 ms)', pin: '' },
+  b5h: { short: 'Key 5 Hold', full: 'Key 5 Hold (B5H · 500 ms)', pin: '' },
+  b6h: { short: 'Key 6 Hold', full: 'Key 6 Hold (B6H · 500 ms)', pin: '' },
+  b7h: { short: 'Key 7 Hold', full: 'Key 7 Hold (B7H · 500 ms)', pin: '' },
+  b8h: { short: 'Key 8 Hold', full: 'Key 8 Hold (B8H · 500 ms)', pin: '' }
 };
 
 export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
@@ -61,9 +108,19 @@ export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
   dial: 'MEDIA:MUTE',
   enc_cw: 'MEDIA:VOL_UP',
   enc_ccw: 'MEDIA:VOL_DOWN',
+  push_cw: '',
+  push_ccw: '',
   dial2: 'MEDIA:PLAY_PAUSE',
   e2_cw: 'SHORTCUT:cmd:=',
-  e2_ccw: 'SHORTCUT:cmd:-'
+  e2_ccw: 'SHORTCUT:cmd:-',
+  b1h: '',
+  b2h: '',
+  b3h: '',
+  b4h: '',
+  b5h: '',
+  b6h: '',
+  b7h: '',
+  b8h: ''
 };
 
 export const FACTORY_DEFAULT_SLOTS: Record<
@@ -85,9 +142,19 @@ export const FACTORY_DEFAULT_SLOTS: Record<
     dial: 'TV:MUTE',
     enc_cw: 'TV:VOL_UP',
     enc_ccw: 'TV:VOL_DOWN',
+    push_cw: '',
+    push_ccw: '',
     dial2: 'TV:OK',
     e2_cw: 'TV:CH_UP',
-    e2_ccw: 'TV:CH_DOWN'
+    e2_ccw: 'TV:CH_DOWN',
+    b1h: '',
+    b2h: '',
+    b3h: '',
+    b4h: '',
+    b5h: '',
+    b6h: '',
+    b7h: '',
+    b8h: ''
   }
 };
 
@@ -150,10 +217,10 @@ export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   { action: 'WIN:RUN', label: 'Run Dialog (Win+R)', shortLabel: 'Run', description: 'Windows + R command prompt', category: 'win_macro', icon: 'play-circle', color: '#ECEAE4' },
 
   // BLE:* Multi-Host Bluetooth Engine (4)
-  { action: 'BLE:HOST1', label: 'Device 1 (Studio Pad 1)', shortLabel: 'Device 1', description: 'Switch to Device 1 virtual MAC (Studio Pad 1)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
-  { action: 'BLE:HOST2', label: 'Device 2 (Studio Pad 2)', shortLabel: 'Device 2', description: 'Switch to Device 2 virtual MAC (Studio Pad 2)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
-  { action: 'BLE:HOST3', label: 'Device 3 (Studio Pad 3)', shortLabel: 'Device 3', description: 'Switch to Device 3 virtual MAC (Studio Pad 3)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
-  { action: 'BLE:NEXT_HOST', label: 'Next BLE Device (Cycle 1–3)', shortLabel: 'Next Host', description: 'Cycle active Bluetooth device (Studio Pad 1 → 2 → 3)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:HOST1', label: 'Device 1 (BertoPad 1)', shortLabel: 'Device 1', description: 'Switch to Device 1 virtual MAC (BertoPad 1)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:HOST2', label: 'Device 2 (BertoPad 2)', shortLabel: 'Device 2', description: 'Switch to Device 2 virtual MAC (BertoPad 2)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:HOST3', label: 'Device 3 (BertoPad 3)', shortLabel: 'Device 3', description: 'Switch to Device 3 virtual MAC (BertoPad 3)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:NEXT_HOST', label: 'Next BLE Device (Cycle 1–3)', shortLabel: 'Next Host', description: 'Cycle active Bluetooth device (BertoPad 1 → 2 → 3)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
 
   // TV:* SmartCast Remote (25)
   { action: 'TV:POWER', label: 'TV Power', shortLabel: 'TV Power', description: 'SmartCast power toggle (11, 2)', category: 'tv', icon: 'power', color: '#F2A33A' },

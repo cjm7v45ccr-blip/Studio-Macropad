@@ -16,6 +16,7 @@ import {
   bleSlotToProfileId
 } from '../types/studio';
 import { ToastVariant } from '../hooks/useStudioState';
+import { getVisibleHardwareSlots } from '../data/firmwareCatalog';
 import { isTvDisabledResponse, usbHardware } from '../services/usbHardwareService';
 import { DiffConfirmModal } from './DiffConfirmModal';
 import {
@@ -113,6 +114,7 @@ const KEYBOARD_LAYOUTS: { id: KeyboardLayoutId; label: string }[] = [
 type SettingsSectionTab =
   | 'all'
   | 'connection'
+  | 'display'
   | 'firmware'
   | 'wifi_tv'
   | 'preferences'
@@ -121,11 +123,61 @@ type SettingsSectionTab =
 const SETTINGS_TABS: { id: SettingsSectionTab; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'connection', label: 'Connection & Hosts' },
+  { id: 'display', label: 'Display' },
   { id: 'firmware', label: 'Firmware' },
   { id: 'wifi_tv', label: 'Wi-Fi & TV' },
   { id: 'preferences', label: 'Preferences' },
   { id: 'console', label: 'Console & Reset' }
 ];
+
+const DISPLAY_DIM_PRESETS: { label: string; seconds: number }[] = [
+  { label: 'Never', seconds: 0 },
+  { label: '30s', seconds: 30 },
+  { label: '1m', seconds: 60 },
+  { label: '2m', seconds: 120 },
+  { label: '5m', seconds: 300 },
+  { label: '15m', seconds: 900 }
+];
+
+const DISPLAY_OFF_PRESETS: { label: string; seconds: number }[] = [
+  { label: 'Never', seconds: 0 },
+  { label: '1m', seconds: 60 },
+  { label: '5m', seconds: 300 },
+  { label: '10m', seconds: 600 },
+  { label: '30m', seconds: 1800 },
+  { label: '1h', seconds: 3600 }
+];
+
+const DISPLAY_CONTRAST_PRESETS: { label: string; value: number }[] = [
+  { label: 'Low', value: 64 },
+  { label: 'Medium', value: 140 },
+  { label: 'High', value: 200 },
+  { label: 'Max', value: 255 }
+];
+
+function formatDisplayTimeout(seconds: number): string {
+  const clean = Math.max(0, Math.round(seconds));
+  if (clean === 0) return 'Never';
+  if (clean < 60) return `${clean}s`;
+  if (clean % 3600 === 0) return `${clean / 3600}h`;
+  if (clean % 60 === 0) return `${clean / 60}m`;
+  const mins = Math.floor(clean / 60);
+  const rem = clean % 60;
+  return `${mins}m ${rem}s`;
+}
+
+function formatUptime(seconds?: number): string {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
+    return '—';
+  }
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${s}s`;
+}
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   profiles,
@@ -182,6 +234,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   } | null>(null);
   const [forgetTvModalOpen, setForgetTvModalOpen] = useState(false);
 
+  // OLED Display Power & Contrast State (v4.8+ `/api/display/set`)
+  const [displayDim, setDisplayDim] = useState<number>(60);
+  const [displayOff, setDisplayOff] = useState<number>(300);
+  const [displayContrast, setDisplayContrast] = useState<number>(255);
+  const [displayBusy, setDisplayBusy] = useState<boolean>(false);
+  const [clearingCrashBusy, setClearingCrashBusy] = useState<boolean>(false);
+
   // HTTP API Security State (live from pad only — never stored in localStorage)
   const [httpToken, setHttpToken] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
@@ -210,10 +269,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const telemetry = connection.telemetry;
   const isDemo = connection.transport === 'demo';
+  const visibleSlotCount = getVisibleHardwareSlots(telemetry?.capabilities).length;
   const supportsTvToggle =
     !connection.connected ||
     !telemetry ||
     telemetry.capabilities.includes('tv_toggle');
+  const supportsDisplayPower =
+    !connection.connected ||
+    !telemetry ||
+    telemetry.capabilities.includes('display_power') ||
+    typeof telemetry.displayDimSeconds === 'number';
   const isTvModeEnabled =
     connection.connected && telemetry
       ? telemetry.tvEnabled !== false
@@ -231,6 +296,63 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setTvIp(telemetry.tvHost || '');
     setTvPort(String(telemetry.tvPort || 7345));
   }, [connection.connected, telemetry?.ssid, telemetry?.tvHost, telemetry?.tvPort]);
+
+  useEffect(() => {
+    if (!connection.connected || !telemetry) return;
+    if (typeof telemetry.displayDimSeconds === 'number') {
+      setDisplayDim(telemetry.displayDimSeconds);
+    }
+    if (typeof telemetry.displayOffSeconds === 'number') {
+      setDisplayOff(telemetry.displayOffSeconds);
+    }
+    if (typeof telemetry.displayContrast === 'number') {
+      setDisplayContrast(telemetry.displayContrast);
+    }
+  }, [
+    connection.connected,
+    telemetry?.displayDimSeconds,
+    telemetry?.displayOffSeconds,
+    telemetry?.displayContrast
+  ]);
+
+  const handleSaveDisplaySettings = async () => {
+    if (!connection.connected || displayBusy) return;
+    setDisplayBusy(true);
+    try {
+      const clampedDim = Math.max(0, Math.min(36000, Math.round(Number(displayDim) || 0)));
+      const clampedOff = Math.max(0, Math.min(36000, Math.round(Number(displayOff) || 0)));
+      const clampedContrast = Math.max(
+        0,
+        Math.min(255, Math.round(Number(displayContrast) || 0))
+      );
+      setDisplayDim(clampedDim);
+      setDisplayOff(clampedOff);
+      setDisplayContrast(clampedContrast);
+      const res = await usbHardware.setDisplaySettings({
+        dim: clampedDim,
+        off: clampedOff,
+        contrast: clampedContrast
+      });
+      onToast(res.message || 'Saved OLED display settings to BertoPad');
+    } catch (err: any) {
+      onToast(err?.message || 'Could not save OLED display settings', 'error');
+    } finally {
+      setDisplayBusy(false);
+    }
+  };
+
+  const handleClearCrashDiagnostics = async () => {
+    if (!connection.connected || clearingCrashBusy) return;
+    setClearingCrashBusy(true);
+    try {
+      const res = await usbHardware.clearCrashDiagnostics();
+      onToast(res.message || 'Cleared abnormal reset counter on BertoPad');
+    } catch (err: any) {
+      onToast(err?.message || 'Could not clear crash counter', 'error');
+    } finally {
+      setClearingCrashBusy(false);
+    }
+  };
 
   const handleSaveWifi = async () => {
     if (!wifiSsid.trim()) return;
@@ -525,6 +647,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const showConnection = settingsTab === 'all' || settingsTab === 'connection';
+  const showDisplay = settingsTab === 'all' || settingsTab === 'display';
   const showFirmware = settingsTab === 'all' || settingsTab === 'firmware';
   const showWifiTv = settingsTab === 'all' || settingsTab === 'wifi_tv';
   const showPreferences = settingsTab === 'all' || settingsTab === 'preferences';
@@ -540,7 +663,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Settings & Diagnostics
               </h1>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Device diagnostics, firmware updates, Bluetooth hosts, Wi-Fi, SmartCast TV pairing, preferences, and serial console.
+                Device diagnostics, OLED display power, firmware updates, Bluetooth hosts, Wi-Fi, SmartCast TV pairing, preferences, and serial console.
               </p>
             </div>
             {connection.connected && (
@@ -813,8 +936,120 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </div>
                       <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
                         {connection.connected && telemetry && heapBytes > 0
-                          ? `${heapBytes.toLocaleString()} B free`
+                          ? typeof telemetry.minFreeHeap === 'number' && telemetry.minFreeHeap > 0
+                            ? `Min ${(telemetry.minFreeHeap / 1024).toFixed(1)} KB`
+                            : `${heapBytes.toLocaleString()} B free`
                           : 'ESP32 heap'}
+                      </div>
+                    </div>
+
+                    {/* NVS Flash Entry Meter (v4.8+ `nvs_used` / `nvs_free`) */}
+                    {(() => {
+                      const hasNvs =
+                        connection.connected &&
+                        typeof telemetry?.nvsUsed === 'number' &&
+                        typeof telemetry?.nvsFree === 'number';
+                      const nvsUsed = hasNvs ? Math.max(0, telemetry!.nvsUsed!) : 0;
+                      const nvsFree = hasNvs ? Math.max(0, telemetry!.nvsFree!) : 0;
+                      const nvsTotal = nvsUsed + nvsFree;
+                      const nvsPct =
+                        hasNvs && nvsTotal > 0
+                          ? Math.min(100, Math.round((nvsUsed / nvsTotal) * 100))
+                          : 0;
+                      const isHighNvs = hasNvs && nvsPct >= 85;
+
+                      return (
+                        <div className="sm:col-span-4 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-[var(--text-muted)]">
+                              NVS storage
+                            </span>
+                            <span
+                              className={`font-mono text-[11px] font-semibold tabular-nums ${
+                                !hasNvs
+                                  ? 'text-[var(--text-muted)]'
+                                  : isHighNvs
+                                  ? 'text-[#D97706]'
+                                  : 'text-[var(--accent)]'
+                              }`}
+                            >
+                              {hasNvs ? `${nvsPct}% used` : '—'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                              {hasNvs
+                                ? `${nvsUsed.toLocaleString()} / ${nvsTotal.toLocaleString()} entries`
+                                : '—'}
+                            </span>
+                            <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                              {hasNvs
+                                ? `${nvsFree.toLocaleString()} free`
+                                : connection.connected
+                                ? 'Requires FW v4.8+'
+                                : 'Connect USB to read'}
+                            </span>
+                          </div>
+
+                          <div
+                            role="progressbar"
+                            aria-label="NVS storage usage"
+                            aria-valuemin={0}
+                            aria-valuemax={hasNvs && nvsTotal > 0 ? nvsTotal : 100}
+                            aria-valuenow={hasNvs ? nvsUsed : 0}
+                            className="h-2 w-full rounded-full bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-hidden"
+                          >
+                            <div
+                              style={{
+                                width: hasNvs
+                                  ? `${Math.max(nvsUsed > 0 ? 2 : 0, nvsPct)}%`
+                                  : '0%'
+                              }}
+                              className={`h-full rounded-full transition-opacity ${
+                                isHighNvs ? 'bg-[#D97706]' : 'bg-[var(--accent)]'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Uptime & Boot Health (v4.8+ `uptime_s` / `boot_reason` / `abnormal_resets`) */}
+                    <div className="sm:col-span-2 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-[var(--text-muted)]">Uptime & boot</span>
+                        {connection.connected &&
+                          typeof telemetry?.abnormalResets === 'number' &&
+                          telemetry.abnormalResets > 0 && (
+                            <button
+                              type="button"
+                              disabled={clearingCrashBusy}
+                              onClick={handleClearCrashDiagnostics}
+                              title="Clear abnormal reset counter in NVS"
+                              className="font-mono text-[10px] text-[#D97706] hover:underline cursor-pointer disabled:opacity-45"
+                            >
+                              Clear ({telemetry.abnormalResets})
+                            </button>
+                          )}
+                      </div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                        {connection.connected ? formatUptime(telemetry?.uptimeSeconds) : '—'}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] truncate tabular-nums">
+                        {connection.connected && telemetry
+                          ? telemetry.abnormalResets && telemetry.abnormalResets > 0
+                            ? `${telemetry.abnormalResets} crash${
+                                telemetry.abnormalResets === 1 ? '' : 'es'
+                              }${
+                                telemetry.lastAbnormalReset
+                                  ? ` · ${telemetry.lastAbnormalReset}`
+                                  : ''
+                              }`
+                            : telemetry.bootReason
+                            ? `Boot: ${telemetry.bootReason}`
+                            : 'Nominal boot'
+                          : 'ESP32 reset health'}
                       </div>
                     </div>
                   </div>
@@ -921,17 +1156,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         firmwareVersion:
                           connection.firmwareVersion === 'v1.0.0' ||
                           connection.firmwareVersion === '1.0.0'
-                            ? '4.7.0'
+                            ? '4.8.0'
                             : '1.0.0'
                       })
                     }
                     className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
-                    title="Simulate older connected firmware in Demo Mode to test the firmware update flow"
+                    title="Simulate older connected firmware in Demo Mode to test capability gating and firmware update flow"
                   >
                     Simulate FW (
                     {connection.firmwareVersion === 'v1.0.0' ||
                     connection.firmwareVersion === '1.0.0'
-                      ? 'Restore 4.7.0'
+                      ? 'Restore 4.8.0'
                       : 'Set 1.0.0'}
                     )
                   </button>
@@ -1067,7 +1302,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-[var(--text-muted)]">
-                  3 independent Bluetooth host profiles (<span className="font-mono">Studio Pad 1–3</span>) with per-device OS mapping so shortcuts like Copy map automatically to ⌘C or Ctrl+C.
+                  3 independent Bluetooth host profiles (<span className="font-mono">BertoPad 1–3</span>) with per-device OS mapping so shortcuts like Copy map automatically to ⌘C or Ctrl+C.
                 </p>
               </div>
             </div>
@@ -1128,7 +1363,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </span>
                       </div>
                       <div className="font-mono text-[11px] text-[var(--text-muted)] mt-0.5 truncate tabular-nums">
-                        Studio Pad {slot}
+                        BertoPad {slot}
                       </div>
                     </button>
                     {isActive && (
@@ -1184,6 +1419,252 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             })}
           </div>
         </div>
+        )}
+
+        {/* Display Section (OLED Power & Contrast — dim, off, contrast) */}
+        {showDisplay && (
+          <section
+            aria-labelledby="settings-display-heading"
+            className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4"
+          >
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="space-y-1 min-w-0">
+                <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+                  <Monitor className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                  <h2 id="settings-display-heading">Display</h2>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                  Configure 128×64 SSD1306 OLED idle dimming, screen-off sleep timeout, and peak brightness contrast stored on the pad.
+                </p>
+              </div>
+
+              <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums shrink-0">
+                {connection.connected && telemetry
+                  ? supportsDisplayPower
+                    ? `Dim ${formatDisplayTimeout(
+                        telemetry.displayDimSeconds ?? 60
+                      )} · Off ${formatDisplayTimeout(
+                        telemetry.displayOffSeconds ?? 300
+                      )} · Contrast ${telemetry.displayContrast ?? 255}`
+                    : 'Requires firmware v4.8+'
+                  : 'Connect USB pad to manage'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              {/* Dim Timeout (`dim`, 0–36000s) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label
+                    htmlFor="display-dim-seconds"
+                    className="text-xs font-medium text-[var(--text-primary)]"
+                  >
+                    Dim after
+                  </label>
+                  <span className="font-mono text-[11px] text-[var(--accent)] font-semibold tabular-nums">
+                    {formatDisplayTimeout(displayDim)}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1 flex-wrap">
+                  {DISPLAY_DIM_PRESETS.map(p => {
+                    const active = displayDim === p.seconds;
+                    return (
+                      <button
+                        key={p.seconds}
+                        type="button"
+                        disabled={!connection.connected || !supportsDisplayPower || displayBusy}
+                        onClick={() => setDisplayDim(p.seconds)}
+                        className={`px-2.5 py-1 rounded-lg font-mono text-[11px] transition-colors cursor-pointer whitespace-nowrap shrink-0 tabular-nums disabled:opacity-45 ${
+                          active
+                            ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
+                            : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    id="display-dim-seconds"
+                    type="number"
+                    min={0}
+                    max={36000}
+                    step={5}
+                    disabled={!connection.connected || !supportsDisplayPower || displayBusy}
+                    value={displayDim}
+                    onChange={e =>
+                      setDisplayDim(
+                        Math.max(0, Math.min(36000, Math.round(Number(e.target.value) || 0)))
+                      )
+                    }
+                    className="w-28 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-xs text-[var(--text-primary)] tabular-nums disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
+                  />
+                  <span className="text-[11px] text-[var(--text-muted)] tabular-nums">
+                    seconds (0 = never, max 36,000)
+                  </span>
+                </div>
+              </div>
+
+              {/* Screen Off Timeout (`off`, 0–36000s) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label
+                    htmlFor="display-off-seconds"
+                    className="text-xs font-medium text-[var(--text-primary)]"
+                  >
+                    Turn off after
+                  </label>
+                  <span className="font-mono text-[11px] text-[var(--accent)] font-semibold tabular-nums">
+                    {formatDisplayTimeout(displayOff)}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1 flex-wrap">
+                  {DISPLAY_OFF_PRESETS.map(p => {
+                    const active = displayOff === p.seconds;
+                    return (
+                      <button
+                        key={p.seconds}
+                        type="button"
+                        disabled={!connection.connected || !supportsDisplayPower || displayBusy}
+                        onClick={() => setDisplayOff(p.seconds)}
+                        className={`px-2.5 py-1 rounded-lg font-mono text-[11px] transition-colors cursor-pointer whitespace-nowrap shrink-0 tabular-nums disabled:opacity-45 ${
+                          active
+                            ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
+                            : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    id="display-off-seconds"
+                    type="number"
+                    min={0}
+                    max={36000}
+                    step={10}
+                    disabled={!connection.connected || !supportsDisplayPower || displayBusy}
+                    value={displayOff}
+                    onChange={e =>
+                      setDisplayOff(
+                        Math.max(0, Math.min(36000, Math.round(Number(e.target.value) || 0)))
+                      )
+                    }
+                    className="w-28 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-xs text-[var(--text-primary)] tabular-nums disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
+                  />
+                  <span className="text-[11px] text-[var(--text-muted)] tabular-nums">
+                    seconds (0 = never, max 36,000)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* OLED Contrast (`contrast`, 0–255) */}
+            <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <label
+                  htmlFor="display-contrast-range"
+                  className="text-xs font-medium text-[var(--text-primary)]"
+                >
+                  Active OLED contrast
+                </label>
+                <span className="font-mono text-[11px] text-[var(--accent)] font-semibold tabular-nums">
+                  {displayContrast} / 255 ({Math.round((displayContrast / 255) * 100)}%)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+                <input
+                  id="display-contrast-range"
+                  type="range"
+                  min={0}
+                  max={255}
+                  step={1}
+                  disabled={!connection.connected || !supportsDisplayPower || displayBusy}
+                  value={displayContrast}
+                  onChange={e =>
+                    setDisplayContrast(
+                      Math.max(0, Math.min(255, Math.round(Number(e.target.value) || 0)))
+                    )
+                  }
+                  className="flex-1 min-w-[140px] accent-[var(--accent)] cursor-pointer disabled:opacity-45"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={255}
+                  disabled={!connection.connected || !supportsDisplayPower || displayBusy}
+                  value={displayContrast}
+                  onChange={e =>
+                    setDisplayContrast(
+                      Math.max(0, Math.min(255, Math.round(Number(e.target.value) || 0)))
+                    )
+                  }
+                  aria-label="OLED contrast numeric value (0 to 255)"
+                  className="w-20 px-2.5 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-xs text-[var(--text-primary)] tabular-nums disabled:opacity-50 focus:outline-none focus:border-[var(--accent)]"
+                />
+                <div className="flex items-center gap-1 shrink-0">
+                  {DISPLAY_CONTRAST_PRESETS.map(preset => {
+                    const active = displayContrast === preset.value;
+                    return (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        disabled={!connection.connected || !supportsDisplayPower || displayBusy}
+                        onClick={() => setDisplayContrast(preset.value)}
+                        className={`px-2 py-1 rounded-lg font-mono text-[11px] transition-colors cursor-pointer whitespace-nowrap shrink-0 tabular-nums disabled:opacity-45 ${
+                          active
+                            ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
+                            : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {displayDim > 0 && displayOff > 0 && displayOff < displayDim && (
+              <div className="text-[11px] text-[#D97706] tabular-nums">
+                Screen-off timeout ({formatDisplayTimeout(displayOff)}) is shorter than dim timeout ({formatDisplayTimeout(displayDim)}), so the OLED will turn off before dimming.
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 flex-wrap">
+              <button
+                type="button"
+                disabled={!connection.connected || !supportsDisplayPower || displayBusy}
+                onClick={() => {
+                  setDisplayDim(60);
+                  setDisplayOff(300);
+                  setDisplayContrast(255);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Defaults (1m · 5m · 255)
+              </button>
+
+              <button
+                type="button"
+                disabled={!connection.connected || !supportsDisplayPower || displayBusy}
+                onClick={handleSaveDisplaySettings}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                {displayBusy && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
+                <span>{displayBusy ? 'Saving…' : 'Save Display'}</span>
+              </button>
+            </div>
+          </section>
         )}
 
         {/* Wi-Fi & TV Section */}
@@ -1913,7 +2394,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <DiffConfirmModal
         isOpen={resetProfilesModalOpen}
         title="Reset all 4 profiles to universal defaults?"
-        description="All 56 controls across Host 1, Host 2, Host 3, and TV will be restored to universal factory actions. Wi-Fi and TV pairing remain untouched."
+        description={`All ${visibleSlotCount * 4} controls across Host 1, Host 2, Host 3, and TV will be restored to universal factory actions. Wi-Fi and TV pairing remain untouched.`}
         confirmLabel="Reset All 4 Profiles"
         tone="danger"
         requireWord="RESET"
