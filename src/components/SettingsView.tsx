@@ -252,19 +252,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   useEffect(() => {
     if (!connection.connected || !telemetry?.capabilities?.includes('motion')) {
       setMotionTelemetry(null);
-      return;
     }
-    const fetchGyro = async () => {
-      try {
-        const res = await usbHardware.readMotion();
-        if (res?.ok) {
-          setMotionTelemetry(res);
-        }
-      } catch {}
-    };
-    fetchGyro();
-    const timer = setInterval(fetchGyro, 1000);
-    return () => clearInterval(timer);
   }, [connection.connected, telemetry?.capabilities]);
 
   const calcPitch = (ax = 0, ay = 0, az = 1000) => {
@@ -1098,9 +1086,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             <Compass className="w-3.5 h-3.5 text-[var(--accent)]" />
                             <span className="text-[11px] font-bold text-[var(--text-primary)]">Gyroscope &amp; Orientation (GY-521)</span>
                           </div>
-                          <span className="font-mono text-[10px] text-[var(--accent)] font-semibold tabular-nums">
-                            {motionTelemetry ? `${motionTelemetry.temp_c ?? 25}°C` : 'Reading...'}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const res = await usbHardware.readMotion();
+                                if (res?.ok) setMotionTelemetry(res);
+                              } catch {}
+                            }}
+                            className="px-2 py-1 rounded bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[10px] text-[var(--accent)] font-semibold cursor-pointer"
+                          >
+                            {motionTelemetry ? `${motionTelemetry.temp_c ?? 25}°C (Refresh)` : 'Read Gyro'}
+                          </button>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
