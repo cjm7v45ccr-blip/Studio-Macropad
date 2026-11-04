@@ -25,7 +25,9 @@ import {
   Usb,
   Laptop,
   Tv,
-  ChevronDown
+  ChevronDown,
+  Save,
+  LoaderCircle
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -138,9 +140,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
 
   return (
-    <header className="shrink-0 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] px-3.5 py-2 flex items-center justify-between gap-4 select-none z-40">
+    <header className="shrink-0 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] px-3.5 py-2 flex flex-wrap items-center justify-between gap-2.5 select-none z-40">
       {/* Left: Brand + Profile Tabs + Grouped Profile Actions */}
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-3 min-w-0 w-full xl:w-auto xl:flex-1">
         <div className="flex items-center gap-2 shrink-0">
           <img
             src={resolvedTheme === 'light' ? '/logo-mark-light.svg' : '/logo-mark-dark.svg'}
@@ -386,13 +388,13 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Center: Widened Global Search Field */}
       {searchSlot && (
-        <div className="hidden md:flex items-center min-w-[220px] flex-1 max-w-xl">
+        <div className="hidden md:flex items-center min-w-[160px] flex-1 max-w-xl">
           {searchSlot}
         </div>
       )}
 
       {/* Right: Undo/Redo + Connection Action */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center justify-between sm:justify-end flex-wrap sm:flex-nowrap gap-2 shrink-0 w-full md:w-auto">
         <div className="hidden lg:flex items-center rounded-xl bg-[var(--bg-input)] p-0.5">
           <button
             type="button"
@@ -418,70 +420,51 @@ export const TopBar: React.FC<TopBarProps> = ({
           const isDemo = connection.transport === 'demo';
           const isSaving = isSyncingUsb || syncStatus === 'Saving';
           const needsSave = dirty || syncStatus === 'Out of sync';
-          const activeRev = connection.rev ?? currentRev;
-
-          if (!connection.connected) {
-            return (
-              <button
-                type="button"
-                onClick={connection.connecting ? onOpenConnectModal : onConnectUsbPad}
-                style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shadow-xs hover:opacity-95"
-                title={
-                  connection.connecting
-                    ? 'Opening USB port & syncing profiles…'
-                    : 'Connect BertoPad via USB'
-                }
-              >
-                <Usb className="w-3.5 h-3.5 shrink-0" />
-                <span>
-                  {connection.connecting
-                    ? 'Connecting…'
-                    : needsSave
-                    ? 'Connect · Draft'
-                    : 'Connect'}
-                </span>
-              </button>
-            );
-          }
+          const saveLabel = isDemo ? 'Save to demo' : 'Save to device';
+          const status = isSaving
+            ? (isSyncingUsb ? 'Syncing…' : 'Saving…')
+            : needsSave
+            ? 'Unsaved changes'
+            : connection.connected
+            ? (isDemo ? 'Saved to demo' : 'Saved to device')
+            : 'Offline workspace';
 
           return (
-            <button
-              type="button"
-              onClick={needsSave ? onSaveToDevice : onOpenConnectModal}
-              style={
-                needsSave
-                  ? { backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }
-                  : undefined
-              }
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                needsSave
-                  ? 'shadow-xs hover:opacity-95'
-                  : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)]'
-              }`}
-              title={
-                needsSave
-                  ? `Push unsaved changes to ${connection.deviceName}`
-                  : `${connection.deviceName} · ${connection.firmwareVersion} · rev ${activeRev}`
-              }
-            >
-              <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  needsSave
-                    ? 'bg-[var(--accent-contrast)]'
-                    : 'bg-[var(--accent)]'
-                }`}
-              />
-              <span className="tabular-nums">
-                {isSaving
-                  ? `Saving · ${isDemo ? 'Demo' : 'USB'}`
-                  : needsSave
-                  ? `Save · ${isDemo ? 'Demo' : 'USB'}`
-                  : isDemo
-                  ? `Demo · ${connection.firmwareVersion}`
-                  : 'Synced · USB'}
-              </span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={connection.connected || connection.connecting ? onOpenConnectModal : onConnectUsbPad}
+                aria-label={connection.connected ? `${isDemo ? 'Demo mode' : 'USB connected'} — connection details` : 'Connect BertoPad via USB'}
+                title={connection.connected
+                  ? `${connection.deviceName} · ${connection.firmwareVersion} · rev ${connection.rev ?? currentRev}. Open connection details.`
+                  : 'Connect BertoPad via USB'}
+                className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-primary)] whitespace-nowrap cursor-pointer"
+              >
+                {connection.connecting ? <LoaderCircle className="w-3.5 h-3.5 animate-spin" /> : <Usb className="w-3.5 h-3.5" />}
+                {connection.connecting ? 'Connecting…' : connection.connected ? (isDemo ? 'Demo mode' : 'USB connected') : 'Connect USB'}
+              </button>
+              <div role="status" aria-live="polite" className="order-last sm:order-none w-full sm:w-auto sm:flex-1 xl:flex-none min-w-0 flex sm:block items-center justify-between gap-2 text-left sm:text-right text-[10px] sm:text-[11px] leading-tight">
+                <p className={needsSave ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-primary)]'}>{status}</p>
+                <p className="text-[var(--text-muted)] sm:mt-1">
+                  {connection.connected ? (isDemo ? 'No physical device' : 'Edits auto-save') : 'Not saved to a device'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onSaveToDevice}
+                disabled={!connection.connected || connection.connecting || isSaving || !needsSave}
+                title={!connection.connected
+                  ? 'Connect USB first to save your draft to a device'
+                  : isSaving ? 'Wait for the current sync to finish'
+                  : !needsSave ? 'All profile changes are already saved; connected edits auto-save'
+                  : `Save all draft profiles to ${isDemo ? 'the demo device' : connection.deviceName}`}
+                style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shadow-xs hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isSaving ? <LoaderCircle className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {saveLabel}
+              </button>
+            </>
           );
         })()}
       </div>

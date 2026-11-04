@@ -25,7 +25,6 @@ import {
   describeFirmwareAction,
   firmwareActionToBinding,
   formatDurationCompact,
-  getActionTestAvailability,
   getMacroCanonicalSignature,
   getShortcutsForHostOs,
   getVisibleHardwareSlots,
@@ -976,11 +975,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                     entry.kind === 'sequence_template' ||
                     (entry.kind === 'assigned' && Boolean(entry.action));
 
-                  const testAvailability =
-                    entry.action && entry.binding
-                      ? getActionTestAvailability(entry.action, connection)
-                      : { canTest: false, reason: 'Unassigned slot' };
-
                   return (
                     <div
                       key={entry.id}
@@ -1042,13 +1036,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           <button
                             type="button"
                             onClick={() => onTestBinding(entry.binding!)}
-                            disabled={!testAvailability.canTest}
-                            title={
-                              testAvailability.canTest
-                                ? `Test "${entry.title}" now`
-                                : testAvailability.reason ||
-                                  'Connect USB pad or start Demo Mode to test'
-                            }
+                            title={`Preview & test "${entry.title}"`}
                             className="p-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
                           >
                             <Play className="w-3 h-3" />
