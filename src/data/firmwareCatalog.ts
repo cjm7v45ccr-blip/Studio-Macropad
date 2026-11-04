@@ -46,9 +46,16 @@ export const BASE_16_SLOTS: readonly HardwareSlotId[] = [
   'e2_ccw'
 ] as const;
 
+export const MOTION_SLOTS: readonly ('g_shake' | 'g_down' | 'g_up')[] = [
+  'g_shake',
+  'g_down',
+  'g_up'
+] as const;
+
 export const HARDWARE_SLOTS: readonly HardwareSlotId[] = [
   ...BASE_16_SLOTS,
-  ...HOLD_SLOTS
+  ...HOLD_SLOTS,
+  ...MOTION_SLOTS
 ] as const;
 
 export function isHoldSlot(slot: string): slot is HoldSlotId {
@@ -61,12 +68,21 @@ export function hasKeyHoldCapability(
   return Boolean(capabilities?.includes('key_hold'));
 }
 
+export function hasMotionCapability(
+  capabilities?: readonly string[] | null
+): boolean {
+  return Boolean(capabilities?.includes('motion'));
+}
+
 export function getVisibleHardwareSlots(
   capabilities?: readonly string[] | null
 ): HardwareSlotId[] {
-  return hasKeyHoldCapability(capabilities)
-    ? [...HARDWARE_SLOTS]
-    : [...BASE_16_SLOTS];
+  const hasHold = hasKeyHoldCapability(capabilities);
+  const hasMot = hasMotionCapability(capabilities);
+  let slots: HardwareSlotId[] = [...BASE_16_SLOTS];
+  if (hasHold) slots = [...slots, ...HOLD_SLOTS];
+  if (hasMot) slots = [...slots, ...MOTION_SLOTS];
+  return slots;
 }
 
 export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; pin: string }> = {
@@ -93,7 +109,10 @@ export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; 
   b5h: { short: 'Key 5 Hold', full: 'Key 5 Hold (B5H · 500 ms)', pin: '' },
   b6h: { short: 'Key 6 Hold', full: 'Key 6 Hold (B6H · 500 ms)', pin: '' },
   b7h: { short: 'Key 7 Hold', full: 'Key 7 Hold (B7H · 500 ms)', pin: '' },
-  b8h: { short: 'Key 8 Hold', full: 'Key 8 Hold (B8H · 500 ms)', pin: '' }
+  b8h: { short: 'Key 8 Hold', full: 'Key 8 Hold (B8H · 500 ms)', pin: '' },
+  g_shake: { short: 'Motion: Shake', full: 'Motion: Shake (GY-521)', pin: 'I2C SDA/SCL' },
+  g_down: { short: 'Motion: Face Down', full: 'Motion: Face Down Tilt', pin: 'I2C SDA/SCL' },
+  g_up: { short: 'Motion: Face Up', full: 'Motion: Face Up Tilt', pin: 'I2C SDA/SCL' }
 };
 
 export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
@@ -120,7 +139,10 @@ export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
   b5h: '',
   b6h: '',
   b7h: '',
-  b8h: ''
+  b8h: '',
+  g_shake: '',
+  g_down: '',
+  g_up: ''
 };
 
 export const FACTORY_DEFAULT_SLOTS: Record<

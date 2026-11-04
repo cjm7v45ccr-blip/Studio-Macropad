@@ -103,7 +103,10 @@ export type HardwareSlotId =
   | 'b5h'
   | 'b6h'
   | 'b7h'
-  | 'b8h';
+  | 'b8h'
+  | 'g_shake'
+  | 'g_down'
+  | 'g_up';
 export type HardwareFlashSlot = HardwareSlotId | 'mode';
 
 export type SyncStatusPill = 'Synced' | 'Saving' | 'Out of sync' | 'Disconnected';

@@ -3058,6 +3058,49 @@ class PadLinkService {
     return res;
   }
 
+  public async setMotionSettings(opts: {
+    enabled?: boolean;
+    wake?: boolean;
+    sensitivity?: number;
+  }): Promise<{ ok: boolean; message?: string }> {
+    const res = await this.call({
+      path: '/api/motion/set',
+      ...opts
+    });
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Failed to save motion settings.');
+    }
+    await this.fetchStatus().catch(() => {});
+    return res;
+  }
+
+  public async calibrateMotion(): Promise<{ ok: boolean; message?: string }> {
+    const res = await this.call(
+      {
+        path: '/api/motion/calibrate'
+      },
+      5000
+    );
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Motion calibration failed.');
+    }
+    return res;
+  }
+
+  public async readMotion(): Promise<{
+    ok: boolean;
+    ax?: number;
+    ay?: number;
+    az?: number;
+    temp_c?: number;
+    face_up?: number;
+    message?: string;
+  }> {
+    return await this.call({
+      path: '/api/motion/read'
+    });
+  }
+
   public async resetHardwareDefaults(): Promise<{ ok: boolean; rev?: number; message: string }> {
     const res = await this.call({
       path: '/api/device/reset-settings',

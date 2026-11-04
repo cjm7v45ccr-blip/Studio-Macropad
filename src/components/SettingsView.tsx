@@ -52,6 +52,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { FirmwareBinGuideModal } from './FirmwareBinGuideModal';
+import { MotionSettings } from './MotionSettings';
 
 interface SettingsViewProps {
   profiles: StudioProfile[];
@@ -1665,6 +1666,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
           </section>
+        )}
+
+        {showDisplay && (
+          <MotionSettings
+            motion={telemetry?.motion}
+            supported={Boolean(telemetry?.capabilities?.includes('motion') || !connection.connected)}
+            connected={connection.connected}
+            onToast={onToast}
+          />
         )}
 
         {/* Wi-Fi & TV Section */}
