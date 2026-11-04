@@ -241,30 +241,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [displayContrast, setDisplayContrast] = useState<number>(255);
   const [displayBusy, setDisplayBusy] = useState<boolean>(false);
   const [clearingCrashBusy, setClearingCrashBusy] = useState<boolean>(false);
-  const [motionTelemetry, setMotionTelemetry] = useState<{
-    ax?: number;
-    ay?: number;
-    az?: number;
-    temp_c?: number;
-    face_up?: number;
-  } | null>(null);
 
-  useEffect(() => {
-    if (!connection.connected || !telemetry?.capabilities?.includes('motion')) {
-      setMotionTelemetry(null);
-    }
-  }, [connection.connected, telemetry?.capabilities]);
-
-  const calcPitch = (ax = 0, ay = 0, az = 1000) => {
-    const denom = Math.sqrt(ax * ax + az * az);
-    if (denom === 0) return 0;
-    return Math.atan2(ay, denom) * (180 / Math.PI);
-  };
-
-  const calcRoll = (ax = 0, ay = 0, az = 1000) => {
-    const denom = az !== 0 ? az : 1;
-    return Math.atan2(-ax, denom) * (180 / Math.PI);
-  };
 
   // HTTP API Security State (live from pad only — never stored in localStorage)
   const [httpToken, setHttpToken] = useState('');
@@ -1078,88 +1055,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Gyroscope & Motion Sensor Real-Time Telemetry Card */}
-                    {connection.connected && telemetry?.capabilities?.includes('motion') && (
-                      <div className="sm:col-span-4 p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <Compass className="w-3.5 h-3.5 text-[var(--accent)]" />
-                            <span className="text-[11px] font-bold text-[var(--text-primary)]">Gyroscope &amp; Orientation (GY-521)</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                const res = await usbHardware.readMotion();
-                                if (res?.ok) setMotionTelemetry(res);
-                              } catch {}
-                            }}
-                            className="px-2 py-1 rounded bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[10px] text-[var(--accent)] font-semibold cursor-pointer"
-                          >
-                            {motionTelemetry ? `${motionTelemetry.temp_c ?? 25}°C (Refresh)` : 'Read Gyro'}
-                          </button>
-                        </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
-                          <div className="space-y-1 font-mono text-[11px]">
-                            <div className="flex justify-between text-[var(--text-muted)]">
-                              <span>AX / AY / AZ:</span>
-                              <span className="text-[var(--text-primary)] font-semibold">
-                                {motionTelemetry ? `${motionTelemetry.ax ?? 0}, ${motionTelemetry.ay ?? 0}, ${motionTelemetry.az ?? 1000} mg` : '—'}
-                              </span>
-                            </div>
-                            <div className="flex justify-between text-[var(--text-muted)]">
-                              <span>Alignment:</span>
-                              <span className="text-[var(--accent)] font-semibold">
-                                {motionTelemetry?.face_up !== undefined
-                                  ? motionTelemetry.face_up > 0.5
-                                    ? 'Face Up (Flat)'
-                                    : motionTelemetry.face_up < -0.5
-                                    ? 'Face Down'
-                                    : 'Tilted'
-                                  : '—'}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1 font-mono text-[11px] bg-[var(--bg-panel)] p-2.5 rounded-lg border border-[var(--border-subtle)]">
-                            <div className="flex justify-between">
-                              <span className="text-[var(--text-muted)]">Pitch:</span>
-                              <span className="text-[var(--text-primary)] font-semibold">
-                                {motionTelemetry ? `${calcPitch(motionTelemetry.ax, motionTelemetry.ay, motionTelemetry.az).toFixed(1)}°` : '0.0°'}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-[var(--text-muted)]">Roll:</span>
-                              <span className="text-[var(--text-primary)] font-semibold">
-                                {motionTelemetry ? `${calcRoll(motionTelemetry.ax, motionTelemetry.ay, motionTelemetry.az).toFixed(1)}°` : '0.0°'}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Visual Horizon / Tilt Indicator */}
-                          <div className="flex flex-col items-center justify-center p-2 bg-[var(--bg-panel)] rounded-lg border border-[var(--border-subtle)]">
-                            <div className="text-[10px] text-[var(--text-muted)] mb-1">Tilt &amp; Horizon</div>
-                            <div className="relative w-16 h-16 rounded-full bg-[var(--bg-input)] border border-[var(--border-strong)] flex items-center justify-center overflow-hidden">
-                              <div
-                                className="absolute inset-0 flex items-center justify-center transition-transform duration-100"
-                                style={{
-                                  transform: `rotate(${calcRoll(motionTelemetry?.ax || 0, motionTelemetry?.ay || 0, motionTelemetry?.az || 1000)}deg)`
-                                }}
-                              >
-                                <div className="w-full h-0.5 bg-[var(--accent)] opacity-80" />
-                              </div>
-                              <div
-                                className="absolute w-3 h-3 rounded-full bg-[var(--accent)] shadow-xs transition-all duration-100"
-                                style={{
-                                  transform: `translate(${Math.max(-20, Math.min(20, (motionTelemetry?.ax || 0) / 25))}px, ${Math.max(-20, Math.min(20, (motionTelemetry?.ay || 0) / 25))}px)`
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {connection.connected && telemetry && (
