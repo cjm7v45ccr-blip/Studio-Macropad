@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   BleHostProfileId,
   BleHostSlot,
@@ -21,12 +21,14 @@ import {
   Pencil,
   Check,
   X,
-  Cpu,
   Usb,
   Laptop,
   Tv,
-  ChevronDown,
-  LoaderCircle
+  MoreHorizontal,
+  Search,
+  Loader2,
+  Circle,
+  RotateCcw
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -51,7 +53,6 @@ interface TopBarProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  onSaveToDevice: () => void;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   onOpenSetupWizard?: () => void;
   tvEnabled?: boolean;
@@ -63,6 +64,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   resolvedTheme = 'dark',
   syncStatus,
   currentRev,
+  dirty,
   isSyncingUsb,
   onConnectUsbPad,
   onOpenConnectModal,
@@ -80,367 +82,338 @@ export const TopBar: React.FC<TopBarProps> = ({
   tvEnabled,
   searchSlot
 }) => {
-  const [renamingId, setRenamingId] = useState<HardwareProfileId | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
-  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
-  const [osMenuOpen, setOsMenuOpen] = useState(false);
-  const utilityRef = useRef<HTMLDivElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
+  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+  const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
+  const hwActiveProfile = connection.telemetry?.activeProfile;
+  const activeIsHost = isBleHostProfile(activeProfile.id);
+  const activeHostOs: HostOsType = activeIsHost
+    ? hostOsMap[activeProfile.id as BleHostProfileId]
+    : 'mac';
+
+  // Outside click for options menu
   useEffect(() => {
-    if (!copyMenuOpen && !osMenuOpen) return;
+    if (!menuOpen) return;
     const handleOutside = (e: MouseEvent) => {
-      if (utilityRef.current && !utilityRef.current.contains(e.target as Node)) {
-        setCopyMenuOpen(false);
-        setOsMenuOpen(false);
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
       }
     };
     window.addEventListener('mousedown', handleOutside);
     return () => window.removeEventListener('mousedown', handleOutside);
-  }, [copyMenuOpen, osMenuOpen]);
+  }, [menuOpen]);
 
-  const startRename = (prof: StudioProfile) => {
-    setCopyMenuOpen(false);
-    setOsMenuOpen(false);
-    setRenamingId(prof.id);
-    setRenameDraft(prof.name);
+  // Alt+1/2/3/4 shortcuts to switch profiles
+  useEffect(() => {
+    const handleKeyShortcut = (e: KeyboardEvent) => {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        const num = parseInt(e.key, 10);
+        if (num >= 1 && num <= profiles.length) {
+          const target = profiles[num - 1];
+          if (target && !(target.id === 'TV' && !isTvEnabled)) {
+            e.preventDefault();
+            onSelectProfile(target.id);
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyShortcut);
+    return () => window.removeEventListener('keydown', handleKeyShortcut);
+  }, [profiles, isTvEnabled, onSelectProfile]);
+
+  const startRename = () => {
+    setMenuOpen(false);
+    setRenaming(true);
+    setRenameDraft(activeProfile.name);
     setRenameError(null);
   };
 
-  const handleRenameInputChange = (val: string) => {
-    setRenameDraft(val);
-    const check = validateFirmwareAlias(val);
-    setRenameError(check.valid ? null : check.error);
-  };
-
   const commitRename = async () => {
-    if (!renamingId) return;
     const check = validateFirmwareAlias(renameDraft);
     if (!check.valid) {
       setRenameError(check.error);
-      onRenameProfile(renamingId, renameDraft);
       return;
     }
-    const ok = await onRenameProfile(renamingId, renameDraft);
+    const ok = await onRenameProfile(activeProfile.id, renameDraft);
     if (ok !== false) {
-      setRenamingId(null);
+      setRenaming(false);
       setRenameError(null);
     }
   };
 
-  const hwActiveProfile = connection.telemetry?.activeProfile;
-  const activeIsHost = isBleHostProfile(activeProfile.id);
-  const activeHostOs: HostOsType = isBleHostProfile(activeProfile.id)
-    ? hostOsMap[activeProfile.id]
-    : 'mac';
+  // Sync Status computation
+  const isSaving = isSyncingUsb || syncStatus === 'Saving';
+  const needsSave = dirty || syncStatus === 'Out of sync';
+  const syncState: 'saved' | 'saving' | 'unsaved' | 'offline' = isSaving
+    ? 'saving'
+    : needsSave
+    ? 'unsaved'
+    : connection.connected
+    ? 'saved'
+    : 'offline';
 
-  const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
+  const SYNC_CONFIG = {
+    saved: { icon: <Check size={14} className="shrink-0" />, text: 'Saved', cls: 'text-emerald-400' },
+    saving: { icon: <Loader2 size={14} className="shrink-0 animate-spin" />, text: 'Saving…', cls: 'text-zinc-400' },
+    unsaved: { icon: <Circle size={10} fill="currentColor" className="shrink-0" />, text: 'Unsaved', cls: 'text-amber-400' },
+    offline: { icon: <Circle size={10} className="shrink-0" />, text: 'Offline', cls: 'text-zinc-500' }
+  };
+  const sInfo = SYNC_CONFIG[syncState];
+
+  // Connection State
+  const connState: 'offline' | 'connecting' | 'connected' = connection.connecting
+    ? 'connecting'
+    : connection.connected
+    ? 'connected'
+    : 'offline';
+  
+  const DOT_COLOR = {
+    offline: 'bg-zinc-500',
+    connecting: 'bg-amber-400 animate-pulse',
+    connected: 'bg-emerald-400'
+  };
+
+  const connLabel = connection.connected
+    ? connection.transport === 'demo'
+      ? 'Demo mode'
+      : connection.deviceName || 'USB connected'
+    : 'Connect pad';
+
+  const iconBtnStyle = "flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-30 transition cursor-pointer";
 
   return (
-    <header className="shrink-0 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] px-3.5 py-2 flex flex-wrap items-center justify-between gap-2.5 select-none z-40">
-      {/* Left: Brand + Profile Tabs + Grouped Profile Actions */}
-      <div className="flex items-center gap-3 min-w-0 w-full xl:w-auto xl:flex-1">
-        <div className="flex items-center gap-2 shrink-0">
+    <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-panel)] px-4 select-none shrink-0 shadow-xs">
+      {/* Left: Brand + Device Tabs + Options Menu */}
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center gap-2 pr-1 shrink-0">
           <img
             src={resolvedTheme === 'light' ? '/logo-mark-light.svg' : '/logo-mark-dark.svg'}
             alt="BertoPad"
             referrerPolicy="no-referrer"
-            className={`w-7 h-7 rounded-lg object-contain shrink-0 ${
-              connection.connecting || isSyncingUsb || syncStatus === 'Saving'
-                ? 'animate-[spin_3s_linear_infinite]'
-                : ''
-            }`}
+            className="h-7 w-7 rounded-lg object-contain shrink-0"
           />
-          <span className="text-sm font-bold tracking-tight hidden xl:inline whitespace-nowrap">
+          <span className="hidden text-[15px] font-bold tracking-tight lg:inline">
             <span className="text-[var(--text-primary)]">Berto</span>
-            <span className="text-[var(--accent)]">Pad</span>
+            <span className="text-amber-400">Pad</span>
           </span>
         </div>
 
-        {/* Profile / Host Switcher (Single-Accent Filled Segmented Control) */}
-        <div className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-input)] overflow-x-auto min-w-0">
+        {/* Device Tabs */}
+        <div role="tablist" aria-label="Devices" className="flex items-center gap-0.5 rounded-xl bg-white/5 p-1 overflow-x-auto min-w-0">
           {profiles.map(prof => {
-            const isTvDisabledTab = prof.id === 'TV' && !isTvEnabled;
-            const selected = !isTvDisabledTab && prof.id === activeProfile.id;
-            const isLiveOnPad =
-              !isTvDisabledTab && connection.connected && hwActiveProfile === prof.id;
-            const Icon = isBleHostProfile(prof.id) ? Laptop : Tv;
-            const shortTag = profileShortTag(prof.id);
-            const profOsLabel = isBleHostProfile(prof.id)
-              ? ` · ${hostOsShortLabel(hostOsMap[prof.id])}`
-              : '';
-            const tabLabel = isTvDisabledTab
-              ? prof.name.trim().toUpperCase() === 'TV'
-                ? 'TV (off)'
-                : `${prof.name} (off)`
-              : prof.name;
+            const isTvDisabled = prof.id === 'TV' && !isTvEnabled;
+            // If TV is disabled, hide or render greyed out per user preference ("Hide TV when it’s off, or grey it with a tooltip")
+            if (isTvDisabled) return null;
+
+            const selected = prof.id === activeProfile.id;
+            const isLive = connection.connected && hwActiveProfile === prof.id;
+            const isTv = prof.id === 'TV';
+            const Icon = isTv ? Tv : Laptop;
 
             return (
               <button
                 key={prof.id}
+                role="tab"
+                aria-selected={selected}
                 type="button"
-                aria-disabled={isTvDisabledTab || undefined}
                 onClick={() => onSelectProfile(prof.id)}
-                title={
-                  isTvDisabledTab
-                    ? `${tabLabel} — TV mode is off in Settings`
-                    : `${prof.name} (${shortTag}${profOsLabel})${
-                        isLiveOnPad ? ' — Active on hardware' : ''
-                      }`
-                }
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all whitespace-nowrap shrink-0 min-w-0 ${
-                  isTvDisabledTab
-                    ? 'text-[var(--text-muted)] opacity-60 hover:opacity-80 font-medium cursor-not-allowed'
-                    : selected
-                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-2xs font-semibold cursor-pointer'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium cursor-pointer'
+                title={`${prof.name} (${profileShortTag(prof.id)})${isLive ? ' — Active on hardware' : ''}`}
+                className={`flex h-8 items-center gap-2 rounded-lg px-2.5 sm:px-3 text-xs sm:text-sm font-medium transition cursor-pointer whitespace-nowrap shrink-0 ${
+                  selected
+                    ? 'bg-white/10 text-white font-semibold shadow-2xs'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
                 }`}
               >
-                <Icon
-                  className={`w-3.5 h-3.5 shrink-0 ${
-                    selected ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
-                  }`}
-                />
-                <span className="truncate max-w-[96px] sm:max-w-[128px] tabular-nums">
-                  {tabLabel}
-                </span>
-                {isLiveOnPad && (
-                  <span className="text-[10px] text-[var(--accent)] font-medium shrink-0">
-                    · Live
-                  </span>
+                <Icon size={15} className={`shrink-0 ${selected ? 'text-amber-400' : 'text-zinc-500'}`} />
+                <span className="max-w-[7rem] sm:max-w-[9rem] truncate">{prof.name}</span>
+                {isLive && (
+                  <span aria-label="Live on hardware" className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
                 )}
               </button>
             );
           })}
         </div>
 
-        {/* Grouped & Labeled Rename / Copy / Device OS Cluster */}
-        {renamingId ? (
-          <div className="relative flex items-center gap-1 shrink-0">
-            <input
-              type="text"
-              value={renameDraft}
-              onChange={e => handleRenameInputChange(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') commitRename();
-                if (e.key === 'Escape') {
-                  setRenamingId(null);
-                  setRenameError(null);
-                }
-              }}
-              autoFocus
-              aria-label="Rename profile"
-              placeholder="1–20 chars"
-              className={`w-28 sm:w-32 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border text-xs text-[var(--text-primary)] focus:outline-none ${
-                renameError ? 'border-[var(--border-strong)]' : 'border-[var(--accent)]'
-              }`}
-            />
-            <button
-              type="button"
-              onClick={commitRename}
-              title="Save name"
-              className="p-1.5 rounded-md text-[var(--accent)] hover:bg-[var(--bg-input)] cursor-pointer"
-            >
-              <Check className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setRenamingId(null);
-                setRenameError(null);
-              }}
-              title="Cancel rename"
-              className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-[var(--bg-input)] cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ) : (
-          <div
-            className="relative hidden sm:flex items-center p-0.5 rounded-xl bg-[var(--bg-input)] shrink-0"
-            ref={utilityRef}
+        {/* Device Options Menu Button (...) */}
+        <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(prev => !prev)}
+            title={`Options for ${activeProfile.name}`}
+            aria-label="Device options"
+            className={iconBtnStyle}
           >
-            {activeIsHost && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCopyMenuOpen(false);
-                    setOsMenuOpen(prev => !prev);
-                  }}
-                  title={`Operating system for ${activeProfile.name}: ${hostOsFullLabel(
-                    activeHostOs
-                  )}`}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <span>{hostOsShortLabel(activeHostOs)}</span>
-                  <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
-                </button>
-                <span
-                  aria-hidden="true"
-                  className="w-px h-3.5 bg-[var(--border-subtle)] mx-0.5"
-                />
-              </>
-            )}
+            <MoreHorizontal size={18} />
+          </button>
 
-            <button
-              type="button"
-              onClick={() => startRename(activeProfile)}
-              title={`Rename ${activeProfile.name}`}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <Pencil className="w-3 h-3 shrink-0" />
-              <span className="hidden 2xl:inline">Rename</span>
-            </button>
+          {menuOpen && (
+            <div className="absolute top-full left-0 mt-1.5 w-56 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-1.5 shadow-2xl z-50 animate-popover-in text-xs">
+              <div className="px-2.5 py-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-white/5 mb-1">
+                {activeProfile.name}
+              </div>
 
-            <span
-              aria-hidden="true"
-              className="w-px h-3.5 bg-[var(--border-subtle)] mx-0.5"
-            />
+              <button
+                type="button"
+                onClick={startRename}
+                className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-zinc-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              >
+                <span className="flex items-center gap-2"><Pencil size={14} className="text-zinc-400" /> Rename profile</span>
+                <span className="font-mono text-[10px] text-zinc-500">{profileShortTag(activeProfile.id)}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setOsMenuOpen(false);
-                setCopyMenuOpen(prev => !prev);
-              }}
-              title={`Copy ${activeProfile.name} bindings to another profile`}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <Copy className="w-3 h-3 shrink-0" />
-              <span className="hidden 2xl:inline">Copy</span>
-            </button>
+              <div className="my-1 border-t border-white/5" />
 
-            {/* Per-Device OS Popover */}
-            {osMenuOpen && activeIsHost && (
-              <div className="absolute top-full left-0 mt-1.5 w-48 p-1.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] shadow-xl z-50 animate-popover-in">
-                <div className="px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]">
-                  {activeProfile.name} OS
-                </div>
-                {(['mac', 'windows', 'linux'] as const).map(osOpt => {
-                  const isCurrent = activeHostOs === osOpt;
-                  return (
+              <div className="px-2.5 py-1 text-[11px] font-medium text-zinc-400">Copy bindings to…</div>
+              {profiles
+                .filter(p => p.id !== activeProfile.id && !(p.id === 'TV' && !isTvEnabled))
+                .map(target => (
+                  <button
+                    key={target.id}
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onRequestCopyProfile(activeProfile.id, target.id);
+                    }}
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                  >
+                    <span className="truncate">{target.name}</span>
+                    <span className="font-mono text-[10px] text-zinc-500">{profileShortTag(target.id)}</span>
+                  </button>
+                ))}
+
+              {activeIsHost && (
+                <>
+                  <div className="my-1 border-t border-white/5" />
+                  <div className="px-2.5 py-1 text-[11px] font-medium text-zinc-400">Host OS</div>
+                  {(['mac', 'windows', 'linux'] as const).map(osOpt => (
                     <button
                       key={osOpt}
                       type="button"
                       onClick={() => {
                         onSetHostOs(activeProfile.id as BleHostProfileId, osOpt);
-                        setOsMenuOpen(false);
+                        setMenuOpen(false);
                       }}
-                      className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer whitespace-nowrap ${
-                        isCurrent
-                          ? 'bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] font-semibold'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)]'
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
+                        activeHostOs === osOpt ? 'bg-amber-400/15 text-amber-300 font-semibold' : 'text-zinc-300 hover:text-white hover:bg-white/10'
                       }`}
                     >
                       <span>{hostOsFullLabel(osOpt)}</span>
-                      {isCurrent && <Check className="w-3.5 h-3.5 text-[var(--accent)]" />}
+                      {activeHostOs === osOpt && <Check size={14} className="text-amber-400" />}
                     </button>
-                  );
-                })}
-              </div>
-            )}
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
-            {/* Copy Profile Popover */}
-            {copyMenuOpen && (
-              <div className="absolute top-full right-0 mt-1.5 w-52 p-1.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] shadow-xl z-50 animate-popover-in">
-                <div className="px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]">
-                  Copy {activeProfile.name} to…
-                </div>
-                {profiles
-                  .filter(p => p.id !== activeProfile.id)
-                  .map(target => {
-                    const TargetIcon = isBleHostProfile(target.id) ? Laptop : Tv;
-                    const targetLabel =
-                      target.id === 'TV' && !isTvEnabled
-                        ? target.name.trim().toUpperCase() === 'TV'
-                          ? 'TV (off)'
-                          : `${target.name} (off)`
-                        : target.name;
-                    return (
-                      <button
-                        key={target.id}
-                        type="button"
-                        onClick={() => {
-                          setCopyMenuOpen(false);
-                          onRequestCopyProfile(activeProfile.id, target.id);
-                        }}
-                        className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer whitespace-nowrap"
-                      >
-                        <span className="flex items-center gap-2 min-w-0">
-                          <TargetIcon className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" />
-                          <span className="truncate font-medium">{targetLabel}</span>
-                        </span>
-                        <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">
-                          {profileShortTag(target.id)}
-                        </span>
-                      </button>
-                    );
-                  })}
-              </div>
-            )}
+        {/* Inline Rename Input Modal / Popover if active */}
+        {renaming && (
+          <div className="absolute left-4 top-16 z-50 flex items-center gap-1.5 rounded-xl bg-[var(--bg-elevated)] border border-amber-400/50 p-2 shadow-xl">
+            <input
+              type="text"
+              value={renameDraft}
+              onChange={e => {
+                setRenameDraft(e.target.value);
+                setRenameError(validateFirmwareAlias(e.target.value).error);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') setRenaming(false);
+              }}
+              autoFocus
+              placeholder="Profile name (1-20 chars)"
+              className="w-40 px-2 py-1 rounded-lg bg-black/40 border border-white/10 text-xs text-white focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={commitRename}
+              className="p-1.5 rounded-lg bg-amber-400 text-black hover:bg-amber-300 cursor-pointer"
+            >
+              <Check size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setRenaming(false)}
+              className="p-1.5 rounded-lg bg-white/10 text-zinc-300 hover:text-white cursor-pointer"
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
       </div>
 
-      {/* Center: Widened Global Search Field */}
-      {searchSlot && (
-        <div className="hidden md:flex items-center min-w-[160px] flex-1 max-w-xl">
+      {/* Center: Search / Global Action Search */}
+      {searchSlot ? (
+        <div className="mx-auto hidden md:flex items-center min-w-[200px] flex-1 max-w-md px-2">
           {searchSlot}
+        </div>
+      ) : (
+        <div className="mx-auto hidden md:flex items-center flex-1 max-w-md px-2">
+          <div className="flex h-9 w-full items-center gap-2 rounded-xl bg-white/5 px-3 text-sm text-zinc-400 hover:bg-white/10 transition cursor-pointer">
+            <Search size={16} className="text-zinc-500" />
+            <span>Search actions & macros</span>
+            <kbd className="ml-auto rounded bg-white/10 px-1.5 py-0.5 text-xs font-mono text-zinc-400">
+              {isMac ? '⌘K' : 'Ctrl K'}
+            </kbd>
+          </div>
         </div>
       )}
 
-      {/* Right: Undo/Redo + Connection Action */}
-      <div className="flex items-center justify-end gap-2 shrink-0 ml-auto md:ml-0">
-        <div className="hidden lg:flex items-center rounded-xl bg-[var(--bg-input)] p-0.5">
-          <button
-            type="button"
-            disabled={!canUndo}
-            onClick={onUndo}
-            title="Undo (Ctrl+Z)"
-            className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 cursor-pointer"
-          >
-            <Undo2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            disabled={!canRedo}
-            onClick={onRedo}
-            title="Redo (Ctrl+Shift+Z)"
-            className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 cursor-pointer"
-          >
-            <Redo2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
+      {/* Right: Save Status Chip + Undo/Redo + Connection Pill */}
+      <div className="flex items-center gap-1.5 shrink-0 ml-auto md:ml-0">
+        <span className={`mr-1 hidden items-center gap-1.5 text-xs font-medium sm:flex ${sInfo.cls}`}>
+          {sInfo.icon}
+          <span>{sInfo.text}</span>
+        </span>
 
         <button
           type="button"
-          onClick={connection.connected || connection.connecting ? onOpenConnectModal : onConnectUsbPad}
-          aria-label={
-            connection.connected
-              ? `${connection.transport === 'demo' ? 'Demo mode' : 'USB connected'} — connection details`
-              : 'Connect BertoPad via USB'
-          }
-          title={
-            connection.connected
-              ? `${connection.deviceName} · ${connection.firmwareVersion} · rev ${connection.rev ?? currentRev}. Open connection details.`
-              : 'Connect BertoPad via USB'
-          }
-          className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-primary)] whitespace-nowrap cursor-pointer"
+          disabled={!canUndo}
+          onClick={onUndo}
+          title="Undo (Ctrl+Z)"
+          aria-label="Undo"
+          className={iconBtnStyle}
         >
-          {connection.connecting ? (
-            <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Usb className="w-3.5 h-3.5" />
-          )}
-          {connection.connecting
-            ? 'Connecting…'
-            : connection.connected
-            ? connection.transport === 'demo'
-              ? 'Demo mode'
-              : 'USB connected'
-            : 'Connect USB'}
+          <Undo2 size={18} />
         </button>
+
+        <button
+          type="button"
+          disabled={!canRedo}
+          onClick={onRedo}
+          title="Redo (Ctrl+Shift+Z)"
+          aria-label="Redo"
+          className={iconBtnStyle}
+        >
+          <Redo2 size={18} />
+        </button>
+
+        {connState === 'offline' ? (
+          <button
+            type="button"
+            onClick={onConnectUsbPad}
+            className="ml-2 flex h-9 items-center rounded-xl bg-amber-400 px-4 text-xs sm:text-sm font-semibold text-black hover:bg-amber-300 transition cursor-pointer whitespace-nowrap shadow-xs"
+          >
+            Connect pad
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenConnectModal}
+            title="Open connection details (USB, Bluetooth, Wi-Fi, Firmware)"
+            aria-label="Connection details"
+            className="ml-2 flex h-9 items-center gap-2 rounded-xl bg-white/5 px-3 text-xs sm:text-sm text-zinc-200 hover:bg-white/10 transition cursor-pointer whitespace-nowrap border border-white/5"
+          >
+            <span className={`h-2 w-2 rounded-full ${DOT_COLOR[connState]}`} />
+            <span className="font-medium truncate max-w-[120px]">{connLabel}</span>
+          </button>
+        )}
       </div>
     </header>
   );

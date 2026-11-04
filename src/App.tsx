@@ -633,7 +633,6 @@ export default function App() {
         canRedo={studio.canRedo}
         onUndo={studio.undo}
         onRedo={studio.redo}
-        onSaveToDevice={handleSaveToDevice}
         onSwitchBleHost={handleSwitchBleHost}
         onOpenSetupWizard={handleOpenSetupWizard}
         tvEnabled={studio.tvEnabled}

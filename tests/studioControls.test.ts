@@ -18,7 +18,7 @@ const base: React.ComponentProps<typeof TopBar> = {
   canUndo: false, canRedo: false,
   onConnectUsbPad: noop, onStartDemoMode: noop, onOpenConnectModal: noop, onPullFromUsb: noop,
   onSetHostOs: noop, onSelectProfile: noop, onRenameProfile: () => true, onRequestCopyProfile: noop,
-  onUndo: noop, onRedo: noop, onSaveToDevice: noop, onSwitchBleHost: noop
+  onUndo: noop, onRedo: noop, onSwitchBleHost: noop
 };
 function header(overrides: Partial<typeof base> = {}) {
   return renderToStaticMarkup(React.createElement(TopBar, { ...base, ...overrides }));
@@ -29,25 +29,24 @@ function button(markup: string, label: string) {
   return match;
 }
 
-test('offline draft shows Connect USB without manual save button or background save status text', () => {
+test('offline draft shows Connect pad and Unsaved status chip', () => {
   const html = header({ dirty: true, syncStatus: 'Out of sync' });
-  assert.match(html, /Connect USB/);
+  assert.match(html, /Connect pad/);
+  assert.match(html, /Unsaved/);
   assert.doesNotMatch(html, /Save to device/);
-  assert.doesNotMatch(html, /Unsaved changes/);
-  assert.doesNotMatch(html, /Not saved to a device/);
 });
 
-test('connected state shows USB connected without manual save button or status clutter', () => {
-  const html = header({ connection: { ...disconnected, connected: true, transport: 'webserial' }, dirty: true, syncStatus: 'Out of sync' });
-  assert.match(html, /USB connected/);
+test('connected state shows device connection pill and status chip without clutter', () => {
+  const html = header({ connection: { ...disconnected, connected: true, transport: 'webserial', deviceName: 'Test pad' }, dirty: true, syncStatus: 'Out of sync' });
+  assert.match(html, /Test pad/);
+  assert.match(html, /Unsaved/);
   assert.doesNotMatch(html, /Save to device/);
-  assert.doesNotMatch(html, /Edits auto-save/);
 });
 
-test('demo state is clearly labeled Demo mode without physical USB or manual save controls', () => {
+test('demo state is clearly labeled Demo mode in connection pill', () => {
   const html = header({ connection: { ...disconnected, connected: true, transport: 'demo' }, syncStatus: 'Synced' });
   assert.match(html, /Demo mode/);
-  assert.doesNotMatch(html, /USB connected/);
+  assert.match(html, /Saved/);
   assert.doesNotMatch(html, /Save to demo/);
 });
 
