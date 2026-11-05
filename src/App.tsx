@@ -175,6 +175,13 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (connection.connected) {
+      setConnectOverlayOpen(false);
+      setConnectModalOpen(false);
+    }
+  }, [connection.connected]);
+
+  useEffect(() => {
     const unsubConn = usbHardware.onConnectionChange(info => {
       setConnection(info);
     });
