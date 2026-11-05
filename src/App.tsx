@@ -62,6 +62,7 @@ import { GlobalMacroSearch } from './components/GlobalMacroSearch';
 import { LibraryView } from './components/LibraryView';
 import { SettingsView } from './components/SettingsView';
 import { UsbConnectModal } from './components/UsbConnectModal';
+import { ConnectOverlay } from './components/ConnectOverlay';
 import { SetupWizardModal, WizardCompletionPayload } from './components/SetupWizardModal';
 import { SyncConflictModal } from './components/SyncConflictModal';
 import { DiffConfirmModal, DiffPreviewRow } from './components/DiffConfirmModal';
@@ -156,6 +157,7 @@ export default function App() {
   const [externalMacroTarget, setExternalMacroTarget] =
     useState<MacroEditorExternalTarget | null>(null);
   const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [connectOverlayOpen, setConnectOverlayOpen] = useState(false);
   const [connectModalError, setConnectModalError] = useState<string | null>(null);
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const [setupWizardTrigger, setSetupWizardTrigger] = useState<'hardware' | 'manual'>(
@@ -264,27 +266,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalEsc);
   }, [activeRepeatJob, handleStopRepeat]);
 
-  const handleConnectUsbPad = useCallback(async () => {
-    if (!usbHardware.browserSupportsWebSerial) {
-      setConnectModalError(
-        'Web Serial is not supported in this browser — open this site in Chrome or Edge on desktop over HTTPS, or try demo mode.'
-      );
-      setConnectModalOpen(true);
-      return;
-    }
-
-    try {
-      setConnectModalError(null);
-      await usbHardware.connectWebSerial();
-    } catch (err: any) {
-      const msg =
-        err?.message ||
-        'Could not open USB port — close the Serial Monitor or any other serial tool holding the port.';
-      setConnectModalError(msg);
-      setConnectModalOpen(true);
-      showToast(msg, 'error');
-    }
-  }, [showToast]);
+  const handleConnectUsbPad = useCallback(() => {
+    setConnectOverlayOpen(true);
+  }, []);
 
   const handleStartDemoMode = useCallback(async () => {
     try {
@@ -1068,6 +1052,15 @@ export default function App() {
         connection={connection}
         onPullFromUsb={handlePullFromUsb}
         onOpenSetupWizard={handleOpenSetupWizard}
+      />
+
+      {/* Minimal Full-Screen Connection Overlay */}
+      <ConnectOverlay
+        isOpen={connectOverlayOpen}
+        onClose={() => setConnectOverlayOpen(false)}
+        onConnectSuccess={() => showToast('Connected to BertoPad via USB')}
+        onStartDemo={handleStartDemoMode}
+        resolvedTheme={resolvedTheme}
       />
 
       {/* Guided Hardware & Multi-OS Setup Wizard */}
