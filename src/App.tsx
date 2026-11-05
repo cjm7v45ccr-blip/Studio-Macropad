@@ -157,7 +157,7 @@ export default function App() {
   const [externalMacroTarget, setExternalMacroTarget] =
     useState<MacroEditorExternalTarget | null>(null);
   const [connectModalOpen, setConnectModalOpen] = useState(false);
-  const [connectOverlayOpen, setConnectOverlayOpen] = useState(false);
+  const [connectOverlayOpen, setConnectOverlayOpen] = useState(!usbHardware.info.connected);
   const [connectModalError, setConnectModalError] = useState<string | null>(null);
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const [setupWizardTrigger, setSetupWizardTrigger] = useState<'hardware' | 'manual'>(
