@@ -17,6 +17,7 @@ import {
   bleSlotToProfileId
 } from '../types/studio';
 import { ToastVariant } from '../hooks/useStudioState';
+import { STUDIO_VERSION, FIRMWARE_INO_FILENAME, FIRMWARE_SOURCE_LABEL } from '../utils/version';
 import { getVisibleHardwareSlots } from '../data/firmwareCatalog';
 import { isTvDisabledResponse, usbHardware } from '../services/usbHardwareService';
 import { DiffConfirmModal } from './DiffConfirmModal';
@@ -92,6 +93,7 @@ interface SettingsViewProps {
   onEnterHardwareSetupMode?: () => Promise<void> | void;
   onExportBackupFile?: () => Promise<void> | void;
   onJumpToMotionSlot?: (slot: MotionSlotId) => void;
+  onOpenAbout?: () => void;
   onToast: (msg: string, variant?: ToastVariant) => void;
 }
 
@@ -210,6 +212,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onEnterHardwareSetupMode,
   onExportBackupFile,
   onJumpToMotionSlot,
+  onOpenAbout,
   onToast
 }) => {
   const [firmwareBinGuideOpen, setFirmwareBinGuideOpen] = useState<boolean>(false);
@@ -337,6 +340,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     telemetry?.displayOffSeconds,
     telemetry?.displayContrast
   ]);
+
+  const handleCopyDiagnostics = () => {
+    const fullDeviceId = connection.deviceId || currentDeviceId || '';
+    const liveRev =
+      connection.connected && typeof connection.rev === 'number'
+        ? connection.rev
+        : currentRev;
+    const diagReport = [
+      `=== BERTOPAD DIAGNOSTICS REPORT ===`,
+      `Timestamp: ${new Date().toISOString()}`,
+      `Device Name: ${connection.deviceName || 'ESP32 BertoPad'}`,
+      `Device ID: ${fullDeviceId || '—'}`,
+      `Firmware Version: v${connection.firmwareVersion || STUDIO_VERSION.replace('v', '')} (Rev ${liveRev})`,
+      `Transport: ${connection.transport}`,
+      `Connected: ${connection.connected}`,
+      `Capabilities: ${telemetry?.capabilities?.join(', ') || 'none'}`,
+      `Boot Reason: ${telemetry?.bootReason || 'Nominal'}`,
+      `Abnormal Resets: ${telemetry?.abnormalResets ?? 0}`,
+      `NVS Used/Free: ${telemetry?.nvsUsed ?? '—'} / ${telemetry?.nvsFree ?? '—'}`,
+      `Free Heap: ${telemetry?.freeHeap ? `${(telemetry.freeHeap / 1024).toFixed(1)} KB` : '—'}`,
+      `Uptime: ${telemetry?.uptimeSeconds ? formatUptime(telemetry.uptimeSeconds) : '—'}`,
+      `Motion Sensor: ${telemetry?.motion?.present ? `Present (Enabled: ${telemetry.motion.enabled}, Sensitivity: ${telemetry.motion.sensitivity})` : 'Not present'}`,
+      `===================================`
+    ].join('\n');
+
+    navigator.clipboard.writeText(diagReport).then(() => {
+      onToast('Copied full diagnostics report to clipboard');
+    }).catch(() => {
+      onToast('Could not copy diagnostics report', 'error');
+    });
+  };
 
   const handleSaveDisplaySettings = async () => {
     if (!connection.connected || displayBusy) return;
@@ -618,19 +652,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleDownloadV47Source = async () => {
     setSourceBusy(true);
     try {
-      const res = await fetch('/firmware-source/StudioMacroPad_v4.7.0.ino');
+      const res = await fetch(`/firmware-source/${FIRMWARE_INO_FILENAME}`);
       if (!res.ok) throw new Error('Could not load firmware source sketch');
       const code = await res.text();
       const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'StudioMacroPad_v4.7.0.ino';
+      a.download = FIRMWARE_INO_FILENAME;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      onToast('Downloaded StudioMacroPad_v4.7.0.ino');
+      onToast(`Downloaded ${FIRMWARE_INO_FILENAME}`);
     } catch (err: any) {
       onToast(err?.message || 'Failed to download C++ sketch', 'error');
     } finally {
@@ -641,11 +675,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleCopyV47Source = async () => {
     setSourceBusy(true);
     try {
-      const res = await fetch('/firmware-source/StudioMacroPad_v4.7.0.ino');
+      const res = await fetch(`/firmware-source/${FIRMWARE_INO_FILENAME}`);
       if (!res.ok) throw new Error('Could not load firmware source sketch');
       const code = await res.text();
       await navigator.clipboard.writeText(code);
-      onToast('Copied StudioMacroPad_v4.7.0.ino to clipboard');
+      onToast(`Copied ${FIRMWARE_INO_FILENAME} to clipboard`);
     } catch (err: any) {
       onToast(err?.message || 'Could not copy C++ sketch', 'error');
     } finally {
@@ -820,30 +854,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   )}
                 </div>
 
-                {connection.connected && (
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    disabled={diagRefreshing}
-                    onClick={async () => {
-                      setDiagRefreshing(true);
-                      try {
-                        await usbHardware.fetchStatus();
-                        onToast('Refreshed live hardware diagnostics');
-                      } catch (err: any) {
-                        onToast(err?.message || 'Could not query BertoPad status', 'error');
-                      } finally {
-                        setDiagRefreshing(false);
-                      }
-                    }}
-                    title="Poll /api/status from BertoPad right now (also auto-updates every 4s)"
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap"
+                    onClick={handleCopyDiagnostics}
+                    title="Copy full diagnostics report to clipboard"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    <RefreshCw
-                      className={`w-3 h-3 ${diagRefreshing ? 'animate-spin text-[var(--accent)]' : ''}`}
-                    />
-                    <span>Refresh</span>
+                    <Copy className="w-3 h-3 text-[var(--accent)]" />
+                    <span>Copy diagnostics</span>
                   </button>
-                )}
+                  {connection.connected && (
+                    <button
+                      type="button"
+                      disabled={diagRefreshing}
+                      onClick={async () => {
+                        setDiagRefreshing(true);
+                        try {
+                          await usbHardware.fetchStatus();
+                          onToast('Refreshed live hardware diagnostics');
+                        } catch (err: any) {
+                          onToast(err?.message || 'Could not query BertoPad status', 'error');
+                        } finally {
+                          setDiagRefreshing(false);
+                        }
+                      }}
+                      title="Poll /api/status from BertoPad right now (also auto-updates every 4s)"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      <RefreshCw
+                        className={`w-3 h-3 ${diagRefreshing ? 'animate-spin text-[var(--accent)]' : ''}`}
+                      />
+                      <span>Refresh</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -2455,6 +2500,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         }}
         onCancel={() => setResetProfilesModalOpen(false)}
       />
+
+      {/* About BertoPad Studio */}
+      <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+            About BertoPad Studio ({STUDIO_VERSION})
+          </h2>
+          <p className="text-xs text-[var(--text-muted)]">
+            View app version, open-source license notices, changelog, and third-party trademark information.
+          </p>
+        </div>
+        {onOpenAbout && (
+          <button
+            type="button"
+            onClick={onOpenAbout}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--accent-soft)] border border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <span>View About &amp; Licenses</span>
+          </button>
+        )}
+      </div>
 
       <FirmwareBinGuideModal
         isOpen={firmwareBinGuideOpen}

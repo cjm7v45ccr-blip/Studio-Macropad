@@ -449,7 +449,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               }`}
             >
               <span className="font-mono text-[11px] whitespace-nowrap shrink-0">
-                Hold · 500 ms
+                Hold (Fixed 500ms)
               </span>
               <span className="truncate text-[11px] text-[var(--text-secondary)]">
                 {holdDesc}

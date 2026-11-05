@@ -1151,7 +1151,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
         {encoderIndex === 1 && (
           <div className="flex items-center gap-1 text-[10px] text-[#A3A6AD] text-center max-w-[178px] truncate">
-            <span className="font-mono text-[9px] text-[#A3A6AD]/75 shrink-0">Hold:</span>
+            <span className="font-mono text-[9px] text-[#A3A6AD]/75 shrink-0">Push+turn:</span>
             <button
               type="button"
               onClick={() => triggerEncoderHoldSpin('ccw')}
@@ -1216,7 +1216,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const holdConflict = Boolean(holdSlot && hasConflict(holdSlot));
 
     return (
-      <div key={kid} className="flex flex-col items-center gap-1.5">
+      <div key={kid} className="flex flex-col items-center gap-1.5 group relative">
         <button
           type="button"
           aria-label={`${badgeText}: ${cfg.appearance.label}`}
@@ -1261,6 +1261,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               : ''
           }`}
         >
+          {holdBinding.value && (
+            <span aria-label="Hold action assigned" title="Hold action assigned" className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-amber-400" />
+          )}
           <div className="w-full flex items-center justify-between">
             <span
               className={`font-mono text-[9px] sm:text-[10px] leading-none font-medium tabular-nums ${
@@ -1297,7 +1300,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </div>
 
           <span
-            className={`text-[11px] sm:text-xs font-medium truncate max-w-full tracking-tight ${
+            className={`text-[11px] sm:text-xs font-medium line-clamp-2 text-center whitespace-normal break-words max-w-full tracking-tight leading-tight ${
               isUnassigned ? 'text-[#A3A6AD]' : 'text-[#ECEAE4]'
             }`}
           >
@@ -1315,7 +1318,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 : `Key ${index + 1} Hold (500 ms) — Unassigned`
             }
             onClick={() => activateKeyHoldControl(actionKid)}
-            className={`w-[86px] sm:w-[96px] xl:w-[106px] 2xl:w-[112px] px-2 py-1 rounded-lg bg-[#1E2128] border flex items-center justify-between gap-1 text-left select-none transition-colors duration-150 cursor-pointer ${
+            className={`w-[86px] sm:w-[96px] xl:w-[106px] 2xl:w-[112px] px-2 py-1 rounded-lg bg-[#1E2128] border items-center justify-between gap-1 text-left select-none transition-all duration-150 cursor-pointer ${
+              isHoldFlashed || isHoldSelected || isSelected || holdBinding.value
+                ? 'flex'
+                : 'hidden group-hover:flex'
+            } ${
               isHoldFlashed
                 ? 'border-[#F2A33A] bg-[#F2A33A]/15 text-[#ECEAE4]'
                 : isHoldSelected
