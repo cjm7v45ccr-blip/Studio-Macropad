@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   BleHostProfileId,
   BleHostSlot,
@@ -28,7 +28,10 @@ import {
   Search,
   Loader2,
   Circle,
-  RotateCcw
+  Wifi,
+  Bluetooth,
+  Cpu,
+  PowerOff
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -54,6 +57,7 @@ interface TopBarProps {
   onUndo: () => void;
   onRedo: () => void;
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
+  onDisconnect?: () => Promise<void> | void;
   onOpenSetupWizard?: () => void;
   tvEnabled?: boolean;
   searchSlot?: React.ReactNode;
@@ -79,6 +83,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   canRedo,
   onUndo,
   onRedo,
+  onDisconnect,
   tvEnabled,
   searchSlot
 }) => {
@@ -86,7 +91,10 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [renameDraft, setRenameDraft] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [connPopoverOpen, setConnPopoverOpen] = useState(false);
+  
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const connPopoverRef = useRef<HTMLDivElement | null>(null);
 
   const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
   const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
@@ -96,19 +104,22 @@ export const TopBar: React.FC<TopBarProps> = ({
     ? hostOsMap[activeProfile.id as BleHostProfileId]
     : 'mac';
 
-  // Outside click for options menu
+  // Outside click for menus
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !connPopoverOpen) return;
     const handleOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
+      if (connPopoverRef.current && !connPopoverRef.current.contains(e.target as Node)) {
+        setConnPopoverOpen(false);
+      }
     };
     window.addEventListener('mousedown', handleOutside);
     return () => window.removeEventListener('mousedown', handleOutside);
-  }, [menuOpen]);
+  }, [menuOpen, connPopoverOpen]);
 
-  // Alt+1/2/3/4 shortcuts to switch profiles
+  // Alt+1/2/3 shortcuts to switch profiles
   useEffect(() => {
     const handleKeyShortcut = (e: KeyboardEvent) => {
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
@@ -207,7 +218,6 @@ export const TopBar: React.FC<TopBarProps> = ({
         <div role="tablist" aria-label="Devices" className="flex items-center gap-0.5 rounded-xl bg-white/5 p-1 overflow-x-auto min-w-0">
           {profiles.map(prof => {
             const isTvDisabled = prof.id === 'TV' && !isTvEnabled;
-            // If TV is disabled, hide or render greyed out per user preference ("Hide TV when it’s off, or grey it with a tooltip")
             if (isTvDisabled) return null;
 
             const selected = prof.id === activeProfile.id;
@@ -365,8 +375,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
       )}
 
-      {/* Right: Save Status Chip + Undo/Redo + Connection Pill */}
-      <div className="flex items-center gap-1.5 shrink-0 ml-auto md:ml-0">
+      {/* Right: Save Status Chip + Undo/Redo + Connection Pill / Popover */}
+      <div className="flex items-center gap-1.5 shrink-0 ml-auto md:ml-0 relative" ref={connPopoverRef}>
         <span className={`mr-1 hidden items-center gap-1.5 text-xs font-medium sm:flex ${sInfo.cls}`}>
           {sInfo.icon}
           <span>{sInfo.text}</span>
@@ -405,14 +415,80 @@ export const TopBar: React.FC<TopBarProps> = ({
         ) : (
           <button
             type="button"
-            onClick={onOpenConnectModal}
-            title="Open connection details (USB, Bluetooth, Wi-Fi, Firmware)"
+            onClick={() => setConnPopoverOpen(prev => !prev)}
+            title="Open connection details"
             aria-label="Connection details"
             className="ml-2 flex h-9 items-center gap-2 rounded-xl bg-white/5 px-3 text-xs sm:text-sm text-zinc-200 hover:bg-white/10 transition cursor-pointer whitespace-nowrap border border-white/5"
           >
             <span className={`h-2 w-2 rounded-full ${DOT_COLOR[connState]}`} />
             <span className="font-medium truncate max-w-[120px]">{connLabel}</span>
           </button>
+        )}
+
+        {/* Connection Details Popover */}
+        {connPopoverOpen && (
+          <div className="absolute top-full right-0 mt-2 w-72 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] p-4 shadow-2xl z-50 animate-popover-in text-xs">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <span className={`h-2.5 w-2.5 rounded-full ${DOT_COLOR[connState]}`} />
+                <span className="font-semibold text-sm text-white">Connection Details</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConnPopoverOpen(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-zinc-300">
+              <div className="flex items-center justify-between py-1 border-b border-white/5">
+                <span className="flex items-center gap-1.5 text-zinc-400"><Usb size={14} /> USB / Transport</span>
+                <span className="font-mono text-white font-medium">{connection.transport === 'demo' ? 'Demo Mode' : (connection.deviceName || 'WebSerial Connected')}</span>
+              </div>
+
+              <div className="flex items-center justify-between py-1 border-b border-white/5">
+                <span className="flex items-center gap-1.5 text-zinc-400"><Bluetooth size={14} /> Bluetooth (BLE)</span>
+                <span className="font-mono text-white font-medium">{connection.telemetry?.bleActiveHost ? `Host ${connection.telemetry.bleActiveHost} Active` : 'Ready (3 Hosts)'}</span>
+              </div>
+
+              <div className="flex items-center justify-between py-1 border-b border-white/5">
+                <span className="flex items-center gap-1.5 text-zinc-400"><Wifi size={14} /> Wi-Fi Status</span>
+                <span className="font-mono text-white font-medium">{connection.telemetry?.wifiConnected ? 'Connected' : 'Disconnected'}</span>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <span className="flex items-center gap-1.5 text-zinc-400"><Cpu size={14} /> Firmware Rev</span>
+                <span className="font-mono text-white font-medium">v{connection.firmwareVersion || '4.7.1'} (Rev {connection.rev ?? currentRev})</span>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setConnPopoverOpen(false);
+                  onOpenConnectModal();
+                }}
+                className="flex-1 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-200 font-medium transition cursor-pointer text-center"
+              >
+                Advanced settings
+              </button>
+              {onDisconnect && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setConnPopoverOpen(false);
+                    await onDisconnect();
+                  }}
+                  className="flex items-center gap-1.5 py-2 px-3 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 font-medium transition cursor-pointer"
+                >
+                  <PowerOff size={14} /> Disconnect
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </header>

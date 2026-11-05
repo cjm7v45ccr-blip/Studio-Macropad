@@ -634,6 +634,10 @@ export default function App() {
         onUndo={studio.undo}
         onRedo={studio.redo}
         onSwitchBleHost={handleSwitchBleHost}
+        onDisconnect={async () => {
+          await usbHardware.disconnect(true);
+          showToast('Disconnected from BertoPad');
+        }}
         onOpenSetupWizard={handleOpenSetupWizard}
         tvEnabled={studio.tvEnabled}
         searchSlot={
