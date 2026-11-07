@@ -40,6 +40,7 @@ import {
 } from '../data/presetTemplates';
 import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
+import { useMotionSensor } from '../hooks/useMotionSensor';
 import {
   AlertTriangle,
   AlertCircle,
@@ -145,19 +146,16 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [flashedSlots, setFlashedSlots] = useState<Set<HardwareFlashSlot>>(new Set());
   const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
   const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
-  const [motionPitch, setMotionPitch] = useState<number>(18);
-  const [motionRoll, setMotionRoll] = useState<number>(-8);
-  const [shakeZOffset, setShakeZOffset] = useState<number>(0);
-  const [shakeImpulse, setShakeImpulse] = useState<number>(0);
-  const [motionActive, setMotionActive] = useState<boolean>(false);
+  const motionSensor = useMotionSensor({
+    enabled: view3D && connection.connected,
+    pollIntervalMs: 40,
+    defaultPitchBaseline: 18,
+    defaultRollBaseline: -8
+  });
+
   const [calibrating3D, setCalibrating3D] = useState<boolean>(false);
   const [calibStep, setCalibStep] = useState<'flat' | 'left' | 'right' | 'forward' | null>(null);
-  const [rollScale, setRollScale] = useState<number>(1.0);
-  const [pitchScale, setPitchScale] = useState<number>(1.0);
-  const [pitchOffset, setPitchOffset] = useState<number>(0);
-  const [rollOffset, setRollOffset] = useState<number>(0);
 
-  const prevAccelRef = useRef<{ ax: number; ay: number; az: number }>({ ax: 0, ay: 0, az: 1000 });
   const flatPitchRef = useRef<number>(0);
   const flatRollRef = useRef<number>(0);
   const leftTiltSampleRef = useRef<number | null>(null);
@@ -167,142 +165,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
   const hasMotion = hasMotionCapability(connection.telemetry?.capabilities);
 
-  // Sync calibration profile with localStorage and cross-component updates
-  useEffect(() => {
-    const loadStoredCalib = () => {
-      try {
-        const raw = localStorage.getItem('bertopad_gyro_calib');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (typeof parsed.pitchOffset === 'number') setPitchOffset(parsed.pitchOffset);
-          if (typeof parsed.rollOffset === 'number') setRollOffset(parsed.rollOffset);
-          if (typeof parsed.rollScale === 'number') setRollScale(parsed.rollScale);
-          if (typeof parsed.pitchScale === 'number') setPitchScale(parsed.pitchScale);
-        }
-      } catch {}
-    };
-
-    loadStoredCalib();
-    const handleUpdate = (e: any) => {
-      if (e.detail) {
-        setPitchOffset(e.detail.pitchOffset ?? 0);
-        setRollOffset(e.detail.rollOffset ?? 0);
-        setRollScale(e.detail.rollScale ?? 1.0);
-        setPitchScale(e.detail.pitchScale ?? 1.0);
-      } else {
-        loadStoredCalib();
-      }
-    };
-
-    window.addEventListener('bertopad_gyro_calib_updated', handleUpdate);
-    return () => window.removeEventListener('bertopad_gyro_calib_updated', handleUpdate);
-  }, []);
-
   useEffect(() => {
     const slotFromProf = profileIdToBleSlot(activeProfileId);
     if (slotFromProf) {
       setOfflineBleHost(slotFromProf);
     }
   }, [activeProfileId]);
-
-  // Handle hardware shake event triggers (adds realistic physical spring bounce to 3D canvas)
-  useEffect(() => {
-    const unsub = usbHardware.onHardwareEvent(pkt => {
-      if (pkt.event === 'gesture' && pkt.type === 'shake') {
-        setShakeImpulse(1);
-        setTimeout(() => setShakeImpulse(0), 450);
-      }
-    });
-    return unsub;
-  }, []);
-
-  // Real-time GY-521 (MPU6050) motion tracking when 3D Tactile View is active
-  useEffect(() => {
-    if (!view3D) return;
-
-    let cancelled = false;
-    let inFlight = false;
-
-    // Default resting isometric angles
-    const defaultPitch = 18;
-    const defaultRoll = -8;
-
-    if (!connection.connected) {
-      setMotionPitch(defaultPitch);
-      setMotionRoll(defaultRoll);
-      setShakeZOffset(0);
-      setMotionActive(false);
-      return;
-    }
-
-    const pollGyro = async () => {
-      if (cancelled || inFlight) return;
-      inFlight = true;
-      try {
-        const res = await usbHardware.readMotion();
-        if (!cancelled && res?.ok) {
-          const ax = typeof res.ax === 'number' ? res.ax : 0;
-          const ay = typeof res.ay === 'number' ? res.ay : 0;
-          const az = typeof res.az === 'number' ? res.az : 1000;
-
-          // Compute instantaneous acceleration magnitude delta to detect physical shakes in real-time
-          const prev = prevAccelRef.current;
-          const deltaA = Math.sqrt(
-            Math.pow(ax - prev.ax, 2) + Math.pow(ay - prev.ay, 2) + Math.pow(az - prev.az, 2)
-          );
-          prevAccelRef.current = { ax, ay, az };
-
-          if (deltaA > 480) {
-            // High acceleration jerk -> physical shake detected!
-            setShakeZOffset((Math.random() - 0.5) * 16);
-          } else {
-            setShakeZOffset(prevZ => prevZ * 0.75);
-          }
-
-          // Convert raw accelerometer milli-g components to angular tilt in degrees
-          const radToDeg = 180 / Math.PI;
-          const rawPitch = Math.atan2(-ay, Math.sqrt(ax * ax + az * az)) * radToDeg;
-          const rawRoll = Math.atan2(ax, az) * radToDeg;
-
-          // Record samples during active interactive calibration if user is calibrating
-          if (calibrating3D) {
-            if (calibStep === 'left') {
-              leftTiltSampleRef.current = rawRoll;
-            } else if (calibStep === 'right') {
-              rightTiltSampleRef.current = rawRoll;
-            } else if (calibStep === 'forward') {
-              forwardTiltSampleRef.current = rawPitch;
-            }
-          }
-
-          // Apply user calibration scale & neutral offsets
-          const effectiveRawPitch = (rawPitch - pitchOffset) * pitchScale;
-          const effectiveRawRoll = (rawRoll - rollOffset) * rollScale;
-
-          // Smooth and clamp angles for aesthetic UI perspective
-          const clampedPitch = Math.max(-50, Math.min(60, effectiveRawPitch + defaultPitch));
-          const clampedRoll = Math.max(-55, Math.min(55, effectiveRawRoll + defaultRoll));
-
-          setMotionPitch(clampedPitch);
-          setMotionRoll(clampedRoll);
-          setMotionActive(true);
-        }
-      } catch {
-        // Fall back gracefully to isometric defaults if transient USB read fails
-      } finally {
-        inFlight = false;
-      }
-    };
-
-    pollGyro();
-    // 40ms polling (~25Hz) provides ultra-responsive, fluid hardware 3D motion tracking over USB
-    const gyroTimer = window.setInterval(pollGyro, 40);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(gyroTimer);
-    };
-  }, [view3D, connection.connected, calibrating3D, calibStep, pitchOffset, rollOffset, rollScale, pitchScale]);
 
   const flashTimersRef = useRef<Record<string, number>>({});
   const oledToastTimerRef = useRef<number | null>(null);
@@ -1545,8 +1413,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             type="button"
             onClick={() => setView3D(v => !v)}
             title={
-              motionActive
-                ? `GY-521 Motion Active · Pitch: ${motionPitch.toFixed(0)}° · Roll: ${motionRoll.toFixed(0)}°`
+              motionSensor.isOnline
+                ? `GY-521 Motion Active · Pitch: ${motionSensor.pitch.toFixed(0)}° · Roll: ${motionSensor.roll.toFixed(0)}° · Yaw: ${motionSensor.yaw.toFixed(0)}°`
                 : 'Toggle high-fidelity 3D tactile view with real-time GY-521 motion tracking'
             }
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
@@ -1558,7 +1426,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <Layers className="w-3.5 h-3.5" />
             <span>
               {view3D
-                ? motionActive
+                ? motionSensor.isOnline
                   ? '3D Live Gyro'
                   : '3D Tactile'
                 : '3D View'}
@@ -1744,7 +1612,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
           <div className="flex items-center justify-between gap-3 pt-1">
             <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
-              Live Pitch: {motionPitch.toFixed(1)}° · Roll: {motionRoll.toFixed(1)}°
+              Live Pitch: {motionSensor.pitch.toFixed(1)}° · Roll: {motionSensor.roll.toFixed(1)}° · Yaw: {motionSensor.yaw.toFixed(1)}°
             </span>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -1752,14 +1620,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
-                    flatPitchRef.current = motionPitch - 18;
-                    flatRollRef.current = motionRoll - (-8);
+                    flatPitchRef.current = motionSensor.rawPitch;
+                    flatRollRef.current = motionSensor.rawRoll;
                     if (connection.connected) {
-                      await usbHardware.calibrateMotion().catch(() => {});
+                      await motionSensor.calibrateFlatZero().catch(() => {});
                     }
                     soundEngine.playKeyClick();
-                    setPitchOffset(motionPitch - 18);
-                    setRollOffset(motionRoll - (-8));
                     setCalibStep('left');
                   }}
                   className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer"
@@ -1815,8 +1681,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                       calibratedAt: new Date().toISOString()
                     };
 
-                    setRollScale(computedRollScale);
-                    setPitchScale(computedPitchScale);
                     localStorage.setItem('bertopad_gyro_calib', JSON.stringify(newCalib));
                     window.dispatchEvent(new CustomEvent('bertopad_gyro_calib_updated', { detail: newCalib }));
 
@@ -1849,9 +1713,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           style={
             view3D
               ? {
-                  transform: `rotateX(${motionPitch.toFixed(1)}deg) rotateY(${motionRoll.toFixed(1)}deg) translateZ(${shakeZOffset.toFixed(1)}px) scale(${shakeImpulse ? 0.93 : 0.96})`,
+                  transform: `rotateX(${motionSensor.pitch.toFixed(1)}deg) rotateY(${motionSensor.roll.toFixed(1)}deg) rotateZ(${motionSensor.yaw.toFixed(1)}deg) translateZ(${motionSensor.shakeZOffset.toFixed(1)}px) scale(${motionSensor.shakeActive ? 0.93 : 0.96})`,
                   transformStyle: 'preserve-3d',
-                  transition: shakeImpulse ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)' : motionActive ? 'transform 50ms cubic-bezier(0.16, 1, 0.3, 1)' : 'transform 300ms ease-out'
+                  transition: motionSensor.shakeActive
+                    ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)'
+                    : motionSensor.isOnline
+                    ? 'transform 50ms cubic-bezier(0.16, 1, 0.3, 1)'
+                    : 'transform 300ms ease-out'
                 }
               : undefined
           }
