@@ -838,7 +838,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     [
                       {
                         slot: 'H1',
-                        label: 'BertoPad 1',
+                        label: 'Host 1 (BertoPad)',
                         name: h1Name,
                         setName: setH1Name,
                         preset: h1Preset,
@@ -847,7 +847,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       },
                       {
                         slot: 'H2',
-                        label: 'BertoPad 2',
+                        label: 'Host 2 (BertoPad)',
                         name: h2Name,
                         setName: setH2Name,
                         preset: h2Preset,
@@ -856,7 +856,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       },
                       {
                         slot: 'H3',
-                        label: 'BertoPad 3',
+                        label: 'Host 3 (BertoPad)',
                         name: h3Name,
                         setName: setH3Name,
                         preset: h3Preset,
@@ -975,7 +975,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   02. Pair Bluetooth Hosts
                 </h3>
                 <p className="text-xs text-[var(--text-muted)]">
-                  Your BertoPad advertises 3 independent Bluetooth identities (<span className="font-mono">BertoPad 1–3</span>) so you can switch between your computer, laptop, and phone without re-pairing.
+                  Your BertoPad advertises a single unified Bluetooth identity (<span className="font-mono">BertoPad</span>) with 3 isolated Host profiles so you can switch between your computer, laptop, and phone seamlessly.
                 </p>
               </div>
 
@@ -1347,19 +1347,19 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
               {/* Clean Summary Grid */}
               <div className="rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] text-xs">
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 1 ([H1] BertoPad 1)</span>
+                  <span className="text-[var(--text-muted)]">Host 1 ([H1] BertoPad)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h1Name, 'HOST1')} · {presetLabel(h1Preset)}
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 2 ([H2] BertoPad 2)</span>
+                  <span className="text-[var(--text-muted)]">Host 2 ([H2] BertoPad)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h2Name, 'HOST2')} · {presetLabel(h2Preset)}
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 3 ([H3] BertoPad 3)</span>
+                  <span className="text-[var(--text-muted)]">Host 3 ([H3] BertoPad)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h3Name, 'HOST3')} · {presetLabel(h3Preset)}
                   </span>

@@ -1374,7 +1374,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-[var(--text-muted)]">
-                  3 independent Bluetooth host profiles (<span className="font-mono">BertoPad 1–3</span>) with per-device OS mapping so shortcuts like Copy map automatically to ⌘C or Ctrl+C.
+                  3 independent Bluetooth host profiles (<span className="font-mono">BertoPad</span>) with per-device OS mapping so shortcuts like Copy map automatically to ⌘C or Ctrl+C.
                 </p>
               </div>
             </div>
@@ -1435,7 +1435,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </span>
                       </div>
                       <div className="font-mono text-[11px] text-[var(--text-muted)] mt-0.5 truncate tabular-nums">
-                        BertoPad {slot}
+                        BertoPad · Slot {slot}
                       </div>
                     </button>
                     {isActive && (
@@ -1768,6 +1768,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               connected={connection.connected}
               onToast={onToast}
               onJumpToMotionSlot={onJumpToMotionSlot}
+              gyroCalibration={settings.gyroCalibration}
+              onUpdateGyroCalibration={calib => onUpdateSettings({ gyroCalibration: calib })}
             />
           </section>
         )}

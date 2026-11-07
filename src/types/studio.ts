@@ -447,6 +447,14 @@ export type KeyboardLayoutId =
 
 export type ThemeMode = 'system' | 'dark' | 'light';
 
+export interface GyroCalibrationProfile {
+  pitchOffset: number;
+  rollOffset: number;
+  rollScale: number;
+  pitchScale: number;
+  calibratedAt?: string;
+}
+
 export interface StudioSettings {
   theme: ThemeMode;
   accentColor: string;
@@ -459,6 +467,7 @@ export interface StudioSettings {
   lastKnownFirmware?: string;
   hostOsMap: HostOsMap;
   showAdvancedIds: boolean;
+  gyroCalibration?: GyroCalibrationProfile;
 }
 
 export interface FirmwareReleaseAsset {

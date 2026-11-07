@@ -151,17 +151,52 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [shakeImpulse, setShakeImpulse] = useState<number>(0);
   const [motionActive, setMotionActive] = useState<boolean>(false);
   const [calibrating3D, setCalibrating3D] = useState<boolean>(false);
-  const [calibStep, setCalibStep] = useState<'flat' | 'left' | 'right' | null>(null);
+  const [calibStep, setCalibStep] = useState<'flat' | 'left' | 'right' | 'forward' | null>(null);
   const [rollScale, setRollScale] = useState<number>(1.0);
+  const [pitchScale, setPitchScale] = useState<number>(1.0);
   const [pitchOffset, setPitchOffset] = useState<number>(0);
   const [rollOffset, setRollOffset] = useState<number>(0);
 
   const prevAccelRef = useRef<{ ax: number; ay: number; az: number }>({ ax: 0, ay: 0, az: 1000 });
+  const flatPitchRef = useRef<number>(0);
+  const flatRollRef = useRef<number>(0);
   const leftTiltSampleRef = useRef<number | null>(null);
   const rightTiltSampleRef = useRef<number | null>(null);
+  const forwardTiltSampleRef = useRef<number | null>(null);
 
   const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
   const hasMotion = hasMotionCapability(connection.telemetry?.capabilities);
+
+  // Sync calibration profile with localStorage and cross-component updates
+  useEffect(() => {
+    const loadStoredCalib = () => {
+      try {
+        const raw = localStorage.getItem('bertopad_gyro_calib');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed.pitchOffset === 'number') setPitchOffset(parsed.pitchOffset);
+          if (typeof parsed.rollOffset === 'number') setRollOffset(parsed.rollOffset);
+          if (typeof parsed.rollScale === 'number') setRollScale(parsed.rollScale);
+          if (typeof parsed.pitchScale === 'number') setPitchScale(parsed.pitchScale);
+        }
+      } catch {}
+    };
+
+    loadStoredCalib();
+    const handleUpdate = (e: any) => {
+      if (e.detail) {
+        setPitchOffset(e.detail.pitchOffset ?? 0);
+        setRollOffset(e.detail.rollOffset ?? 0);
+        setRollScale(e.detail.rollScale ?? 1.0);
+        setPitchScale(e.detail.pitchScale ?? 1.0);
+      } else {
+        loadStoredCalib();
+      }
+    };
+
+    window.addEventListener('bertopad_gyro_calib_updated', handleUpdate);
+    return () => window.removeEventListener('bertopad_gyro_calib_updated', handleUpdate);
+  }, []);
 
   useEffect(() => {
     const slotFromProf = profileIdToBleSlot(activeProfileId);
@@ -235,11 +270,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               leftTiltSampleRef.current = rawRoll;
             } else if (calibStep === 'right') {
               rightTiltSampleRef.current = rawRoll;
+            } else if (calibStep === 'forward') {
+              forwardTiltSampleRef.current = rawPitch;
             }
           }
 
           // Apply user calibration scale & neutral offsets
-          const effectiveRawPitch = rawPitch - pitchOffset;
+          const effectiveRawPitch = (rawPitch - pitchOffset) * pitchScale;
           const effectiveRawRoll = (rawRoll - rollOffset) * rollScale;
 
           // Smooth and clamp angles for aesthetic UI perspective
@@ -265,7 +302,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       cancelled = true;
       window.clearInterval(gyroTimer);
     };
-  }, [view3D, connection.connected, calibrating3D, calibStep, pitchOffset, rollOffset, rollScale]);
+  }, [view3D, connection.connected, calibrating3D, calibStep, pitchOffset, rollOffset, rollScale, pitchScale]);
 
   const flashTimersRef = useRef<Record<string, number>>({});
   const oledToastTimerRef = useRef<number | null>(null);
@@ -1664,9 +1701,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <div className="flex items-center gap-2">
               <Compass className="w-4 h-4 text-[var(--accent)] shrink-0" />
               <span className="text-xs font-bold text-[var(--text-primary)]">
-                GY-521 3D Tilt Calibration
+                GY-521 3D Directional Calibration
               </span>
-              <span className="font-mono text-[10px] text-[var(--accent)] uppercase font-semibold">
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-input)] text-[var(--accent)] uppercase font-semibold">
                 Step: {calibStep}
               </span>
             </div>
@@ -1695,7 +1732,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             )}
             {calibStep === 'right' && (
               <span>
-                3. Now tilt the BertoPad <strong>to the right (~30°)</strong> and hold it steady, then click <strong>&quot;Finish &amp; Apply Scale&quot;</strong>.
+                3. Tilt the BertoPad <strong>to the right (~30°)</strong> and hold steady, then click <strong>&quot;Capture Right Tilt&quot;</strong>.
+              </span>
+            )}
+            {calibStep === 'forward' && (
+              <span>
+                4. Tilt the BertoPad <strong>forward away from you (~25°)</strong>, then click <strong>&quot;Finish &amp; Save Normalization&quot;</strong>.
               </span>
             )}
           </div>
@@ -1710,9 +1752,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
+                    flatPitchRef.current = motionPitch - 18;
+                    flatRollRef.current = motionRoll - (-8);
                     if (connection.connected) {
                       await usbHardware.calibrateMotion().catch(() => {});
                     }
+                    soundEngine.playKeyClick();
                     setPitchOffset(motionPitch - 18);
                     setRollOffset(motionRoll - (-8));
                     setCalibStep('left');
@@ -1727,6 +1772,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    soundEngine.playKeyClick();
                     setCalibStep('right');
                   }}
                   className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer"
@@ -1739,20 +1785,49 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    const l = leftTiltSampleRef.current ?? -25;
-                    const r = rightTiltSampleRef.current ?? 25;
-                    const spread = Math.abs(r - l);
-                    if (spread > 10) {
-                      const computedScale = Math.min(2.5, Math.max(0.4, 60 / spread));
-                      setRollScale(computedScale);
-                    }
+                    soundEngine.playKeyClick();
+                    setCalibStep('forward');
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer"
+                >
+                  Capture Right Tilt →
+                </button>
+              )}
+
+              {calibStep === 'forward' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const l = leftTiltSampleRef.current ?? -28;
+                    const r = rightTiltSampleRef.current ?? 28;
+                    const rollSpread = Math.abs(r - l);
+                    const computedRollScale = rollSpread > 10 ? Math.min(2.5, Math.max(0.4, 60 / rollSpread)) : 1.0;
+
+                    const f = forwardTiltSampleRef.current ?? 24;
+                    const pitchSpread = Math.abs(f - flatPitchRef.current);
+                    const computedPitchScale = pitchSpread > 8 ? Math.min(2.5, Math.max(0.4, 40 / pitchSpread)) : 1.0;
+
+                    const newCalib = {
+                      pitchOffset: Number(flatPitchRef.current.toFixed(2)),
+                      rollOffset: Number(flatRollRef.current.toFixed(2)),
+                      rollScale: Number(computedRollScale.toFixed(3)),
+                      pitchScale: Number(computedPitchScale.toFixed(3)),
+                      calibratedAt: new Date().toISOString()
+                    };
+
+                    setRollScale(computedRollScale);
+                    setPitchScale(computedPitchScale);
+                    localStorage.setItem('bertopad_gyro_calib', JSON.stringify(newCalib));
+                    window.dispatchEvent(new CustomEvent('bertopad_gyro_calib_updated', { detail: newCalib }));
+
+                    soundEngine.playSuccessChime();
                     setCalibrating3D(false);
                     setCalibStep(null);
-                    triggerOledToast('GYRO CALIBRATED', 'SCALE APPLIED');
+                    triggerOledToast('GYRO CALIBRATED', 'NORMALIZATION SAVED');
                   }}
                   className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer"
                 >
-                  Finish &amp; Apply Scale ✓
+                  Finish &amp; Save Normalization ✓
                 </button>
               )}
             </div>
