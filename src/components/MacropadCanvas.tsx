@@ -145,6 +145,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [flashedSlots, setFlashedSlots] = useState<Set<HardwareFlashSlot>>(new Set());
   const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
   const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
+  const [motionPitch, setMotionPitch] = useState<number>(18);
+  const [motionRoll, setMotionRoll] = useState<number>(-8);
+  const [motionActive, setMotionActive] = useState<boolean>(false);
   const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
   const hasMotion = hasMotionCapability(connection.telemetry?.capabilities);
 
@@ -154,6 +157,66 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       setOfflineBleHost(slotFromProf);
     }
   }, [activeProfileId]);
+
+  // Real-time GY-521 (MPU6050) motion tracking when 3D Tactile View is active
+  useEffect(() => {
+    if (!view3D) return;
+
+    let cancelled = false;
+    let inFlight = false;
+
+    // Default resting isometric angles
+    const defaultPitch = 18;
+    const defaultRoll = -8;
+
+    if (!connection.connected) {
+      // In offline / preview, provide a gentle dynamic tactile tilt
+      setMotionPitch(defaultPitch);
+      setMotionRoll(defaultRoll);
+      setMotionActive(false);
+      return;
+    }
+
+    const pollGyro = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        const res = await usbHardware.readMotion();
+        if (!cancelled && res?.ok) {
+          const ax = typeof res.ax === 'number' ? res.ax : 0;
+          const ay = typeof res.ay === 'number' ? res.ay : 0;
+          const az = typeof res.az === 'number' ? res.az : 1000;
+
+          // Convert raw accelerometer milli-g components to angular tilt in degrees
+          // Roll corresponds to left/right tilt (ax / az), Pitch corresponds to front/back tilt (ay / az)
+          const radToDeg = 180 / Math.PI;
+          const calcPitch = Math.atan2(-ay, Math.sqrt(ax * ax + az * az)) * radToDeg;
+          const calcRoll = Math.atan2(ax, az) * radToDeg;
+
+          // Smooth and clamp angles for UI perspective
+          const clampedPitch = Math.max(-45, Math.min(55, calcPitch + defaultPitch));
+          const clampedRoll = Math.max(-45, Math.min(45, calcRoll + defaultRoll));
+
+          setMotionPitch(clampedPitch);
+          setMotionRoll(clampedRoll);
+          setMotionActive(true);
+        }
+      } catch {
+        // Fall back gracefully to isometric defaults if transient USB read fails
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    pollGyro();
+    // 50ms polling (~20Hz) provides buttery smooth hardware 3D motion tracking over USB
+    const gyroTimer = window.setInterval(pollGyro, 50);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(gyroTimer);
+    };
+  }, [view3D, connection.connected]);
 
   const flashTimersRef = useRef<Record<string, number>>({});
   const oledToastTimerRef = useRef<number | null>(null);
@@ -1395,7 +1458,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <button
             type="button"
             onClick={() => setView3D(v => !v)}
-            title="Toggle high-fidelity 3D tactile perspective preview with exploded chassis depth"
+            title={
+              motionActive
+                ? `GY-521 Motion Active · Pitch: ${motionPitch.toFixed(0)}° · Roll: ${motionRoll.toFixed(0)}°`
+                : 'Toggle high-fidelity 3D tactile view with real-time GY-521 motion tracking'
+            }
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               view3D
                 ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
@@ -1403,7 +1470,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>{view3D ? 'Flat View' : '3D Tactile View'}</span>
+            <span>
+              {view3D
+                ? motionActive
+                  ? '3D Live Gyro'
+                  : '3D Tactile'
+                : '3D View'}
+            </span>
           </button>
 
           {onOpenCheatSheet && (
@@ -1534,8 +1607,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           style={
             view3D
               ? {
-                  transform: 'rotateX(18deg) rotateY(-8deg) rotateZ(2deg) scale(0.96)',
-                  transformStyle: 'preserve-3d'
+                  transform: `rotateX(${motionPitch.toFixed(1)}deg) rotateY(${motionRoll.toFixed(1)}deg) rotateZ(0deg) scale(0.96)`,
+                  transformStyle: 'preserve-3d',
+                  transition: motionActive ? 'transform 80ms cubic-bezier(0.16, 1, 0.3, 1)' : 'transform 300ms ease-out'
                 }
               : undefined
           }
