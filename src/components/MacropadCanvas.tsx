@@ -88,7 +88,6 @@ interface MacropadCanvasProps {
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   onOpenSetupWizard?: () => void;
   onOpenCheatSheet?: () => void;
-  onOpenCompanion?: () => void;
 }
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
@@ -129,8 +128,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   onExecuteHardwareBinding,
   onSwitchBleHost,
   onOpenSetupWizard,
-  onOpenCheatSheet,
-  onOpenCompanion
+  onOpenCheatSheet
 }) => {
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [view3D, setView3D] = useState(false);
@@ -1407,18 +1405,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <Layers className="w-3.5 h-3.5" />
             <span>{view3D ? 'Flat View' : '3D Tactile View'}</span>
           </button>
-
-          {onOpenCompanion && (
-            <button
-              type="button"
-              onClick={onOpenCompanion}
-              title="Native menu-bar companion & app-aware auto switching"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Cpu className="w-3.5 h-3.5 text-amber-400" />
-              <span>Companion App</span>
-            </button>
-          )}
 
           {onOpenCheatSheet && (
             <button
