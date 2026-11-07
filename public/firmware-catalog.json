@@ -1,28 +1,28 @@
 {
   "schema": "studio-pad-public-firmware",
   "latestRelease": {
-    "version": "4.10.1",
-    "name": "BertoPad Firmware v4.10.1",
-    "publishedAt": "2026-11-06T18:25:00Z",
-    "body": "NimBLE v4.10.1 with Bluetooth multi-host isolation, Easy-Switch profile memory, timed pairing mode (120s), strict unknown-host blocking, and /api/ble management.",
+    "version": "4.11.0",
+    "name": "BertoPad Firmware v4.11.0",
+    "publishedAt": "2026-11-07T14:00:00Z",
+    "body": "NimBLE v4.11.0 with seamless non-rebooting host switching, single 'BertoPad' identifier, strict security enforcement, and updated token authentication for Wi-Fi and setup routes.",
     "assets": [
       {
-        "name": "StudioMacroPad_v4.10.1.ino",
-        "downloadUrl": "/firmware-source/StudioMacroPad_v4.10.1.ino",
+        "name": "StudioMacroPad_v4.11.0.ino",
+        "downloadUrl": "/firmware-source/StudioMacroPad_v4.11.0.ino",
         "sizeBytes": 133859
       }
     ]
   },
   "recentReleases": [
     {
-      "version": "4.10.1",
-      "name": "BertoPad Firmware v4.10.1",
-      "publishedAt": "2026-11-06T18:25:00Z",
-      "body": "NimBLE v4.10.1 with Bluetooth multi-host isolation, Easy-Switch profile memory, timed pairing mode (120s), strict unknown-host blocking, and /api/ble management.",
+      "version": "4.11.0",
+      "name": "BertoPad Firmware v4.11.0",
+      "publishedAt": "2026-11-07T14:00:00Z",
+      "body": "NimBLE v4.11.0 with seamless non-rebooting host switching, single 'BertoPad' identifier, strict security enforcement, and updated token authentication for Wi-Fi and setup routes.",
       "assets": [
         {
-          "name": "StudioMacroPad_v4.10.1.ino",
-          "downloadUrl": "/firmware-source/StudioMacroPad_v4.10.1.ino",
+          "name": "StudioMacroPad_v4.11.0.ino",
+          "downloadUrl": "/firmware-source/StudioMacroPad_v4.11.0.ino",
           "sizeBytes": 133859
         }
       ]

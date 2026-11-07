@@ -255,10 +255,10 @@ export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   { action: 'WIN:RUN', label: 'Run Dialog (Win+R)', shortLabel: 'Run', description: 'Windows + R command prompt', category: 'win_macro', icon: 'play-circle', color: '#ECEAE4' },
 
   // BLE:* Multi-Host Bluetooth Engine (4)
-  { action: 'BLE:HOST1', label: 'Device 1 (BertoPad 1)', shortLabel: 'Device 1', description: 'Switch to Device 1 virtual MAC (BertoPad 1)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
-  { action: 'BLE:HOST2', label: 'Device 2 (BertoPad 2)', shortLabel: 'Device 2', description: 'Switch to Device 2 virtual MAC (BertoPad 2)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
-  { action: 'BLE:HOST3', label: 'Device 3 (BertoPad 3)', shortLabel: 'Device 3', description: 'Switch to Device 3 virtual MAC (BertoPad 3)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
-  { action: 'BLE:NEXT_HOST', label: 'Next BLE Device (Cycle 1–3)', shortLabel: 'Next Host', description: 'Cycle active Bluetooth device (BertoPad 1 → 2 → 3)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:HOST1', label: 'Device 1 (BertoPad - Host 1)', shortLabel: 'Device 1', description: 'Switch to Host 1 virtual MAC (BertoPad)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:HOST2', label: 'Device 2 (BertoPad - Host 2)', shortLabel: 'Device 2', description: 'Switch to Host 2 virtual MAC (BertoPad)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:HOST3', label: 'Device 3 (BertoPad - Host 3)', shortLabel: 'Device 3', description: 'Switch to Host 3 virtual MAC (BertoPad)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
+  { action: 'BLE:NEXT_HOST', label: 'Next BLE Device (Cycle 1–3)', shortLabel: 'Next Host', description: 'Cycle active Bluetooth device (BertoPad Host 1 → 2 → 3)', category: 'ble', icon: 'bluetooth', color: '#F2A33A' },
 
   // TV:* SmartCast Remote (25)
   { action: 'TV:POWER', label: 'TV Power', shortLabel: 'TV Power', description: 'SmartCast power toggle (11, 2)', category: 'tv', icon: 'power', color: '#F2A33A' },

@@ -3073,7 +3073,6 @@ class PadLinkService {
       throw new Error('Host slot must be 1, 2, or 3.');
     }
     const prevHost = this.connectionInfo.telemetry?.bleActiveHost;
-    const activePort = this.port;
 
     const res = await this.call({
       path: '/api/ble/switch',
@@ -3090,19 +3089,11 @@ class PadLinkService {
         telemetry: {
           ...this.connectionInfo.telemetry,
           bleActiveHost: slot,
-          bleDeviceName: `BertoPad ${slot}`,
+          bleDeviceName: 'BertoPad',
           activeProfile: wasTv ? 'TV' : bleSlotToProfileId(slot)
         }
       };
       this.emitConnection();
-    }
-
-    if (!this.demoModeActive && activePort && prevHost !== slot) {
-      this.logSerial(
-        'info',
-        `ESP32 rebooting into Host ${slot} (BertoPad ${slot}) — resyncing in ~2.0s`
-      );
-      this.schedulePostRebootResync(activePort);
     }
 
     return {
@@ -3110,8 +3101,8 @@ class PadLinkService {
       slot,
       message:
         prevHost === slot
-          ? `Host ${slot} (BertoPad ${slot}) is already active.`
-          : `Switched to Host ${slot} (BertoPad ${slot}).`
+          ? `Host ${slot} (BertoPad) is already active.`
+          : `Switched to Host ${slot} (BertoPad).`
     };
   }
 

@@ -150,10 +150,16 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
               Bluetooth Pairing & Security ({activeProf.name} · Host {hostSlotNum})
             </h3>
             <p className="text-[11px] text-[var(--text-muted)] truncate">
-              Firmware v4.10.1 multi-host isolation &amp; secure pairing
+              Firmware v4.11.0 multi-host isolation &amp; seamless switching
             </p>
           </div>
         </div>
+
+        {hostSlotNum > 1 && (
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-400">
+            <span>Updating from v4.9 or older? Re-pair Host 2 &amp; 3 once.</span>
+          </div>
+        )}
 
         <span
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
