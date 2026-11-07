@@ -1736,7 +1736,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     const b = backwardTiltSampleRef.current;
                     const f = forwardTiltSampleRef.current;
                     const pitchDiff = b !== null && f !== null ? (f - b) : 0;
-                    const rawPitchScale = Math.abs(pitchDiff) > 5 ? (50 / pitchDiff) : 1.0;
+                    const rawPitchScale = Math.abs(pitchDiff) > 5 ? (-50 / pitchDiff) : -1.0;
                     const computedPitchScale = Math.sign(rawPitchScale) * Math.min(3.0, Math.max(0.3, Math.abs(rawPitchScale)));
 
                     const newCalib: GyroCalibrationProfile = {
