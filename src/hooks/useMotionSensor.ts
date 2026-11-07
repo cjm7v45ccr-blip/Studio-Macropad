@@ -207,10 +207,11 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
           }
 
           // Convert raw accelerometer milli-g components to angular tilt in degrees
-          // Pitch = forward/backward (up/down tilt via ax), Roll = left/right tilt (via ay)
+          // Normalized pitch = forward/backward (up/down tilt via -ax for natural direction)
+          // Normalized roll = left/right tilt (via ay)
           const radToDeg = 180 / Math.PI;
-          const rawPitch = Math.atan2(ax, Math.sqrt(ay * ay + az * az)) * radToDeg;
-          const rawRoll = Math.atan2(-ay, az) * radToDeg;
+          const rawPitch = -Math.atan2(ax, Math.sqrt(ay * ay + az * az)) * radToDeg;
+          const rawRoll = Math.atan2(ay, az) * radToDeg;
           const rawYaw = Math.atan2(ax, ay) * radToDeg;
 
           let targetPitch = defaultPitchBaseline;
