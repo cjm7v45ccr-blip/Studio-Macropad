@@ -451,8 +451,10 @@ export interface GyroCalibrationProfile {
   isCalibrated: boolean;
   pitchOffset: number;
   rollOffset: number;
-  rollScale: number;
+  yawOffset: number;
   pitchScale: number;
+  rollScale: number;
+  yawScale: number;
   calibratedAt?: string;
 }
 

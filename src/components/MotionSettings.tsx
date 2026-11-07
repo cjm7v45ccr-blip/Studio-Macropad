@@ -91,8 +91,10 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
       isCalibrated: false,
       pitchOffset: 0,
       rollOffset: 0,
+      yawOffset: 0,
+      pitchScale: 1.0,
       rollScale: 1.0,
-      pitchScale: 1.0
+      yawScale: 1.0
     };
   });
 
@@ -590,8 +592,10 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                       isCalibrated: false,
                       pitchOffset: 0,
                       rollOffset: 0,
+                      yawOffset: 0,
+                      pitchScale: 1.0,
                       rollScale: 1.0,
-                      pitchScale: 1.0
+                      yawScale: 1.0
                     };
                     setProfile(neutral);
                     localStorage.setItem('bertopad_gyro_calib', JSON.stringify(neutral));
@@ -876,8 +880,10 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                             isCalibrated: true,
                             pitchOffset: Number(flatRef.current.pitch.toFixed(2)),
                             rollOffset: Number(flatRef.current.roll.toFixed(2)),
-                            rollScale: Number(rollScale.toFixed(3)),
+                            yawOffset: 0,
                             pitchScale: Number(pitchScale.toFixed(3)),
+                            rollScale: Number(rollScale.toFixed(3)),
+                            yawScale: 1.0,
                             calibratedAt: new Date().toISOString()
                           };
 

@@ -149,16 +149,54 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
   const motionSensor = useMotionSensor({
     enabled: view3D && connection.connected,
-    pollIntervalMs: 40,
-    defaultPitchBaseline: 18,
-    defaultRollBaseline: -8
+    pollIntervalMs: 25,
+    defaultPitchBaseline: 0,
+    defaultRollBaseline: 0
   });
+
+  const chassis3dRef = useRef<HTMLDivElement>(null);
+  const current3dRotRef = useRef<{ pitch: number; roll: number; yaw: number; zOffset: number }>({
+    pitch: 0,
+    roll: 0,
+    yaw: 0,
+    zOffset: 0
+  });
+
+  const motionTargetRef = useRef(motionSensor);
+  motionTargetRef.current = motionSensor;
+
+  useEffect(() => {
+    if (!view3D) return;
+    let rafId: number;
+
+    const animate3D = () => {
+      const target = motionTargetRef.current;
+      const current = current3dRotRef.current;
+
+      const factor = target.shakeActive ? 0.3 : 0.16;
+      current.pitch += (target.pitch - current.pitch) * factor;
+      current.roll += (target.roll - current.roll) * factor;
+      current.yaw += (target.yaw - current.yaw) * factor;
+      current.zOffset += (target.shakeZOffset - current.zOffset) * factor;
+
+      if (chassis3dRef.current) {
+        const scale = target.shakeActive ? 0.93 : 0.96;
+        chassis3dRef.current.style.transform = `rotate3d(1, 0, 0, ${current.pitch.toFixed(2)}deg) rotate3d(0, 1, 0, ${current.roll.toFixed(2)}deg) rotate3d(0, 0, 1, ${current.yaw.toFixed(2)}deg) translateZ(${current.zOffset.toFixed(2)}px) scale(${scale})`;
+      }
+
+      rafId = requestAnimationFrame(animate3D);
+    };
+
+    rafId = requestAnimationFrame(animate3D);
+    return () => cancelAnimationFrame(rafId);
+  }, [view3D]);
 
   const [calibrating3D, setCalibrating3D] = useState<boolean>(false);
   const [calibStep, setCalibStep] = useState<'flat' | 'left' | 'right' | 'backward' | 'forward' | null>(null);
 
   const flatPitchRef = useRef<number>(0);
   const flatRollRef = useRef<number>(0);
+  const flatYawRef = useRef<number>(0);
   const leftTiltSampleRef = useRef<number | null>(null);
   const rightTiltSampleRef = useRef<number | null>(null);
   const backwardTiltSampleRef = useRef<number | null>(null);
@@ -1629,6 +1667,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   onClick={async () => {
                     flatPitchRef.current = motionSensor.rawPitch;
                     flatRollRef.current = motionSensor.rawRoll;
+                    flatYawRef.current = motionSensor.rawYaw;
                     if (connection.connected) {
                       await motionSensor.calibrateFlatZero().catch(() => {});
                     }
@@ -1704,8 +1743,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                       isCalibrated: true,
                       pitchOffset: Number(flatPitchRef.current.toFixed(2)),
                       rollOffset: Number(flatRollRef.current.toFixed(2)),
-                      rollScale: Number(computedRollScale.toFixed(3)),
+                      yawOffset: Number(flatYawRef.current.toFixed(2)),
                       pitchScale: Number(computedPitchScale.toFixed(3)),
+                      rollScale: Number(computedRollScale.toFixed(3)),
+                      yawScale: 1.0,
                       calibratedAt: new Date().toISOString()
                     };
 
@@ -1733,6 +1774,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         style={view3D ? { perspective: '1100px' } : undefined}
       >
         <div
+          ref={chassis3dRef}
           className={`w-fit max-w-full min-w-[300px] chassis-shell rounded-[32px] sm:rounded-[38px] p-4 sm:p-6 xl:p-7 border border-[#ECEAE4]/10 transition-all duration-300 ${
             view3D
               ? 'shadow-[0_45px_80px_-15px_rgba(0,0,0,0.85),0_20px_40px_-10px_rgba(var(--accent-rgb),0.2)] ring-1 ring-[#ECEAE4]/20'
@@ -1741,14 +1783,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           style={
             view3D
               ? {
-                  transform: `rotateX(${motionSensor.pitch.toFixed(1)}deg) rotateY(${motionSensor.roll.toFixed(1)}deg) translateZ(${motionSensor.shakeZOffset.toFixed(1)}px) scale(${motionSensor.shakeActive ? 0.93 : 0.96})`,
                   transformStyle: 'preserve-3d',
-                  willChange: 'transform',
-                  transition: motionSensor.shakeActive
-                    ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)'
-                    : motionSensor.isOnline
-                    ? 'transform 80ms cubic-bezier(0.1, 0.9, 0.2, 1)'
-                    : 'transform 300ms ease-out'
+                  willChange: 'transform'
                 }
               : undefined
           }
