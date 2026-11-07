@@ -147,7 +147,19 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
   const [motionPitch, setMotionPitch] = useState<number>(18);
   const [motionRoll, setMotionRoll] = useState<number>(-8);
+  const [shakeZOffset, setShakeZOffset] = useState<number>(0);
+  const [shakeImpulse, setShakeImpulse] = useState<number>(0);
   const [motionActive, setMotionActive] = useState<boolean>(false);
+  const [calibrating3D, setCalibrating3D] = useState<boolean>(false);
+  const [calibStep, setCalibStep] = useState<'flat' | 'left' | 'right' | null>(null);
+  const [rollScale, setRollScale] = useState<number>(1.0);
+  const [pitchOffset, setPitchOffset] = useState<number>(0);
+  const [rollOffset, setRollOffset] = useState<number>(0);
+
+  const prevAccelRef = useRef<{ ax: number; ay: number; az: number }>({ ax: 0, ay: 0, az: 1000 });
+  const leftTiltSampleRef = useRef<number | null>(null);
+  const rightTiltSampleRef = useRef<number | null>(null);
+
   const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
   const hasMotion = hasMotionCapability(connection.telemetry?.capabilities);
 
@@ -157,6 +169,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       setOfflineBleHost(slotFromProf);
     }
   }, [activeProfileId]);
+
+  // Handle hardware shake event triggers (adds realistic physical spring bounce to 3D canvas)
+  useEffect(() => {
+    const unsub = usbHardware.onHardwareEvent(pkt => {
+      if (pkt.event === 'gesture' && pkt.type === 'shake') {
+        setShakeImpulse(1);
+        setTimeout(() => setShakeImpulse(0), 450);
+      }
+    });
+    return unsub;
+  }, []);
 
   // Real-time GY-521 (MPU6050) motion tracking when 3D Tactile View is active
   useEffect(() => {
@@ -170,9 +193,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const defaultRoll = -8;
 
     if (!connection.connected) {
-      // In offline / preview, provide a gentle dynamic tactile tilt
       setMotionPitch(defaultPitch);
       setMotionRoll(defaultRoll);
+      setShakeZOffset(0);
       setMotionActive(false);
       return;
     }
@@ -187,15 +210,41 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           const ay = typeof res.ay === 'number' ? res.ay : 0;
           const az = typeof res.az === 'number' ? res.az : 1000;
 
-          // Convert raw accelerometer milli-g components to angular tilt in degrees
-          // Roll corresponds to left/right tilt (ax / az), Pitch corresponds to front/back tilt (ay / az)
-          const radToDeg = 180 / Math.PI;
-          const calcPitch = Math.atan2(-ay, Math.sqrt(ax * ax + az * az)) * radToDeg;
-          const calcRoll = Math.atan2(ax, az) * radToDeg;
+          // Compute instantaneous acceleration magnitude delta to detect physical shakes in real-time
+          const prev = prevAccelRef.current;
+          const deltaA = Math.sqrt(
+            Math.pow(ax - prev.ax, 2) + Math.pow(ay - prev.ay, 2) + Math.pow(az - prev.az, 2)
+          );
+          prevAccelRef.current = { ax, ay, az };
 
-          // Smooth and clamp angles for UI perspective
-          const clampedPitch = Math.max(-45, Math.min(55, calcPitch + defaultPitch));
-          const clampedRoll = Math.max(-45, Math.min(45, calcRoll + defaultRoll));
+          if (deltaA > 480) {
+            // High acceleration jerk -> physical shake detected!
+            setShakeZOffset((Math.random() - 0.5) * 16);
+          } else {
+            setShakeZOffset(prevZ => prevZ * 0.75);
+          }
+
+          // Convert raw accelerometer milli-g components to angular tilt in degrees
+          const radToDeg = 180 / Math.PI;
+          const rawPitch = Math.atan2(-ay, Math.sqrt(ax * ax + az * az)) * radToDeg;
+          const rawRoll = Math.atan2(ax, az) * radToDeg;
+
+          // Record samples during active interactive calibration if user is calibrating
+          if (calibrating3D) {
+            if (calibStep === 'left') {
+              leftTiltSampleRef.current = rawRoll;
+            } else if (calibStep === 'right') {
+              rightTiltSampleRef.current = rawRoll;
+            }
+          }
+
+          // Apply user calibration scale & neutral offsets
+          const effectiveRawPitch = rawPitch - pitchOffset;
+          const effectiveRawRoll = (rawRoll - rollOffset) * rollScale;
+
+          // Smooth and clamp angles for aesthetic UI perspective
+          const clampedPitch = Math.max(-50, Math.min(60, effectiveRawPitch + defaultPitch));
+          const clampedRoll = Math.max(-55, Math.min(55, effectiveRawRoll + defaultRoll));
 
           setMotionPitch(clampedPitch);
           setMotionRoll(clampedRoll);
@@ -209,14 +258,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     };
 
     pollGyro();
-    // 50ms polling (~20Hz) provides buttery smooth hardware 3D motion tracking over USB
-    const gyroTimer = window.setInterval(pollGyro, 50);
+    // 40ms polling (~25Hz) provides ultra-responsive, fluid hardware 3D motion tracking over USB
+    const gyroTimer = window.setInterval(pollGyro, 40);
 
     return () => {
       cancelled = true;
       window.clearInterval(gyroTimer);
     };
-  }, [view3D, connection.connected]);
+  }, [view3D, connection.connected, calibrating3D, calibStep, pitchOffset, rollOffset, rollScale]);
 
   const flashTimersRef = useRef<Record<string, number>>({});
   const oledToastTimerRef = useRef<number | null>(null);
@@ -1479,6 +1528,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             </span>
           </button>
 
+          {view3D && (
+            <button
+              type="button"
+              onClick={() => {
+                setCalibrating3D(true);
+                setCalibStep('flat');
+              }}
+              title="Calibrate Left/Right Tilt and Zero Point for 3D View"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Compass className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>Calibrate Gyro</span>
+            </button>
+          )}
+
           {onOpenCheatSheet && (
             <button
               type="button"
@@ -1593,6 +1657,109 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
       )}
 
+      {/* Interactive 3D Gyro Motion Calibration Banner */}
+      {view3D && calibrating3D && (
+        <div className="w-full max-w-2xl mt-3 p-3.5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--accent)] shadow-lg space-y-3 shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Compass className="w-4 h-4 text-[var(--accent)] shrink-0" />
+              <span className="text-xs font-bold text-[var(--text-primary)]">
+                GY-521 3D Tilt Calibration
+              </span>
+              <span className="font-mono text-[10px] text-[var(--accent)] uppercase font-semibold">
+                Step: {calibStep}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCalibrating3D(false);
+                setCalibStep(null);
+              }}
+              className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            {calibStep === 'flat' && (
+              <span>
+                1. Place the BertoPad <strong>flat and resting still</strong> on your desk, then click <strong>&quot;Set Flat Zero&quot;</strong>.
+              </span>
+            )}
+            {calibStep === 'left' && (
+              <span>
+                2. Tilt the BertoPad <strong>to the left (~30°)</strong> and hold it steady, then click <strong>&quot;Capture Left Tilt&quot;</strong>.
+              </span>
+            )}
+            {calibStep === 'right' && (
+              <span>
+                3. Now tilt the BertoPad <strong>to the right (~30°)</strong> and hold it steady, then click <strong>&quot;Finish &amp; Apply Scale&quot;</strong>.
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+              Live Pitch: {motionPitch.toFixed(1)}° · Roll: {motionRoll.toFixed(1)}°
+            </span>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {calibStep === 'flat' && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (connection.connected) {
+                      await usbHardware.calibrateMotion().catch(() => {});
+                    }
+                    setPitchOffset(motionPitch - 18);
+                    setRollOffset(motionRoll - (-8));
+                    setCalibStep('left');
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer"
+                >
+                  Set Flat Zero →
+                </button>
+              )}
+
+              {calibStep === 'left' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCalibStep('right');
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer"
+                >
+                  Capture Left Tilt →
+                </button>
+              )}
+
+              {calibStep === 'right' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const l = leftTiltSampleRef.current ?? -25;
+                    const r = rightTiltSampleRef.current ?? 25;
+                    const spread = Math.abs(r - l);
+                    if (spread > 10) {
+                      const computedScale = Math.min(2.5, Math.max(0.4, 60 / spread));
+                      setRollScale(computedScale);
+                    }
+                    setCalibrating3D(false);
+                    setCalibStep(null);
+                    triggerOledToast('GYRO CALIBRATED', 'SCALE APPLIED');
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer"
+                >
+                  Finish &amp; Apply Scale ✓
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Vertically Centered Larger Physical BertoPad with optional 3D Isometric View */}
       <div
         className="my-auto py-4 sm:py-6 flex flex-col items-center justify-center w-full transition-all duration-300"
@@ -1607,9 +1774,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           style={
             view3D
               ? {
-                  transform: `rotateX(${motionPitch.toFixed(1)}deg) rotateY(${motionRoll.toFixed(1)}deg) rotateZ(0deg) scale(0.96)`,
+                  transform: `rotateX(${motionPitch.toFixed(1)}deg) rotateY(${motionRoll.toFixed(1)}deg) translateZ(${shakeZOffset.toFixed(1)}px) scale(${shakeImpulse ? 0.93 : 0.96})`,
                   transformStyle: 'preserve-3d',
-                  transition: motionActive ? 'transform 80ms cubic-bezier(0.16, 1, 0.3, 1)' : 'transform 300ms ease-out'
+                  transition: shakeImpulse ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)' : motionActive ? 'transform 50ms cubic-bezier(0.16, 1, 0.3, 1)' : 'transform 300ms ease-out'
                 }
               : undefined
           }
