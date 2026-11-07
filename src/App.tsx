@@ -67,6 +67,7 @@ import { SetupWizardModal, WizardCompletionPayload } from './components/SetupWiz
 import { SyncConflictModal } from './components/SyncConflictModal';
 import { DiffConfirmModal, DiffPreviewRow } from './components/DiffConfirmModal';
 import { CheatSheetModal } from './components/CheatSheetModal';
+import { CompanionModal } from './components/CompanionModal';
 import { AlertCircle, CheckCircle2, Repeat, Square } from 'lucide-react';
 
 export default function App() {
@@ -168,6 +169,7 @@ export default function App() {
     target: HardwareProfileId;
   } | null>(null);
   const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
+  const [companionModalOpen, setCompanionModalOpen] = useState(false);
 
   const [connection, setConnection] = useState<DeviceConnectionInfo>(usbHardware.info);
   const [activeRepeatJob, setActiveRepeatJob] = useState<ActiveRepeatJob | null>(
@@ -716,6 +718,7 @@ export default function App() {
               onSwitchBleHost={handleSwitchBleHost}
               onOpenSetupWizard={handleOpenSetupWizard}
               onOpenCheatSheet={() => setCheatSheetOpen(true)}
+              onOpenCompanion={() => setCompanionModalOpen(true)}
             />
 
             <div ref={inspectorAnchorRef} className="lg:hidden shrink-0 flex items-center justify-between px-4 py-2 bg-[var(--bg-panel)] border-t border-[var(--border-subtle)] text-xs">
@@ -1133,6 +1136,16 @@ export default function App() {
         capabilities={connection.telemetry?.capabilities}
         onClose={() => setCheatSheetOpen(false)}
         onJumpToControl={handleJumpToSlotControl}
+      />
+
+      {/* Native Desktop & Mobile Companion Ecosystem Modal */}
+      <CompanionModal
+        isOpen={companionModalOpen}
+        onClose={() => setCompanionModalOpen(false)}
+        activeProfileId={studio.activeProfile.id}
+        activeProfileName={studio.activeProfile.name}
+        onSelectProfile={studio.selectProfile}
+        onToast={showToast}
       />
 
       {pendingTest && (

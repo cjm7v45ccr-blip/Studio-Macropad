@@ -57,7 +57,10 @@ import {
   BookOpen,
   Compass,
   ArrowDown,
-  ArrowUp
+  ArrowUp,
+  Layers,
+  Cpu,
+  Sparkles
 } from 'lucide-react';
 
 interface MacropadCanvasProps {
@@ -85,6 +88,7 @@ interface MacropadCanvasProps {
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   onOpenSetupWizard?: () => void;
   onOpenCheatSheet?: () => void;
+  onOpenCompanion?: () => void;
 }
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
@@ -125,9 +129,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   onExecuteHardwareBinding,
   onSwitchBleHost,
   onOpenSetupWizard,
-  onOpenCheatSheet
+  onOpenCheatSheet,
+  onOpenCompanion
 }) => {
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
+  const [view3D, setView3D] = useState(false);
   const [knobAngle, setKnobAngle] = useState(0);
   const [knobPressed, setKnobPressed] = useState(false);
   const [knobAccel, setKnobAccel] = useState<1 | 2 | 3>(1);
@@ -1388,6 +1394,32 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setView3D(v => !v)}
+            title="Toggle high-fidelity 3D tactile perspective preview with exploded chassis depth"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+              view3D
+                ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
+                : 'bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>{view3D ? 'Flat View' : '3D Tactile View'}</span>
+          </button>
+
+          {onOpenCompanion && (
+            <button
+              type="button"
+              onClick={onOpenCompanion}
+              title="Native menu-bar companion & app-aware auto switching"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Cpu className="w-3.5 h-3.5 text-amber-400" />
+              <span>Companion App</span>
+            </button>
+          )}
+
           {onOpenCheatSheet && (
             <button
               type="button"
@@ -1502,10 +1534,25 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
       )}
 
-      {/* Vertically Centered Larger Physical BertoPad */}
-      <div className="my-auto py-4 sm:py-6 flex flex-col items-center justify-center w-full">
+      {/* Vertically Centered Larger Physical BertoPad with optional 3D Isometric View */}
+      <div
+        className="my-auto py-4 sm:py-6 flex flex-col items-center justify-center w-full transition-all duration-300"
+        style={view3D ? { perspective: '1100px' } : undefined}
+      >
         <div
-          className="w-fit max-w-full min-w-[300px] chassis-shell rounded-[32px] sm:rounded-[38px] p-4 sm:p-6 xl:p-7 border border-[#ECEAE4]/10"
+          className={`w-fit max-w-full min-w-[300px] chassis-shell rounded-[32px] sm:rounded-[38px] p-4 sm:p-6 xl:p-7 border border-[#ECEAE4]/10 transition-all duration-300 ${
+            view3D
+              ? 'shadow-[0_45px_80px_-15px_rgba(0,0,0,0.85),0_20px_40px_-10px_rgba(var(--accent-rgb),0.2)] ring-1 ring-[#ECEAE4]/20'
+              : ''
+          }`}
+          style={
+            view3D
+              ? {
+                  transform: 'rotateX(18deg) rotateY(-8deg) rotateZ(2deg) scale(0.96)',
+                  transformStyle: 'preserve-3d'
+                }
+              : undefined
+          }
         >
           {/* 128x64 SSD1306 1-Bit Monochrome Hardware OLED Strip (matches brand card OLED boot screen) */}
           <div className="mb-5 sm:mb-6 px-3.5 py-2.5 rounded-xl bg-black border border-[#ECEAE4]/15 shadow-inner flex items-center justify-between gap-2 min-h-[42px]">

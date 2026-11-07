@@ -20,6 +20,7 @@ import {
   validateFirmwareAlias
 } from '../data/firmwareCatalog';
 import { usbHardware } from '../services/usbHardwareService';
+import { soundEngine } from '../services/soundEffects';
 import {
   AlertCircle,
   ArrowLeft,
@@ -578,6 +579,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         });
       }
 
+      soundEngine.playSuccessChime();
+      onToast('BertoPad is ready! Setup saved successfully.');
       onClose();
     } catch (err: any) {
       onToast(err?.message || 'Could not complete setup', 'error');
