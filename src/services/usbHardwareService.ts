@@ -498,6 +498,8 @@ class PadLinkService {
     this.setupModeListeners.forEach(fn => fn(signal));
   }
 
+  private lastEmittedConnectionKey: string | null = null;
+
   private emitConnection() {
     const snap: DeviceConnectionInfo = {
       ...this.connectionInfo,
@@ -505,6 +507,27 @@ class PadLinkService {
         ? { ...this.connectionInfo.telemetry }
         : undefined
     };
+
+    const snapKey = JSON.stringify({
+      connected: snap.connected,
+      transport: snap.transport,
+      firmwareVersion: snap.firmwareVersion,
+      deviceId: snap.deviceId,
+      rev: snap.rev,
+      bleConnected: snap.telemetry?.bleConnected,
+      wifiConnected: snap.telemetry?.wifiConnected,
+      activeProfile: snap.telemetry?.activeProfile,
+      bleActiveHost: snap.telemetry?.bleActiveHost,
+      pairing: snap.telemetry?.bleManager?.pairing,
+      paused: snap.telemetry?.bleManager?.paused,
+      strict: snap.telemetry?.bleManager?.strict,
+      pairedCount: snap.telemetry?.bleManager?.pairedCount
+    });
+
+    if (snapKey === this.lastEmittedConnectionKey) {
+      return;
+    }
+    this.lastEmittedConnectionKey = snapKey;
     this.connListeners.forEach(fn => fn(snap));
   }
 
@@ -624,6 +647,7 @@ class PadLinkService {
   private markDisconnected() {
     this.demoModeActive = false;
     this.stopLiveTelemetryPolling();
+    this.lastEmittedConnectionKey = null;
     if (this.rebootResyncTimer !== null) {
       window.clearTimeout(this.rebootResyncTimer);
       this.rebootResyncTimer = null;
