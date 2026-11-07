@@ -51,6 +51,7 @@ export interface MotionSensorState {
 }
 
 const DEFAULT_CALIBRATION: GyroCalibrationProfile = {
+  isCalibrated: false,
   pitchOffset: 0,
   rollOffset: 0,
   rollScale: 1.0,
@@ -206,13 +207,17 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
           const rawRoll = Math.atan2(ax, az) * radToDeg;
           const rawYaw = Math.atan2(ax, ay) * radToDeg;
 
-          // Apply normalization scale & offsets from calibration profile
-          const effectiveRawPitch = (rawPitch - calibProfile.pitchOffset) * calibProfile.pitchScale;
-          const effectiveRawRoll = (rawRoll - calibProfile.rollOffset) * calibProfile.rollScale;
+          let clampedPitch = defaultPitchBaseline;
+          let clampedRoll = defaultRollBaseline;
 
-          // Clamp for UI 3D perspective limits
-          const clampedPitch = Math.max(-50, Math.min(60, effectiveRawPitch + defaultPitchBaseline));
-          const clampedRoll = Math.max(-55, Math.min(55, effectiveRawRoll + defaultRollBaseline));
+          if (calibProfile.isCalibrated) {
+            // Apply user custom calibration scale & offsets measured during 5-step wizard
+            const effectiveRawPitch = (rawPitch - calibProfile.pitchOffset) * calibProfile.pitchScale;
+            const effectiveRawRoll = (rawRoll - calibProfile.rollOffset) * calibProfile.rollScale;
+
+            clampedPitch = Math.max(-50, Math.min(60, effectiveRawPitch + defaultPitchBaseline));
+            clampedRoll = Math.max(-55, Math.min(55, effectiveRawRoll + defaultRollBaseline));
+          }
 
           setSensorData({
             pitch: clampedPitch,

@@ -88,6 +88,7 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
       if (raw) return JSON.parse(raw);
     } catch {}
     return {
+      isCalibrated: false,
       pitchOffset: 0,
       rollOffset: 0,
       rollScale: 1.0,
@@ -581,11 +582,12 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                 )}
               </div>
 
-              {(profile.rollScale !== 1 || profile.pitchScale !== 1 || profile.pitchOffset !== 0 || profile.rollOffset !== 0) && (
+              {(profile.isCalibrated || profile.rollScale !== 1 || profile.pitchScale !== 1 || profile.pitchOffset !== 0 || profile.rollOffset !== 0) && (
                 <button
                   type="button"
                   onClick={() => {
                     const neutral: GyroCalibrationProfile = {
+                      isCalibrated: false,
                       pitchOffset: 0,
                       rollOffset: 0,
                       rollScale: 1.0,
@@ -596,12 +598,12 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                     onUpdateGyroCalibration?.(neutral);
                     window.dispatchEvent(new CustomEvent('bertopad_gyro_calib_updated', { detail: neutral }));
                     soundEngine.playDialTick();
-                    onToast('3D calibration reset to factory neutral (1.0× scale).', 'success');
+                    onToast('3D calibration reset to uncalibrated neutral.', 'success');
                   }}
                   className="flex items-center gap-1 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" />
-                  <span>Reset to 1.0×</span>
+                  <span>Reset Calibration</span>
                 </button>
               )}
             </div>
@@ -858,17 +860,18 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                         type="button"
                         onClick={() => {
                           forwardPitchSampleRef.current = wizardPitch;
-                          const left = leftRollSampleRef.current ?? -28;
-                          const right = rightRollSampleRef.current ?? 28;
-                          const rollSpread = Math.abs(right - left);
-                          const rollScale = rollSpread > 10 ? Math.min(2.5, Math.max(0.4, 60 / rollSpread)) : 1.0;
+                          const left = leftRollSampleRef.current;
+                          const right = rightRollSampleRef.current;
+                          const rollSpread = left !== null && right !== null ? Math.abs(right - left) : 0;
+                          const rollScale = rollSpread > 5 ? Math.min(2.5, Math.max(0.4, 60 / rollSpread)) : 1.0;
 
-                          const backward = backwardPitchSampleRef.current ?? -20;
-                          const forward = forwardPitchSampleRef.current ?? 24;
-                          const pitchSpread = Math.abs(forward - backward);
-                          const pitchScale = pitchSpread > 10 ? Math.min(2.5, Math.max(0.4, 50 / pitchSpread)) : 1.0;
+                          const backward = backwardPitchSampleRef.current;
+                          const forward = forwardPitchSampleRef.current;
+                          const pitchSpread = backward !== null && forward !== null ? Math.abs(forward - backward) : 0;
+                          const pitchScale = pitchSpread > 5 ? Math.min(2.5, Math.max(0.4, 50 / pitchSpread)) : 1.0;
 
                           const newCalib: GyroCalibrationProfile = {
+                            isCalibrated: true,
                             pitchOffset: Number(flatRef.current.pitch.toFixed(2)),
                             rollOffset: Number(flatRef.current.roll.toFixed(2)),
                             rollScale: Number(rollScale.toFixed(3)),

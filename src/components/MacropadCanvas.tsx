@@ -9,6 +9,7 @@ import {
   DeviceConnectionInfo,
   EncoderIndex,
   EncoderPlacement,
+  GyroCalibrationProfile,
   HardwareEventPacket,
   HardwareFlashSlot,
   HardwareProfileId,
@@ -1687,17 +1688,18 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   type="button"
                   onClick={() => {
                     forwardTiltSampleRef.current = motionSensor.rawPitch;
-                    const l = leftTiltSampleRef.current ?? -28;
-                    const r = rightTiltSampleRef.current ?? 28;
-                    const rollSpread = Math.abs(r - l);
-                    const computedRollScale = rollSpread > 10 ? Math.min(2.5, Math.max(0.4, 60 / rollSpread)) : 1.0;
+                    const l = leftTiltSampleRef.current;
+                    const r = rightTiltSampleRef.current;
+                    const rollSpread = l !== null && r !== null ? Math.abs(r - l) : 0;
+                    const computedRollScale = rollSpread > 5 ? Math.min(2.5, Math.max(0.4, 60 / rollSpread)) : 1.0;
 
-                    const b = backwardTiltSampleRef.current ?? -20;
-                    const f = forwardTiltSampleRef.current ?? 24;
-                    const pitchSpread = Math.abs(f - b);
-                    const computedPitchScale = pitchSpread > 10 ? Math.min(2.5, Math.max(0.4, 50 / pitchSpread)) : 1.0;
+                    const b = backwardTiltSampleRef.current;
+                    const f = forwardTiltSampleRef.current;
+                    const pitchSpread = b !== null && f !== null ? Math.abs(f - b) : 0;
+                    const computedPitchScale = pitchSpread > 5 ? Math.min(2.5, Math.max(0.4, 50 / pitchSpread)) : 1.0;
 
-                    const newCalib = {
+                    const newCalib: GyroCalibrationProfile = {
+                      isCalibrated: true,
                       pitchOffset: Number(flatPitchRef.current.toFixed(2)),
                       rollOffset: Number(flatRollRef.current.toFixed(2)),
                       rollScale: Number(computedRollScale.toFixed(3)),

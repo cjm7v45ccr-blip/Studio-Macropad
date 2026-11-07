@@ -448,6 +448,7 @@ export type KeyboardLayoutId =
 export type ThemeMode = 'system' | 'dark' | 'light';
 
 export interface GyroCalibrationProfile {
+  isCalibrated: boolean;
   pitchOffset: number;
   rollOffset: number;
   rollScale: number;
