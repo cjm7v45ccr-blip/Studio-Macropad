@@ -176,12 +176,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       const factor = target.shakeActive ? 0.3 : 0.16;
       current.pitch += (target.pitch - current.pitch) * factor;
       current.roll += (target.roll - current.roll) * factor;
-      current.yaw += (target.yaw - current.yaw) * factor;
       current.zOffset += (target.shakeZOffset - current.zOffset) * factor;
 
       if (chassis3dRef.current) {
         const scale = target.shakeActive ? 0.93 : 0.96;
-        chassis3dRef.current.style.transform = `rotate3d(1, 0, 0, ${current.pitch.toFixed(2)}deg) rotate3d(0, 1, 0, ${current.roll.toFixed(2)}deg) rotate3d(0, 0, 1, ${current.yaw.toFixed(2)}deg) translateZ(${current.zOffset.toFixed(2)}px) scale(${scale})`;
+        // Strictly Tilt (X-axis) & Pan (Y-axis), zero Z-axis spin
+        chassis3dRef.current.style.transform = `rotate3d(1, 0, 0, ${current.pitch.toFixed(2)}deg) rotate3d(0, 1, 0, ${current.roll.toFixed(2)}deg) translateZ(${current.zOffset.toFixed(2)}px) scale(${scale})`;
       }
 
       rafId = requestAnimationFrame(animate3D);
