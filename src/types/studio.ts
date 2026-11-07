@@ -310,7 +310,9 @@ export interface HardwareEventPacket {
   percent?: number;
   progress?: number;
   message?: string;
-  slot?: string;
+  slot?: string | number;
+  state?: string;
+  seconds?: number;
   dir?: string;
   accel?: number;
   action?: string;

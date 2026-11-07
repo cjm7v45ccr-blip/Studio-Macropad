@@ -17,7 +17,7 @@ import {
   bleSlotToProfileId
 } from '../types/studio';
 import { ToastVariant } from '../hooks/useStudioState';
-import { STUDIO_VERSION, FIRMWARE_INO_FILENAME, FIRMWARE_SOURCE_LABEL } from '../utils/version';
+import { STUDIO_VERSION, FIRMWARE_VERSION, FIRMWARE_INO_FILENAME, FIRMWARE_SOURCE_LABEL } from '../utils/version';
 import { getVisibleHardwareSlots } from '../data/firmwareCatalog';
 import { isTvDisabledResponse, usbHardware } from '../services/usbHardwareService';
 import { DiffConfirmModal } from './DiffConfirmModal';
@@ -1228,7 +1228,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         firmwareVersion:
                           connection.firmwareVersion === 'v1.0.0' ||
                           connection.firmwareVersion === '1.0.0'
-                            ? '4.9.0'
+                            ? FIRMWARE_VERSION
                             : '1.0.0'
                       })
                     }
@@ -1238,7 +1238,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     Simulate FW (
                     {connection.firmwareVersion === 'v1.0.0' ||
                     connection.firmwareVersion === '1.0.0'
-                      ? 'Restore 4.9.0'
+                      ? `Restore ${FIRMWARE_VERSION}`
                       : 'Set 1.0.0'}
                     )
                   </button>
@@ -1248,7 +1248,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* 1B. MacroPad Firmware Updates + v4.7.0 Source Studio */}
+        {/* 1B. MacroPad Firmware Updates + Source Studio */}
         {showFirmware && (
           <>
             <FirmwareUpdaterCard
@@ -1272,13 +1272,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
                     <Code2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                    <span>ESP32 Firmware v4.7.0 Source Studio</span>
+                    <span>ESP32 Firmware {STUDIO_VERSION} Source Studio</span>
                     <span className="font-mono text-[11px] font-medium text-[var(--text-muted)]">
                       · Arduino / PlatformIO
                     </span>
                   </div>
                   <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                    Complete C++ sketch engineered for your 9-button + dual rotary encoder ESP32 BertoPad with TV mode toggle, standalone macro delays, and hardware safety upgrades.
+                    Complete C++ sketch engineered for your 9-button + dual rotary encoder ESP32 BertoPad with Bluetooth multi-host isolation, timed pairing mode, TV mode toggle, and macro repeat/delays.
                   </p>
                 </div>
 
@@ -1307,7 +1307,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Download StudioMacroPad_v4.7.0.ino</span>
+                    <span>Download {FIRMWARE_INO_FILENAME}</span>
                   </button>
                 </div>
               </div>

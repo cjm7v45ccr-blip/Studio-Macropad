@@ -65,12 +65,16 @@ export interface FirmwareStatusPacket {
     active_host: number;
     max_hosts: number;
     device_name: string;
+    connected?: boolean;
+    trusted?: boolean;
     pairing?: boolean;
     seconds_left?: number;
+    pair_seconds?: number;
     paused?: boolean;
     strict?: boolean;
     paired_count?: number;
-    hosts_per_profile?: Record<string, number>;
+    paired?: number[];
+    hosts_per_profile?: Record<string, number> | number[];
   };
   diagnostics?: {
     free_heap: number;
@@ -195,6 +199,10 @@ interface VirtualDemoPadState {
   tv: Record<HardwareSlotId, string>;
   bleConnected: boolean;
   bleSlot: BleHostSlot;
+  blePairingUntil?: number;
+  blePaused?: boolean;
+  bleStrict?: boolean;
+  blePaired?: [number, number, number];
   wifiConnected: boolean;
   ip: string;
   ssid: string;
@@ -807,7 +815,7 @@ class PadLinkService {
 
       this.demoPad = {
         rev,
-        firmware: '4.9.0',
+        firmware: '4.10.1',
         setupMode: Boolean(opts?.setupMode),
         mode,
         h1Name,
@@ -820,6 +828,10 @@ class PadLinkService {
         tv: initialTv,
         bleConnected: !opts?.setupMode,
         bleSlot,
+        blePairingUntil: 0,
+        blePaused: false,
+        bleStrict: true,
+        blePaired: [1, 0, 0],
         wifiConnected: !opts?.setupMode,
         ip: opts?.setupMode ? '' : '192.168.1.42',
         ssid: opts?.setupMode ? '' : 'Studio-WiFi',
@@ -1056,10 +1068,11 @@ class PadLinkService {
     const activeHostProf = bleSlotToProfileId(d.bleSlot);
     const activeHostSlots = this.getDemoProfileSlots(d, activeHostProf);
     const activeProf: HardwareProfileId = d.mode === 'TV' ? 'TV' : activeHostProf;
-    const fw = d.firmware || '4.9.0';
+    const fw = d.firmware || '4.10.1';
     const is45Plus = isFirmwareAtLeast(fw, 4, 5, 0);
     const is48Plus = isFirmwareAtLeast(fw, 4, 8, 0);
     const is49Plus = isFirmwareAtLeast(fw, 4, 9, 0);
+    const is410Plus = isFirmwareAtLeast(fw, 4, 10, 0);
 
     const nonEmptyBindings = [d.h1, d.h2, d.h3, d.tv].reduce(
       (sum, map) => sum + HARDWARE_SLOTS.filter(s => Boolean(map[s])).length,
@@ -1084,7 +1097,8 @@ class PadLinkService {
           'display_power',
           'nvs_stats',
           'brightness',
-          ...(is49Plus && d.motionPresent ? ['motion'] : [])
+          ...(is49Plus && d.motionPresent ? ['motion'] : []),
+          ...(is410Plus ? ['ble_manage'] : [])
         ]
       : is45Plus
       ? [
@@ -1124,7 +1138,17 @@ class PadLinkService {
       ble: {
         active_host: d.bleSlot,
         max_hosts: 3,
-        device_name: `BertoPad ${d.bleSlot}`
+        device_name: `BertoPad ${d.bleSlot}`,
+        connected: d.bleConnected,
+        trusted: d.bleConnected,
+        pairing: Boolean(d.blePairingUntil && d.blePairingUntil > Date.now()),
+        pair_seconds:
+          d.blePairingUntil && d.blePairingUntil > Date.now()
+            ? Math.round((d.blePairingUntil - Date.now()) / 1000)
+            : 0,
+        paused: Boolean(d.blePaused),
+        strict: d.bleStrict !== false,
+        paired: d.blePaired || [1, 0, 0]
       },
       diagnostics: {
         free_heap: 184320,
@@ -1270,6 +1294,83 @@ class PadLinkService {
         this.handleHardwareEvent(evt);
       }
       return reply({ ok: true, message: 'Switching BLE host...' });
+    }
+
+    if (path === '/api/ble/disconnect') {
+      d.bleConnected = false;
+      d.blePaused = Boolean(obj.stay_off);
+      if (d.eventsEnabled) {
+        this.handleHardwareEvent({ event: 'ble', state: obj.stay_off ? 'paused' : 'disconnected' } as HardwareEventPacket);
+      }
+      return reply({
+        ok: true,
+        message: d.blePaused
+          ? 'Disconnected from the host. Bluetooth stays hidden until you press Connect or start pairing.'
+          : 'Disconnected from the host.'
+      });
+    }
+
+    if (path === '/api/ble/connect') {
+      d.blePaused = false;
+      d.bleConnected = true;
+      if (d.eventsEnabled) {
+        this.handleHardwareEvent({ event: 'ble', state: 'visible' } as HardwareEventPacket);
+      }
+      return reply({
+        ok: true,
+        message: 'Bluetooth is visible again. Paired hosts reconnect on their own.'
+      });
+    }
+
+    if (path === '/api/ble/pair') {
+      const sec = typeof obj.seconds === 'number' ? obj.seconds : 120;
+      if (sec === 0) {
+        d.blePairingUntil = 0;
+        if (d.eventsEnabled) {
+          this.handleHardwareEvent({ event: 'ble', state: 'pairing_off' } as HardwareEventPacket);
+        }
+        return reply({ ok: true, message: 'Pairing mode is off.' });
+      } else {
+        d.blePairingUntil = Date.now() + sec * 1000;
+        d.blePaused = false;
+        if (d.eventsEnabled) {
+          this.handleHardwareEvent({ event: 'ble', state: 'pairing', seconds: sec } as HardwareEventPacket);
+        }
+        return reply({
+          ok: true,
+          message: `Pairing mode is on for ${sec} s. On the computer, add "BertoPad ${d.bleSlot}" in Bluetooth settings.`
+        });
+      }
+    }
+
+    if (path === '/api/ble/forget') {
+      const slot = typeof obj.slot === 'number' ? obj.slot : d.bleSlot;
+      if (Array.isArray(d.blePaired) && slot >= 1 && slot <= 3) {
+        d.blePaired[slot - 1] = 0;
+      }
+      if (obj.bindings) {
+        if (slot === 1) d.h1 = { ...FACTORY_DEFAULT_SLOTS.HOST1 };
+        else if (slot === 2) d.h2 = { ...FACTORY_DEFAULT_SLOTS.HOST2 };
+        else if (slot === 3) d.h3 = { ...FACTORY_DEFAULT_SLOTS.HOST3 };
+        d.rev += 1;
+      }
+      if (d.eventsEnabled) {
+        this.handleHardwareEvent({ event: 'ble', state: 'forgot', slot } as HardwareEventPacket);
+      }
+      return reply({
+        ok: true,
+        message: `Forgot the pairing for Device ${slot} (1 host removed). Remove the old "BertoPad ${slot}" from that computer's Bluetooth list, then pair again.`
+      });
+    }
+
+    if (path === '/api/ble/settings') {
+      d.bleStrict = Boolean(obj.strict);
+      return reply({
+        ok: true,
+        message: d.bleStrict
+          ? 'Only paired hosts can connect outside pairing mode.'
+          : 'Any host may connect (strict mode off).'
+      });
     }
 
     if (path === '/api/tv/enable') {
@@ -2330,6 +2431,43 @@ class PadLinkService {
         }
       };
       this.emitConnection();
+    } else if (e.event === 'ble' && this.connectionInfo.telemetry) {
+      const state = String((e as any).state || '');
+      const prevMgr = this.connectionInfo.telemetry.bleManager || {
+        pairing: false,
+        secondsLeft: 0,
+        paused: false,
+        strict: true,
+        pairedCount: 0
+      };
+      const nextMgr = { ...prevMgr };
+      if (state === 'pairing') {
+        nextMgr.pairing = true;
+        nextMgr.secondsLeft = typeof (e as any).seconds === 'number' ? (e as any).seconds : 120;
+        nextMgr.paused = false;
+      } else if (state === 'pairing_off' || state === 'paired') {
+        nextMgr.pairing = false;
+        nextMgr.secondsLeft = 0;
+      } else if (state === 'paused') {
+        nextMgr.paused = true;
+        nextMgr.pairing = false;
+      } else if (state === 'visible') {
+        nextMgr.paused = false;
+      }
+      this.connectionInfo = {
+        ...this.connectionInfo,
+        telemetry: {
+          ...this.connectionInfo.telemetry,
+          bleManager: nextMgr,
+          bleConnected:
+            state === 'paired'
+              ? true
+              : state === 'disconnected' || state === 'paused'
+              ? false
+              : this.connectionInfo.telemetry.bleConnected
+        }
+      };
+      this.emitConnection();
     } else if (e.event === 'ota') {
       this.otaListeners.forEach(fn => fn(e));
     }
@@ -2386,18 +2524,22 @@ class PadLinkService {
       wifiConnected,
       ip: cleanIp,
       ssid: pkt.ssid || '',
-      bleConnected: Boolean(pkt.connection?.ble_connected),
+      bleConnected: Boolean(pkt.connection?.ble_connected ?? pkt.ble?.connected),
       bleActiveHost: activeHost,
       bleMaxHosts: maxHosts,
       bleDeviceName,
       bleManager: pkt.ble
         ? {
             pairing: Boolean(pkt.ble.pairing),
-            secondsLeft: Number(pkt.ble.seconds_left ?? 0),
+            secondsLeft: Number(pkt.ble.pair_seconds ?? pkt.ble.seconds_left ?? 0),
             paused: Boolean(pkt.ble.paused),
             strict: pkt.ble.strict !== false,
-            pairedCount: Number(pkt.ble.paired_count ?? 0),
-            hostsPerProfile: pkt.ble.hosts_per_profile
+            pairedCount: Array.isArray(pkt.ble.paired)
+              ? pkt.ble.paired.reduce((sum: number, c: number) => sum + Number(c || 0), 0)
+              : Number(pkt.ble.paired_count ?? 0),
+            hostsPerProfile: Array.isArray(pkt.ble.paired)
+              ? pkt.ble.paired
+              : (pkt.ble.hosts_per_profile ?? [0, 0, 0])
           }
         : undefined,
       freeHeap: Number(pkt.diagnostics?.free_heap ?? pkt.heap ?? 0),
@@ -2993,6 +3135,16 @@ class PadLinkService {
       throw new Error(res?.message || 'Could not disconnect BLE host.');
     }
     return { ok: true, message: res.message || 'Disconnected current BLE host.' };
+  }
+
+  public async connectBle(): Promise<{ ok: boolean; message?: string }> {
+    const res = await this.call({
+      path: '/api/ble/connect'
+    });
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Could not resume Bluetooth visibility.');
+    }
+    return { ok: true, message: res.message || 'Bluetooth is visible again. Paired hosts reconnect on their own.' };
   }
 
   public async forgetBleProfile(slot: number, bindings = false): Promise<{ ok: boolean; message?: string }> {

@@ -60,11 +60,11 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
               <span>Recent Changelog ({STUDIO_VERSION})</span>
             </div>
             <ul className="space-y-1.5 list-disc list-inside text-[11px] text-[var(--text-muted)]">
-              <li>Unified single-row 56px header with live connection details popover.</li>
-              <li>Added auto-dismissing fullscreen connection overlay on startup.</li>
-              <li>Enhanced motion sensor diagnostics &amp; live bubble level telemetry.</li>
-              <li>Self-hosted EU-compliant fonts &amp; offline PWA service worker support.</li>
-              <li>Actionable undo toasts after assigning or clearing macro slots.</li>
+              <li>Firmware v4.10.1: Bluetooth multi-host isolation with Easy-Switch virtual MAC addresses.</li>
+              <li>Timed pairing mode (120s) with OLED pairing banner and host confirmation notifications.</li>
+              <li>Strict security mode to block unknown Bluetooth hosts outside the pairing window.</li>
+              <li>Per-profile Bluetooth host forgetting with fresh virtual MAC generation.</li>
+              <li>Full Web Serial and HTTP API control for /api/ble (pair, disconnect, connect, forget).</li>
             </ul>
           </div>
 
