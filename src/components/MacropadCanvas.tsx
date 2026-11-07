@@ -154,12 +154,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   });
 
   const [calibrating3D, setCalibrating3D] = useState<boolean>(false);
-  const [calibStep, setCalibStep] = useState<'flat' | 'left' | 'right' | 'forward' | null>(null);
+  const [calibStep, setCalibStep] = useState<'flat' | 'left' | 'right' | 'backward' | 'forward' | null>(null);
 
   const flatPitchRef = useRef<number>(0);
   const flatRollRef = useRef<number>(0);
   const leftTiltSampleRef = useRef<number | null>(null);
   const rightTiltSampleRef = useRef<number | null>(null);
+  const backwardTiltSampleRef = useRef<number | null>(null);
   const forwardTiltSampleRef = useRef<number | null>(null);
 
   const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
@@ -1603,9 +1604,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 3. Tilt the BertoPad <strong>to the right (~30°)</strong> and hold steady, then click <strong>&quot;Capture Right Tilt&quot;</strong>.
               </span>
             )}
+            {calibStep === 'backward' && (
+              <span>
+                4. Tilt the BertoPad <strong>backward towards you (~25°)</strong>, then click <strong>&quot;Capture Backward Tilt&quot;</strong>.
+              </span>
+            )}
             {calibStep === 'forward' && (
               <span>
-                4. Tilt the BertoPad <strong>forward away from you (~25°)</strong>, then click <strong>&quot;Finish &amp; Save Normalization&quot;</strong>.
+                5. Tilt the BertoPad <strong>forward away from you (~25°)</strong>, then click <strong>&quot;Finish &amp; Save Normalization&quot;</strong>.
               </span>
             )}
           </div>
@@ -1654,11 +1660,25 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   onClick={() => {
                     rightTiltSampleRef.current = motionSensor.rawRoll;
                     soundEngine.playKeyClick();
-                    setCalibStep('forward');
+                    setCalibStep('backward');
                   }}
                   className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer"
                 >
                   Capture Right Tilt →
+                </button>
+              )}
+
+              {calibStep === 'backward' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    backwardTiltSampleRef.current = motionSensor.rawPitch;
+                    soundEngine.playKeyClick();
+                    setCalibStep('forward');
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer"
+                >
+                  Capture Backward Tilt →
                 </button>
               )}
 
@@ -1672,9 +1692,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     const rollSpread = Math.abs(r - l);
                     const computedRollScale = rollSpread > 10 ? Math.min(2.5, Math.max(0.4, 60 / rollSpread)) : 1.0;
 
+                    const b = backwardTiltSampleRef.current ?? -20;
                     const f = forwardTiltSampleRef.current ?? 24;
-                    const pitchSpread = Math.abs(f - flatPitchRef.current);
-                    const computedPitchScale = pitchSpread > 8 ? Math.min(2.5, Math.max(0.4, 40 / pitchSpread)) : 1.0;
+                    const pitchSpread = Math.abs(f - b);
+                    const computedPitchScale = pitchSpread > 10 ? Math.min(2.5, Math.max(0.4, 50 / pitchSpread)) : 1.0;
 
                     const newCalib = {
                       pitchOffset: Number(flatPitchRef.current.toFixed(2)),

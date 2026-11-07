@@ -96,13 +96,14 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
   });
 
   const [wizardOpen, setWizardOpen] = useState<boolean>(false);
-  const [wizardStep, setWizardStep] = useState<'flat' | 'left' | 'right' | 'forward' | 'done'>('flat');
+  const [wizardStep, setWizardStep] = useState<'flat' | 'left' | 'right' | 'backward' | 'forward' | 'done'>('flat');
   const [wizardPitch, setWizardPitch] = useState<number>(0);
   const [wizardRoll, setWizardRoll] = useState<number>(0);
 
   const flatRef = useRef<{ pitch: number; roll: number }>({ pitch: 0, roll: 0 });
   const leftRollSampleRef = useRef<number | null>(null);
   const rightRollSampleRef = useRef<number | null>(null);
+  const backwardPitchSampleRef = useRef<number | null>(null);
   const forwardPitchSampleRef = useRef<number | null>(null);
 
   const committedSensitivityRef = useRef<number>(effectiveSensitivity);
@@ -698,16 +699,30 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                     </div>
                   )}
 
-                  {wizardStep === 'forward' && (
+                  {wizardStep === 'backward' && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                         <span className="px-2 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[10px]">
                           STEP 4
                         </span>
-                        <span>Tilt Forward (~20° to 30°)</span>
+                        <span>Tilt Backward (~20° to 30° towards you)</span>
                       </div>
                       <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        Tilt the pad forward away from you and hold steady. This normalizes the front-to-back pitch rotation response for the 3D render.
+                        Tilt the pad backward towards yourself and hold steady. This measures your backward pitch angle.
+                      </p>
+                    </div>
+                  )}
+
+                  {wizardStep === 'forward' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+                        <span className="px-2 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[10px]">
+                          STEP 5
+                        </span>
+                        <span>Tilt Forward (~20° to 30° away from you)</span>
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                        Now tilt the pad forward away from yourself and hold steady. This measures full front-to-back pitch rotation response.
                       </p>
                     </div>
                   )}
@@ -743,12 +758,15 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                         {wizardStep === 'right' && (
                           <div className="absolute inset-y-0 right-[15%] w-[25%] bg-[var(--accent)]/20 border-l border-r border-[var(--accent)]/40 pointer-events-none" />
                         )}
+                        {wizardStep === 'backward' && (
+                          <div className="absolute inset-y-0 left-[20%] w-[30%] bg-[var(--accent)]/20 border-l border-r border-[var(--accent)]/40 pointer-events-none" />
+                        )}
                         {wizardStep === 'forward' && (
                           <div className="absolute inset-y-0 right-[20%] w-[30%] bg-[var(--accent)]/20 border-l border-r border-[var(--accent)]/40 pointer-events-none" />
                         )}
                         <div
                           style={{
-                            left: `${Math.max(4, Math.min(96, 50 + (wizardStep === 'forward' ? wizardPitch : wizardRoll) * 0.9))}%`
+                            left: `${Math.max(4, Math.min(96, 50 + (wizardStep === 'backward' || wizardStep === 'forward' ? wizardPitch : wizardRoll) * 0.9))}%`
                           }}
                           className="absolute top-0.5 bottom-0.5 -ml-1.5 w-3 rounded-full bg-[var(--accent)] transition-all duration-75 shadow"
                         />
@@ -811,12 +829,27 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                         onClick={() => {
                           rightRollSampleRef.current = wizardRoll;
                           soundEngine.playKeyClick();
-                          setWizardStep('forward');
+                          setWizardStep('backward');
                         }}
                         className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-95 cursor-pointer flex items-center gap-1.5"
                       >
                         <span>Capture Right Tilt</span>
                         <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    {wizardStep === 'backward' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          backwardPitchSampleRef.current = wizardPitch;
+                          soundEngine.playKeyClick();
+                          setWizardStep('forward');
+                        }}
+                        className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-95 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <ArrowDown className="w-3.5 h-3.5" />
+                        <span>Capture Backward Tilt</span>
                       </button>
                     )}
 
@@ -830,9 +863,10 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                           const rollSpread = Math.abs(right - left);
                           const rollScale = rollSpread > 10 ? Math.min(2.5, Math.max(0.4, 60 / rollSpread)) : 1.0;
 
+                          const backward = backwardPitchSampleRef.current ?? -20;
                           const forward = forwardPitchSampleRef.current ?? 24;
-                          const pitchSpread = Math.abs(forward - flatRef.current.pitch);
-                          const pitchScale = pitchSpread > 8 ? Math.min(2.5, Math.max(0.4, 40 / pitchSpread)) : 1.0;
+                          const pitchSpread = Math.abs(forward - backward);
+                          const pitchScale = pitchSpread > 10 ? Math.min(2.5, Math.max(0.4, 50 / pitchSpread)) : 1.0;
 
                           const newCalib: GyroCalibrationProfile = {
                             pitchOffset: Number(flatRef.current.pitch.toFixed(2)),
