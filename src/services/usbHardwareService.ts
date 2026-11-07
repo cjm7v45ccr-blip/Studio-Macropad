@@ -65,6 +65,12 @@ export interface FirmwareStatusPacket {
     active_host: number;
     max_hosts: number;
     device_name: string;
+    pairing?: boolean;
+    seconds_left?: number;
+    paused?: boolean;
+    strict?: boolean;
+    paired_count?: number;
+    hosts_per_profile?: Record<string, number>;
   };
   diagnostics?: {
     free_heap: number;
@@ -2384,6 +2390,16 @@ class PadLinkService {
       bleActiveHost: activeHost,
       bleMaxHosts: maxHosts,
       bleDeviceName,
+      bleManager: pkt.ble
+        ? {
+            pairing: Boolean(pkt.ble.pairing),
+            secondsLeft: Number(pkt.ble.seconds_left ?? 0),
+            paused: Boolean(pkt.ble.paused),
+            strict: pkt.ble.strict !== false,
+            pairedCount: Number(pkt.ble.paired_count ?? 0),
+            hostsPerProfile: pkt.ble.hosts_per_profile
+          }
+        : undefined,
       freeHeap: Number(pkt.diagnostics?.free_heap ?? pkt.heap ?? 0),
       minFreeHeap:
         typeof pkt.diagnostics?.min_free_heap === 'number'
@@ -2955,6 +2971,52 @@ class PadLinkService {
           ? `Host ${slot} (BertoPad ${slot}) is already active.`
           : `Switched to Host ${slot} (BertoPad ${slot}).`
     };
+  }
+
+  public async pairBle(seconds = 120): Promise<{ ok: boolean; message?: string }> {
+    const res = await this.call({
+      path: '/api/ble/pair',
+      seconds
+    });
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Could not start BLE pairing mode.');
+    }
+    return { ok: true, message: res.message || `Pairing mode active for ${seconds}s.` };
+  }
+
+  public async disconnectBle(stayOff = true): Promise<{ ok: boolean; message?: string }> {
+    const res = await this.call({
+      path: '/api/ble/disconnect',
+      stay_off: stayOff
+    });
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Could not disconnect BLE host.');
+    }
+    return { ok: true, message: res.message || 'Disconnected current BLE host.' };
+  }
+
+  public async forgetBleProfile(slot: number, bindings = false): Promise<{ ok: boolean; message?: string }> {
+    const res = await this.call({
+      path: '/api/ble/forget',
+      confirm: 'FORGET',
+      slot,
+      bindings
+    });
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Could not forget BLE profile pairing.');
+    }
+    return { ok: true, message: res.message || `Forgot pairings for Host ${slot}.` };
+  }
+
+  public async setBleSettings(strict: boolean): Promise<{ ok: boolean; message?: string }> {
+    const res = await this.call({
+      path: '/api/ble/settings',
+      strict
+    });
+    if (!res?.ok) {
+      throw new Error(res?.message || 'Could not update BLE security settings.');
+    }
+    return { ok: true, message: res.message || `Updated BLE strict mode to ${strict ? 'ON' : 'OFF'}.` };
   }
 
   public async cancelRunningMacro(): Promise<void> {

@@ -585,6 +585,14 @@ export interface HardwareTelemetry {
     sensitivity: number;
     who?: number;
   };
+  bleManager?: {
+    pairing: boolean;
+    secondsLeft: number;
+    paused: boolean;
+    strict: boolean;
+    pairedCount: number;
+    hostsPerProfile?: Record<number, number>;
+  };
 }
 
 export interface DeviceConnectionInfo {

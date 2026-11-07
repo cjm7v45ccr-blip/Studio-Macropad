@@ -55,6 +55,7 @@ import {
 } from 'lucide-react';
 import { FirmwareBinGuideModal } from './FirmwareBinGuideModal';
 import { MotionSettings } from './MotionSettings';
+import { BleManagementCard } from './BleManagementCard';
 
 interface SettingsViewProps {
   profiles: StudioProfile[];
@@ -1489,6 +1490,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               );
             })}
           </div>
+
+          <BleManagementCard
+            connection={connection}
+            activeProfileId={profiles.find(p => p.id === telemetry?.activeProfile)?.id || 'HOST1'}
+            profiles={profiles}
+            onToast={onToast}
+            onPullFromUsb={onPullFromUsb}
+          />
         </div>
         )}
 
