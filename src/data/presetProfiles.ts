@@ -187,6 +187,33 @@ export const CURATED_PRESETS: ProfilePreset[] = [
     }
   },
   {
+    id: 'system-productivity',
+    title: 'System Productivity & Window Mgmt',
+    subtitle: 'Snip, Lock, Desktop, Task Mgr & Launcher',
+    mode: 'HOST1',
+    description:
+      'Master list bundle for window management, screen capture snips, task manager, show desktop, file explorer, system search, lock screen, and dual rotary volume/tab controls.',
+    bindings: {
+      b1: 'WIN:SNIP',
+      b2: 'WIN:DESKTOP',
+      b3: 'WIN:TASK_MGR',
+      b4: 'WIN:EXPLORER',
+      b5: 'MACRO:SPOTLIGHT',
+      b6: 'MACRO:LOCK',
+      b7: 'SHORTCUT:win:v',
+      b8: 'WIN:RUN',
+      dial: 'MEDIA:MUTE',
+      enc_cw: 'MEDIA:VOL_UP',
+      enc_ccw: 'MEDIA:VOL_DOWN',
+      push_cw: 'SHORTCUT:ctrl,cmd:f',
+      push_ccw: 'SHORTCUT:ctrl,cmd:f',
+      dial2: 'MACRO:NEW_TAB',
+      e2_cw: 'SHORTCUT:ctrl:tab',
+      e2_ccw: 'SHORTCUT:ctrl,shift:tab',
+      ...EMPTY_HOLD_BINDINGS
+    }
+  },
+  {
     id: 'tv-cinema-lounge',
     title: 'SmartCast Streaming Lounge',
     subtitle: '6 Apps, Volume & Channels',
