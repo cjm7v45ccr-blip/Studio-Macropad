@@ -862,13 +862,15 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                           forwardPitchSampleRef.current = wizardPitch;
                           const left = leftRollSampleRef.current;
                           const right = rightRollSampleRef.current;
-                          const rollSpread = left !== null && right !== null ? Math.abs(right - left) : 0;
-                          const rollScale = rollSpread > 5 ? Math.min(2.5, Math.max(0.4, 60 / rollSpread)) : 1.0;
+                          const rollDiff = left !== null && right !== null ? (right - left) : 0;
+                          const rawRollScale = Math.abs(rollDiff) > 5 ? (60 / rollDiff) : 1.0;
+                          const rollScale = Math.sign(rawRollScale) * Math.min(3.0, Math.max(0.3, Math.abs(rawRollScale)));
 
                           const backward = backwardPitchSampleRef.current;
                           const forward = forwardPitchSampleRef.current;
-                          const pitchSpread = backward !== null && forward !== null ? Math.abs(forward - backward) : 0;
-                          const pitchScale = pitchSpread > 5 ? Math.min(2.5, Math.max(0.4, 50 / pitchSpread)) : 1.0;
+                          const pitchDiff = backward !== null && forward !== null ? (forward - backward) : 0;
+                          const rawPitchScale = Math.abs(pitchDiff) > 5 ? (50 / pitchDiff) : 1.0;
+                          const pitchScale = Math.sign(rawPitchScale) * Math.min(3.0, Math.max(0.3, Math.abs(rawPitchScale)));
 
                           const newCalib: GyroCalibrationProfile = {
                             isCalibrated: true,

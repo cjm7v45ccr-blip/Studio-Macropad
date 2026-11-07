@@ -1690,13 +1690,15 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     forwardTiltSampleRef.current = motionSensor.rawPitch;
                     const l = leftTiltSampleRef.current;
                     const r = rightTiltSampleRef.current;
-                    const rollSpread = l !== null && r !== null ? Math.abs(r - l) : 0;
-                    const computedRollScale = rollSpread > 5 ? Math.min(2.5, Math.max(0.4, 60 / rollSpread)) : 1.0;
+                    const rollDiff = l !== null && r !== null ? (r - l) : 0;
+                    const rawRollScale = Math.abs(rollDiff) > 5 ? (60 / rollDiff) : 1.0;
+                    const computedRollScale = Math.sign(rawRollScale) * Math.min(3.0, Math.max(0.3, Math.abs(rawRollScale)));
 
                     const b = backwardTiltSampleRef.current;
                     const f = forwardTiltSampleRef.current;
-                    const pitchSpread = b !== null && f !== null ? Math.abs(f - b) : 0;
-                    const computedPitchScale = pitchSpread > 5 ? Math.min(2.5, Math.max(0.4, 50 / pitchSpread)) : 1.0;
+                    const pitchDiff = b !== null && f !== null ? (f - b) : 0;
+                    const rawPitchScale = Math.abs(pitchDiff) > 5 ? (50 / pitchDiff) : 1.0;
+                    const computedPitchScale = Math.sign(rawPitchScale) * Math.min(3.0, Math.max(0.3, Math.abs(rawPitchScale)));
 
                     const newCalib: GyroCalibrationProfile = {
                       isCalibrated: true,
@@ -1741,10 +1743,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               ? {
                   transform: `rotateX(${motionSensor.pitch.toFixed(1)}deg) rotateY(${motionSensor.roll.toFixed(1)}deg) translateZ(${motionSensor.shakeZOffset.toFixed(1)}px) scale(${motionSensor.shakeActive ? 0.93 : 0.96})`,
                   transformStyle: 'preserve-3d',
+                  willChange: 'transform',
                   transition: motionSensor.shakeActive
                     ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)'
                     : motionSensor.isOnline
-                    ? 'transform 50ms cubic-bezier(0.16, 1, 0.3, 1)'
+                    ? 'transform 80ms cubic-bezier(0.1, 0.9, 0.2, 1)'
                     : 'transform 300ms ease-out'
                 }
               : undefined

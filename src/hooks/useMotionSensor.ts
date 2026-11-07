@@ -107,6 +107,8 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
   });
 
   const prevAccelRef = useRef<{ ax: number; ay: number; az: number }>({ ax: 0, ay: 0, az: 1000 });
+  const smoothedPitchRef = useRef<number>(defaultPitchBaseline);
+  const smoothedRollRef = useRef<number>(defaultRollBaseline);
   const shakeTimerRef = useRef<number | null>(null);
 
   // Sync custom calibration prop or window updates
@@ -208,21 +210,39 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
           const rawRoll = Math.atan2(-ay, az) * radToDeg;
           const rawYaw = Math.atan2(ax, ay) * radToDeg;
 
-          let clampedPitch = defaultPitchBaseline;
-          let clampedRoll = defaultRollBaseline;
+          let targetPitch = defaultPitchBaseline;
+          let targetRoll = defaultRollBaseline;
 
           if (calibProfile.isCalibrated) {
             // Apply user custom calibration scale & offsets measured during 5-step wizard
             const effectiveRawPitch = (rawPitch - calibProfile.pitchOffset) * calibProfile.pitchScale;
             const effectiveRawRoll = (rawRoll - calibProfile.rollOffset) * calibProfile.rollScale;
 
-            clampedPitch = Math.max(-50, Math.min(60, effectiveRawPitch + defaultPitchBaseline));
-            clampedRoll = Math.max(-55, Math.min(55, effectiveRawRoll + defaultRollBaseline));
+            targetPitch = Math.max(-50, Math.min(60, effectiveRawPitch + defaultPitchBaseline));
+            targetRoll = Math.max(-55, Math.min(55, effectiveRawRoll + defaultRollBaseline));
+
+            // Deadband threshold for rock-solid flat resting stability
+            if (Math.abs(effectiveRawPitch) < 0.6) {
+              targetPitch = defaultPitchBaseline;
+            }
+            if (Math.abs(effectiveRawRoll) < 0.6) {
+              targetRoll = defaultRollBaseline;
+            }
+          } else {
+            smoothedPitchRef.current = defaultPitchBaseline;
+            smoothedRollRef.current = defaultRollBaseline;
           }
 
+          // Low-pass exponential moving average filter for buttery smooth 60fps tracking
+          const alpha = 0.28;
+          const nextPitch = smoothedPitchRef.current + alpha * (targetPitch - smoothedPitchRef.current);
+          const nextRoll = smoothedRollRef.current + alpha * (targetRoll - smoothedRollRef.current);
+          smoothedPitchRef.current = nextPitch;
+          smoothedRollRef.current = nextRoll;
+
           setSensorData({
-            pitch: clampedPitch,
-            roll: clampedRoll,
+            pitch: Number(nextPitch.toFixed(2)),
+            roll: Number(nextRoll.toFixed(2)),
             yaw: 0,
             rawPitch,
             rawRoll,
