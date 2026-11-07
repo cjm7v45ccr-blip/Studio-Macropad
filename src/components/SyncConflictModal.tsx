@@ -57,29 +57,20 @@ export const SyncConflictModal: React.FC<SyncConflictModalProps> = ({
                   return (
                     <div
                       key={item.id}
-                      className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs space-y-1.5"
+                      className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs space-y-2"
                     >
                       <div className="font-mono text-[11px] font-bold text-[var(--text-primary)]">
                         {item.label}
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] flex-wrap">
-                        <span className="px-2 py-1 rounded bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)] font-mono inline-flex items-center gap-1.5 max-w-full">
-                          <span className="text-[10px] opacity-80">Web:</span>
-                          {webHasPrefix ? (
-                            <ParsedActionBadge action={item.websiteValue} maxSteps={2} />
-                          ) : (
-                            <span>{item.websiteValue}</span>
-                          )}
-                        </span>
-                        <ArrowRight className="w-3 h-3 text-[var(--text-muted)]" />
-                        <span className="px-2 py-1 rounded bg-[var(--accent-soft)] text-[var(--text-primary)] border border-[rgba(var(--accent-rgb),0.3)] font-mono inline-flex items-center gap-1.5 max-w-full">
-                          <span className="text-[10px] opacity-80">Pad:</span>
-                          {padHasPrefix ? (
-                            <ParsedActionBadge action={item.padValue} maxSteps={2} />
-                          ) : (
-                            <span>{item.padValue}</span>
-                          )}
-                        </span>
+                      <div className="space-y-1.5 font-mono text-[11px]">
+                        <div className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)] overflow-x-auto max-w-full flex items-center gap-2">
+                          <span className="text-[10px] text-[var(--text-muted)] shrink-0 font-sans uppercase font-semibold">Web:</span>
+                          <span className="whitespace-nowrap">{item.websiteValue}</span>
+                        </div>
+                        <div className="px-2.5 py-1.5 rounded-lg bg-[var(--accent-soft)] text-[var(--text-primary)] border border-[rgba(var(--accent-rgb),0.3)] overflow-x-auto max-w-full flex items-center gap-2">
+                          <span className="text-[10px] text-[var(--text-muted)] shrink-0 font-sans uppercase font-semibold">Pad:</span>
+                          <span className="whitespace-nowrap">{item.padValue}</span>
+                        </div>
                       </div>
                     </div>
                   );
