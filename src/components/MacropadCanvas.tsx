@@ -1638,6 +1638,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    leftTiltSampleRef.current = motionSensor.rawRoll;
                     soundEngine.playKeyClick();
                     setCalibStep('right');
                   }}
@@ -1651,6 +1652,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    rightTiltSampleRef.current = motionSensor.rawRoll;
                     soundEngine.playKeyClick();
                     setCalibStep('forward');
                   }}
@@ -1664,6 +1666,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    forwardTiltSampleRef.current = motionSensor.rawPitch;
                     const l = leftTiltSampleRef.current ?? -28;
                     const r = rightTiltSampleRef.current ?? 28;
                     const rollSpread = Math.abs(r - l);
