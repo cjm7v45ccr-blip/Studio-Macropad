@@ -217,7 +217,7 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
           setSensorData({
             pitch: clampedPitch,
             roll: clampedRoll,
-            yaw: rawYaw,
+            yaw: 0,
             rawPitch,
             rawRoll,
             rawYaw,

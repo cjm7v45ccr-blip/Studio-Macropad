@@ -1716,7 +1716,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           style={
             view3D
               ? {
-                  transform: `rotateX(${motionSensor.pitch.toFixed(1)}deg) rotateY(${motionSensor.roll.toFixed(1)}deg) rotateZ(${motionSensor.yaw.toFixed(1)}deg) translateZ(${motionSensor.shakeZOffset.toFixed(1)}px) scale(${motionSensor.shakeActive ? 0.93 : 0.96})`,
+                  transform: `rotateX(${motionSensor.pitch.toFixed(1)}deg) rotateY(${motionSensor.roll.toFixed(1)}deg) translateZ(${motionSensor.shakeZOffset.toFixed(1)}px) scale(${motionSensor.shakeActive ? 0.93 : 0.96})`,
                   transformStyle: 'preserve-3d',
                   transition: motionSensor.shakeActive
                     ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)'
