@@ -42,6 +42,7 @@ import {
 import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
 import { useMotionSensor } from '../hooks/useMotionSensor';
+import { computeGyroCalibration } from '../utils/motionCalibration';
 import {
   AlertTriangle,
   AlertCircle,
@@ -1727,28 +1728,15 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   type="button"
                   onClick={() => {
                     forwardTiltSampleRef.current = motionSensor.rawPitch;
-                    const l = leftTiltSampleRef.current;
-                    const r = rightTiltSampleRef.current;
-                    const rollDiff = l !== null && r !== null ? (r - l) : 0;
-                    const rawRollScale = Math.abs(rollDiff) > 5 ? (60 / rollDiff) : 1.0;
-                    const computedRollScale = Math.sign(rawRollScale) * Math.min(3.0, Math.max(0.3, Math.abs(rawRollScale)));
-
-                    const b = backwardTiltSampleRef.current;
-                    const f = forwardTiltSampleRef.current;
-                    const pitchDiff = b !== null && f !== null ? (f - b) : 0;
-                    const rawPitchScale = Math.abs(pitchDiff) > 5 ? (-50 / pitchDiff) : -1.0;
-                    const computedPitchScale = Math.sign(rawPitchScale) * Math.min(3.0, Math.max(0.3, Math.abs(rawPitchScale)));
-
-                    const newCalib: GyroCalibrationProfile = {
-                      isCalibrated: true,
-                      pitchOffset: Number(flatPitchRef.current.toFixed(2)),
-                      rollOffset: Number(flatRollRef.current.toFixed(2)),
-                      yawOffset: Number(flatYawRef.current.toFixed(2)),
-                      pitchScale: Number(computedPitchScale.toFixed(3)),
-                      rollScale: Number(computedRollScale.toFixed(3)),
-                      yawScale: 1.0,
-                      calibratedAt: new Date().toISOString()
-                    };
+                    const newCalib = computeGyroCalibration(
+                      flatPitchRef.current,
+                      flatRollRef.current,
+                      flatYawRef.current,
+                      leftTiltSampleRef.current ?? motionSensor.rawRoll - 30,
+                      rightTiltSampleRef.current ?? motionSensor.rawRoll + 30,
+                      backwardTiltSampleRef.current ?? motionSensor.rawPitch - 25,
+                      forwardTiltSampleRef.current ?? motionSensor.rawPitch + 25
+                    );
 
                     localStorage.setItem('bertopad_gyro_calib', JSON.stringify(newCalib));
                     window.dispatchEvent(new CustomEvent('bertopad_gyro_calib_updated', { detail: newCalib }));

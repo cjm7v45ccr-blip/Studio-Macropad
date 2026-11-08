@@ -18,6 +18,7 @@ import { MotionSlotId, GyroCalibrationProfile } from '../types/studio';
 import { gestureTypeToMotionSlot, SLOT_LABELS } from '../data/firmwareCatalog';
 import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
+import { computeGyroCalibration } from '../utils/motionCalibration';
 
 export interface MotionTelemetryState {
   present: boolean;
@@ -98,17 +99,6 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
     };
   });
 
-  const [wizardOpen, setWizardOpen] = useState<boolean>(false);
-  const [wizardStep, setWizardStep] = useState<'flat' | 'left' | 'right' | 'backward' | 'forward' | 'done'>('flat');
-  const [wizardPitch, setWizardPitch] = useState<number>(0);
-  const [wizardRoll, setWizardRoll] = useState<number>(0);
-
-  const flatRef = useRef<{ pitch: number; roll: number }>({ pitch: 0, roll: 0 });
-  const leftRollSampleRef = useRef<number | null>(null);
-  const rightRollSampleRef = useRef<number | null>(null);
-  const backwardPitchSampleRef = useRef<number | null>(null);
-  const forwardPitchSampleRef = useRef<number | null>(null);
-
   const committedSensitivityRef = useRef<number>(effectiveSensitivity);
   const flashTimerRef = useRef<number | null>(null);
 
@@ -127,41 +117,6 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
     window.addEventListener('bertopad_gyro_calib_updated', onCalibUpdate);
     return () => window.removeEventListener('bertopad_gyro_calib_updated', onCalibUpdate);
   }, []);
-
-  // Poll GY-521 live data while directional calibration wizard is active
-  useEffect(() => {
-    if (!wizardOpen || !connected || !effectivePresent) return;
-    let cancelled = false;
-    let inFlight = false;
-
-    const poll = async () => {
-      if (cancelled || inFlight) return;
-      inFlight = true;
-      try {
-        const res = await usbHardware.readMotion();
-        if (!cancelled && res?.ok) {
-          const ax = typeof res.ax === 'number' ? res.ax : 0;
-          const ay = typeof res.ay === 'number' ? res.ay : 0;
-          const az = typeof res.az === 'number' ? res.az : 1000;
-          const radToDeg = 180 / Math.PI;
-          const rawPitch = Math.atan2(-ay, Math.sqrt(ax * ax + az * az)) * radToDeg;
-          const rawRoll = Math.atan2(ax, az) * radToDeg;
-          setWizardPitch(rawPitch);
-          setWizardRoll(rawRoll);
-        }
-      } catch {
-      } finally {
-        inFlight = false;
-      }
-    };
-
-    poll();
-    const timer = window.setInterval(poll, 45);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [wizardOpen, connected, effectivePresent]);
 
   useEffect(() => {
     setEnabled(effectiveEnabled);
@@ -527,7 +482,7 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
               <div className="flex items-center gap-2 shrink-0 flex-wrap">
                 <button
                   type="button"
-                  disabled={controlsDisabled || calibrating || wizardOpen}
+                  disabled={controlsDisabled || calibrating}
                   onClick={handleCalibrate}
                   title="Zero the pad's hardware flat reference on NVS"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--border-strong)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
@@ -536,26 +491,6 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                     className={`w-3.5 h-3.5 shrink-0 ${calibrating ? 'animate-spin' : ''}`}
                   />
                   <span>{calibrating ? 'Zeroing…' : 'Quick Flat Zero'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={controlsDisabled}
-                  onClick={() => {
-                    soundEngine.playKeyClick();
-                    setWizardOpen(prev => !prev);
-                    if (!wizardOpen) {
-                      setWizardStep('flat');
-                    }
-                  }}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                    wizardOpen
-                      ? 'bg-[var(--accent)] text-[var(--accent-contrast)] border border-[var(--accent)]'
-                      : 'bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-95'
-                  } disabled:opacity-40`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                  <span>{wizardOpen ? 'Close Calibration' : '3D Directional Calibration'}</span>
                 </button>
               </div>
             </div>
@@ -625,300 +560,6 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
               </div>
             )}
 
-            {/* Interactive Multi-Step Directional Calibration Guide */}
-            {wizardOpen && (
-              <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border-2 border-[var(--accent)] shadow-xl space-y-4">
-                <div className="flex items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
-                  <div className="flex items-center gap-2">
-                    <Compass className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                    <span className="text-xs font-bold text-[var(--text-primary)]">
-                      3D Gyro Motion Normalization Wizard
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 font-mono text-[10px]">
-                    {(['flat', 'left', 'right', 'forward', 'done'] as const).map((st, idx) => {
-                      const isCurrent = wizardStep === st;
-                      const isPast =
-                        (wizardStep === 'left' && idx < 1) ||
-                        (wizardStep === 'right' && idx < 2) ||
-                        (wizardStep === 'forward' && idx < 3) ||
-                        (wizardStep === 'done' && idx < 4);
-                      return (
-                        <span
-                          key={st}
-                          className={`w-5 h-5 rounded-full flex items-center justify-center font-bold transition-colors ${
-                            isCurrent
-                              ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
-                              : isPast
-                              ? 'bg-emerald-600/30 text-emerald-400 border border-emerald-500/50'
-                              : 'bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)]'
-                          }`}
-                        >
-                          {idx + 1}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Step Content */}
-                <div className="space-y-3">
-                  {wizardStep === 'flat' && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-                        <span className="px-2 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[10px]">
-                          STEP 1
-                        </span>
-                        <span>Place BertoPad Flat on Desk</span>
-                      </div>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        Rest your BertoPad completely flat and still on your desk. This establishes the neutral zero orientation for all subsequent 3D render calculations.
-                      </p>
-                    </div>
-                  )}
-
-                  {wizardStep === 'left' && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-                        <span className="px-2 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[10px]">
-                          STEP 2
-                        </span>
-                        <span>Tilt Left (~25° to 35°)</span>
-                      </div>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        Tilt the physical BertoPad gently to the left and hold it steady. Watch the live roll angle below align with the target zone.
-                      </p>
-                    </div>
-                  )}
-
-                  {wizardStep === 'right' && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-                        <span className="px-2 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[10px]">
-                          STEP 3
-                        </span>
-                        <span>Tilt Right (~25° to 35°)</span>
-                      </div>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        Now tilt the BertoPad to the right and hold it steady. This measures your pad&apos;s full lateral deflection spread.
-                      </p>
-                    </div>
-                  )}
-
-                  {wizardStep === 'backward' && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-                        <span className="px-2 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[10px]">
-                          STEP 4
-                        </span>
-                        <span>Tilt Backward (~20° to 30° towards you)</span>
-                      </div>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        Tilt the pad backward towards yourself and hold steady. This measures your backward pitch angle.
-                      </p>
-                    </div>
-                  )}
-
-                  {wizardStep === 'forward' && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-                        <span className="px-2 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[10px]">
-                          STEP 5
-                        </span>
-                        <span>Tilt Forward (~20° to 30° away from you)</span>
-                      </div>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        Now tilt the pad forward away from yourself and hold steady. This measures full front-to-back pitch rotation response.
-                      </p>
-                    </div>
-                  )}
-
-                  {wizardStep === 'done' && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
-                        <Check className="w-4 h-4 text-emerald-400" />
-                        <span>Directional Normalization Complete!</span>
-                      </div>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        3D rotation scale factors and neutral offsets have been calculated and saved. The 3D tactile view will now mirror your physical pad with 1:1 fluid precision.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Live Angle Meter & Target Visualizer */}
-                  {wizardStep !== 'done' && (
-                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2">
-                      <div className="flex items-center justify-between text-xs font-mono tabular-nums">
-                        <span className="text-[var(--text-muted)]">Live Sensor Readout:</span>
-                        <span className="font-bold text-[var(--accent)]">
-                          Pitch: {wizardPitch.toFixed(1)}° · Roll: {wizardRoll.toFixed(1)}°
-                        </span>
-                      </div>
-
-                      {/* Visual Dynamic Angle Bar */}
-                      <div className="relative h-4 rounded-full bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-hidden">
-                        <div className="absolute inset-y-0 left-1/2 w-0.5 bg-[var(--border-strong)] z-10" />
-                        {wizardStep === 'left' && (
-                          <div className="absolute inset-y-0 left-[15%] w-[25%] bg-[var(--accent)]/20 border-l border-r border-[var(--accent)]/40 pointer-events-none" />
-                        )}
-                        {wizardStep === 'right' && (
-                          <div className="absolute inset-y-0 right-[15%] w-[25%] bg-[var(--accent)]/20 border-l border-r border-[var(--accent)]/40 pointer-events-none" />
-                        )}
-                        {wizardStep === 'backward' && (
-                          <div className="absolute inset-y-0 left-[20%] w-[30%] bg-[var(--accent)]/20 border-l border-r border-[var(--accent)]/40 pointer-events-none" />
-                        )}
-                        {wizardStep === 'forward' && (
-                          <div className="absolute inset-y-0 right-[20%] w-[30%] bg-[var(--accent)]/20 border-l border-r border-[var(--accent)]/40 pointer-events-none" />
-                        )}
-                        <div
-                          style={{
-                            left: `${Math.max(4, Math.min(96, 50 + (wizardStep === 'backward' || wizardStep === 'forward' ? wizardPitch : wizardRoll) * 0.9))}%`
-                          }}
-                          className="absolute top-0.5 bottom-0.5 -ml-1.5 w-3 rounded-full bg-[var(--accent)] transition-all duration-75 shadow"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer Controls */}
-                <div className="flex items-center justify-between gap-3 pt-2 border-t border-[var(--border-subtle)]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      soundEngine.playKeyClick();
-                      setWizardOpen(false);
-                      setWizardStep('flat');
-                    }}
-                    className="px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-
-                  <div className="flex items-center gap-2">
-                    {wizardStep === 'flat' && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          flatRef.current = { pitch: wizardPitch, roll: wizardRoll };
-                          if (connected) {
-                            await usbHardware.calibrateMotion().catch(() => {});
-                          }
-                          soundEngine.playKeyClick();
-                          setWizardStep('left');
-                        }}
-                        className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-95 cursor-pointer flex items-center gap-1.5"
-                      >
-                        <span>Set Flat Zero</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-
-                    {wizardStep === 'left' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          leftRollSampleRef.current = wizardRoll;
-                          soundEngine.playKeyClick();
-                          setWizardStep('right');
-                        }}
-                        className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-95 cursor-pointer flex items-center gap-1.5"
-                      >
-                        <ArrowLeft className="w-3.5 h-3.5" />
-                        <span>Capture Left Tilt</span>
-                      </button>
-                    )}
-
-                    {wizardStep === 'right' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          rightRollSampleRef.current = wizardRoll;
-                          soundEngine.playKeyClick();
-                          setWizardStep('backward');
-                        }}
-                        className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-95 cursor-pointer flex items-center gap-1.5"
-                      >
-                        <span>Capture Right Tilt</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-
-                    {wizardStep === 'backward' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          backwardPitchSampleRef.current = wizardPitch;
-                          soundEngine.playKeyClick();
-                          setWizardStep('forward');
-                        }}
-                        className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-95 cursor-pointer flex items-center gap-1.5"
-                      >
-                        <ArrowDown className="w-3.5 h-3.5" />
-                        <span>Capture Backward Tilt</span>
-                      </button>
-                    )}
-
-                    {wizardStep === 'forward' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          forwardPitchSampleRef.current = wizardPitch;
-                          const left = leftRollSampleRef.current;
-                          const right = rightRollSampleRef.current;
-                          const rollDiff = left !== null && right !== null ? (right - left) : 0;
-                          const rawRollScale = Math.abs(rollDiff) > 5 ? (60 / rollDiff) : 1.0;
-                          const rollScale = Math.sign(rawRollScale) * Math.min(3.0, Math.max(0.3, Math.abs(rawRollScale)));
-
-                          const backward = backwardPitchSampleRef.current;
-                          const forward = forwardPitchSampleRef.current;
-                          const pitchDiff = backward !== null && forward !== null ? (forward - backward) : 0;
-                          const rawPitchScale = Math.abs(pitchDiff) > 5 ? (-50 / pitchDiff) : -1.0;
-                          const pitchScale = Math.sign(rawPitchScale) * Math.min(3.0, Math.max(0.3, Math.abs(rawPitchScale)));
-
-                          const newCalib: GyroCalibrationProfile = {
-                            isCalibrated: true,
-                            pitchOffset: Number(flatRef.current.pitch.toFixed(2)),
-                            rollOffset: Number(flatRef.current.roll.toFixed(2)),
-                            yawOffset: 0,
-                            pitchScale: Number(pitchScale.toFixed(3)),
-                            rollScale: Number(rollScale.toFixed(3)),
-                            yawScale: 1.0,
-                            calibratedAt: new Date().toISOString()
-                          };
-
-                          setProfile(newCalib);
-                          localStorage.setItem('bertopad_gyro_calib', JSON.stringify(newCalib));
-                          onUpdateGyroCalibration?.(newCalib);
-                          window.dispatchEvent(new CustomEvent('bertopad_gyro_calib_updated', { detail: newCalib }));
-                          soundEngine.playSuccessChime();
-                          setWizardStep('done');
-                          onToast('3D rotation inputs normalized & calibrated successfully!', 'success');
-                        }}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer flex items-center gap-1.5"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Finish &amp; Apply Normalization</span>
-                      </button>
-                    )}
-
-                    {wizardStep === 'done' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          soundEngine.playKeyClick();
-                          setWizardOpen(false);
-                          setWizardStep('flat');
-                        }}
-                        className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-95 cursor-pointer"
-                      >
-                        Done
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Live Gesture Action Slots Flash Strip */}
