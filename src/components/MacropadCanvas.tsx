@@ -1772,7 +1772,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             view3D
               ? {
                   transformStyle: 'preserve-3d',
-                  willChange: 'transform'
+                  willChange: 'transform',
+                  pointerEvents: 'auto'
                 }
               : undefined
           }
