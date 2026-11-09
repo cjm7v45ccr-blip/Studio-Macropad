@@ -194,9 +194,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         if (chassis3dRef.current.style.transform !== nextTransform) {
           chassis3dRef.current.style.transform = nextTransform;
         }
-        // Flagship dynamic metallic specular highlight reacting to orientation
-        const lightAngle = 145 + current.roll * 1.3 + current.pitch * 0.8;
-        chassis3dRef.current.style.backgroundImage = `linear-gradient(${lightAngle.toFixed(1)}deg, #232731 0%, #171922 45%, #111216 100%)`;
+        // Flagship dynamic metallic specular highlight & soft ambient occlusion offset reacting to orientation
+        const lightAngle = 145 + current.roll * 1.4 + current.pitch * 0.9;
+        const shadowX = -current.roll * 0.8;
+        const shadowY = 50 + current.pitch * 1.2;
+        chassis3dRef.current.style.backgroundImage = `linear-gradient(${lightAngle.toFixed(1)}deg, #252934 0%, #171922 45%, #101216 100%)`;
+        chassis3dRef.current.style.boxShadow = `${shadowX.toFixed(1)}px ${shadowY.toFixed(1)}px 90px -15px rgba(0, 0, 0, 0.85), 0 20px 40px -10px rgba(var(--accent-rgb), 0.18), 0 0 0 1px color-mix(in srgb, var(--bp-bone) 14%, transparent), inset 0 1.5px 2px color-mix(in srgb, var(--bp-bone) 18%, transparent), inset 0 -4px 12px rgba(0, 0, 0, 0.8)`;
       }
 
       rafId = requestAnimationFrame(animate3D);
