@@ -48,6 +48,7 @@ import {
   SlidersHorizontal,
   Code2,
   Download,
+  Upload,
   ChevronDown,
   ChevronRight,
   HelpCircle,
@@ -93,6 +94,7 @@ interface SettingsViewProps {
   onOpenSetupWizard?: () => void;
   onEnterHardwareSetupMode?: () => Promise<void> | void;
   onExportBackupFile?: () => Promise<void> | void;
+  onImportBackupFile?: (file: File) => Promise<void> | void;
   onJumpToMotionSlot?: (slot: MotionSlotId) => void;
   onOpenAbout?: () => void;
   onToast: (msg: string, variant?: ToastVariant) => void;
@@ -212,10 +214,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onOpenSetupWizard,
   onEnterHardwareSetupMode,
   onExportBackupFile,
+  onImportBackupFile,
   onJumpToMotionSlot,
   onOpenAbout,
   onToast
 }) => {
+  const importBackupFileRef = React.useRef<HTMLInputElement>(null);
   const [firmwareBinGuideOpen, setFirmwareBinGuideOpen] = useState<boolean>(false);
   const [diagRefreshing, setDiagRefreshing] = useState<boolean>(false);
   // Wi-Fi Provisioning State (live from pad only — never stored in localStorage)
@@ -2310,6 +2314,64 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
         </div>
+        )}
+
+        {/* Backup & Restore Workspace Card */}
+        {showPreferences && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                  <Download className="w-4 h-4 text-[var(--accent)]" />
+                  <span>Backup & Restore Workspace</span>
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Export all 4 profile keymaps, custom macros, encoder configs, and settings to a JSON backup file, or restore from a previously exported backup file.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  type="file"
+                  ref={importBackupFileRef}
+                  accept=".json"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file && onImportBackupFile) {
+                      onImportBackupFile(file);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                {onExportBackupFile && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await onExportBackupFile();
+                      } catch (err: any) {
+                        onToast(err?.message || 'Could not export backup file', 'error');
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export Backup (.json)</span>
+                  </button>
+                )}
+                {onImportBackupFile && (
+                  <button
+                    type="button"
+                    onClick={() => importBackupFileRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    <span>Import & Restore</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* 7. Debug Console (Redacted Serial Traffic + Copy & Clear) */}

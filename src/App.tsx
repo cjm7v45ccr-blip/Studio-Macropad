@@ -68,7 +68,6 @@ import { SyncConflictModal } from './components/SyncConflictModal';
 import { DiffConfirmModal, DiffPreviewRow } from './components/DiffConfirmModal';
 import { CheatSheetModal } from './components/CheatSheetModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
-import { OnboardingTourModal } from './components/OnboardingTourModal';
 import { AlertCircle, CheckCircle2, Repeat, Square } from 'lucide-react';
 
 export default function App() {
@@ -79,12 +78,6 @@ export default function App() {
   const [pendingTest, setPendingTest] = useState<{ binding: ActionBinding; id: number } | null>(null);
   const testRequestId = useRef(0);
   const pendingTestResolver = useRef<((sent: boolean) => void) | null>(null);
-
-  const handleReviewBinding = useCallback((binding: ActionBinding): Promise<boolean> => {
-    pendingTestResolver.current?.(false);
-    setPendingTest({ binding: structuredClone(binding), id: ++testRequestId.current });
-    return new Promise(resolve => { pendingTestResolver.current = resolve; });
-  }, []);
 
   const handleCloseTest = useCallback(() => {
     pendingTestResolver.current?.(false);
@@ -159,7 +152,7 @@ export default function App() {
   const [externalMacroTarget, setExternalMacroTarget] =
     useState<MacroEditorExternalTarget | null>(null);
   const [connectModalOpen, setConnectModalOpen] = useState(false);
-  const [connectOverlayOpen, setConnectOverlayOpen] = useState(!usbHardware.info.connected);
+  const [connectOverlayOpen, setConnectOverlayOpen] = useState(false);
   const [connectModalError, setConnectModalError] = useState<string | null>(null);
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const [setupWizardTrigger, setSetupWizardTrigger] = useState<'hardware' | 'manual'>(
@@ -171,13 +164,6 @@ export default function App() {
   } | null>(null);
   const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
-  const [onboardingOpen, setOnboardingOpen] = useState(() => {
-    try {
-      return !localStorage.getItem('bertopad_onboarded');
-    } catch {
-      return false;
-    }
-  });
 
   const [connection, setConnection] = useState<DeviceConnectionInfo>(usbHardware.info);
   const [activeRepeatJob, setActiveRepeatJob] = useState<ActiveRepeatJob | null>(
@@ -388,6 +374,14 @@ export default function App() {
     async (binding: ActionBinding): Promise<boolean> => {
       const avail = getActionTestAvailability(binding.value, usbHardware.info);
       if (!avail.canTest) {
+        const preview = buildMacroPreview(binding);
+        if (preview.timeline.length > 0) {
+          repeatMacroRunner.simulateInUi(preview.simulationConfig).catch(() => {});
+          showToast(
+            `Dry run: Fired ${describeFirmwareAction(binding.value, binding.repeatConfig).shortLabel} (offline mode)`
+          );
+          return true;
+        }
         showToast(
           avail.reason || 'Connect BertoPad via USB to test actions on hardware',
           'error'
@@ -430,6 +424,13 @@ export default function App() {
       }
     },
     [connection, showToast]
+  );
+
+  const handleReviewBinding = useCallback(
+    (binding: ActionBinding): Promise<boolean> => {
+      return handleExecuteHardwareBinding(binding);
+    },
+    [handleExecuteHardwareBinding]
   );
 
   const handleSwitchBleHost = useCallback(
@@ -727,7 +728,6 @@ export default function App() {
               onOpenSetupWizard={handleOpenSetupWizard}
               onOpenCheatSheet={() => setCheatSheetOpen(true)}
               onOpenShortcuts={() => setShortcutsModalOpen(true)}
-              onOpenOnboarding={() => setOnboardingOpen(true)}
             />
 
             <div ref={inspectorAnchorRef} className="lg:hidden shrink-0 flex items-center justify-between px-4 py-2 bg-[var(--bg-panel)] border-t border-[var(--border-subtle)] text-xs">
@@ -1036,6 +1036,7 @@ export default function App() {
             onOpenSetupWizard={handleOpenSetupWizard}
             onEnterHardwareSetupMode={handleEnterHardwareSetupMode}
             onExportBackupFile={studio.exportHardwareBackupFile}
+            onImportBackupFile={studio.importHardwareBackupFile}
             onJumpToMotionSlot={slot =>
               handleJumpToSlotControl(studio.activeProfile.id, slot)
             }
@@ -1151,18 +1152,6 @@ export default function App() {
       <KeyboardShortcutsModal
         isOpen={shortcutsModalOpen}
         onClose={() => setShortcutsModalOpen(false)}
-      />
-
-      {/* Guided Studio Onboarding Tour Modal */}
-      <OnboardingTourModal
-        isOpen={onboardingOpen}
-        onClose={() => {
-          setOnboardingOpen(false);
-          try {
-            localStorage.setItem('bertopad_onboarded', 'true');
-          } catch {}
-        }}
-        onOpenSetupWizard={handleOpenSetupWizard}
       />
 
       {pendingTest && (

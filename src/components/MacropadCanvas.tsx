@@ -93,7 +93,6 @@ interface MacropadCanvasProps {
   onOpenSetupWizard?: () => void;
   onOpenCheatSheet?: () => void;
   onOpenShortcuts?: () => void;
-  onOpenOnboarding?: () => void;
 }
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
@@ -135,8 +134,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   onSwitchBleHost,
   onOpenSetupWizard,
   onOpenCheatSheet,
-  onOpenShortcuts,
-  onOpenOnboarding
+  onOpenShortcuts
 }) => {
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [view3D, setView3D] = useState(false);
@@ -1807,18 +1805,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               <Command className="w-3.5 h-3.5 text-[var(--accent)]" />
               <span>Shortcuts</span>
               <kbd className="hidden sm:inline font-mono text-[9px] px-1 rounded bg-[var(--bg-input)] text-[var(--text-muted)]">?</kbd>
-            </button>
-          )}
-
-          {onOpenOnboarding && (
-            <button
-              type="button"
-              onClick={onOpenOnboarding}
-              title="Launch Guided Studio & Hardware Tour"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--accent-soft)] hover:opacity-90 text-xs font-semibold text-[var(--accent)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0 border border-[var(--accent)]/40"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
-              <span>Guided Tour</span>
             </button>
           )}
 
