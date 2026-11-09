@@ -167,7 +167,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   motionTargetRef.current = motionSensor;
 
   useEffect(() => {
-    if (!view3D) return;
+    if (!view3D) {
+      if (chassis3dRef.current) {
+        chassis3dRef.current.style.transform = '';
+      }
+      return;
+    }
     let rafId: number;
 
     const animate3D = () => {
@@ -182,14 +187,22 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       if (chassis3dRef.current) {
         const scale = target.shakeActive ? 0.93 : 0.96;
         // Strictly Tilt (X-axis) & Pan (Y-axis), zero Z-axis spin
-        chassis3dRef.current.style.transform = `rotate3d(1, 0, 0, ${current.pitch.toFixed(2)}deg) rotate3d(0, 1, 0, ${current.roll.toFixed(2)}deg) translateZ(${current.zOffset.toFixed(2)}px) scale(${scale})`;
+        const nextTransform = `rotate3d(1, 0, 0, ${current.pitch.toFixed(2)}deg) rotate3d(0, 1, 0, ${current.roll.toFixed(2)}deg) translateZ(${current.zOffset.toFixed(2)}px) scale(${scale})`;
+        if (chassis3dRef.current.style.transform !== nextTransform) {
+          chassis3dRef.current.style.transform = nextTransform;
+        }
       }
 
       rafId = requestAnimationFrame(animate3D);
     };
 
     rafId = requestAnimationFrame(animate3D);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (chassis3dRef.current) {
+        chassis3dRef.current.style.transform = '';
+      }
+    };
   }, [view3D]);
 
   const [calibrating3D, setCalibrating3D] = useState<boolean>(false);
@@ -229,6 +242,32 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   customMacrosRef.current = customMacros;
   const liveEventsEnabledRef = useRef(liveEventsEnabled);
   liveEventsEnabledRef.current = liveEventsEnabled;
+
+  const lastPointerDownRef = useRef<{ id: string; time: number; x: number; y: number } | null>(null);
+  const lastTriggerTimeRef = useRef<number>(0);
+
+  const handlePointerDown = (id: string, e: React.PointerEvent) => {
+    lastPointerDownRef.current = { id, time: performance.now(), x: e.clientX, y: e.clientY };
+  };
+
+  const handlePointerUp = (id: string, e: React.PointerEvent, onAction: () => void) => {
+    const down = lastPointerDownRef.current;
+    lastPointerDownRef.current = null;
+    if (down && down.id === id) {
+      const elapsed = performance.now() - down.time;
+      const dist = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      if (elapsed < 650 && dist < 30) {
+        lastTriggerTimeRef.current = performance.now();
+        onAction();
+      }
+    }
+  };
+
+  const handleClick = (onAction: () => void) => {
+    if (performance.now() - lastTriggerTimeRef.current < 350) return;
+    lastTriggerTimeRef.current = performance.now();
+    onAction();
+  };
 
   const triggerOledToast = (title: string, subtitle?: string, durationMs = 950) => {
     setOledToast({ title, subtitle });
@@ -1019,8 +1058,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const ringAccent = encCfg.color || '#F2A33A';
 
     return (
-      <div className="flex flex-col items-center justify-center gap-1.5">
-        <div className="relative flex items-center justify-center gap-1.5">
+      <div
+        className="flex flex-col items-center justify-center gap-1.5"
+        style={view3D ? { transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
+      >
+        <div
+          className="relative flex items-center justify-center gap-1.5"
+          style={view3D ? { transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
+        >
           {accel > 1 && (
             <span
               title={`Knob ${encoderIndex} velocity acceleration (${accel}× step)`}
@@ -1034,13 +1079,30 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <button
             type="button"
             aria-label={`Knob ${encoderIndex} Turn Left: ${ccwInfo.fullLabel}`}
+            onPointerDown={e => {
+              e.stopPropagation();
+              handlePointerDown(`enc_${encoderIndex}_ccw`, e);
+            }}
+            onPointerUp={e => {
+              e.stopPropagation();
+              handlePointerUp(`enc_${encoderIndex}_ccw`, e, () => triggerEncoderSpin(encoderIndex, 'ccw'));
+            }}
             onClick={e => {
               e.stopPropagation();
-              triggerEncoderSpin(encoderIndex, 'ccw');
+              handleClick(() => triggerEncoderSpin(encoderIndex, 'ccw'));
             }}
             title={`Knob ${encoderIndex} Turn Left (${ccwInfo.fullLabel}) — click to ${
               viewMode === 'edit' ? 'configure' : 'trigger'
             }`}
+            style={
+              view3D
+                ? {
+                    transform: 'translateZ(20px)',
+                    transformStyle: 'preserve-3d',
+                    zIndex: 25
+                  }
+                : undefined
+            }
             className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
               isCcwFlashed
                 ? 'bg-[#F2A33A]/25 ring-2 ring-[#F2A33A] text-[#ECEAE4] scale-110'
@@ -1064,7 +1126,16 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             onMouseDown={() => setPressed(true)}
             onMouseUp={() => setPressed(false)}
             onMouseLeave={() => setPressed(false)}
-            onClick={() => activateDialPush(encoderIndex)}
+            onPointerDown={e => {
+              setPressed(true);
+              handlePointerDown(`dial_${encoderIndex}`, e);
+            }}
+            onPointerUp={e => {
+              setPressed(false);
+              handlePointerUp(`dial_${encoderIndex}`, e, () => activateDialPush(encoderIndex));
+            }}
+            onPointerCancel={() => setPressed(false)}
+            onClick={() => handleClick(() => activateDialPush(encoderIndex))}
             onKeyDown={e => {
               if (e.key === 'ArrowRight') {
                 e.preventDefault();
@@ -1084,7 +1155,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 : 'rgba(236, 234, 228, 0.14)',
               boxShadow: isDialFlashed
                 ? '0 0 0 4px rgba(242, 163, 58, 0.4), 0 0 26px rgba(242, 163, 58, 0.35)'
-                : undefined
+                : undefined,
+              ...(view3D
+                ? {
+                    transform: isPressed ? 'translateZ(14px) scale(0.96)' : 'translateZ(24px)',
+                    transformStyle: 'preserve-3d',
+                    zIndex: 25
+                  }
+                : {})
             }}
             className={`relative w-20 h-20 sm:w-24 sm:h-24 xl:w-26 xl:h-26 rounded-full bg-gradient-to-b from-[#1E2128] to-[#14161B] border-2 flex items-center justify-center transition-all duration-150 cursor-pointer select-none ${
               isDialSelected && !isDialFlashed
@@ -1149,13 +1227,30 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <button
             type="button"
             aria-label={`Knob ${encoderIndex} Turn Right: ${cwInfo.fullLabel}`}
+            onPointerDown={e => {
+              e.stopPropagation();
+              handlePointerDown(`enc_${encoderIndex}_cw`, e);
+            }}
+            onPointerUp={e => {
+              e.stopPropagation();
+              handlePointerUp(`enc_${encoderIndex}_cw`, e, () => triggerEncoderSpin(encoderIndex, 'cw'));
+            }}
             onClick={e => {
               e.stopPropagation();
-              triggerEncoderSpin(encoderIndex, 'cw');
+              handleClick(() => triggerEncoderSpin(encoderIndex, 'cw'));
             }}
             title={`Knob ${encoderIndex} Turn Right (${cwInfo.fullLabel}) — click to ${
               viewMode === 'edit' ? 'configure' : 'trigger'
             }`}
+            style={
+              view3D
+                ? {
+                    transform: 'translateZ(20px)',
+                    transformStyle: 'preserve-3d',
+                    zIndex: 25
+                  }
+                : undefined
+            }
             className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
               isCwFlashed
                 ? 'bg-[#F2A33A]/25 ring-2 ring-[#F2A33A] text-[#ECEAE4] scale-110'
@@ -1172,10 +1267,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-1 text-[10px] text-[#A3A6AD] text-center max-w-[164px] truncate">
+        <div
+          className="flex items-center gap-1 text-[10px] text-[#A3A6AD] text-center max-w-[164px] truncate"
+          style={view3D ? { transform: 'translateZ(16px)', transformStyle: 'preserve-3d', zIndex: 20 } : undefined}
+        >
           <button
             type="button"
-            onClick={() => triggerEncoderSpin(encoderIndex, 'ccw')}
+            onPointerDown={e => handlePointerDown(`enc_sub_${encoderIndex}_ccw`, e)}
+            onPointerUp={e =>
+              handlePointerUp(`enc_sub_${encoderIndex}_ccw`, e, () => triggerEncoderSpin(encoderIndex, 'ccw'))
+            }
+            onClick={() => handleClick(() => triggerEncoderSpin(encoderIndex, 'ccw'))}
             title={`Knob ${encoderIndex} Turn Left: ${ccwInfo.fullLabel}`}
             className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
               isCcwSelected ? 'text-[#F2A33A] font-semibold' : ''
@@ -1188,7 +1290,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </span>
           <button
             type="button"
-            onClick={() => activateDialPush(encoderIndex)}
+            onPointerDown={e => handlePointerDown(`enc_sub_${encoderIndex}_press`, e)}
+            onPointerUp={e =>
+              handlePointerUp(`enc_sub_${encoderIndex}_press`, e, () => activateDialPush(encoderIndex))
+            }
+            onClick={() => handleClick(() => activateDialPush(encoderIndex))}
             title={`Knob ${encoderIndex} Press: ${dialInfo.fullLabel}`}
             className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
               isDialSelected ? 'text-[#F2A33A] font-semibold' : ''
@@ -1201,7 +1307,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </span>
           <button
             type="button"
-            onClick={() => triggerEncoderSpin(encoderIndex, 'cw')}
+            onPointerDown={e => handlePointerDown(`enc_sub_${encoderIndex}_cw`, e)}
+            onPointerUp={e =>
+              handlePointerUp(`enc_sub_${encoderIndex}_cw`, e, () => triggerEncoderSpin(encoderIndex, 'cw'))
+            }
+            onClick={() => handleClick(() => triggerEncoderSpin(encoderIndex, 'cw'))}
             title={`Knob ${encoderIndex} Turn Right: ${cwInfo.fullLabel}`}
             className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
               isCwSelected ? 'text-[#F2A33A] font-semibold' : ''
@@ -1212,11 +1322,18 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         </div>
 
         {encoderIndex === 1 && (
-          <div className="flex items-center gap-1 text-[10px] text-[#A3A6AD] text-center max-w-[178px] truncate">
+          <div
+            className="flex items-center gap-1 text-[10px] text-[#A3A6AD] text-center max-w-[178px] truncate"
+            style={view3D ? { transform: 'translateZ(16px)', transformStyle: 'preserve-3d', zIndex: 20 } : undefined}
+          >
             <span className="font-mono text-[9px] text-[#A3A6AD]/75 shrink-0">Push+turn:</span>
             <button
               type="button"
-              onClick={() => triggerEncoderHoldSpin('ccw')}
+              onPointerDown={e => handlePointerDown('enc1_push_ccw', e)}
+              onPointerUp={e =>
+                handlePointerUp('enc1_push_ccw', e, () => triggerEncoderHoldSpin('ccw'))
+              }
+              onClick={() => handleClick(() => triggerEncoderHoldSpin('ccw'))}
               title={`Knob 1 Hold + Turn Left: ${pushCcwInfo.fullLabel}`}
               className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
                 isPushCcwSelected || isPushCcwFlashed
@@ -1233,7 +1350,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             </span>
             <button
               type="button"
-              onClick={() => triggerEncoderHoldSpin('cw')}
+              onPointerDown={e => handlePointerDown('enc1_push_cw', e)}
+              onPointerUp={e =>
+                handlePointerUp('enc1_push_cw', e, () => triggerEncoderHoldSpin('cw'))
+              }
+              onClick={() => handleClick(() => triggerEncoderHoldSpin('cw'))}
               title={`Knob 1 Hold + Turn Right: ${pushCwInfo.fullLabel}`}
               className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
                 isPushCwSelected || isPushCwFlashed
@@ -1278,7 +1399,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const holdConflict = Boolean(holdSlot && hasConflict(holdSlot));
 
     return (
-      <div key={kid} className="flex flex-col items-center gap-1.5 group relative">
+      <div
+        key={kid}
+        className="flex flex-col items-center gap-1.5 group relative"
+        style={view3D ? { transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
+      >
         <button
           type="button"
           aria-label={`${badgeText}: ${cfg.appearance.label}`}
@@ -1296,7 +1421,18 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           onMouseLeave={() => {
             if (pressedKey === kid) setPressedKey(null);
           }}
-          onClick={() => activateKeyControl(kid)}
+          onPointerDown={e => {
+            setPressedKey(kid);
+            handlePointerDown(`key_${kid}`, e);
+          }}
+          onPointerUp={e => {
+            setPressedKey(null);
+            handlePointerUp(`key_${kid}`, e, () => activateKeyControl(kid));
+          }}
+          onPointerCancel={() => {
+            if (pressedKey === kid) setPressedKey(null);
+          }}
+          onClick={() => handleClick(() => activateKeyControl(kid))}
           style={{
             borderColor: isFlashed
               ? '#F2A33A'
@@ -1313,11 +1449,24 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               ? undefined
               : isDown
               ? '0 2px 4px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.4)'
-              : '0 6px 0 #14161B, 0 10px 18px rgba(0,0,0,0.46), inset 0 1px 0 rgba(236,234,228,0.08)'
+              : '0 6px 0 #14161B, 0 10px 18px rgba(0,0,0,0.46), inset 0 1px 0 rgba(236,234,228,0.08)',
+            ...(view3D
+              ? {
+                  transform: isDown
+                    ? 'translateZ(8px) translateY(2px)'
+                    : isSelected
+                    ? 'translateZ(26px) translateY(-1px)'
+                    : 'translateZ(18px)',
+                  transformStyle: 'preserve-3d',
+                  zIndex: 20
+                }
+              : {})
           }}
-          className={`relative shrink-0 w-[86px] h-[86px] sm:w-[96px] sm:h-[96px] xl:w-[106px] xl:h-[106px] 2xl:w-[112px] 2xl:h-[112px] rounded-2xl bg-[#1E2128] border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none transition-all duration-150 ease-out cursor-pointer ${
-            isSelected && !isFlashed ? 'keycap-selected-glow -translate-y-0.5' : ''
-          } ${isDown ? 'translate-y-1' : !isSelected ? 'hover:-translate-y-0.5' : ''} ${
+          className={`relative shrink-0 w-[86px] h-[86px] sm:w-[96px] sm:h-[96px] xl:w-[106px] xl:h-[106px] 2xl:w-[112px] 2xl:h-[112px] rounded-2xl bg-[#1E2128] border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none ${
+            view3D ? '' : 'transition-all duration-150 ease-out'
+          } cursor-pointer ${
+            !view3D && isSelected && !isFlashed ? 'keycap-selected-glow -translate-y-0.5' : ''
+          } ${!view3D && isDown ? 'translate-y-1' : !view3D && !isSelected ? 'hover:-translate-y-0.5' : ''} ${
             isUnassigned && !isSelected && !isFlashed
               ? 'opacity-40 hover:opacity-75'
               : ''
@@ -1379,7 +1528,20 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 ? `Key ${index + 1} Hold (500 ms): ${summarizeAction(holdBinding, customMacros)}`
                 : `Key ${index + 1} Hold (500 ms) — Unassigned`
             }
-            onClick={() => activateKeyHoldControl(actionKid)}
+            onPointerDown={e => handlePointerDown(`hold_${actionKid}`, e)}
+            onPointerUp={e =>
+              handlePointerUp(`hold_${actionKid}`, e, () => activateKeyHoldControl(actionKid))
+            }
+            onClick={() => handleClick(() => activateKeyHoldControl(actionKid))}
+            style={
+              view3D
+                ? {
+                    transform: 'translateZ(14px)',
+                    transformStyle: 'preserve-3d',
+                    zIndex: 15
+                  }
+                : undefined
+            }
             className={`w-[86px] sm:w-[96px] xl:w-[106px] 2xl:w-[112px] px-2 py-1 rounded-lg bg-[#1E2128] border items-center justify-between gap-1 text-left select-none transition-all duration-150 cursor-pointer ${
               isHoldFlashed || isHoldSelected || isSelected || holdBinding.value
                 ? 'flex'
@@ -1758,15 +1920,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
       {/* Vertically Centered Larger Physical BertoPad with optional 3D Isometric View */}
       <div
-        className="my-auto py-4 sm:py-6 flex flex-col items-center justify-center w-full transition-all duration-300"
-        style={view3D ? { perspective: '1100px' } : undefined}
+        className={`my-auto py-4 sm:py-6 flex flex-col items-center justify-center w-full ${
+          view3D ? '' : 'transition-all duration-300'
+        }`}
+        style={view3D ? { perspective: '1100px', transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
       >
         <div
           ref={chassis3dRef}
-          className={`w-fit max-w-full min-w-[300px] chassis-shell rounded-[32px] sm:rounded-[38px] p-4 sm:p-6 xl:p-7 border border-[#ECEAE4]/10 transition-all duration-300 ${
+          className={`w-fit max-w-full min-w-[300px] chassis-shell rounded-[32px] sm:rounded-[38px] p-4 sm:p-6 xl:p-7 border border-[#ECEAE4]/10 ${
             view3D
               ? 'shadow-[0_45px_80px_-15px_rgba(0,0,0,0.85),0_20px_40px_-10px_rgba(var(--accent-rgb),0.2)] ring-1 ring-[#ECEAE4]/20'
-              : ''
+              : 'transition-all duration-300'
           }`}
           style={
             view3D
@@ -1779,7 +1943,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           }
         >
           {/* 128x64 SSD1306 1-Bit Monochrome Hardware OLED Strip (matches brand card OLED boot screen) */}
-          <div className="mb-5 sm:mb-6 px-3.5 py-2.5 rounded-xl bg-black border border-[#ECEAE4]/15 shadow-inner flex items-center justify-between gap-2 min-h-[42px]">
+          <div
+            className="mb-5 sm:mb-6 px-3.5 py-2.5 rounded-xl bg-black border border-[#ECEAE4]/15 shadow-inner flex items-center justify-between gap-2 min-h-[42px]"
+            style={view3D ? { transform: 'translateZ(12px)', transformStyle: 'preserve-3d', zIndex: 15 } : undefined}
+          >
             <div className="flex items-center gap-2 min-w-0">
               <img
                 src="/logo-mark-mono.svg"
@@ -1840,8 +2007,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   </span>
                   <button
                     type="button"
-                    onClick={onPullFromUsb}
+                    onPointerDown={e => handlePointerDown('oled_pull', e)}
+                    onPointerUp={e => handlePointerUp('oled_pull', e, onPullFromUsb)}
+                    onClick={() => handleClick(onPullFromUsb)}
                     title="Refresh status & all 4 profiles"
+                    style={view3D ? { transform: 'translateZ(4px)', transformStyle: 'preserve-3d', zIndex: 20 } : undefined}
                     className="text-[#ECEAE4] hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <RefreshCw className="w-2.5 h-2.5" />
@@ -1857,20 +2027,35 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               {isBleHostProfile(activeProfileId) && (
                 <button
                   type="button"
-                  onClick={() => {
-                    const nextSlot = (((oledBadgeHost % 3) + 1) as BleHostSlot);
-                    if (connection.connected) {
-                      onSwitchBleHost(nextSlot);
-                    } else {
-                      setOfflineBleHost(nextSlot);
-                      onSelectProfile(bleSlotToProfileId(nextSlot));
-                    }
-                  }}
+                  onPointerDown={e => handlePointerDown('oled_host', e)}
+                  onPointerUp={e =>
+                    handlePointerUp('oled_host', e, () => {
+                      const nextSlot = (((oledBadgeHost % 3) + 1) as BleHostSlot);
+                      if (connection.connected) {
+                        onSwitchBleHost(nextSlot);
+                      } else {
+                        setOfflineBleHost(nextSlot);
+                        onSelectProfile(bleSlotToProfileId(nextSlot));
+                      }
+                    })
+                  }
+                  onClick={() =>
+                    handleClick(() => {
+                      const nextSlot = (((oledBadgeHost % 3) + 1) as BleHostSlot);
+                      if (connection.connected) {
+                        onSwitchBleHost(nextSlot);
+                      } else {
+                        setOfflineBleHost(nextSlot);
+                        onSelectProfile(bleSlotToProfileId(nextSlot));
+                      }
+                    })
+                  }
                   title={
                     connection.connected
                       ? `Device ${oledBadgeHost} (BertoPad ${oledBadgeHost}) — click to switch host`
                       : `Viewing Device ${oledBadgeHost} — click to cycle H1–H3`
                   }
+                  style={view3D ? { transform: 'translateZ(4px)', transformStyle: 'preserve-3d', zIndex: 20 } : undefined}
                   className={`px-1.5 py-0.5 rounded bg-black border font-mono text-[10px] font-bold leading-none tracking-tight transition-colors cursor-pointer tabular-nums shrink-0 ${
                     connection.connected && oledBadgeHost !== activeBleHost
                       ? 'border-[#ECEAE4]/50 text-[#A3A6AD] hover:border-[#ECEAE4]'
@@ -1884,21 +2069,39 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </div>
 
           {encoderPlacement === 'top' ? (
-            <div className="flex flex-col items-center gap-5 sm:gap-6">
-              <div className="flex flex-wrap items-start justify-center gap-4 sm:gap-6">
+            <div
+              className="flex flex-col items-center gap-5 sm:gap-6"
+              style={view3D ? { transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
+            >
+              <div
+                className="flex flex-wrap items-start justify-center gap-4 sm:gap-6"
+                style={view3D ? { transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
+              >
                 {renderEncoderUnit(1)}
                 {renderEncoderUnit(2)}
               </div>
-              <div className="grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center items-start shrink-0">
+              <div
+                className="grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center items-start shrink-0"
+                style={view3D ? { transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
+              >
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
             </div>
           ) : (
-            <div className="flex flex-col @[580px]:flex-row items-center justify-center gap-5 @[580px]:gap-6">
-              <div className="order-2 @[580px]:order-1 grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center items-start shrink-0">
+            <div
+              className="flex flex-col @[580px]:flex-row items-center justify-center gap-5 @[580px]:gap-6"
+              style={view3D ? { transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
+            >
+              <div
+                className="order-2 @[580px]:order-1 grid grid-cols-[repeat(3,max-content)] gap-3.5 sm:gap-4 justify-items-center items-start shrink-0"
+                style={view3D ? { transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
+              >
                 {KEY_ORDER.map((kid, idx) => renderKeycap(kid, idx))}
               </div>
-              <div className="order-1 @[580px]:order-2 shrink-0 flex flex-row flex-wrap @[580px]:flex-col items-center justify-center gap-4 sm:gap-5 @[580px]:pl-6 @[580px]:border-l @[580px]:border-[#ECEAE4]/10 @[580px]:self-stretch">
+              <div
+                className="order-1 @[580px]:order-2 shrink-0 flex flex-row flex-wrap @[580px]:flex-col items-center justify-center gap-4 sm:gap-5 @[580px]:pl-6 @[580px]:border-l @[580px]:border-[#ECEAE4]/10 @[580px]:self-stretch"
+                style={view3D ? { transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
+              >
                 {renderEncoderUnit(1)}
                 {renderEncoderUnit(2)}
               </div>
