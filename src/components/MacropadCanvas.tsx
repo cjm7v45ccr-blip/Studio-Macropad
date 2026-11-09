@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ActionBinding,
   BleHostSlot,
@@ -243,30 +243,52 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const liveEventsEnabledRef = useRef(liveEventsEnabled);
   liveEventsEnabledRef.current = liveEventsEnabled;
 
-  const lastPointerDownRef = useRef<{ id: string; time: number; x: number; y: number } | null>(null);
+  const lastPointerDownRef = useRef<{ id: string; time: number } | null>(null);
   const lastTriggerTimeRef = useRef<number>(0);
 
-  const handlePointerDown = (id: string, e: React.PointerEvent) => {
-    lastPointerDownRef.current = { id, time: performance.now(), x: e.clientX, y: e.clientY };
+  const handlePointerDown = (id: string, _e: React.PointerEvent) => {
+    lastPointerDownRef.current = { id, time: performance.now() };
   };
 
-  const handlePointerUp = (id: string, e: React.PointerEvent, onAction: () => void) => {
+  const handlePointerUp = (id: string, _e: React.PointerEvent, onAction: () => void) => {
     const down = lastPointerDownRef.current;
     lastPointerDownRef.current = null;
     if (down && down.id === id) {
-      const elapsed = performance.now() - down.time;
-      const dist = Math.hypot(e.clientX - down.x, e.clientY - down.y);
-      if (elapsed < 650 && dist < 30) {
-        lastTriggerTimeRef.current = performance.now();
+      const now = performance.now();
+      if (now - lastTriggerTimeRef.current > 100) {
+        lastTriggerTimeRef.current = now;
         onAction();
       }
     }
   };
 
+  const triggerSlotFlash = useCallback((slot: HardwareFlashSlot) => {
+    setFlashedSlots(prev => {
+      if (prev.has(slot)) return prev;
+      const next = new Set(prev);
+      next.add(slot);
+      return next;
+    });
+
+    if (flashTimersRef.current[slot]) {
+      window.clearTimeout(flashTimersRef.current[slot]);
+    }
+    flashTimersRef.current[slot] = window.setTimeout(() => {
+      setFlashedSlots(prev => {
+        if (!prev.has(slot)) return prev;
+        const next = new Set(prev);
+        next.delete(slot);
+        return next;
+      });
+    }, 260);
+  }, []);
+
   const handleClick = (onAction: () => void) => {
-    if (performance.now() - lastTriggerTimeRef.current < 350) return;
-    lastTriggerTimeRef.current = performance.now();
-    onAction();
+    const now = performance.now();
+    if (now - lastTriggerTimeRef.current > 60) {
+      lastTriggerTimeRef.current = now;
+      onAction();
+    }
   };
 
   const triggerOledToast = (title: string, subtitle?: string, durationMs = 950) => {
@@ -367,27 +389,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   };
 
   useEffect(() => {
-    const triggerSlotFlash = (slot: HardwareFlashSlot) => {
-      setFlashedSlots(prev => {
-        if (prev.has(slot)) return prev;
-        const next = new Set(prev);
-        next.add(slot);
-        return next;
-      });
-
-      if (flashTimersRef.current[slot]) {
-        window.clearTimeout(flashTimersRef.current[slot]);
-      }
-      flashTimersRef.current[slot] = window.setTimeout(() => {
-        setFlashedSlots(prev => {
-          if (!prev.has(slot)) return prev;
-          const next = new Set(prev);
-          next.delete(slot);
-          return next;
-        });
-      }, 260);
-    };
-
     const unsub = usbHardware.onHardwareEvent((e: HardwareEventPacket) => {
       if (!liveEventsEnabledRef.current) return;
 
@@ -660,11 +661,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
   const activateKeyControl = async (kid: KeyId) => {
     soundEngine.playKeyClick();
+    onSelectControl(kid);
 
-    if (viewMode === 'edit') {
-      onSelectControl(kid);
-      return;
-    }
+    const cfg = layer.keys[kid];
+    const slotKey: HardwareFlashSlot = cfg?.isModeSwitch
+      ? 'mode'
+      : cfg?.slot || (`b${KEY_ORDER.indexOf(kid) + 1}` as HardwareFlashSlot);
+    triggerSlotFlash(slotKey);
 
     if (connection.transport === 'demo') {
       const slotMap: Record<KeyId, HardwareFlashSlot> = {
@@ -682,7 +685,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       return;
     }
 
-    const cfg = layer.keys[kid];
     if (!cfg) return;
 
     if (cfg.isModeSwitch || kid === 'k9') {
@@ -739,11 +741,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const activateKeyHoldControl = async (kid: ActionKeyId) => {
     soundEngine.playKeyClick();
     const holdSlot = KEY_TO_HOLD_SLOT[kid];
-
-    if (viewMode === 'edit') {
-      onSelectControl(holdSlot);
-      return;
-    }
+    onSelectControl(holdSlot);
+    triggerSlotFlash(holdSlot);
 
     if (connection.transport === 'demo') {
       usbHardware.simulateDemoPadInput(holdSlot);
@@ -848,14 +847,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         ? 'enc_cw'
         : 'enc_ccw';
 
-    if (viewMode === 'edit') {
-      queueKnobAngleDelta(encoderIndex, dir === 'cw' ? 24 : -24);
-      soundEngine.playDialTick();
-      onSelectControl(subId);
-      return;
-    }
+    onSelectControl(subId);
+    triggerSlotFlash(subId);
 
     if (connection.transport === 'demo') {
+      queueKnobAngleDelta(encoderIndex, dir === 'cw' ? 24 : -24);
+      soundEngine.playDialTick();
       usbHardware.simulateDemoPadInput(subId);
       return;
     }
@@ -898,15 +895,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
   const triggerEncoderHoldSpin = async (dir: 'cw' | 'ccw') => {
     const subId: HardwareFlashSlot & ControlId = dir === 'cw' ? 'push_cw' : 'push_ccw';
-
-    if (viewMode === 'edit') {
-      queueKnobAngleDelta(1, dir === 'cw' ? 24 : -24);
-      soundEngine.playDialTick();
-      onSelectControl(subId);
-      return;
-    }
+    onSelectControl(subId);
+    triggerSlotFlash(subId);
 
     if (connection.transport === 'demo') {
+      queueKnobAngleDelta(1, dir === 'cw' ? 24 : -24);
+      soundEngine.playDialTick();
       usbHardware.simulateDemoPadInput(subId);
       return;
     }
@@ -963,10 +957,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     soundEngine.playKeyClick();
     const dialSlot: HardwareFlashSlot & ControlId =
       encoderIndex === 2 ? 'dial2' : 'dial';
-    if (viewMode === 'edit') {
-      onSelectControl(dialSlot);
-      return;
-    }
+    triggerSlotFlash(dialSlot);
+    onSelectControl(dialSlot);
 
     if (connection.transport === 'demo') {
       usbHardware.simulateDemoPadInput(dialSlot);
@@ -1081,10 +1073,18 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             aria-label={`Knob ${encoderIndex} Turn Left: ${ccwInfo.fullLabel}`}
             onPointerDown={e => {
               e.stopPropagation();
+              try {
+                (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+              } catch {}
               handlePointerDown(`enc_${encoderIndex}_ccw`, e);
             }}
             onPointerUp={e => {
               e.stopPropagation();
+              try {
+                if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
+                  (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
+                }
+              } catch {}
               handlePointerUp(`enc_${encoderIndex}_ccw`, e, () => triggerEncoderSpin(encoderIndex, 'ccw'));
             }}
             onClick={e => {
@@ -1099,7 +1099,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 ? {
                     transform: 'translateZ(20px)',
                     transformStyle: 'preserve-3d',
-                    zIndex: 25
+                    zIndex: 25,
+                    touchAction: 'manipulation'
                   }
                 : undefined
             }
@@ -1115,7 +1116,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   }`
             }`}
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <RotateCcw className="w-3.5 h-3.5 pointer-events-none" />
           </button>
 
           {/* Physical Rotary Knob (`dial` / `dial2`) — BertoPad dial with Bone track + Amber level arc */}
@@ -1128,13 +1129,28 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             onMouseLeave={() => setPressed(false)}
             onPointerDown={e => {
               setPressed(true);
+              try {
+                (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+              } catch {}
               handlePointerDown(`dial_${encoderIndex}`, e);
             }}
             onPointerUp={e => {
               setPressed(false);
+              try {
+                if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
+                  (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
+                }
+              } catch {}
               handlePointerUp(`dial_${encoderIndex}`, e, () => activateDialPush(encoderIndex));
             }}
-            onPointerCancel={() => setPressed(false)}
+            onPointerCancel={e => {
+              setPressed(false);
+              try {
+                if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
+                  (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
+                }
+              } catch {}
+            }}
             onClick={() => handleClick(() => activateDialPush(encoderIndex))}
             onKeyDown={e => {
               if (e.key === 'ArrowRight') {
@@ -1156,11 +1172,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               boxShadow: isDialFlashed
                 ? '0 0 0 4px rgba(242, 163, 58, 0.4), 0 0 26px rgba(242, 163, 58, 0.35)'
                 : undefined,
+              filter: isPressed ? 'brightness(1.2)' : undefined,
               ...(view3D
                 ? {
-                    transform: isPressed ? 'translateZ(14px) scale(0.96)' : 'translateZ(24px)',
+                    transform: 'translateZ(24px)',
                     transformStyle: 'preserve-3d',
-                    zIndex: 25
+                    zIndex: 25,
+                    touchAction: 'manipulation'
                   }
                 : {})
             }}
@@ -1209,15 +1227,15 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               style={{
                 transform: `rotate(${angle}deg)`
               }}
-              className="w-13 h-13 sm:w-16 sm:h-16 xl:w-17 xl:h-17 rounded-full bg-[#14161B] border border-[#ECEAE4]/15 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner"
+              className="w-13 h-13 sm:w-16 sm:h-16 xl:w-17 xl:h-17 rounded-full bg-[#14161B] border border-[#ECEAE4]/15 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner pointer-events-none"
             >
               <span
-                className="w-1.5 h-2.5 rounded-full absolute top-1.5"
+                className="w-1.5 h-2.5 rounded-full absolute top-1.5 pointer-events-none"
                 style={{
                   backgroundColor: isDialFlashed ? '#F2A33A' : ringAccent
                 }}
               />
-              <span className="font-mono text-[8px] sm:text-[9px] font-semibold uppercase tracking-wider text-[#ECEAE4] tabular-nums">
+              <span className="font-mono text-[8px] sm:text-[9px] font-semibold uppercase tracking-wider text-[#ECEAE4] tabular-nums pointer-events-none">
                 KNOB {encoderIndex}
               </span>
             </span>
@@ -1229,10 +1247,18 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             aria-label={`Knob ${encoderIndex} Turn Right: ${cwInfo.fullLabel}`}
             onPointerDown={e => {
               e.stopPropagation();
+              try {
+                (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+              } catch {}
               handlePointerDown(`enc_${encoderIndex}_cw`, e);
             }}
             onPointerUp={e => {
               e.stopPropagation();
+              try {
+                if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
+                  (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
+                }
+              } catch {}
               handlePointerUp(`enc_${encoderIndex}_cw`, e, () => triggerEncoderSpin(encoderIndex, 'cw'));
             }}
             onClick={e => {
@@ -1247,7 +1273,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 ? {
                     transform: 'translateZ(20px)',
                     transformStyle: 'preserve-3d',
-                    zIndex: 25
+                    zIndex: 25,
+                    touchAction: 'manipulation'
                   }
                 : undefined
             }
@@ -1263,7 +1290,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   }`
             }`}
           >
-            <RotateCw className="w-3.5 h-3.5" />
+            <RotateCw className="w-3.5 h-3.5 pointer-events-none" />
           </button>
         </div>
 
@@ -1423,14 +1450,27 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           }}
           onPointerDown={e => {
             setPressedKey(kid);
+            try {
+              (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+            } catch {}
             handlePointerDown(`key_${kid}`, e);
           }}
           onPointerUp={e => {
             setPressedKey(null);
+            try {
+              if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
+                (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
+              }
+            } catch {}
             handlePointerUp(`key_${kid}`, e, () => activateKeyControl(kid));
           }}
-          onPointerCancel={() => {
+          onPointerCancel={e => {
             if (pressedKey === kid) setPressedKey(null);
+            try {
+              if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
+                (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
+              }
+            } catch {}
           }}
           onClick={() => handleClick(() => activateKeyControl(kid))}
           style={{
@@ -1448,17 +1488,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               : isSelected
               ? undefined
               : isDown
-              ? '0 2px 4px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.4)'
+              ? '0 2px 4px rgba(0,0,0,0.6), inset 0 3px 6px rgba(0,0,0,0.6)'
               : '0 6px 0 #14161B, 0 10px 18px rgba(0,0,0,0.46), inset 0 1px 0 rgba(236,234,228,0.08)',
+            filter: isDown ? 'brightness(1.2)' : undefined,
             ...(view3D
               ? {
-                  transform: isDown
-                    ? 'translateZ(8px) translateY(2px)'
-                    : isSelected
-                    ? 'translateZ(26px) translateY(-1px)'
+                  transform: isSelected
+                    ? 'translateZ(26px)'
                     : 'translateZ(18px)',
                   transformStyle: 'preserve-3d',
-                  zIndex: 20
+                  zIndex: isSelected ? 30 : 20,
+                  touchAction: 'manipulation'
                 }
               : {})
           }}
@@ -1473,11 +1513,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           }`}
         >
           {holdBinding.value && (
-            <span aria-label="Hold action assigned" title="Hold action assigned" className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <span aria-label="Hold action assigned" title="Hold action assigned" className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-amber-400 pointer-events-none" />
           )}
-          <div className="w-full flex items-center justify-between">
+          <div className="w-full flex items-center justify-between pointer-events-none">
             <span
-              className={`font-mono text-[9px] sm:text-[10px] leading-none font-medium tabular-nums ${
+              className={`font-mono text-[9px] sm:text-[10px] leading-none font-medium tabular-nums pointer-events-none ${
                 isFlashed || cfg.isModeSwitch
                   ? 'text-[#F2A33A]'
                   : isSelected
@@ -1488,16 +1528,16 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               {badgeText}
             </span>
             {conflict ? (
-              <span title="Duplicate action warning">
+              <span title="Duplicate action warning" className="pointer-events-none">
                 <AlertTriangle className="w-3 h-3 text-[#F2A33A] shrink-0" />
               </span>
             ) : null}
           </div>
 
-          <div className="my-auto flex items-center justify-center">
+          <div className="my-auto flex items-center justify-center pointer-events-none">
             <KeycapIcon
               icon={cfg.appearance.icon}
-              className={`w-6 h-6 sm:w-7 sm:h-7 transition-transform duration-150 ${
+              className={`w-6 h-6 sm:w-7 sm:h-7 transition-transform duration-150 pointer-events-none ${
                 isFlashed || isSelected ? 'scale-105' : ''
               }`}
               style={{
@@ -1511,7 +1551,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </div>
 
           <span
-            className={`text-[11px] sm:text-xs font-medium line-clamp-2 text-center whitespace-normal break-words max-w-full tracking-tight leading-tight ${
+            className={`text-[11px] sm:text-xs font-medium line-clamp-2 text-center whitespace-normal break-words max-w-full tracking-tight leading-tight pointer-events-none ${
               isUnassigned ? 'text-[#A3A6AD]' : 'text-[#ECEAE4]'
             }`}
           >
@@ -1528,17 +1568,28 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 ? `Key ${index + 1} Hold (500 ms): ${summarizeAction(holdBinding, customMacros)}`
                 : `Key ${index + 1} Hold (500 ms) — Unassigned`
             }
-            onPointerDown={e => handlePointerDown(`hold_${actionKid}`, e)}
-            onPointerUp={e =>
-              handlePointerUp(`hold_${actionKid}`, e, () => activateKeyHoldControl(actionKid))
-            }
+            onPointerDown={e => {
+              try {
+                (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+              } catch {}
+              handlePointerDown(`hold_${actionKid}`, e);
+            }}
+            onPointerUp={e => {
+              try {
+                if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
+                  (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
+                }
+              } catch {}
+              handlePointerUp(`hold_${actionKid}`, e, () => activateKeyHoldControl(actionKid));
+            }}
             onClick={() => handleClick(() => activateKeyHoldControl(actionKid))}
             style={
               view3D
                 ? {
                     transform: 'translateZ(14px)',
                     transformStyle: 'preserve-3d',
-                    zIndex: 15
+                    zIndex: 25,
+                    touchAction: 'manipulation'
                   }
                 : undefined
             }
@@ -2149,30 +2200,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   key={slot}
                   type="button"
                   onClick={() => {
-                    if (viewMode === 'edit') {
-                      onSelectControl(slot);
-                      return;
-                    }
+                    onSelectControl(slot);
                     if (connection.transport === 'demo') {
                       usbHardware.simulateDemoPadInput(slot);
                       return;
                     }
                     soundEngine.playKeyClick();
-                    setFlashedSlots(prev => {
-                      const next = new Set(prev);
-                      next.add(slot);
-                      return next;
-                    });
-                    if (flashTimersRef.current[slot]) {
-                      window.clearTimeout(flashTimersRef.current[slot]);
-                    }
-                    flashTimersRef.current[slot] = window.setTimeout(() => {
-                      setFlashedSlots(prev => {
-                        const next = new Set(prev);
-                        next.delete(slot);
-                        return next;
-                      });
-                    }, 260);
+                    triggerSlotFlash(slot);
                     if (connection.connected && binding.value) {
                       onExecuteHardwareBinding(binding);
                       pushLog(
