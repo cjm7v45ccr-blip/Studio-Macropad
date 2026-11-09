@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SidebarSection } from '../types/studio';
+import { soundEngine, SoundProfile } from '../services/soundEffects';
 import {
   Grid3X3,
   Zap,
@@ -45,6 +46,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   hasFirmwareUpdate = false,
   variant = 'rail'
 }) => {
+  const [currentSoundProfile, setCurrentSoundProfile] = useState<SoundProfile>(
+    soundEngine.soundProfile
+  );
   if (variant === 'bottom') {
     return (
       <nav
@@ -152,19 +156,40 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={onToggleSound}
-          className="w-full py-2 px-1 rounded-xl hover:bg-[var(--bg-input)] flex flex-col items-center justify-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
-          title={soundEnabled ? 'Key click audio: On (click to mute)' : 'Key click audio: Muted'}
-        >
-          {soundEnabled ? (
-            <Volume2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
-          ) : (
-            <VolumeX className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+        <div className="w-full flex flex-col items-center gap-0.5">
+          <button
+            type="button"
+            onClick={onToggleSound}
+            className="w-full py-1.5 px-1 rounded-xl hover:bg-[var(--bg-input)] flex flex-col items-center justify-center gap-0.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+            title={soundEnabled ? 'Acoustic switch audio: On (click to mute)' : 'Acoustic switch audio: Muted'}
+          >
+            {soundEnabled ? (
+              <Volume2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
+            ) : (
+              <VolumeX className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+            )}
+            <span className="text-[10px] leading-none">Sound</span>
+          </button>
+          {soundEnabled && (
+            <button
+              type="button"
+              onClick={() => {
+                const next: SoundProfile =
+                  currentSoundProfile === 'thock'
+                    ? 'click'
+                    : currentSoundProfile === 'click'
+                    ? 'tactile'
+                    : 'thock';
+                soundEngine.setProfile(next);
+                setCurrentSoundProfile(next);
+              }}
+              title={`Acoustic switch: ${currentSoundProfile.toUpperCase()} (click to cycle Thock / Click / Tactile)`}
+              className="px-1.5 py-0.5 rounded-md hover:bg-[var(--bg-input)] text-[9px] font-mono font-semibold uppercase text-[var(--accent)] tracking-wider cursor-pointer"
+            >
+              {currentSoundProfile}
+            </button>
           )}
-          <span className="text-[10px] leading-none">Sound</span>
-        </button>
+        </div>
       </div>
     </aside>
   );

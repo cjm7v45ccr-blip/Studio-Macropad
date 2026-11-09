@@ -3,13 +3,23 @@
  * Provides tactile acoustic feedback for Cherry MX tactile switches and knurled encoder clicks.
  */
 
+export type SoundProfile = 'thock' | 'click' | 'tactile';
+
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private enabled = true;
+  private profile: SoundProfile = 'thock';
   private lastDialTickMs = 0;
 
   constructor() {
-    // Lazy audio context initialization on first interaction
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('bertopad_sound_profile') as SoundProfile;
+        if (saved && (saved === 'thock' || saved === 'click' || saved === 'tactile')) {
+          this.profile = saved;
+        }
+      } catch {}
+    }
   }
 
   private initCtx() {
@@ -28,6 +38,20 @@ class SoundEngine {
     return this.enabled;
   }
 
+  public get soundProfile(): SoundProfile {
+    return this.profile;
+  }
+
+  public setProfile(profile: SoundProfile) {
+    this.profile = profile;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('bertopad_sound_profile', profile);
+      } catch {}
+    }
+    this.playKeyClick();
+  }
+
   public toggle(): boolean {
     this.enabled = !this.enabled;
     if (this.enabled) this.playKeyClick();
@@ -40,6 +64,13 @@ class SoundEngine {
 
   public playKeyClick() {
     if (!this.enabled) return;
+
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(6);
+      } catch {}
+    }
+
     try {
       this.initCtx();
       if (!this.ctx) return;
@@ -48,19 +79,50 @@ class SoundEngine {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
 
-      // Sharp mechanical bottom-out click
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(140, now);
-      osc.frequency.exponentialRampToValueAtTime(45, now + 0.04);
+      if (this.profile === 'thock') {
+        // Deep Holy Panda / Ink acoustic thock with low-end resonance
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(110, now);
+        osc.frequency.exponentialRampToValueAtTime(32, now + 0.055);
 
-      gain.gain.setValueAtTime(0.25, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+        gain.gain.setValueAtTime(0.38, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+
+        // High transient tap
+        const clickOsc = this.ctx.createOscillator();
+        const clickGain = this.ctx.createGain();
+        clickOsc.type = 'triangle';
+        clickOsc.frequency.setValueAtTime(620, now);
+        clickOsc.frequency.exponentialRampToValueAtTime(80, now + 0.015);
+        clickGain.gain.setValueAtTime(0.18, now);
+        clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.015);
+        clickOsc.connect(clickGain);
+        clickGain.connect(this.ctx.destination);
+        clickOsc.start(now);
+        clickOsc.stop(now + 0.018);
+      } else if (this.profile === 'click') {
+        // Crisp Cherry MX Blue dual-stage snap
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1450, now);
+        osc.frequency.exponentialRampToValueAtTime(120, now + 0.028);
+
+        gain.gain.setValueAtTime(0.32, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.028);
+      } else {
+        // Classic Cherry Brown tactile bottom-out
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.04);
+
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+      }
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
 
       osc.start(now);
-      osc.stop(now + 0.045);
+      osc.stop(now + 0.06);
     } catch (_) {}
   }
 

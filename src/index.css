@@ -202,6 +202,55 @@ a:focus-visible,
     inset 0 -2px 5px rgba(0, 0, 0, 0.7);
 }
 
+/* Flagship SSD1306 1-Bit OLED Screen Glass with Micro-Raster Scanlines */
+.oled-glass {
+  position: relative;
+  background: #040507;
+  box-shadow:
+    inset 0 2px 7px rgba(0, 0, 0, 0.95),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.05),
+    0 1px 0 rgba(236, 234, 228, 0.08);
+}
+
+.oled-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.018) 0px,
+    rgba(255, 255, 255, 0.018) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  border-radius: inherit;
+  z-index: 2;
+}
+
+/* Precision Machined Aerospace Screw Pin in Chassis Corners */
+.chassis-screw-pin {
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, #323742 0%, #171920 60%, #0D0E12 100%);
+  border: 1px solid rgba(236, 234, 228, 0.12);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8), 0 1px 1px rgba(236, 234, 228, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.chassis-screw-pin::after {
+  content: '';
+  width: 5px;
+  height: 1px;
+  background: rgba(236, 234, 228, 0.35);
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
 /* Subtle compositor-only motion for panels, inspector transitions, and menus */
 @keyframes studioPanelFadeIn {
   from {

@@ -63,7 +63,8 @@ import {
   ArrowUp,
   Layers,
   Cpu,
-  Sparkles
+  Sparkles,
+  Command
 } from 'lucide-react';
 
 interface MacropadCanvasProps {
@@ -91,6 +92,7 @@ interface MacropadCanvasProps {
   onSwitchBleHost: (slot: BleHostSlot) => Promise<void> | void;
   onOpenSetupWizard?: () => void;
   onOpenCheatSheet?: () => void;
+  onOpenShortcuts?: () => void;
 }
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
@@ -131,7 +133,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   onExecuteHardwareBinding,
   onSwitchBleHost,
   onOpenSetupWizard,
-  onOpenCheatSheet
+  onOpenCheatSheet,
+  onOpenShortcuts
 }) => {
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [view3D, setView3D] = useState(false);
@@ -191,6 +194,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         if (chassis3dRef.current.style.transform !== nextTransform) {
           chassis3dRef.current.style.transform = nextTransform;
         }
+        // Flagship dynamic metallic specular highlight reacting to orientation
+        const lightAngle = 145 + current.roll * 1.3 + current.pitch * 0.8;
+        chassis3dRef.current.style.backgroundImage = `linear-gradient(${lightAngle.toFixed(1)}deg, #232731 0%, #171922 45%, #111216 100%)`;
       }
 
       rafId = requestAnimationFrame(animate3D);
@@ -201,6 +207,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       cancelAnimationFrame(rafId);
       if (chassis3dRef.current) {
         chassis3dRef.current.style.transform = '';
+        chassis3dRef.current.style.backgroundImage = '';
       }
     };
   }, [view3D]);
@@ -982,6 +989,77 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
   };
 
+  // Flagship Global Keyboard Interaction: 1-9 for keys, [/] for knob, 3 for 3D view, etc.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key >= '1' && e.key <= '9') {
+        const kid = `k${e.key}` as KeyId;
+        e.preventDefault();
+        activateKeyControl(kid);
+        return;
+      }
+
+      if (e.key === '[' || e.key === '-') {
+        e.preventDefault();
+        triggerEncoderSpin(1, 'ccw');
+        return;
+      }
+
+      if (e.key === ']' || e.key === '=') {
+        e.preventDefault();
+        triggerEncoderSpin(1, 'cw');
+        return;
+      }
+
+      if (e.key === ' ' || e.key === 'Enter') {
+        if (activeEl?.tagName !== 'BUTTON') {
+          e.preventDefault();
+          activateDialPush(1);
+          return;
+        }
+      }
+
+      if (e.key === '3') {
+        e.preventDefault();
+        setView3D(v => !v);
+        return;
+      }
+
+      if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        onChangeViewMode('test');
+        return;
+      }
+
+      if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+        onChangeViewMode('edit');
+        return;
+      }
+
+      if (e.key === '?') {
+        e.preventDefault();
+        (onOpenShortcuts || onOpenCheatSheet)?.();
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onChangeViewMode, onOpenCheatSheet, onOpenShortcuts]);
+
   const renderEncoderUnit = (encoderIndex: EncoderIndex) => {
     const encCfg = encoderIndex === 2 ? layer.encoder2 : layer.encoder;
     const dialId: HardwareFlashSlot & ControlId = encoderIndex === 2 ? 'dial2' : 'dial';
@@ -1714,6 +1792,19 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             </button>
           )}
 
+          {(onOpenShortcuts || onOpenCheatSheet) && (
+            <button
+              type="button"
+              onClick={onOpenShortcuts || onOpenCheatSheet}
+              title="Open Keyboard Shortcuts & Studio Controls HUD (?)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Command className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>Shortcuts</span>
+              <kbd className="hidden sm:inline font-mono text-[9px] px-1 rounded bg-[var(--bg-input)] text-[var(--text-muted)]">?</kbd>
+            </button>
+          )}
+
           <div className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-panel)] shadow-2xs">
             <button
               type="button"
@@ -1978,7 +2069,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       >
         <div
           ref={chassis3dRef}
-          className={`w-fit max-w-full min-w-[300px] chassis-shell rounded-[32px] sm:rounded-[38px] p-4 sm:p-6 xl:p-7 border border-[#ECEAE4]/10 ${
+          className={`relative w-fit max-w-full min-w-[300px] chassis-shell rounded-[32px] sm:rounded-[38px] p-4 sm:p-6 xl:p-7 border border-[#ECEAE4]/10 ${
             view3D
               ? 'shadow-[0_45px_80px_-15px_rgba(0,0,0,0.85),0_20px_40px_-10px_rgba(var(--accent-rgb),0.2)] ring-1 ring-[#ECEAE4]/20'
               : 'transition-all duration-300'
@@ -1993,9 +2084,15 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               : undefined
           }
         >
+          {/* Precision Aerospace Corner Screw Insets */}
+          <div className="absolute top-3 left-3 sm:top-3.5 sm:left-3.5 chassis-screw-pin opacity-70" aria-hidden="true" style={view3D ? { transform: 'translateZ(2px)' } : undefined} />
+          <div className="absolute top-3 right-3 sm:top-3.5 sm:right-3.5 chassis-screw-pin opacity-70" aria-hidden="true" style={view3D ? { transform: 'translateZ(2px)' } : undefined} />
+          <div className="absolute bottom-3 left-3 sm:bottom-3.5 sm:left-3.5 chassis-screw-pin opacity-70" aria-hidden="true" style={view3D ? { transform: 'translateZ(2px)' } : undefined} />
+          <div className="absolute bottom-3 right-3 sm:bottom-3.5 sm:right-3.5 chassis-screw-pin opacity-70" aria-hidden="true" style={view3D ? { transform: 'translateZ(2px)' } : undefined} />
+
           {/* 128x64 SSD1306 1-Bit Monochrome Hardware OLED Strip (matches brand card OLED boot screen) */}
           <div
-            className="mb-5 sm:mb-6 px-3.5 py-2.5 rounded-xl bg-black border border-[#ECEAE4]/15 shadow-inner flex items-center justify-between gap-2 min-h-[42px]"
+            className="mb-5 sm:mb-6 px-3.5 py-2.5 rounded-xl oled-glass border border-[#ECEAE4]/15 shadow-inner flex items-center justify-between gap-2 min-h-[42px] overflow-hidden"
             style={view3D ? { transform: 'translateZ(12px)', transformStyle: 'preserve-3d', zIndex: 15 } : undefined}
           >
             <div className="flex items-center gap-2 min-w-0">
