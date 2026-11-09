@@ -756,7 +756,6 @@ export function getActionTestAvailability(
     : [actionStr];
 
   const needsTv = realParts.some(p => isTvFirmwareAction(p));
-  const needsBleHid = realParts.some(p => !isTvFirmwareAction(p) && !p.startsWith('BLE:'));
 
   if (needsTv) {
     if (tel.tvEnabled === false) {
@@ -783,14 +782,6 @@ export function getActionTestAvailability(
         reason: 'TV link down: Vizio TV pairing is incomplete in Settings.'
       };
     }
-  }
-
-  if (needsBleHid && !tel.bleConnected) {
-    const hostName = tel.bleDeviceName || `Studio Pad ${tel.bleActiveHost || 1}`;
-    return {
-      canTest: false,
-      reason: `Bluetooth is disconnected — pair your computer with "${hostName}" (Host ${tel.bleActiveHost || 1}).`
-    };
   }
 
   return { canTest: true, reason: null };

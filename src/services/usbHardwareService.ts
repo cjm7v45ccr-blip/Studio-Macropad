@@ -1608,8 +1608,6 @@ class PadLinkService {
         }
         if (!d.wifiConnected) return reply({ ok: false, message: 'Pad Wi-Fi is disconnected.' });
         if (!d.tvPaired) return reply({ ok: false, message: 'Vizio TV is not paired.' });
-      } else if (!d.bleConnected) {
-        return reply({ ok: false, message: 'Bluetooth host is not connected.' });
       }
       return reply({ ok: true, message: `Demo pad fired ${act.replace(/\n/g, '\\n')}` });
     }

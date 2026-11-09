@@ -24,7 +24,7 @@ export function MacroTestModal({ binding, connection, activeJob, onClose, onRun 
   const dialogRef = useRef<HTMLDivElement>(null);
   const previewJobId = useRef<string | null>(null);
   const target = testTargetKey(connection);
-  const targetLabel = `${connection.deviceName || 'BertoPad'}${connection.telemetry?.activeProfile ? ` · ${connection.telemetry.activeProfile}` : ''}${connection.telemetry?.bleActiveHost ? ` · BLE host ${connection.telemetry.bleActiveHost}` : ''}`;
+  const targetLabel = `${connection.deviceName || 'BertoPad'}${connection.telemetry?.activeProfile ? ` · ${connection.telemetry.activeProfile}` : ''}`;
   const isDemo = connection.transport === 'demo';
   const availability = getActionTestAvailability(binding.value, connection);
   const ownsPreview = Boolean(activeJob && activeJob.id === previewJobId.current);
@@ -137,7 +137,7 @@ export function MacroTestModal({ binding, connection, activeJob, onClose, onRun 
           <section className="border-t border-[var(--border-subtle)] pt-4 space-y-3">
             <div className="flex gap-2 text-xs text-[var(--text-secondary)]">
               <AlertTriangle className="w-4 h-4 shrink-0 text-[var(--accent)]" />
-              <p>{isDemo ? 'Demo test simulates actions only. No physical device receives them.' : `Live test sends real actions through ${targetLabel} to its active host or TV target, not necessarily this browser. Text can be typed and shortcuts can change or delete data. Stop cannot undo actions already sent.`}</p>
+              <p>{isDemo ? 'Demo test simulates actions only. No physical device receives them.' : `Live test sends real actions through ${targetLabel} to its active target, not necessarily this browser. Text can be typed and shortcuts can change or delete data. Stop cannot undo actions already sent.`}</p>
             </div>
             {connection.connected && <p className="text-xs font-medium">Test target: {isDemo ? 'Demo device — no physical output' : targetLabel}</p>}
             {availability.reason && availability.canTest && <p className="text-xs text-[var(--accent)]">{availability.reason}</p>}
