@@ -68,6 +68,7 @@ import { SyncConflictModal } from './components/SyncConflictModal';
 import { DiffConfirmModal, DiffPreviewRow } from './components/DiffConfirmModal';
 import { CheatSheetModal } from './components/CheatSheetModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { OnboardingTourModal } from './components/OnboardingTourModal';
 import { AlertCircle, CheckCircle2, Repeat, Square } from 'lucide-react';
 
 export default function App() {
@@ -170,6 +171,13 @@ export default function App() {
   } | null>(null);
   const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(() => {
+    try {
+      return !localStorage.getItem('bertopad_onboarded');
+    } catch {
+      return false;
+    }
+  });
 
   const [connection, setConnection] = useState<DeviceConnectionInfo>(usbHardware.info);
   const [activeRepeatJob, setActiveRepeatJob] = useState<ActiveRepeatJob | null>(
@@ -719,6 +727,7 @@ export default function App() {
               onOpenSetupWizard={handleOpenSetupWizard}
               onOpenCheatSheet={() => setCheatSheetOpen(true)}
               onOpenShortcuts={() => setShortcutsModalOpen(true)}
+              onOpenOnboarding={() => setOnboardingOpen(true)}
             />
 
             <div ref={inspectorAnchorRef} className="lg:hidden shrink-0 flex items-center justify-between px-4 py-2 bg-[var(--bg-panel)] border-t border-[var(--border-subtle)] text-xs">
@@ -1142,6 +1151,18 @@ export default function App() {
       <KeyboardShortcutsModal
         isOpen={shortcutsModalOpen}
         onClose={() => setShortcutsModalOpen(false)}
+      />
+
+      {/* Guided Studio Onboarding Tour Modal */}
+      <OnboardingTourModal
+        isOpen={onboardingOpen}
+        onClose={() => {
+          setOnboardingOpen(false);
+          try {
+            localStorage.setItem('bertopad_onboarded', 'true');
+          } catch {}
+        }}
+        onOpenSetupWizard={handleOpenSetupWizard}
       />
 
       {pendingTest && (
