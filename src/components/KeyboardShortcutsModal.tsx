@@ -36,12 +36,15 @@ const SHORTCUT_GROUPS: {
     ]
   },
   {
-    category: 'Studio Commands',
+    category: 'Command Palette & Macro Studio',
     items: [
-      { keys: ['⌘/Ctrl', 'K'], description: 'Search all firmware actions and macros' },
-      { keys: ['⌘/Ctrl', 'Z'], description: 'Undo last layout change' },
+      { keys: ['⌘/Ctrl', 'K'], description: 'Open Global Macro & Action Command Palette' },
+      { keys: ['Tab'], description: 'Cycle categories inside Command Palette' },
+      { keys: ['⇧', '↵'], description: 'Open highlighted macro in Macro Studio' },
+      { keys: ['⌥/Alt', '↵'], description: 'Dry-run / test highlighted macro immediately' },
+      { keys: ['⌘/Ctrl', 'Z'], description: 'Undo last layout or macro change' },
       { keys: ['⌘/Ctrl', '⇧', 'Z'], description: 'Redo previously undone change' },
-      { keys: ['Esc'], description: 'Close any modal or stop active macro sequence' }
+      { keys: ['Esc'], description: 'Close active modal or stop running macro' }
     ]
   }
 ];

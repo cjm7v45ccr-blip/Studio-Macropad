@@ -467,6 +467,150 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
         repeatCount: 1
       }
     ]
+  },
+  {
+    id: 'tpl-git-commit-push',
+    name: 'Git Stage, Commit & Push',
+    summary: '6 steps · 750 ms',
+    category: 'dev',
+    steps: [
+      {
+        label: 'Stage All Changes',
+        actionType: 'text',
+        value: 'git add -A',
+        delayMs: 100,
+        repeatCount: 1
+      },
+      {
+        label: 'Run Stage',
+        actionType: 'key',
+        value: 'enter',
+        delayMs: 200,
+        repeatCount: 1
+      },
+      {
+        label: 'Commit Snapshot',
+        actionType: 'text',
+        value: 'git commit -m "chore: update"',
+        delayMs: 100,
+        repeatCount: 1
+      },
+      {
+        label: 'Run Commit',
+        actionType: 'key',
+        value: 'enter',
+        delayMs: 250,
+        repeatCount: 1
+      },
+      {
+        label: 'Push to Remote',
+        actionType: 'text',
+        value: 'git push',
+        delayMs: 100,
+        repeatCount: 1
+      },
+      {
+        label: 'Execute Push',
+        actionType: 'key',
+        value: 'enter',
+        delayMs: 0,
+        repeatCount: 1
+      }
+    ]
+  },
+  {
+    id: 'tpl-window-split-pair',
+    name: 'Split Screen Workspace',
+    summary: '3 steps · 450 ms',
+    category: 'productivity',
+    steps: [
+      {
+        label: 'Snap Active Window Left',
+        actionType: 'shortcut',
+        value: 'SHORTCUT:ctrl,cmd:left',
+        delayMs: 220,
+        repeatCount: 1
+      },
+      {
+        label: 'Switch to Previous Window',
+        actionType: 'shortcut',
+        value: 'SHORTCUT:cmd:tab',
+        delayMs: 230,
+        repeatCount: 1
+      },
+      {
+        label: 'Snap Second Window Right',
+        actionType: 'shortcut',
+        value: 'SHORTCUT:ctrl,cmd:right',
+        delayMs: 0,
+        repeatCount: 1
+      }
+    ]
+  },
+  {
+    id: 'tpl-quick-standup-note',
+    name: 'Daily Standup & Paste Context',
+    summary: '4 steps · 340 ms',
+    category: 'forms',
+    steps: [
+      {
+        label: 'Type Standup Header',
+        actionType: 'text',
+        value: 'Update: Completed build & verified hardware sync.',
+        delayMs: 100,
+        repeatCount: 1
+      },
+      {
+        label: 'New Line',
+        actionType: 'key',
+        value: 'enter',
+        delayMs: 120,
+        repeatCount: 1
+      },
+      {
+        label: 'Paste Clipboard Link',
+        actionType: 'os_action',
+        value: 'MACRO:PASTE',
+        delayMs: 120,
+        repeatCount: 1
+      },
+      {
+        label: 'Submit Entry',
+        actionType: 'key',
+        value: 'enter',
+        delayMs: 0,
+        repeatCount: 1
+      }
+    ]
+  },
+  {
+    id: 'tpl-stream-clip-marker',
+    name: 'Stream Highlight & Mic Toggle',
+    summary: '3 steps · 400 ms',
+    category: 'stream',
+    steps: [
+      {
+        label: 'Drop Stream Marker (F15)',
+        actionType: 'media',
+        value: 'KEY:F15',
+        delayMs: 200,
+        repeatCount: 1
+      },
+      {
+        label: 'Save Instant Replay (F14)',
+        actionType: 'media',
+        value: 'KEY:F14',
+        delayMs: 200,
+        repeatCount: 1
+      },
+      {
+        label: 'Toggle Studio Mic (F13)',
+        actionType: 'media',
+        value: 'KEY:F13',
+        delayMs: 0,
+        repeatCount: 1
+      }
+    ]
   }
 ];
 
@@ -1887,9 +2031,20 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 Smart Actions
               </h2>
               <p className="text-[11px] text-[var(--text-muted)]">
-                Saved macros & multi-step recipes
+                Saved macros &amp; multi-step recipes
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() =>
+                runWithUnsavedCheck('a new blank macro', () => startBlankMacroImmediate())
+              }
+              title="Create a new blank Smart Action"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>New</span>
+            </button>
           </div>
 
           <div className="relative">

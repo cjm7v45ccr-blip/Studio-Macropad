@@ -428,9 +428,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
-      {/* Center: Search / Global Action Search */}
+      {/* Center: Search / Global Action Command Palette (Cmd/Ctrl + K) */}
       {searchSlot ? (
-        <div className="mx-auto hidden md:flex items-center min-w-[200px] flex-1 max-w-md px-2">
+        <div className="mx-auto flex items-center min-w-0 md:min-w-[220px] md:flex-1 max-w-md px-1 md:px-2">
           {searchSlot}
         </div>
       ) : (

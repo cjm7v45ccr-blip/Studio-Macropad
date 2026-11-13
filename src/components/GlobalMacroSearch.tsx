@@ -30,7 +30,8 @@ import {
   getVisibleHardwareSlots,
   hasKeyHoldCapability,
   isHoldSlot,
-  isMotionSlot
+  isMotionSlot,
+  parseMacroStepTag
 } from '../data/firmwareCatalog';
 import { extractProfileSlots, getBindingForProfileSlot } from '../hooks/useStudioState';
 import {
@@ -52,7 +53,9 @@ import {
   Tv,
   CornerDownLeft,
   Layers,
-  Bluetooth
+  Bluetooth,
+  Plus,
+  Zap
 } from 'lucide-react';
 
 export interface GlobalMacroSearchOpenBuilderPayload {
@@ -90,12 +93,23 @@ interface GlobalMacroSearchProps {
 
 type SearchFilterTab = 'all' | 'custom' | 'assigned' | 'catalog' | 'templates';
 
+const FILTER_TAB_ORDER: SearchFilterTab[] = [
+  'all',
+  'custom',
+  'assigned',
+  'catalog',
+  'templates'
+];
+
 interface SearchResultEntry {
   id: string;
   kind: 'custom' | 'assigned' | 'catalog' | 'sequence_template' | 'preset';
   filterGroup: Exclude<SearchFilterTab, 'all'>;
   title: string;
   metaParts: string[];
+  stepPreviewTokens?: string[];
+  totalStepCount?: number;
+  boundSlotsSummary?: string;
   searchBlob: string;
   icon: string;
   iconColor: string;
@@ -220,9 +234,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     controlToHardwareSlot(selectedControl)
   );
 
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const modalInputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const isMacPlatform = useMemo(() => {
@@ -251,35 +263,42 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     }
   }, [hasKeyHold, assignSlot]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const onPointerDown = (e: MouseEvent) => {
-      const target = e.target as Node | null;
-      if (!target) return;
-      if (wrapperRef.current?.contains(target)) return;
-      if (panelRef.current?.contains(target)) return;
-      setIsOpen(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [isOpen]);
+  const openCommandPalette = useCallback((initialTab?: SearchFilterTab) => {
+    if (initialTab) setActiveTab(initialTab);
+    setIsOpen(true);
+    requestAnimationFrame(() => {
+      modalInputRef.current?.focus();
+      modalInputRef.current?.select();
+    });
+  }, []);
 
+  // Global keyboard shortcut: Cmd/Ctrl + K (and '/' when not typing)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
+      const isModK =
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey &&
+        !e.shiftKey &&
+        (e.key.toLowerCase() === 'k' || e.code === 'KeyK');
 
-      const isModK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
       if (isModK) {
         e.preventDefault();
-        setIsOpen(true);
-        requestAnimationFrame(() => {
-          inputRef.current?.focus();
-          inputRef.current?.select();
+        e.stopPropagation();
+        setIsOpen(prev => {
+          if (prev && document.activeElement === modalInputRef.current) {
+            return false;
+          }
+          requestAnimationFrame(() => {
+            modalInputRef.current?.focus();
+            modalInputRef.current?.select();
+          });
+          return true;
         });
         return;
       }
 
-      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isOpen) {
+        if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
         const active = document.activeElement as HTMLElement | null;
         const tag = active?.tagName?.toLowerCase();
         const isEditable =
@@ -289,17 +308,23 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           Boolean(active?.isContentEditable);
         if (!isEditable) {
           e.preventDefault();
-          setIsOpen(true);
-          requestAnimationFrame(() => {
-            inputRef.current?.focus();
-          });
+          openCommandPalette();
         }
       }
     };
 
-    window.addEventListener('keydown', onKeyDown, false);
-    return () => window.removeEventListener('keydown', onKeyDown, false);
-  }, []);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [isOpen, openCommandPalette]);
+
+  // Focus modal input whenever modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    const raf = requestAnimationFrame(() => {
+      modalInputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isOpen]);
 
   const customMacroBySignature = useMemo(() => {
     const map = new Map<string, CustomMacroItem>();
@@ -312,11 +337,32 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     return map;
   }, [customMacros]);
 
+  // Map canonical macro signatures to their bound slots across all profiles
+  const signatureBoundSlotsMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    profiles
+      .filter(p => p.id !== 'TV' || isTvEnabled)
+      .forEach(prof => {
+        const slots = extractProfileSlots(prof);
+        visibleSlots.forEach(slot => {
+          const raw = slots[slot];
+          if (!raw) return;
+          const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+          const sig = getMacroCanonicalSignature(raw, bind?.repeatConfig);
+          if (!sig) return;
+          const list = map.get(sig) || [];
+          list.push(`${profileShortTag(prof.id)} ${SLOT_LABELS[slot].short}`);
+          map.set(sig, list);
+        });
+      });
+    return map;
+  }, [profiles, isTvEnabled, visibleSlots]);
+
   // Build unified site-wide searchable entries
   const allEntries = useMemo<SearchResultEntry[]>(() => {
     const results: SearchResultEntry[] = [];
 
-    // 1. User's Single Macro Library
+    // 1. User's Saved Macro Library
     customMacros.forEach(macro => {
       const steps = actionToMacroSteps(macro.action, macro.repeatConfig);
       const timing = calculateStepsTiming(steps);
@@ -328,9 +374,16 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       );
       const binding = firmwareActionToBinding(macro.action, macro.repeatConfig);
       const stepSummary = steps.map(s => `${s.label} ${s.value}`).join(' ');
+      const stepPreviewTokens = steps.slice(0, 4).map(s => parseMacroStepTag(s).prettyValue);
+      const sig = getMacroCanonicalSignature(macro.action, macro.repeatConfig);
+      const boundSlots = sig ? signatureBoundSlotsMap.get(sig) || [] : [];
+      const boundSlotsSummary =
+        boundSlots.length > 0
+          ? `${boundSlots[0]}${boundSlots.length > 1 ? ` +${boundSlots.length - 1}` : ''}`
+          : undefined;
 
       const metaParts: string[] = [
-        'My Macro',
+        'Saved Macro',
         `${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`,
         `~${formatDurationCompact(timing.estimatedRunMs)}`
       ];
@@ -349,7 +402,10 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         filterGroup: 'custom',
         title: macro.name,
         metaParts,
-        searchBlob: `${macro.name} ${macro.action} ${stepSummary} saved custom macro sequence`.toLowerCase(),
+        stepPreviewTokens,
+        totalStepCount: steps.length,
+        boundSlotsSummary,
+        searchBlob: `${macro.name} ${macro.action} ${stepSummary} ${boundSlots.join(' ')} saved custom macro sequence`.toLowerCase(),
         icon: appearance.icon,
         iconColor: appearance.labelColor,
         action: macro.action,
@@ -448,13 +504,18 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       const tplSig = getMacroCanonicalSignature(compiled.action, compiled.repeatConfig);
       const existingSaved = tplSig ? customMacroBySignature.get(tplSig) : undefined;
       const stepKeywords = tpl.steps.map(s => `${s.label} ${s.value}`).join(' ');
+      const hydrated = tpl.steps.map((s, idx) => ({ ...s, id: `${tpl.id}-${idx}` }));
+      const stepPreviewTokens = hydrated.slice(0, 4).map(s => parseMacroStepTag(s).prettyValue);
+
       results.push({
         id: `seq-tpl-${tpl.id}`,
         kind: 'sequence_template',
         filterGroup: 'templates',
         title: tpl.name,
-        metaParts: ['Starter Recipe', tpl.summary],
-        searchBlob: `${tpl.name} ${tpl.summary} ${stepKeywords} starter template recipe multi step sequence macro`.toLowerCase(),
+        metaParts: ['Smart Recipe', tpl.summary],
+        stepPreviewTokens,
+        totalStepCount: tpl.steps.length,
+        searchBlob: `${tpl.name} ${tpl.summary} ${stepKeywords} ${tpl.category || ''} starter template recipe multi step sequence macro`.toLowerCase(),
         icon: 'zap',
         iconColor: '#F2A33A',
         action: compiled.action,
@@ -484,7 +545,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       });
     });
 
-    // 4. Per-Device OS Mapped Shortcuts + Non-OS Static Actions (no duplicate Mac + PC rows!)
+    // 4. Per-Device OS Mapped Shortcuts + Non-OS Static Actions
     const mappedShortcuts = getShortcutsForHostOs(activeHostOs);
     const mappedShortcutActions = new Set<string>();
     mappedShortcuts.forEach(spec => {
@@ -535,6 +596,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     isTvEnabled,
     customMacros,
     customMacroBySignature,
+    signatureBoundSlotsMap,
     visibleSlots
   ]);
 
@@ -614,8 +676,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
     const capped =
       tokens.length === 0 && activeTab === 'all'
-        ? tabFiltered.slice(0, 32)
-        : tabFiltered.slice(0, 60);
+        ? tabFiltered.slice(0, 36)
+        : tabFiltered.slice(0, 64);
 
     return { filteredEntries: capped, tabCounts: counts };
   }, [allEntries, query, activeTab, activeProfileId]);
@@ -685,6 +747,15 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     [onOpenInMacroEditor]
   );
 
+  const handleCreateNewMacro = useCallback(() => {
+    onOpenInMacroEditor({
+      macroId: null,
+      name: query.trim() || 'New Smart Action',
+      action: activeHostOs === 'mac' ? 'SHORTCUT:cmd:space' : 'SHORTCUT:ctrl:space'
+    });
+    setIsOpen(false);
+  }, [activeHostOs, onOpenInMacroEditor, query]);
+
   const handlePrimaryAction = useCallback(
     (entry: SearchResultEntry) => {
       if (entry.kind === 'assigned') {
@@ -706,20 +777,25 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     [handleAssignEntry, onApplyProfilePreset, onJumpToControl]
   );
 
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleModalInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       if (query) {
         setQuery('');
       } else {
         setIsOpen(false);
-        inputRef.current?.blur();
       }
       return;
     }
 
-    if (!isOpen && (e.key === 'ArrowDown' || e.key === 'Enter')) {
-      setIsOpen(true);
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const idx = FILTER_TAB_ORDER.indexOf(activeTab);
+      const nextIdx = e.shiftKey
+        ? (idx - 1 + FILTER_TAB_ORDER.length) % FILTER_TAB_ORDER.length
+        : (idx + 1) % FILTER_TAB_ORDER.length;
+      setActiveTab(FILTER_TAB_ORDER[nextIdx]);
       return;
     }
 
@@ -745,6 +821,12 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       e.preventDefault();
       const target = filteredEntries[highlightedIndex] || filteredEntries[0];
       if (!target) return;
+
+      if (e.altKey && target.binding && target.action) {
+        onTestBinding(target.binding);
+        return;
+      }
+
       if (
         e.shiftKey &&
         (target.kind === 'custom' ||
@@ -764,78 +846,128 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     { id: 'custom', label: 'My Macros', count: tabCounts.custom },
     { id: 'assigned', label: 'On Pad', count: tabCounts.assigned },
     { id: 'catalog', label: 'Actions', count: tabCounts.catalog },
-    { id: 'templates', label: 'Templates', count: tabCounts.templates }
+    { id: 'templates', label: 'Recipes', count: tabCounts.templates }
   ];
 
   return (
-    <div ref={wrapperRef} className="relative w-full min-w-0">
-      {/* Widened Site-Wide Search Input */}
-      <div
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border transition-colors w-full ${
+    <div className="relative w-full min-w-0 flex items-center">
+      {/* Compact Mobile Search Button (< md) */}
+      <button
+        type="button"
+        onClick={() => openCommandPalette()}
+        aria-label="Open Command Palette & Macro Search (Cmd+K)"
+        title={`Search macros, actions & presets (${isMacPlatform ? '⌘K' : 'Ctrl+K'})`}
+        className="md:hidden flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors cursor-pointer shrink-0"
+      >
+        <Search className="w-4 h-4" />
+      </button>
+
+      {/* Desktop TopBar Command Palette Trigger (>= md) */}
+      <button
+        type="button"
+        onClick={() => openCommandPalette()}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-label="Search macros, actions & presets (Cmd+K)"
+        className={`hidden md:flex items-center justify-between gap-2 px-3 h-9 rounded-xl bg-[var(--bg-input)] border transition-colors w-full cursor-pointer text-left group ${
           isOpen
             ? 'border-[var(--accent)] shadow-xs'
-            : 'border-transparent hover:border-[var(--border-subtle)]'
+            : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
         }`}
       >
-        <Search className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onFocus={() => setIsOpen(true)}
-          onClick={() => setIsOpen(true)}
-          onChange={e => {
-            setQuery(e.target.value);
-            if (!isOpen) setIsOpen(true);
-          }}
-          onKeyDown={handleInputKeyDown}
-          role="combobox"
-          aria-expanded={isOpen}
-          aria-controls="global-macro-search-listbox"
-          aria-autocomplete="list"
-          aria-label="Search actions and macros across workspace"
-          placeholder="Search actions & macros…"
-          className="flex-1 min-w-0 bg-transparent text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none select-text"
-        />
-        {query ? (
-          <button
-            type="button"
-            onClick={() => {
-              setQuery('');
-              inputRef.current?.focus();
-            }}
-            aria-label="Clear search"
-            className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        ) : (
-          <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-[var(--bg-elevated)] font-mono text-[10px] text-[var(--text-muted)] shrink-0">
+        <span className="flex items-center gap-2 min-w-0 flex-1">
+          <Search className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors shrink-0" />
+          <span className="text-xs text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] truncate transition-colors">
+            {query ? `Search: "${query}"` : 'Search macros, actions & presets…'}
+          </span>
+        </span>
+        <span className="flex items-center gap-1.5 shrink-0">
+          {customMacros.length > 0 && (
+            <span className="hidden lg:inline font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+              {customMacros.length} {customMacros.length === 1 ? 'macro' : 'macros'}
+            </span>
+          )}
+          <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[10px] font-semibold text-[var(--text-secondary)] shrink-0">
             {isMacPlatform ? '⌘K' : 'Ctrl K'}
           </kbd>
-        )}
-      </div>
+        </span>
+      </button>
 
-      {/* Site-Wide Search Backdrop + Results Command Panel */}
+      {/* Flagship Global Command Palette Modal */}
       {isOpen && (
-        <>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="global-macro-search-title"
+          className="fixed inset-0 z-50 flex items-start justify-center pt-10 sm:pt-16 px-3 sm:px-4 pb-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setIsOpen(false)}
+        >
           <div
-            aria-hidden="true"
-            onClick={() => setIsOpen(false)}
-            className="fixed inset-0 z-30 bg-black/35 backdrop-blur-[1px]"
-          />
-
-          <div
-            ref={panelRef}
-            className="fixed top-14 left-1/2 -translate-x-1/2 w-[min(96vw,700px)] max-h-[calc(100dvh-76px)] z-50 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] shadow-2xl flex flex-col overflow-hidden animate-popover-in"
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-2xl max-h-[calc(100dvh-5rem)] rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl flex flex-col overflow-hidden animate-popover-in"
           >
+            {/* Dedicated Command Palette Search Input Header */}
+            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] shrink-0">
+              <Search className="w-4 h-4 text-[var(--accent)] shrink-0" />
+              <h2 id="global-macro-search-title" className="sr-only">
+                Global Macro &amp; Action Command Palette
+              </h2>
+              <input
+                ref={modalInputRef}
+                type="text"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={handleModalInputKeyDown}
+                role="combobox"
+                aria-expanded={isOpen}
+                aria-controls="global-macro-search-listbox"
+                aria-autocomplete="list"
+                aria-label="Search saved macros, starter recipes, shortcuts, and hardware controls"
+                placeholder="Search macros, recipes, shortcuts, pad keys, or type a name to create…"
+                className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm font-medium text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none select-text"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    modalInputRef.current?.focus();
+                  }}
+                  aria-label="Clear search query"
+                  className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCreateNewMacro}
+                title="Create a new multi-step macro in Macro Studio"
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>New Macro</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                aria-label="Close command palette"
+                title="Close (Esc)"
+                className="px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] font-mono text-[10px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0"
+              >
+                ESC
+              </button>
+            </div>
+
             {/* Filter Tabs + Quick Target Slot Assignment Bar */}
-            <div className="px-3.5 pt-3 pb-2.5 border-b border-[var(--border-subtle)] space-y-2.5 shrink-0">
+            <div className="px-4 py-2.5 border-b border-[var(--border-subtle)] bg-[var(--bg-panel)] space-y-2.5 shrink-0">
               <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
                 <div
                   role="tablist"
-                  aria-label="Filter search results"
-                  className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-input)]"
+                  aria-label="Filter command palette categories"
+                  className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]"
                 >
                   {filterTabs.map(tab => {
                     const selected = activeTab === tab.id;
@@ -847,16 +979,16 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                         aria-selected={selected}
                         onClick={() => {
                           setActiveTab(tab.id);
-                          inputRef.current?.focus();
+                          modalInputRef.current?.focus();
                         }}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                           selected
                             ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
                             : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                         }`}
                       >
                         <span>{tab.label}</span>
-                        <span className="font-mono text-[10px] opacity-70 tabular-nums">
+                        <span className="font-mono text-[10px] opacity-75 tabular-nums">
                           {tab.count}
                         </span>
                       </button>
@@ -864,25 +996,20 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                   })}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsOpen(false)}
-                  className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer shrink-0"
-                  title="Close search (Esc)"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <span className="hidden md:inline text-[10px] font-mono text-[var(--text-muted)] whitespace-nowrap shrink-0">
+                  Press <strong className="text-[var(--text-secondary)]">Tab</strong> to cycle tabs
+                </span>
               </div>
 
               {/* Target Slot Selector */}
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
                 <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
                   <Layers className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                  <span className="font-medium">Assign to:</span>
+                  <span className="font-medium">Quick-assign target:</span>
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <div className="inline-flex items-center p-0.5 rounded-lg bg-[var(--bg-input)]">
+                  <div className="inline-flex items-center p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
                     {profiles.filter(p => p.id !== 'TV' || isTvEnabled).map(prof => {
                       const active = assignProfile === prof.id;
                       const ProfIcon = isBleHostProfile(prof.id) ? Bluetooth : Tv;
@@ -892,7 +1019,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           type="button"
                           onClick={() => {
                             setAssignProfile(prof.id);
-                            inputRef.current?.focus();
+                            modalInputRef.current?.focus();
                           }}
                           title={`${prof.name} (${profileShortTag(prof.id)})`}
                           className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
@@ -913,7 +1040,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                     value={assignSlot}
                     onChange={e => {
                       setAssignSlot(e.target.value as HardwareSlotId);
-                      inputRef.current?.focus();
+                      modalInputRef.current?.focus();
                     }}
                     className="px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
                   >
@@ -924,7 +1051,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                     ))}
                   </select>
 
-                  <span className="text-[var(--text-muted)] text-[11px] hidden sm:inline truncate max-w-[140px]">
+                  <span className="text-[var(--text-muted)] text-[11px] hidden sm:inline truncate max-w-[160px]">
                     ({currentTargetSlotSummary})
                   </span>
                 </div>
@@ -935,36 +1062,31 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
             <div
               id="global-macro-search-listbox"
               role="listbox"
-              aria-label="Macro search results"
+              aria-label="Macro and action search results"
               className="flex-1 overflow-y-auto divide-y divide-[var(--border-subtle)]/60"
             >
               {filteredEntries.length === 0 ? (
-                <div className="px-6 py-10 text-center space-y-2">
+                <div className="px-6 py-10 text-center space-y-2.5">
                   <div className="text-xs font-semibold text-[var(--text-primary)]">
                     No actions or macros match “{query}”
                   </div>
-                  <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
-                    Search by shortcut (Copy, Close Tab, F13), streaming app (Netflix, YouTube), pad slot (Key 5, Knob), or build a custom macro.
+                  <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto leading-relaxed">
+                    Search by shortcut (Copy, Close Tab, Spotlight, F13), streaming app (Netflix, YouTube), pad slot (Key 5, Knob), or build a custom multi-step sequence.
                   </p>
-                  {query.trim() && (
-                    <div className="pt-2 flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onOpenInMacroEditor({
-                            macroId: null,
-                            name: query.trim(),
-                            action: 'SHORTCUT:cmd,shift:4'
-                          });
-                          setIsOpen(false);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
-                      >
-                        <Sliders className="w-3.5 h-3.5" />
-                        <span>Build “{query.trim().slice(0, 28)}” in Macro Builder</span>
-                      </button>
-                    </div>
-                  )}
+                  <div className="pt-2 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCreateNewMacro}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>
+                        {query.trim()
+                          ? `Build “${query.trim().slice(0, 28)}” in Macro Studio`
+                          : 'Create New Sequence in Macro Studio'}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               ) : (
                 filteredEntries.map((entry, idx) => {
@@ -986,12 +1108,12 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                       title={entry.action ? `${entry.title} — ${entry.action}` : entry.title}
                       onMouseEnter={() => setHighlightedIndex(idx)}
                       onClick={() => handlePrimaryAction(entry)}
-                      className={`px-3.5 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
-                        isHighlighted ? 'bg-[rgba(var(--accent-rgb),0.09)]' : ''
+                      className={`px-4 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                        isHighlighted ? 'bg-[rgba(var(--accent-rgb),0.10)]' : ''
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-8 h-8 rounded-lg bg-[var(--bg-input)] flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
                           <KeycapIcon
                             icon={entry.icon}
                             className={`w-4 h-4 ${
@@ -1007,6 +1129,11 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                             <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
                               {entry.title}
                             </span>
+                            {entry.boundSlotsSummary && (
+                              <span className="font-mono text-[10px] font-medium text-[var(--accent)] shrink-0">
+                                · {entry.boundSlotsSummary}
+                              </span>
+                            )}
                             {showAdvancedIds && entry.action && (
                               <ParsedActionBadge
                                 action={entry.action}
@@ -1017,6 +1144,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                               />
                             )}
                           </div>
+
                           <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] truncate mt-0.5 tabular-nums">
                             {entry.metaParts.map((part, pIdx) => (
                               <React.Fragment key={pIdx}>
@@ -1024,6 +1152,18 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                                 <span className="truncate">{part}</span>
                               </React.Fragment>
                             ))}
+                            {entry.stepPreviewTokens && entry.stepPreviewTokens.length > 0 && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="font-mono text-[10px] text-[var(--text-secondary)] truncate">
+                                  {entry.stepPreviewTokens.join(' → ')}
+                                  {entry.totalStepCount &&
+                                  entry.totalStepCount > entry.stepPreviewTokens.length
+                                    ? ` +${entry.totalStepCount - entry.stepPreviewTokens.length}`
+                                    : ''}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1036,8 +1176,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           <button
                             type="button"
                             onClick={() => onTestBinding(entry.binding!)}
-                            title={`Preview & test "${entry.title}"`}
-                            className="p-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                            title={`Preview & test "${entry.title}" (Alt + Enter)`}
+                            className="p-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
                           >
                             <Play className="w-3 h-3" />
                           </button>
@@ -1047,8 +1187,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           <button
                             type="button"
                             onClick={() => handleOpenInBuilder(entry)}
-                            title="Open in Macro Builder (Shift + Enter)"
-                            className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                            title="Open in Macro Studio (Shift + Enter)"
+                            className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
                           >
                             <Sliders className="w-3 h-3" />
                             <span>{entry.customMacroId ? 'Edit' : 'Customize'}</span>
@@ -1061,7 +1201,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                             isHighlighted
                               ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-xs'
-                              : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                              : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)]'
                           }`}
                         >
                           {entry.kind === 'assigned' ? (
@@ -1091,7 +1231,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
             </div>
 
             {/* Clean Keyboard Navigation Footer */}
-            <div className="px-3.5 py-2 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)] shrink-0">
+            <div className="px-4 py-2.5 border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)] shrink-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span>
                   <strong className="font-mono text-[var(--text-secondary)]">↑↓</strong>{' '}
@@ -1107,7 +1247,14 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                 </span>
                 <span className="hidden sm:inline">
                   <strong className="font-mono text-[var(--text-secondary)]">⇧↵</strong>{' '}
-                  Open in Builder
+                  Edit in Builder
+                </span>
+                <span className="hidden md:inline" aria-hidden="true">
+                  ·
+                </span>
+                <span className="hidden md:inline">
+                  <strong className="font-mono text-[var(--text-secondary)]">⌥↵</strong>{' '}
+                  Test
                 </span>
                 <span aria-hidden="true">·</span>
                 <span>
@@ -1116,11 +1263,11 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                 </span>
               </div>
               <span className="font-mono text-[10px] tabular-nums">
-                {tabCounts.all} items
+                {tabCounts.all} {tabCounts.all === 1 ? 'item' : 'items'}
               </span>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
