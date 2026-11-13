@@ -165,18 +165,24 @@ a:focus-visible,
 
 /* Precision Knurled Rotary Encoder */
 .encoder-ring {
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--bp-panel) 90%, var(--bp-bone) 10%),
-    var(--bp-graphite),
-    color-mix(in srgb, var(--bp-panel) 86%, var(--bp-bone) 14%),
-    var(--bp-graphite),
-    color-mix(in srgb, var(--bp-panel) 90%, var(--bp-bone) 10%),
-    var(--bp-graphite),
-    color-mix(in srgb, var(--bp-panel) 86%, var(--bp-bone) 14%),
-    var(--bp-graphite),
-    color-mix(in srgb, var(--bp-panel) 90%, var(--bp-bone) 10%)
-  );
+  background:
+    repeating-conic-gradient(
+      from 0deg,
+      rgba(236, 234, 228, 0.14) 0deg 2deg,
+      transparent 2deg 10deg
+    ),
+    conic-gradient(
+      from 0deg,
+      color-mix(in srgb, var(--bp-panel) 90%, var(--bp-bone) 10%),
+      var(--bp-graphite),
+      color-mix(in srgb, var(--bp-panel) 86%, var(--bp-bone) 14%),
+      var(--bp-graphite),
+      color-mix(in srgb, var(--bp-panel) 90%, var(--bp-bone) 10%),
+      var(--bp-graphite),
+      color-mix(in srgb, var(--bp-panel) 86%, var(--bp-bone) 14%),
+      var(--bp-graphite),
+      color-mix(in srgb, var(--bp-panel) 90%, var(--bp-bone) 10%)
+    );
   box-shadow:
     0 10px 22px rgba(0, 0, 0, 0.7),
     0 0 0 1px color-mix(in srgb, var(--bp-bone) 10%, transparent),

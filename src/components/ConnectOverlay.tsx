@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Usb, PlayCircle, AlertCircle, LoaderCircle } from 'lucide-react';
 import { usbHardware } from '../services/usbHardwareService';
 
@@ -19,6 +19,18 @@ export const ConnectOverlay: React.FC<ConnectOverlayProps> = ({
 }) => {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busy) {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, busy, onClose]);
 
   if (!isOpen) return null;
 
@@ -42,25 +54,31 @@ export const ConnectOverlay: React.FC<ConnectOverlayProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-[#14161B]/95 backdrop-blur-2xl text-white select-none animate-fade-in"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-black/60 dark:bg-[#14161B]/90 backdrop-blur-2xl text-[var(--text-primary)] select-none animate-panel-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby="connect-overlay-title"
+      onClick={() => {
+        if (!busy) onClose();
+      }}
     >
-      {/* Minimal Top Right Close Button */}
+      {/* Top Right Close Button */}
       <button
         type="button"
         onClick={onClose}
         disabled={busy}
         aria-label="Close overlay"
-        className="absolute top-6 right-6 p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition cursor-pointer disabled:opacity-40"
+        className="absolute top-6 right-6 p-2.5 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer disabled:opacity-40"
       >
         <X size={20} />
       </button>
 
       {/* Center Content Card */}
-      <div className="w-full max-w-md flex flex-col items-center text-center px-6 py-8 rounded-3xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl">
-        <div className="w-16 h-16 rounded-2xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mb-6 shadow-inner">
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-md flex flex-col items-center text-center px-6 py-8 rounded-3xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl"
+      >
+        <div className="w-16 h-16 rounded-2xl bg-[var(--accent-soft)] border border-[var(--border-strong)] flex items-center justify-center mb-6 shadow-inner">
           <img
             src={resolvedTheme === 'light' ? '/logo-mark-light.svg' : '/logo-mark-dark.svg'}
             alt="BertoPad"
@@ -68,16 +86,16 @@ export const ConnectOverlay: React.FC<ConnectOverlayProps> = ({
           />
         </div>
 
-        <h1 id="connect-overlay-title" className="text-2xl font-bold tracking-tight text-white mb-2">
-          To connect pad
+        <h1 id="connect-overlay-title" className="text-2xl font-bold tracking-tight text-[var(--text-primary)] mb-2">
+          Connect BertoPad
         </h1>
-        <p className="text-sm text-zinc-400 mb-8 leading-relaxed">
+        <p className="text-sm text-[var(--text-secondary)] mb-8 leading-relaxed">
           Plug in your ESP32 BertoPad via USB and connect instantly using Web Serial, or explore the studio simulator in Demo Mode.
         </p>
 
         {errorMsg && (
-          <div className="w-full mb-6 p-3.5 rounded-xl bg-red-500/15 border border-red-500/30 flex items-start gap-2.5 text-xs text-red-200 text-left">
-            <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+          <div className="w-full mb-6 p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--accent)] flex items-start gap-2.5 text-xs text-[var(--text-primary)] text-left">
+            <AlertCircle size={16} className="text-[var(--accent)] shrink-0 mt-0.5" />
             <span className="leading-relaxed">{errorMsg}</span>
           </div>
         )}
@@ -101,9 +119,9 @@ export const ConnectOverlay: React.FC<ConnectOverlayProps> = ({
               onClose();
             }}
             disabled={busy}
-            className="w-full flex items-center justify-center gap-2 py-3 px-5 rounded-2xl text-sm font-medium bg-white/5 hover:bg-white/10 text-zinc-200 transition-all cursor-pointer border border-white/5 disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 py-3 px-5 rounded-2xl text-sm font-medium bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] transition-all cursor-pointer border border-[var(--border-subtle)] hover:border-[var(--border-strong)] disabled:opacity-50"
           >
-            <PlayCircle size={18} className="text-amber-400" />
+            <PlayCircle size={18} className="text-[var(--accent)]" />
             <span>Start Demo Mode</span>
           </button>
         </div>

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, Command, Sparkles, Volume2 } from 'lucide-react';
+import { X, Command, Volume2 } from 'lucide-react';
 import { soundEngine, SoundProfile } from '../services/soundEffects';
 
 interface KeyboardShortcutsModalProps {
@@ -10,7 +10,6 @@ interface KeyboardShortcutsModalProps {
 interface ShortcutItem {
   keys: string[];
   description: string;
-  badge?: string;
 }
 
 const SHORTCUT_GROUPS: {
@@ -30,7 +29,7 @@ const SHORTCUT_GROUPS: {
   {
     category: 'View & Studio Workspace',
     items: [
-      { keys: ['3'], description: 'Toggle 3D Tactile view with real-time gyro tracking', badge: 'Flagship' },
+      { keys: ['3'], description: 'Toggle 3D Tactile view with real-time gyro tracking' },
       { keys: ['T'], description: 'Switch to Live Test feed mode' },
       { keys: ['E'], description: 'Switch to Edit & Configure mode' },
       { keys: ['?'], description: 'Toggle this Shortcuts reference HUD' }
@@ -153,11 +152,6 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
                       {item.description}
                     </span>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {item.badge && (
-                        <span className="px-1.5 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent)] text-[10px] font-semibold">
-                          {item.badge}
-                        </span>
-                      )}
                       <div className="flex items-center gap-1">
                         {item.keys.map(k => (
                           <kbd

@@ -68,6 +68,7 @@ import { SyncConflictModal } from './components/SyncConflictModal';
 import { DiffConfirmModal, DiffPreviewRow } from './components/DiffConfirmModal';
 import { CheatSheetModal } from './components/CheatSheetModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { AboutModal } from './components/AboutModal';
 import { AlertCircle, CheckCircle2, Repeat, Square } from 'lucide-react';
 
 export default function App() {
@@ -164,6 +165,7 @@ export default function App() {
   } | null>(null);
   const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+  const [aboutModalOpen, setAboutModalOpen] = useState(false);
 
   const [connection, setConnection] = useState<DeviceConnectionInfo>(usbHardware.info);
   const [activeRepeatJob, setActiveRepeatJob] = useState<ActiveRepeatJob | null>(
@@ -1040,6 +1042,7 @@ export default function App() {
             onJumpToMotionSlot={slot =>
               handleJumpToSlotControl(studio.activeProfile.id, slot)
             }
+            onOpenAbout={() => setAboutModalOpen(true)}
             onToast={showToast}
           />
         )}
@@ -1152,6 +1155,12 @@ export default function App() {
       <KeyboardShortcutsModal
         isOpen={shortcutsModalOpen}
         onClose={() => setShortcutsModalOpen(false)}
+      />
+
+      {/* About & Open-Source Licenses Modal */}
+      <AboutModal
+        isOpen={aboutModalOpen}
+        onClose={() => setAboutModalOpen(false)}
       />
 
       {pendingTest && (

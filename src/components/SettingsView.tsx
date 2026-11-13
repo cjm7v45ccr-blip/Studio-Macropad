@@ -57,6 +57,7 @@ import {
 import { FirmwareBinGuideModal } from './FirmwareBinGuideModal';
 import { MotionSettings } from './MotionSettings';
 import { BleManagementCard } from './BleManagementCard';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface SettingsViewProps {
   profiles: StudioProfile[];
@@ -2371,6 +2372,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Standalone Desktop & Mobile App Installation */}
+        {showPreferences && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                <Monitor className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                <span>Desktop &amp; Mobile App</span>
+              </h2>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                Install BertoPad as a standalone macOS, Windows, or iPad app right from Chrome, Edge, or Safari with offline workspace caching and direct USB serial access.
+              </p>
+            </div>
+            <PWAInstallButton showInstalledState />
           </div>
         )}
 

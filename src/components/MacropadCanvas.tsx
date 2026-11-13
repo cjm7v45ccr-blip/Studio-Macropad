@@ -62,8 +62,6 @@ import {
   ArrowDown,
   ArrowUp,
   Layers,
-  Cpu,
-  Sparkles,
   Command
 } from 'lucide-react';
 
@@ -159,6 +157,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   });
 
   const chassis3dRef = useRef<HTMLDivElement>(null);
+  const telemetryReadoutRef = useRef<HTMLSpanElement>(null);
+  const pointerTiltRef = useRef<{ pitch: number; roll: number; active: boolean }>({
+    pitch: 7,
+    roll: -5,
+    active: false
+  });
   const current3dRotRef = useRef<{ pitch: number; roll: number; yaw: number; zOffset: number }>({
     pitch: 0,
     roll: 0,
@@ -173,19 +177,42 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     if (!view3D) {
       if (chassis3dRef.current) {
         chassis3dRef.current.style.transform = '';
+        chassis3dRef.current.style.backgroundImage = '';
+        chassis3dRef.current.style.boxShadow = '';
       }
       return;
     }
+
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let rafId: number;
 
     const animate3D = () => {
       const target = motionTargetRef.current;
       const current = current3dRotRef.current;
+      const pointer = pointerTiltRef.current;
+      const liveGyroActive =
+        target.isOnline &&
+        (Math.abs(target.pitch) >= 0.4 || Math.abs(target.roll) >= 0.4 || target.shakeActive);
 
-      const factor = target.shakeActive ? 0.3 : 0.16;
-      current.pitch += (target.pitch - current.pitch) * factor;
-      current.roll += (target.roll - current.roll) * factor;
-      current.zOffset += (target.shakeZOffset - current.zOffset) * factor;
+      const desiredPitch = liveGyroActive
+        ? target.pitch
+        : pointer.active
+        ? pointer.pitch
+        : 7;
+      const desiredRoll = liveGyroActive
+        ? target.roll
+        : pointer.active
+        ? pointer.roll
+        : -5;
+      const desiredZ = liveGyroActive ? target.shakeZOffset : 0;
+
+      const factor = reducedMotion ? 1 : target.shakeActive ? 0.3 : 0.14;
+      current.pitch += (desiredPitch - current.pitch) * factor;
+      current.roll += (desiredRoll - current.roll) * factor;
+      current.zOffset += (desiredZ - current.zOffset) * factor;
 
       if (chassis3dRef.current) {
         const scale = target.shakeActive ? 0.93 : 0.96;
@@ -194,15 +221,25 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         if (chassis3dRef.current.style.transform !== nextTransform) {
           chassis3dRef.current.style.transform = nextTransform;
         }
-        // Flagship dynamic metallic specular highlight & soft ambient occlusion offset reacting to orientation
+        // Dynamic metallic specular highlight & soft ambient occlusion shadow reacting to orientation
         const lightAngle = 145 + current.roll * 1.4 + current.pitch * 0.9;
-        const shadowX = -current.roll * 0.8;
-        const shadowY = 50 + current.pitch * 1.2;
+        const shadowX = -current.roll * 0.85;
+        const shadowY = 46 + current.pitch * 1.25;
         chassis3dRef.current.style.backgroundImage = `linear-gradient(${lightAngle.toFixed(1)}deg, #252934 0%, #171922 45%, #101216 100%)`;
-        chassis3dRef.current.style.boxShadow = `${shadowX.toFixed(1)}px ${shadowY.toFixed(1)}px 90px -15px rgba(0, 0, 0, 0.85), 0 20px 40px -10px rgba(var(--accent-rgb), 0.18), 0 0 0 1px color-mix(in srgb, var(--bp-bone) 14%, transparent), inset 0 1.5px 2px color-mix(in srgb, var(--bp-bone) 18%, transparent), inset 0 -4px 12px rgba(0, 0, 0, 0.8)`;
+        chassis3dRef.current.style.boxShadow = `${shadowX.toFixed(1)}px ${shadowY.toFixed(1)}px 88px -16px rgba(0, 0, 0, 0.72), 0 20px 38px -12px rgba(var(--accent-rgb), 0.16), 0 0 0 1px color-mix(in srgb, var(--bp-bone) 14%, transparent), inset 0 1.5px 2px color-mix(in srgb, var(--bp-bone) 18%, transparent), inset 0 -4px 12px rgba(0, 0, 0, 0.8)`;
       }
 
-      rafId = requestAnimationFrame(animate3D);
+      if (telemetryReadoutRef.current) {
+        const modeTag = liveGyroActive ? 'LIVE GYRO' : pointer.active ? 'ORBIT' : 'SHOWCASE';
+        const nextReadout = `${modeTag} · Pitch ${current.pitch.toFixed(1)}° · Roll ${current.roll.toFixed(1)}°`;
+        if (telemetryReadoutRef.current.textContent !== nextReadout) {
+          telemetryReadoutRef.current.textContent = nextReadout;
+        }
+      }
+
+      if (!reducedMotion) {
+        rafId = requestAnimationFrame(animate3D);
+      }
     };
 
     rafId = requestAnimationFrame(animate3D);
@@ -211,6 +248,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       if (chassis3dRef.current) {
         chassis3dRef.current.style.transform = '';
         chassis3dRef.current.style.backgroundImage = '';
+        chassis3dRef.current.style.boxShadow = '';
       }
     };
   }, [view3D]);
@@ -992,9 +1030,23 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
   };
 
-  // Flagship Global Keyboard Interaction: 1-9 for keys, [/] for knob, 3 for 3D view, etc.
+  const latestKeyboardHandlersRef = useRef({
+    activateKeyControl,
+    triggerEncoderSpin,
+    activateDialPush
+  });
+  latestKeyboardHandlersRef.current = {
+    activateKeyControl,
+    triggerEncoderSpin,
+    activateDialPush
+  };
+
+  // Global Keyboard Interaction: 1-9 for keys, [/] for knob, 3 for 3D view, etc.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
+        return;
+      }
       const activeEl = document.activeElement;
       if (
         activeEl &&
@@ -1010,26 +1062,26 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       if (e.key >= '1' && e.key <= '9') {
         const kid = `k${e.key}` as KeyId;
         e.preventDefault();
-        activateKeyControl(kid);
+        latestKeyboardHandlersRef.current.activateKeyControl(kid);
         return;
       }
 
       if (e.key === '[' || e.key === '-') {
         e.preventDefault();
-        triggerEncoderSpin(1, 'ccw');
+        latestKeyboardHandlersRef.current.triggerEncoderSpin(1, 'ccw');
         return;
       }
 
       if (e.key === ']' || e.key === '=') {
         e.preventDefault();
-        triggerEncoderSpin(1, 'cw');
+        latestKeyboardHandlersRef.current.triggerEncoderSpin(1, 'cw');
         return;
       }
 
       if (e.key === ' ' || e.key === 'Enter') {
         if (activeEl?.tagName !== 'BUTTON') {
           e.preventDefault();
-          activateDialPush(1);
+          latestKeyboardHandlersRef.current.activateDialPush(1);
           return;
         }
       }
@@ -1263,7 +1315,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   }
                 : {})
             }}
-            className={`relative w-20 h-20 sm:w-24 sm:h-24 xl:w-26 xl:h-26 rounded-full bg-gradient-to-b from-[#1E2128] to-[#14161B] border-2 flex items-center justify-center transition-all duration-150 cursor-pointer select-none ${
+            className={`relative w-20 h-20 sm:w-24 sm:h-24 xl:w-26 xl:h-26 rounded-full encoder-ring border-2 flex items-center justify-center transition-all duration-150 cursor-pointer select-none ${
               isDialSelected && !isDialFlashed
                 ? 'encoder-ring-selected'
                 : !isDialFlashed
@@ -1308,7 +1360,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               style={{
                 transform: `rotate(${angle}deg)`
               }}
-              className="w-13 h-13 sm:w-16 sm:h-16 xl:w-17 xl:h-17 rounded-full bg-[#14161B] border border-[#ECEAE4]/15 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner pointer-events-none"
+              className="w-13 h-13 sm:w-16 sm:h-16 xl:w-17 xl:h-17 rounded-full encoder-cap border border-[#ECEAE4]/15 flex items-center justify-center relative transition-transform duration-150 ease-out shadow-inner pointer-events-none"
             >
               <span
                 className="w-1.5 h-2.5 rounded-full absolute top-1.5 pointer-events-none"
@@ -1593,9 +1645,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               : ''
           }`}
         >
-          {holdBinding.value && (
-            <span aria-label="Hold action assigned" title="Hold action assigned" className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-amber-400 pointer-events-none" />
-          )}
           <div className="w-full flex items-center justify-between pointer-events-none">
             <span
               className={`font-mono text-[9px] sm:text-[10px] leading-none font-medium tabular-nums pointer-events-none ${
@@ -1608,11 +1657,22 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             >
               {badgeText}
             </span>
-            {conflict ? (
-              <span title="Duplicate action warning" className="pointer-events-none">
-                <AlertTriangle className="w-3 h-3 text-[#F2A33A] shrink-0" />
-              </span>
-            ) : null}
+            <div className="flex items-center gap-1 pointer-events-none">
+              {holdBinding.value && (
+                <span
+                  aria-label="Hold action assigned"
+                  title={`Hold: ${holdInfo.shortLabel}`}
+                  className="font-mono text-[8px] font-bold leading-none text-[#F2A33A]"
+                >
+                  +H
+                </span>
+              )}
+              {conflict && (
+                <span title="Duplicate action warning" className="pointer-events-none">
+                  <AlertTriangle className="w-3 h-3 text-[#F2A33A] shrink-0" />
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="my-auto flex items-center justify-center pointer-events-none">
@@ -2065,6 +2125,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
       {/* Vertically Centered Larger Physical BertoPad with optional 3D Isometric View */}
       <div
+        onPointerMove={e => {
+          if (!view3D) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) return;
+          const nx = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+          const ny = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+          pointerTiltRef.current = {
+            pitch: Number((-ny * 10 + 3).toFixed(2)),
+            roll: Number((nx * 12).toFixed(2)),
+            active: true
+          };
+        }}
+        onPointerLeave={() => {
+          pointerTiltRef.current = { pitch: 7, roll: -5, active: false };
+        }}
         className={`my-auto py-4 sm:py-6 flex flex-col items-center justify-center w-full ${
           view3D ? '' : 'transition-all duration-300'
         }`}
@@ -2259,6 +2334,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             </div>
           )}
         </div>
+
+        {view3D && (
+          <div className="mt-4 flex items-center gap-2 font-mono text-[10px] text-[var(--text-muted)] tabular-nums select-none">
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" aria-hidden="true" />
+            <span ref={telemetryReadoutRef}>SHOWCASE · Pitch 7.0° · Roll -5.0°</span>
+          </div>
+        )}
       </div>
 
       {/* Motion Gestures Strip (shown strictly when capabilities includes "motion") */}
