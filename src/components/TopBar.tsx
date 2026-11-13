@@ -119,11 +119,23 @@ export const TopBar: React.FC<TopBarProps> = ({
     return () => window.removeEventListener('mousedown', handleOutside);
   }, [menuOpen, connPopoverOpen]);
 
-  // Alt+1/2/3 shortcuts to switch profiles
+  // Alt+1/2/3/4 shortcuts to switch profiles (supports macOS Option key via e.code)
   useEffect(() => {
     const handleKeyShortcut = (e: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-        const num = parseInt(e.key, 10);
+        const digitMatch = /^Digit([1-9])$/.exec(e.code || '');
+        const num = digitMatch ? parseInt(digitMatch[1], 10) : parseInt(e.key, 10);
         if (num >= 1 && num <= profiles.length) {
           const target = profiles[num - 1];
           if (target && !(target.id === 'TV' && !isTvEnabled)) {

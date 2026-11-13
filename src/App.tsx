@@ -696,6 +696,7 @@ export default function App() {
           }
           resolvedTheme={resolvedTheme}
           onToggleTheme={handleToggleTheme}
+          onOpenShortcuts={() => setShortcutsModalOpen(true)}
           macroCount={studio.customMacros.length}
           hasFirmwareUpdate={hasFirmwareUpdateNotification}
         />

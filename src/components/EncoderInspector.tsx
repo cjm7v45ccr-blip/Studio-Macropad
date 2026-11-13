@@ -582,7 +582,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                   onClick={() => onUpdateColor(hex)}
                   className={`w-6 h-6 rounded-full border transition-transform cursor-pointer ${
                     active
-                      ? 'scale-110 ring-2 ring-[var(--accent)] border-white'
+                      ? 'scale-110 ring-2 ring-[var(--accent)] border-[var(--text-primary)]'
                       : 'border-black/15 dark:border-white/20 hover:scale-105'
                   }`}
                   style={{ backgroundColor: hex }}

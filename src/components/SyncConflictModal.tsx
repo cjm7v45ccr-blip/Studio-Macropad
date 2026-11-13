@@ -1,6 +1,6 @@
 import React from 'react';
 import { SyncConflictState } from '../types/studio';
-import { GitCompareArrows, Laptop, Cpu, ArrowRight } from 'lucide-react';
+import { GitCompareArrows, Laptop, Cpu } from 'lucide-react';
 import { parseSingleActionKeyValue } from '../data/firmwareCatalog';
 import { ParsedActionBadge } from './ActionTagBadge';
 
@@ -18,7 +18,12 @@ export const SyncConflictModal: React.FC<SyncConflictModalProps> = ({
   if (!conflict) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="sync-conflict-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+    >
       <div className="w-full max-w-lg rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center gap-3">
@@ -26,7 +31,10 @@ export const SyncConflictModal: React.FC<SyncConflictModalProps> = ({
             <GitCompareArrows className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-[var(--text-primary)]">
+            <h3
+              id="sync-conflict-modal-title"
+              className="text-sm font-bold text-[var(--text-primary)]"
+            >
               Use website settings or pad settings?
             </h3>
             <p className="text-xs text-[var(--text-muted)]">
@@ -43,7 +51,7 @@ export const SyncConflictModal: React.FC<SyncConflictModalProps> = ({
         <div className="p-5 space-y-4">
           {conflict.diffs.length > 0 ? (
             <div className="space-y-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] tabular-nums">
                 Differences ({conflict.diffs.length})
               </div>
               <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
@@ -65,11 +73,19 @@ export const SyncConflictModal: React.FC<SyncConflictModalProps> = ({
                       <div className="space-y-1.5 font-mono text-[11px]">
                         <div className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)] overflow-x-auto max-w-full flex items-center gap-2">
                           <span className="text-[10px] text-[var(--text-muted)] shrink-0 font-sans uppercase font-semibold">Web:</span>
-                          <span className="whitespace-nowrap">{item.websiteValue}</span>
+                          {webHasPrefix ? (
+                            <ParsedActionBadge action={item.websiteValue} size="xs" />
+                          ) : (
+                            <span className="whitespace-nowrap">{item.websiteValue}</span>
+                          )}
                         </div>
                         <div className="px-2.5 py-1.5 rounded-lg bg-[var(--accent-soft)] text-[var(--text-primary)] border border-[rgba(var(--accent-rgb),0.3)] overflow-x-auto max-w-full flex items-center gap-2">
                           <span className="text-[10px] text-[var(--text-muted)] shrink-0 font-sans uppercase font-semibold">Pad:</span>
-                          <span className="whitespace-nowrap">{item.padValue}</span>
+                          {padHasPrefix ? (
+                            <ParsedActionBadge action={item.padValue} size="xs" />
+                          ) : (
+                            <span className="whitespace-nowrap">{item.padValue}</span>
+                          )}
                         </div>
                       </div>
                     </div>

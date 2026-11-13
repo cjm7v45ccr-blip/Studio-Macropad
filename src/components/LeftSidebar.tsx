@@ -9,7 +9,8 @@ import {
   Volume2,
   VolumeX,
   Sun,
-  Moon
+  Moon,
+  Keyboard
 } from 'lucide-react';
 
 interface LeftSidebarProps {
@@ -19,6 +20,7 @@ interface LeftSidebarProps {
   onToggleSound: () => void;
   resolvedTheme?: 'dark' | 'light';
   onToggleTheme?: () => void;
+  onOpenShortcuts?: () => void;
   macroCount: number;
   hasFirmwareUpdate?: boolean;
   variant?: 'rail' | 'bottom';
@@ -43,6 +45,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onToggleSound,
   resolvedTheme = 'dark',
   onToggleTheme,
+  onOpenShortcuts,
   hasFirmwareUpdate = false,
   variant = 'rail'
 }) => {
@@ -134,6 +137,18 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       </nav>
 
       <div className="pt-2.5 border-t border-[var(--border-subtle)] w-full flex flex-col items-center gap-1.5">
+        {onOpenShortcuts && (
+          <button
+            type="button"
+            onClick={onOpenShortcuts}
+            className="w-full py-1.5 px-1 rounded-xl hover:bg-[var(--bg-input)] flex flex-col items-center justify-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+            title="Keyboard shortcuts & acoustic switch profiles (?)"
+          >
+            <Keyboard className="w-4 h-4 shrink-0" />
+            <span className="text-[10px] leading-none">Keys</span>
+          </button>
+        )}
+
         {onToggleTheme && (
           <button
             type="button"

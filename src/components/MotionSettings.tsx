@@ -5,13 +5,7 @@ import {
   RefreshCw,
   SlidersHorizontal,
   ShieldAlert,
-  Check,
-  RotateCcw,
-  Sparkles,
-  ArrowLeft,
-  ArrowRight,
-  ArrowDown,
-  ArrowUp
+  RotateCcw
 } from 'lucide-react';
 import { ToastVariant } from '../hooks/useStudioState';
 import { MotionSlotId, GyroCalibrationProfile } from '../types/studio';
