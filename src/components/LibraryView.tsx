@@ -762,7 +762,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <div className="space-y-2.5">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)] leading-snug">
                             {snap.name}
                           </h3>
                           <p className="text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums">
@@ -865,11 +865,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   >
                     <div className="space-y-2.5">
                       <div className="min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)] leading-snug">
                             {preset.title}
                           </h3>
-                          <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-muted)] shrink-0">
+                          <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-muted)] shrink-0 pt-0.5">
                             <ModeIcon className="w-3.5 h-3.5 text-[var(--accent)]" />
                             <span>{blePreset ? 'BLE Host' : 'Smart TV'}</span>
                           </span>

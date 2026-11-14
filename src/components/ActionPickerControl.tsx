@@ -881,7 +881,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                         Shortcuts ({hostOsFullLabel(activeHostOs)}) ·{' '}
                         {searchShortcutMatches.length}
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      <div className="grid grid-cols-1 gap-1.5">
                         {searchShortcutMatches.map(spec => {
                           const selected =
                             binding.value === spec.action && !binding.repeatConfig;
@@ -893,28 +893,28 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                               onClick={() =>
                                 onChange(firmwareActionToBinding(spec.action))
                               }
-                              className={`flex items-center gap-2 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                              className={`flex items-center justify-between gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
                                 selected
                                   ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
                                   : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                               }`}
                             >
-                              <KeycapIcon
-                                icon={spec.icon}
-                                className={`w-3.5 h-3.5 shrink-0 ${
-                                  selected
-                                    ? 'text-[var(--accent)]'
-                                    : 'text-[var(--text-secondary)]'
-                                }`}
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="text-xs font-medium text-[var(--text-primary)] truncate">
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <KeycapIcon
+                                  icon={spec.icon}
+                                  className={`w-3.5 h-3.5 shrink-0 ${
+                                    selected
+                                      ? 'text-[var(--accent)]'
+                                      : 'text-[var(--text-secondary)]'
+                                  }`}
+                                />
+                                <span className="text-xs font-medium text-[var(--text-primary)] leading-snug">
                                   {spec.label}
-                                </div>
-                                <div className="text-[10px] font-mono text-[var(--text-muted)] truncate">
-                                  {showAdvancedIds ? spec.action : spec.shortcutHint}
-                                </div>
+                                </span>
                               </div>
+                              <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0 tabular-nums">
+                                {showAdvancedIds ? spec.action : spec.shortcutHint}
+                              </span>
                             </button>
                           );
                         })}
@@ -928,7 +928,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                         {isTvEnabled ? 'System, Media & TV' : 'System & Media'} ·{' '}
                         {searchOtherStaticMatches.length}
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      <div className="grid grid-cols-1 gap-1.5">
                         {searchOtherStaticMatches.map(spec => {
                           const selected =
                             binding.value === spec.action && !binding.repeatConfig;
@@ -959,7 +959,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                                 }`}
                               />
                               <div className="min-w-0 flex-1">
-                                <div className="text-xs font-medium text-[var(--text-primary)] truncate">
+                                <div className="text-xs font-medium text-[var(--text-primary)] leading-snug">
                                   {spec.label}
                                 </div>
                                 {showAdvancedIds && (
@@ -1110,7 +1110,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-1 gap-1.5">
                 {osMappedShortcuts.map(spec => {
                   const selected =
                     binding.value === spec.action && !binding.repeatConfig;
@@ -1122,28 +1122,28 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                       onClick={() =>
                         onChange(firmwareActionToBinding(spec.action))
                       }
-                      className={`flex items-center gap-2 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                      className={`flex items-center justify-between gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
                         selected
                           ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
                           : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                     >
-                      <KeycapIcon
-                        icon={spec.icon}
-                        className={`w-3.5 h-3.5 shrink-0 ${
-                          selected
-                            ? 'text-[var(--accent)]'
-                            : 'text-[var(--text-secondary)]'
-                        }`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-medium text-[var(--text-primary)] truncate">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <KeycapIcon
+                          icon={spec.icon}
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            selected
+                              ? 'text-[var(--accent)]'
+                              : 'text-[var(--text-secondary)]'
+                          }`}
+                        />
+                        <span className="text-xs font-medium text-[var(--text-primary)] leading-snug">
                           {spec.label}
-                        </div>
-                        <div className="text-[10px] font-mono text-[var(--text-muted)] truncate">
-                          {showAdvancedIds ? spec.action : spec.shortcutHint}
-                        </div>
+                        </span>
                       </div>
+                      <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0 tabular-nums">
+                        {showAdvancedIds ? spec.action : spec.shortcutHint}
+                      </span>
                     </button>
                   );
                 })}
@@ -1158,7 +1158,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-1 gap-1.5">
                 {displayControls.map(spec => {
                   const selected =
                     binding.value === spec.action && !binding.repeatConfig;
@@ -1173,28 +1173,28 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                           value: spec.action
                         })
                       }
-                      className={`flex items-center gap-2 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                      className={`flex items-center justify-between gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
                         selected
                           ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
                           : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                     >
-                      <KeycapIcon
-                        icon={spec.icon}
-                        className={`w-3.5 h-3.5 shrink-0 ${
-                          selected
-                            ? 'text-[var(--accent)]'
-                            : 'text-[var(--text-secondary)]'
-                        }`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-medium text-[var(--text-primary)] truncate">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <KeycapIcon
+                          icon={spec.icon}
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            selected
+                              ? 'text-[var(--accent)]'
+                              : 'text-[var(--text-secondary)]'
+                          }`}
+                        />
+                        <span className="text-xs font-medium text-[var(--text-primary)] leading-snug">
                           {spec.label}
-                        </div>
-                        <div className="text-[10px] font-mono text-[var(--text-muted)] truncate">
-                          {showAdvancedIds ? spec.action : spec.shortcutHint}
-                        </div>
+                        </span>
                       </div>
+                      <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0 tabular-nums">
+                        {showAdvancedIds ? spec.action : spec.shortcutHint}
+                      </span>
                     </button>
                   );
                 })}
@@ -1204,7 +1204,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             /* Static Categories + Custom Inline Builders */
             <div className="space-y-2.5">
               {activeCategoryItems.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-1 gap-1.5">
                   {activeCategoryItems.map(spec => {
                     const selected =
                       binding.value === spec.action && !binding.repeatConfig;
@@ -1235,7 +1235,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                           }`}
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs font-medium text-[var(--text-primary)] truncate">
+                          <div className="text-xs font-medium text-[var(--text-primary)] leading-snug">
                             {spec.label}
                           </div>
                           {showAdvancedIds && (
@@ -1258,7 +1258,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                   </div>
                   {connection.connected && connection.telemetry && (
                     <span className="font-mono text-[10px] text-[var(--accent)] shrink-0 tabular-nums">
-                      H{connection.telemetry.bleActiveHost} Active
+                      Host {connection.telemetry.bleActiveHost} Active
                     </span>
                   )}
                 </div>

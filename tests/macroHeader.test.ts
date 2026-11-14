@@ -4,7 +4,10 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MacroEditorView, STARTER_TEMPLATES } from '../src/components/MacroEditorView';
 import { buildBlankHardwareProfiles } from '../src/data/presetTemplates';
-import { buildFirmwareActionFromTextConfig } from '../src/data/firmwareCatalog';
+import {
+  buildFirmwareActionFromTextConfig,
+  suggestSmartMacroName
+} from '../src/data/firmwareCatalog';
 import { DeviceConnectionInfo, TextMacroRepeatConfig } from '../src/types/studio';
 
 const noop = () => {};
@@ -149,4 +152,39 @@ test('MacroEditorView header uses flex-wrap metadata container and collapses >3 
     })
   );
   assert.match(bigHtml, /\d+\s*\/\s*512\s*B/, 'Near-limit macro should surface storage warning');
+});
+
+test('Empty macro suggests Untitled Macro, Target picker is compact, and Assign button warns what is replaced', () => {
+  assert.equal(suggestSmartMacroName([]), 'Untitled Macro');
+
+  const profiles = buildBlankHardwareProfiles();
+  profiles[0].layers[0].keys.k5.triggers.tap = {
+    type: 'shortcut',
+    value: 'SHORTCUT::f13'
+  };
+
+  const html = renderToStaticMarkup(
+    React.createElement(MacroEditorView, {
+      profiles,
+      activeProfileId: 'HOST1',
+      initialTargetSlot: 'b5',
+      customMacros: [],
+      keyboardLayout: 'us_qwerty',
+      connection,
+      activeRepeatJob: null,
+      hostOsMap: { HOST1: 'mac', HOST2: 'windows', HOST3: 'linux' },
+      onSaveMacro: () => ({ saved: null, updatedSlotCount: 0 }),
+      onDeleteMacro: noop,
+      onAssignSlot: noop,
+      onTestBinding: noop,
+      onStopRepeat: noop,
+      onPullFromUsb: async () => true,
+      onJumpToControl: noop
+    })
+  );
+
+  assert.match(html, /aria-label="Target control"/, 'Compact target control select should render');
+  assert.match(html, /Pick on pad/, 'Visual pad drawer should start collapsed behind Pick on pad');
+  assert.match(html, /Assign to Device 1 · Key 5/, 'Assign CTA should name target slot');
+  assert.match(html, /Replaces F13/, 'Assign CTA should note existing binding being overwritten');
 });

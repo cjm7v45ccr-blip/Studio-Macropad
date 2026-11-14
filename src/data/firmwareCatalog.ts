@@ -2479,6 +2479,9 @@ export function suggestSmartMacroName(
   steps: MacroStepConfig[],
   repeatConfig?: Partial<TextMacroRepeatConfig>
 ): string {
+  if (!steps || steps.length === 0) {
+    return 'Untitled Macro';
+  }
   const actionSteps = steps.filter(s => s.actionType !== 'delay');
   if (actionSteps.length === 0) {
     return 'Timed Wait';

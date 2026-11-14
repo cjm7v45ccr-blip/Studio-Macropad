@@ -1050,7 +1050,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
           ) : isFirmwareCurrent ? (
             <span className="inline-flex items-center gap-2 text-[var(--accent)] font-semibold">
               <Check className="w-4 h-4 shrink-0" />
-              <span>Up to date ✓</span>
+              <span>Up to date</span>
               {knownInstalledVersion && (
                 <span className="font-mono text-[11px] font-normal text-[var(--text-secondary)]">
                   · {knownInstalledVersion.startsWith('v') ? knownInstalledVersion : `v${knownInstalledVersion}`}

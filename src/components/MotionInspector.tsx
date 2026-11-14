@@ -134,12 +134,6 @@ export const MotionInspector: React.FC<MotionInspectorProps> = ({
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-[11px] font-mono text-[var(--text-muted)] tabular-nums">
               <span className="truncate">{activeProfileName}</span>
-              {showAdvancedIds && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="text-[var(--accent)]">{selectedSlot}</span>
-                </>
-              )}
             </div>
             <h2 className="text-sm font-bold text-[var(--text-primary)] mt-0.5">
               {SLOT_LABELS[selectedSlot].short}

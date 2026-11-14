@@ -101,6 +101,7 @@ interface PersistedUiPrefs {
   userPresets: UserPreset[];
   customMacros: CustomMacroItem[];
   appearanceOverrides: Record<string, KeyAppearance>;
+  rawIdsDefaultHiddenMigrated?: boolean;
 }
 
 const DEFAULT_HOST_OS_MAP: HostOsMap = {
@@ -816,6 +817,7 @@ export function useStudioState(
         const rawSettings = parsed.settings || {};
         const migratedFromLegacyRepo =
           rawSettings.firmwareRepo !== PUBLIC_FIRMWARE_SOURCE_SLUG;
+        const hasMigratedRawIdsDefault = Boolean(parsed.rawIdsDefaultHiddenMigrated);
         const hadStoredHostOsMap = Boolean(
           rawSettings.hostOsMap && typeof rawSettings.hostOsMap === 'object'
         );
@@ -828,7 +830,9 @@ export function useStudioState(
               ...DEFAULT_HOST_OS_MAP,
               ...(rawSettings.hostOsMap || {})
             },
-            showAdvancedIds: Boolean(rawSettings.showAdvancedIds ?? false),
+            showAdvancedIds: hasMigratedRawIdsDefault
+              ? Boolean(rawSettings.showAdvancedIds ?? false)
+              : false,
             firmwareRepo: PUBLIC_FIRMWARE_SOURCE_SLUG,
             autoCheckFirmwareUpdates: migratedFromLegacyRepo
               ? true
@@ -1059,7 +1063,8 @@ export function useStudioState(
         settings,
         userPresets,
         customMacros: snapshot.customMacros,
-        appearanceOverrides
+        appearanceOverrides,
+        rawIdsDefaultHiddenMigrated: true
       };
       localStorage.setItem(UI_PREFS_KEY, JSON.stringify(toStore));
     } catch {}
