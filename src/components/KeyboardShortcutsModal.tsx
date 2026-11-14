@@ -38,12 +38,12 @@ const SHORTCUT_GROUPS: {
   {
     category: 'Command Palette & Macro Studio',
     items: [
-      { keys: ['⌘/Ctrl', 'K'], description: 'Open Global Macro & Action Command Palette' },
+      { keys: ['Cmd/Ctrl', 'K'], description: 'Open Global Macro & Action Command Palette' },
       { keys: ['Tab'], description: 'Cycle categories inside Command Palette' },
-      { keys: ['⇧', '↵'], description: 'Open highlighted macro in Macro Studio' },
-      { keys: ['⌥/Alt', '↵'], description: 'Dry-run / test highlighted macro immediately' },
-      { keys: ['⌘/Ctrl', 'Z'], description: 'Undo last layout or macro change' },
-      { keys: ['⌘/Ctrl', '⇧', 'Z'], description: 'Redo previously undone change' },
+      { keys: ['Shift', 'Enter'], description: 'Open highlighted macro in Macro Studio' },
+      { keys: ['Opt/Alt', 'Enter'], description: 'Dry-run / test highlighted macro immediately' },
+      { keys: ['Cmd/Ctrl', 'Z'], description: 'Undo last layout or macro change' },
+      { keys: ['Cmd/Ctrl', 'Shift', 'Z'], description: 'Redo previously undone change' },
       { keys: ['Esc'], description: 'Close active modal or stop running macro' }
     ]
   }

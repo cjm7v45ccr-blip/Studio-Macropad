@@ -153,11 +153,11 @@ interface MacroEditorViewProps {
 }
 
 const MOD_LIST = [
-  { id: 'cmd', label: '⌘ Cmd' },
-  { id: 'ctrl', label: '⌃ Ctrl' },
-  { id: 'alt', label: '⌥ Opt' },
-  { id: 'shift', label: '⇧ Shift' },
-  { id: 'win', label: '⊞ Win' }
+  { id: 'cmd', label: 'Cmd' },
+  { id: 'ctrl', label: 'Ctrl' },
+  { id: 'alt', label: 'Opt' },
+  { id: 'shift', label: 'Shift' },
+  { id: 'win', label: 'Win' }
 ];
 
 const QUICK_DELAY_PRESETS = [0, 100, 250, 500, 1000];
@@ -2160,14 +2160,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             />
                           </div>
 
-                          <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-secondary)] font-mono tabular-nums flex-wrap">
+                          <div className="flex items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-secondary)] font-mono tabular-nums flex-wrap">
                             <span>
                               {stepsForMacro.length}{' '}
-                              {stepsForMacro.length === 1 ? 'step' : 'steps'}
+                              {stepsForMacro.length === 1 ? 'step' : 'steps'} · ~{formatDurationCompact(estimatedRunMs)}
                             </span>
-                            <span aria-hidden="true">·</span>
-                            <span>~{formatDurationCompact(estimatedRunMs)}</span>
-                            <span aria-hidden="true">·</span>
                             {firstBound ? (
                               <span className="text-[var(--accent)] font-medium">
                                 {profileShortTag(firstBound.profileId)}{' '}
@@ -2180,12 +2177,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               </span>
                             )}
                             {!isTvEnabled && actionContainsTvSteps(m.action, m.repeatConfig) && (
-                              <>
-                                <span aria-hidden="true">·</span>
-                                <span className="text-[var(--accent)] font-sans font-medium">
-                                  TV off
-                                </span>
-                              </>
+                              <span className="text-[var(--accent)] font-sans font-medium">
+                                TV off
+                              </span>
                             )}
                           </div>
                         </button>
@@ -2595,8 +2589,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
             )}
 
             <div className="space-y-3">
-              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-                <div className="flex-1 min-w-0">
+              <div className="flex flex-col gap-3">
+                <div className="w-full min-w-0">
                   <input
                     id="macro-sequence-name"
                     type="text"
@@ -3010,7 +3004,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         >
                           <option value="none">None (Stop after Enter)</option>
                           <option value="paste_mac">
-                            Paste Clipboard (⌘V) + Enter
+                            Paste Clipboard (Cmd+V) + Enter
                           </option>
                           <option value="paste_win">
                             Paste Clipboard (Ctrl+V) + Enter

@@ -224,17 +224,17 @@ export const FIRMWARE_STATIC_CATALOG: FirmwareActionSpec[] = [
   { action: 'KEY:F16', label: 'F16 Function Key', shortLabel: 'F16', description: 'BLE Aux function key F16', category: 'media', icon: 'layers', color: '#ECEAE4' },
 
   // MACRO:* macOS Built-ins (11)
-  { action: 'MACRO:COPY', label: 'Copy (⌘C)', shortLabel: 'Copy', description: 'macOS Command + C', category: 'mac_macro', icon: 'copy', color: '#ECEAE4' },
-  { action: 'MACRO:PASTE', label: 'Paste (⌘V)', shortLabel: 'Paste', description: 'macOS Command + V', category: 'mac_macro', icon: 'paste', color: '#ECEAE4' },
-  { action: 'MACRO:CUT', label: 'Cut (⌘X)', shortLabel: 'Cut', description: 'macOS Command + X', category: 'mac_macro', icon: 'scissors', color: '#ECEAE4' },
-  { action: 'MACRO:UNDO', label: 'Undo (⌘Z)', shortLabel: 'Undo', description: 'macOS Command + Z', category: 'mac_macro', icon: 'undo', color: '#ECEAE4' },
-  { action: 'MACRO:REDO', label: 'Redo (⌘⇧Z)', shortLabel: 'Redo', description: 'macOS Command + Shift + Z', category: 'mac_macro', icon: 'redo', color: '#ECEAE4' },
-  { action: 'MACRO:SELECT_ALL', label: 'Select All (⌘A)', shortLabel: 'Select All', description: 'macOS Command + A', category: 'mac_macro', icon: 'check-square', color: '#ECEAE4' },
-  { action: 'MACRO:SAVE', label: 'Save (⌘S)', shortLabel: 'Save', description: 'macOS Command + S', category: 'mac_macro', icon: 'save', color: '#ECEAE4' },
-  { action: 'MACRO:SPOTLIGHT', label: 'Spotlight (⌘Space)', shortLabel: 'Spotlight', description: 'macOS Command + Space search', category: 'mac_macro', icon: 'search', color: '#F2A33A' },
-  { action: 'MACRO:LOCK', label: 'Lock Mac (⌃⌘Q)', shortLabel: 'Lock Mac', description: 'macOS Control + Command + Q', category: 'mac_macro', icon: 'lock', color: '#F2A33A' },
-  { action: 'MACRO:NEW_TAB', label: 'New Tab (⌘T)', shortLabel: 'New Tab', description: 'macOS Command + T', category: 'mac_macro', icon: 'globe', color: '#ECEAE4' },
-  { action: 'MACRO:CLOSE_TAB', label: 'Close Tab (⌘W)', shortLabel: 'Close Tab', description: 'macOS Command + W', category: 'mac_macro', icon: 'x', color: '#ECEAE4' },
+  { action: 'MACRO:COPY', label: 'Copy (Cmd+C)', shortLabel: 'Copy', description: 'macOS Command + C', category: 'mac_macro', icon: 'copy', color: '#ECEAE4' },
+  { action: 'MACRO:PASTE', label: 'Paste (Cmd+V)', shortLabel: 'Paste', description: 'macOS Command + V', category: 'mac_macro', icon: 'paste', color: '#ECEAE4' },
+  { action: 'MACRO:CUT', label: 'Cut (Cmd+X)', shortLabel: 'Cut', description: 'macOS Command + X', category: 'mac_macro', icon: 'scissors', color: '#ECEAE4' },
+  { action: 'MACRO:UNDO', label: 'Undo (Cmd+Z)', shortLabel: 'Undo', description: 'macOS Command + Z', category: 'mac_macro', icon: 'undo', color: '#ECEAE4' },
+  { action: 'MACRO:REDO', label: 'Redo (Cmd+Shift+Z)', shortLabel: 'Redo', description: 'macOS Command + Shift + Z', category: 'mac_macro', icon: 'redo', color: '#ECEAE4' },
+  { action: 'MACRO:SELECT_ALL', label: 'Select All (Cmd+A)', shortLabel: 'Select All', description: 'macOS Command + A', category: 'mac_macro', icon: 'check-square', color: '#ECEAE4' },
+  { action: 'MACRO:SAVE', label: 'Save (Cmd+S)', shortLabel: 'Save', description: 'macOS Command + S', category: 'mac_macro', icon: 'save', color: '#ECEAE4' },
+  { action: 'MACRO:SPOTLIGHT', label: 'Spotlight (Cmd+Space)', shortLabel: 'Spotlight', description: 'macOS Command + Space search', category: 'mac_macro', icon: 'search', color: '#F2A33A' },
+  { action: 'MACRO:LOCK', label: 'Lock Mac (Ctrl+Cmd+Q)', shortLabel: 'Lock Mac', description: 'macOS Control + Command + Q', category: 'mac_macro', icon: 'lock', color: '#F2A33A' },
+  { action: 'MACRO:NEW_TAB', label: 'New Tab (Cmd+T)', shortLabel: 'New Tab', description: 'macOS Command + T', category: 'mac_macro', icon: 'globe', color: '#ECEAE4' },
+  { action: 'MACRO:CLOSE_TAB', label: 'Close Tab (Cmd+W)', shortLabel: 'Close Tab', description: 'macOS Command + W', category: 'mac_macro', icon: 'x', color: '#ECEAE4' },
 
   // WIN:* Windows Built-ins (16)
   { action: 'WIN:COPY', label: 'Copy (Ctrl+C)', shortLabel: 'Copy', description: 'Windows Ctrl + C', category: 'win_macro', icon: 'copy', color: '#ECEAE4' },
@@ -339,39 +339,39 @@ const WIN_TO_MAC_ACTION_MAP: Record<string, string> = Object.fromEntries(
 export function getShortcutsForHostOs(os: HostOsType): UnifiedShortcutSpec[] {
   if (os === 'mac') {
     return [
-      { id: 'copy', label: 'Copy', shortcutHint: '⌘C', action: 'MACRO:COPY', icon: 'copy', color: '#ECEAE4', description: 'Copy selection to clipboard' },
-      { id: 'paste', label: 'Paste', shortcutHint: '⌘V', action: 'MACRO:PASTE', icon: 'paste', color: '#ECEAE4', description: 'Paste from clipboard' },
-      { id: 'paste_plain', label: 'Paste Plain Text', shortcutHint: '⌘⌥⇧V', action: 'SHORTCUT:cmd,opt,shift:v', icon: 'file-text', color: '#ECEAE4', description: 'Paste without source formatting' },
-      { id: 'cut', label: 'Cut', shortcutHint: '⌘X', action: 'MACRO:CUT', icon: 'scissors', color: '#ECEAE4', description: 'Cut selection' },
-      { id: 'undo', label: 'Undo', shortcutHint: '⌘Z', action: 'MACRO:UNDO', icon: 'undo', color: '#ECEAE4', description: 'Undo last change' },
-      { id: 'redo', label: 'Redo', shortcutHint: '⌘⇧Z', action: 'MACRO:REDO', icon: 'redo', color: '#ECEAE4', description: 'Redo last change' },
-      { id: 'select_all', label: 'Select All', shortcutHint: '⌘A', action: 'MACRO:SELECT_ALL', icon: 'check-square', color: '#ECEAE4', description: 'Select all content' },
-      { id: 'find', label: 'Find in Page/Doc', shortcutHint: '⌘F', action: 'SHORTCUT:cmd:f', icon: 'search', color: '#ECEAE4', description: 'Find text in active document' },
-      { id: 'replace', label: 'Find & Replace', shortcutHint: '⌘⌥F', action: 'SHORTCUT:cmd,opt:f', icon: 'sliders', color: '#ECEAE4', description: 'Open find and replace dialog' },
-      { id: 'save', label: 'Save', shortcutHint: '⌘S', action: 'MACRO:SAVE', icon: 'save', color: '#ECEAE4', description: 'Save current file' },
-      { id: 'save_as', label: 'Save As', shortcutHint: '⌘⇧S', action: 'SHORTCUT:cmd,shift:s', icon: 'save', color: '#ECEAE4', description: 'Save document with new name' },
-      { id: 'print', label: 'Print', shortcutHint: '⌘P', action: 'SHORTCUT:cmd:p', icon: 'file-text', color: '#ECEAE4', description: 'Print active document' },
-      { id: 'zoom_in', label: 'Zoom In', shortcutHint: '⌘+', action: 'SHORTCUT:cmd:=', icon: 'zoom-in', color: '#F2A33A', description: 'Zoom in active window or canvas' },
-      { id: 'zoom_out', label: 'Zoom Out', shortcutHint: '⌘-', action: 'SHORTCUT:cmd:-', icon: 'zoom-out', color: '#F2A33A', description: 'Zoom out active window or canvas' },
-      { id: 'zoom_reset', label: 'Reset Zoom', shortcutHint: '⌘0', action: 'SHORTCUT:cmd:0', icon: 'maximize', color: '#ECEAE4', description: 'Reset zoom to 100%' },
-      { id: 'fullscreen', label: 'Toggle Fullscreen', shortcutHint: '⌃⌘F', action: 'SHORTCUT:ctrl,cmd:f', icon: 'monitor', color: '#F2A33A', description: 'Toggle macOS fullscreen window mode' },
-      { id: 'bright_up', label: 'Brightness Up', shortcutHint: 'F15 / ☀+', action: 'MEDIA:BRIGHT_UP', icon: 'sun', color: '#F2A33A', description: 'Increase macOS display brightness' },
-      { id: 'bright_down', label: 'Brightness Down', shortcutHint: 'F14 / ☀-', action: 'MEDIA:BRIGHT_DOWN', icon: 'sun-dim', color: '#F2A33A', description: 'Decrease macOS display brightness' },
-      { id: 'new_tab', label: 'New Tab', shortcutHint: '⌘T', action: 'MACRO:NEW_TAB', icon: 'globe', color: '#ECEAE4', description: 'Open new browser or editor tab' },
-      { id: 'close_tab', label: 'Close Tab', shortcutHint: '⌘W', action: 'MACRO:CLOSE_TAB', icon: 'x', color: '#ECEAE4', description: 'Close active tab or window' },
-      { id: 'reopen_tab', label: 'Reopen Closed Tab', shortcutHint: '⌘⇧T', action: 'SHORTCUT:cmd,shift:t', icon: 'redo', color: '#ECEAE4', description: 'Restore closed browser tab' },
-      { id: 'reload', label: 'Reload Page', shortcutHint: '⌘R', action: 'SHORTCUT:cmd:r', icon: 'repeat', color: '#ECEAE4', description: 'Refresh active page' },
-      { id: 'search', label: 'Spotlight Search', shortcutHint: '⌘Space', action: 'MACRO:SPOTLIGHT', icon: 'search', color: '#F2A33A', description: 'Open macOS Spotlight search' },
-      { id: 'emoji', label: 'Emoji & Symbols', shortcutHint: '⌃⌘Space', action: 'SHORTCUT:ctrl,cmd:space', icon: 'smile', color: '#F2A33A', description: 'Open macOS emoji and symbol viewer' },
-      { id: 'screenshot', label: 'Screenshot Region', shortcutHint: '⌘⇧4', action: 'SHORTCUT:cmd,shift:4', icon: 'camera', color: '#ECEAE4', description: 'Capture screen region to file or clipboard' },
-      { id: 'lock', label: 'Lock Screen', shortcutHint: '⌃⌘Q', action: 'MACRO:LOCK', icon: 'lock', color: '#F2A33A', description: 'Lock Mac immediately' },
-      { id: 'cmd_palette', label: 'Command Palette', shortcutHint: '⌘⇧P', action: 'SHORTCUT:cmd,shift:p', icon: 'code', color: '#ECEAE4', description: 'Open IDE command palette' },
-      { id: 'quick_open', label: 'Quick Open File', shortcutHint: '⌘P', action: 'SHORTCUT:cmd:p', icon: 'file-text', color: '#ECEAE4', description: 'Quick open file in workspace' },
-      { id: 'toggle_sidebar', label: 'Toggle Sidebar', shortcutHint: '⌘B', action: 'SHORTCUT:cmd:b', icon: 'layout', color: '#ECEAE4', description: 'Show or hide editor sidebar' },
+      { id: 'copy', label: 'Copy', shortcutHint: 'Cmd+C', action: 'MACRO:COPY', icon: 'copy', color: '#ECEAE4', description: 'Copy selection to clipboard' },
+      { id: 'paste', label: 'Paste', shortcutHint: 'Cmd+V', action: 'MACRO:PASTE', icon: 'paste', color: '#ECEAE4', description: 'Paste from clipboard' },
+      { id: 'paste_plain', label: 'Paste Plain Text', shortcutHint: 'Cmd+Opt+Shift+V', action: 'SHORTCUT:cmd,opt,shift:v', icon: 'file-text', color: '#ECEAE4', description: 'Paste without source formatting' },
+      { id: 'cut', label: 'Cut', shortcutHint: 'Cmd+X', action: 'MACRO:CUT', icon: 'scissors', color: '#ECEAE4', description: 'Cut selection' },
+      { id: 'undo', label: 'Undo', shortcutHint: 'Cmd+Z', action: 'MACRO:UNDO', icon: 'undo', color: '#ECEAE4', description: 'Undo last change' },
+      { id: 'redo', label: 'Redo', shortcutHint: 'Cmd+Shift+Z', action: 'MACRO:REDO', icon: 'redo', color: '#ECEAE4', description: 'Redo last change' },
+      { id: 'select_all', label: 'Select All', shortcutHint: 'Cmd+A', action: 'MACRO:SELECT_ALL', icon: 'check-square', color: '#ECEAE4', description: 'Select all content' },
+      { id: 'find', label: 'Find in Page/Doc', shortcutHint: 'Cmd+F', action: 'SHORTCUT:cmd:f', icon: 'search', color: '#ECEAE4', description: 'Find text in active document' },
+      { id: 'replace', label: 'Find & Replace', shortcutHint: 'Cmd+Opt+F', action: 'SHORTCUT:cmd,opt:f', icon: 'sliders', color: '#ECEAE4', description: 'Open find and replace dialog' },
+      { id: 'save', label: 'Save', shortcutHint: 'Cmd+S', action: 'MACRO:SAVE', icon: 'save', color: '#ECEAE4', description: 'Save current file' },
+      { id: 'save_as', label: 'Save As', shortcutHint: 'Cmd+Shift+S', action: 'SHORTCUT:cmd,shift:s', icon: 'save', color: '#ECEAE4', description: 'Save document with new name' },
+      { id: 'print', label: 'Print', shortcutHint: 'Cmd+P', action: 'SHORTCUT:cmd:p', icon: 'file-text', color: '#ECEAE4', description: 'Print active document' },
+      { id: 'zoom_in', label: 'Zoom In', shortcutHint: 'Cmd++', action: 'SHORTCUT:cmd:=', icon: 'zoom-in', color: '#F2A33A', description: 'Zoom in active window or canvas' },
+      { id: 'zoom_out', label: 'Zoom Out', shortcutHint: 'Cmd+-', action: 'SHORTCUT:cmd:-', icon: 'zoom-out', color: '#F2A33A', description: 'Zoom out active window or canvas' },
+      { id: 'zoom_reset', label: 'Reset Zoom', shortcutHint: 'Cmd+0', action: 'SHORTCUT:cmd:0', icon: 'maximize', color: '#ECEAE4', description: 'Reset zoom to 100%' },
+      { id: 'fullscreen', label: 'Toggle Fullscreen', shortcutHint: 'Ctrl+Cmd+F', action: 'SHORTCUT:ctrl,cmd:f', icon: 'monitor', color: '#F2A33A', description: 'Toggle macOS fullscreen window mode' },
+      { id: 'bright_up', label: 'Brightness Up', shortcutHint: 'F15 / Bright+', action: 'MEDIA:BRIGHT_UP', icon: 'sun', color: '#F2A33A', description: 'Increase macOS display brightness' },
+      { id: 'bright_down', label: 'Brightness Down', shortcutHint: 'F14 / Bright-', action: 'MEDIA:BRIGHT_DOWN', icon: 'sun-dim', color: '#F2A33A', description: 'Decrease macOS display brightness' },
+      { id: 'new_tab', label: 'New Tab', shortcutHint: 'Cmd+T', action: 'MACRO:NEW_TAB', icon: 'globe', color: '#ECEAE4', description: 'Open new browser or editor tab' },
+      { id: 'close_tab', label: 'Close Tab', shortcutHint: 'Cmd+W', action: 'MACRO:CLOSE_TAB', icon: 'x', color: '#ECEAE4', description: 'Close active tab or window' },
+      { id: 'reopen_tab', label: 'Reopen Closed Tab', shortcutHint: 'Cmd+Shift+T', action: 'SHORTCUT:cmd,shift:t', icon: 'redo', color: '#ECEAE4', description: 'Restore closed browser tab' },
+      { id: 'reload', label: 'Reload Page', shortcutHint: 'Cmd+R', action: 'SHORTCUT:cmd:r', icon: 'repeat', color: '#ECEAE4', description: 'Refresh active page' },
+      { id: 'search', label: 'Spotlight Search', shortcutHint: 'Cmd+Space', action: 'MACRO:SPOTLIGHT', icon: 'search', color: '#F2A33A', description: 'Open macOS Spotlight search' },
+      { id: 'emoji', label: 'Emoji & Symbols', shortcutHint: 'Ctrl+Cmd+Space', action: 'SHORTCUT:ctrl,cmd:space', icon: 'smile', color: '#F2A33A', description: 'Open macOS emoji and symbol viewer' },
+      { id: 'screenshot', label: 'Screenshot Region', shortcutHint: 'Cmd+Shift+4', action: 'SHORTCUT:cmd,shift:4', icon: 'camera', color: '#ECEAE4', description: 'Capture screen region to file or clipboard' },
+      { id: 'lock', label: 'Lock Screen', shortcutHint: 'Ctrl+Cmd+Q', action: 'MACRO:LOCK', icon: 'lock', color: '#F2A33A', description: 'Lock Mac immediately' },
+      { id: 'cmd_palette', label: 'Command Palette', shortcutHint: 'Cmd+Shift+P', action: 'SHORTCUT:cmd,shift:p', icon: 'code', color: '#ECEAE4', description: 'Open IDE command palette' },
+      { id: 'quick_open', label: 'Quick Open File', shortcutHint: 'Cmd+P', action: 'SHORTCUT:cmd:p', icon: 'file-text', color: '#ECEAE4', description: 'Quick open file in workspace' },
+      { id: 'toggle_sidebar', label: 'Toggle Sidebar', shortcutHint: 'Cmd+B', action: 'SHORTCUT:cmd:b', icon: 'layout', color: '#ECEAE4', description: 'Show or hide editor sidebar' },
       { id: 'toggle_terminal', label: 'Toggle Terminal', shortcutHint: 'Ctrl+`', action: 'SHORTCUT:ctrl:`', icon: 'terminal', color: '#ECEAE4', description: 'Open integrated terminal' },
-      { id: 'comment_line', label: 'Comment Line', shortcutHint: '⌘/', action: 'SHORTCUT:cmd:/', icon: 'code', color: '#ECEAE4', description: 'Toggle line comment' },
-      { id: 'format_doc', label: 'Format Document', shortcutHint: '⌥⇧F', action: 'SHORTCUT:opt,shift:f', icon: 'wand2', color: '#ECEAE4', description: 'Format source document code' },
-      { id: 'switch_app', label: 'Switch App', shortcutHint: '⌘Tab', action: 'SHORTCUT:cmd:tab', icon: 'layers', color: '#ECEAE4', description: 'Switch to previous application' }
+      { id: 'comment_line', label: 'Comment Line', shortcutHint: 'Cmd+/', action: 'SHORTCUT:cmd:/', icon: 'code', color: '#ECEAE4', description: 'Toggle line comment' },
+      { id: 'format_doc', label: 'Format Document', shortcutHint: 'Opt+Shift+F', action: 'SHORTCUT:opt,shift:f', icon: 'wand2', color: '#ECEAE4', description: 'Format source document code' },
+      { id: 'switch_app', label: 'Switch App', shortcutHint: 'Cmd+Tab', action: 'SHORTCUT:cmd:tab', icon: 'layers', color: '#ECEAE4', description: 'Switch to previous application' }
     ];
   }
 
@@ -394,8 +394,8 @@ export function getShortcutsForHostOs(os: HostOsType): UnifiedShortcutSpec[] {
     { id: 'zoom_out', label: 'Zoom Out', shortcutHint: 'Ctrl+-', action: 'SHORTCUT:ctrl:-', icon: 'zoom-out', color: '#F2A33A', description: isLinux ? 'Zoom out Linux window, browser, or terminal' : 'Zoom out active window or canvas' },
     { id: 'zoom_reset', label: 'Reset Zoom', shortcutHint: 'Ctrl+0', action: 'SHORTCUT:ctrl:0', icon: 'maximize', color: '#ECEAE4', description: 'Reset zoom to 100%' },
     { id: 'fullscreen', label: 'Toggle Fullscreen', shortcutHint: 'F11', action: 'SHORTCUT:f11', icon: 'monitor', color: '#F2A33A', description: 'Toggle window fullscreen mode' },
-    { id: 'bright_up', label: 'Brightness Up', shortcutHint: '☀+', action: 'MEDIA:BRIGHT_UP', icon: 'sun', color: '#F2A33A', description: isLinux ? 'Increase Linux display brightness' : 'Increase Windows display brightness' },
-    { id: 'bright_down', label: 'Brightness Down', shortcutHint: '☀-', action: 'MEDIA:BRIGHT_DOWN', icon: 'sun-dim', color: '#F2A33A', description: isLinux ? 'Decrease Linux display brightness' : 'Decrease Windows display brightness' },
+    { id: 'bright_up', label: 'Brightness Up', shortcutHint: 'Bright+', action: 'MEDIA:BRIGHT_UP', icon: 'sun', color: '#F2A33A', description: isLinux ? 'Increase Linux display brightness' : 'Increase Windows display brightness' },
+    { id: 'bright_down', label: 'Brightness Down', shortcutHint: 'Bright-', action: 'MEDIA:BRIGHT_DOWN', icon: 'sun-dim', color: '#F2A33A', description: isLinux ? 'Decrease Linux display brightness' : 'Decrease Windows display brightness' },
     ...(isLinux
       ? []
       : [
@@ -937,29 +937,29 @@ export function parseFirmwareShortcut(action: string): { mods: string[]; key: st
 export function formatShortcutPretty(action: string): string {
   const { mods, key } = parseFirmwareShortcut(action);
   const glyphMap: Record<string, string> = {
-    cmd: '⌘',
-    gui: '⌘',
+    cmd: 'Cmd+',
+    gui: 'Cmd+',
     win: 'Win+',
-    ctrl: '⌃',
-    alt: '⌥',
-    opt: '⌥',
-    shift: '⇧'
+    ctrl: 'Ctrl+',
+    alt: 'Alt+',
+    opt: 'Opt+',
+    shift: 'Shift+'
   };
   const modPart = mods.map(m => glyphMap[m] || `${m.toUpperCase()}+`).join('');
   const specialLabels: Record<string, string> = {
     space: 'Space',
-    enter: '↵',
-    return: '↵',
+    enter: 'Enter',
+    return: 'Enter',
     esc: 'Esc',
     escape: 'Esc',
-    backspace: '⌫',
+    backspace: 'Backspace',
     delete: 'Del',
     del: 'Del',
     tab: 'Tab',
-    up: '↑',
-    down: '↓',
-    left: '←',
-    right: '→',
+    up: 'Up',
+    down: 'Down',
+    left: 'Left',
+    right: 'Right',
     pageup: 'PgUp',
     pagedown: 'PgDn',
     home: 'Home',
@@ -2391,21 +2391,21 @@ interface WellKnownShortcutSpec {
 const WELL_KNOWN_SHORTCUT_SPECS: Record<string, WellKnownShortcutSpec> = {
   'SHORTCUT:cmd:=': {
     shortLabel: 'Zoom +',
-    fullLabel: 'Zoom In (⌘+)',
+    fullLabel: 'Zoom In (Cmd++)',
     description: 'macOS Zoom In (Command + Plus)',
     icon: 'zoom-in',
     color: '#F2A33A'
   },
   'SHORTCUT:cmd:-': {
     shortLabel: 'Zoom -',
-    fullLabel: 'Zoom Out (⌘-)',
+    fullLabel: 'Zoom Out (Cmd+-)',
     description: 'macOS Zoom Out (Command + Minus)',
     icon: 'zoom-out',
     color: '#F2A33A'
   },
   'SHORTCUT:cmd:0': {
     shortLabel: 'Zoom 100%',
-    fullLabel: 'Reset Zoom (⌘0)',
+    fullLabel: 'Reset Zoom (Cmd+0)',
     description: 'macOS Reset Zoom to 100% (Command + 0)',
     icon: 'maximize',
     color: '#ECEAE4'
@@ -2441,35 +2441,35 @@ const WELL_KNOWN_SHORTCUT_SPECS: Record<string, WellKnownShortcutSpec> = {
 };
 
 const WELL_KNOWN_SHORTCUT_NAMES: Record<string, string> = {
-  'SHORTCUT:cmd:=': 'Zoom In (⌘+)',
-  'SHORTCUT:cmd:-': 'Zoom Out (⌘-)',
-  'SHORTCUT:cmd:0': 'Reset Zoom (⌘0)',
+  'SHORTCUT:cmd:=': 'Zoom In (Cmd++)',
+  'SHORTCUT:cmd:-': 'Zoom Out (Cmd+-)',
+  'SHORTCUT:cmd:0': 'Reset Zoom (Cmd+0)',
   'SHORTCUT:ctrl:=': 'Zoom In (Ctrl++)',
   'SHORTCUT:ctrl:-': 'Zoom Out (Ctrl+-)',
   'SHORTCUT:ctrl:0': 'Reset Zoom (Ctrl+0)',
   'SHORTCUT:win:a': 'Quick Settings (Win+A)',
-  'SHORTCUT:cmd,shift:4': 'Screenshot Region (⌘⇧4)',
-  'SHORTCUT:cmd,shift:3': 'Full Screenshot (⌘⇧3)',
-  'SHORTCUT:cmd,shift:5': 'Screen Capture Bar (⌘⇧5)',
-  'SHORTCUT:cmd,opt:esc': 'Force Quit (⌘⌥Esc)',
-  'SHORTCUT:cmd,alt:esc': 'Force Quit (⌘⌥Esc)',
-  'SHORTCUT:cmd,shift:p': 'Command Palette (⌘⇧P)',
-  'SHORTCUT:ctrl,shift:p': 'Command Palette (⌃⇧P)',
-  'SHORTCUT:cmd,shift:m': 'Toggle Mic Mute (⌘⇧M)',
-  'SHORTCUT:ctrl,shift:m': 'Toggle Mic Mute (⌃⇧M)',
-  'SHORTCUT:cmd,shift:v': 'Toggle Video (⌘⇧V)',
-  'SHORTCUT:cmd:k': 'Quick Switcher (⌘K)',
-  'SHORTCUT:ctrl:k': 'Quick Switcher (⌃K)',
-  'SHORTCUT:cmd:/': 'Toggle Comment (⌘/)',
-  'SHORTCUT:ctrl:/': 'Toggle Comment (⌃/)',
-  'SHORTCUT:cmd:b': 'Toggle Sidebar (⌘B)',
-  'SHORTCUT:ctrl:`': 'Toggle Terminal (⌃`)',
-  'SHORTCUT:cmd,shift:t': 'Reopen Closed Tab (⌘⇧T)',
-  'SHORTCUT:ctrl,shift:t': 'Reopen Closed Tab (⌃⇧T)',
-  'SHORTCUT:cmd:r': 'Reload Page (⌘R)',
-  'SHORTCUT:ctrl:r': 'Reload Page (⌃R)',
+  'SHORTCUT:cmd,shift:4': 'Screenshot Region (Cmd+Shift+4)',
+  'SHORTCUT:cmd,shift:3': 'Full Screenshot (Cmd+Shift+3)',
+  'SHORTCUT:cmd,shift:5': 'Screen Capture Bar (Cmd+Shift+5)',
+  'SHORTCUT:cmd,opt:esc': 'Force Quit (Cmd+Opt+Esc)',
+  'SHORTCUT:cmd,alt:esc': 'Force Quit (Cmd+Opt+Esc)',
+  'SHORTCUT:cmd,shift:p': 'Command Palette (Cmd+Shift+P)',
+  'SHORTCUT:ctrl,shift:p': 'Command Palette (Ctrl+Shift+P)',
+  'SHORTCUT:cmd,shift:m': 'Toggle Mic Mute (Cmd+Shift+M)',
+  'SHORTCUT:ctrl,shift:m': 'Toggle Mic Mute (Ctrl+Shift+M)',
+  'SHORTCUT:cmd,shift:v': 'Toggle Video (Cmd+Shift+V)',
+  'SHORTCUT:cmd:k': 'Quick Switcher (Cmd+K)',
+  'SHORTCUT:ctrl:k': 'Quick Switcher (Ctrl+K)',
+  'SHORTCUT:cmd:/': 'Toggle Comment (Cmd+/)',
+  'SHORTCUT:ctrl:/': 'Toggle Comment (Ctrl+/)',
+  'SHORTCUT:cmd:b': 'Toggle Sidebar (Cmd+B)',
+  'SHORTCUT:ctrl:`': 'Toggle Terminal (Ctrl+`)',
+  'SHORTCUT:cmd,shift:t': 'Reopen Closed Tab (Cmd+Shift+T)',
+  'SHORTCUT:ctrl,shift:t': 'Reopen Closed Tab (Ctrl+Shift+T)',
+  'SHORTCUT:cmd:r': 'Reload Page (Cmd+R)',
+  'SHORTCUT:ctrl:r': 'Reload Page (Ctrl+R)',
   'SHORTCUT:alt:tab': 'Switch Window (Alt+Tab)',
-  'SHORTCUT:cmd:tab': 'Switch App (⌘Tab)'
+  'SHORTCUT:cmd:tab': 'Switch App (Cmd+Tab)'
 };
 
 /**
@@ -3001,7 +3001,7 @@ export function parseSingleActionKeyValue(rawToken: string): ParsedActionToken {
   }
 
   if (upperPrefix === 'TEXT') {
-    const cleanText = rest.replace(/\r?\n/g, ' ↵');
+    const cleanText = rest.replace(/\r?\n/g, ' [Enter]');
     return {
       prefix: 'TEXT',
       value: cleanText || '…',

@@ -856,7 +856,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         type="button"
         onClick={() => openCommandPalette()}
         aria-label="Open Command Palette & Macro Search (Cmd+K)"
-        title={`Search macros, actions & presets (${isMacPlatform ? '⌘K' : 'Ctrl+K'})`}
+        title={`Search macros, actions & presets (${isMacPlatform ? 'Cmd+K' : 'Ctrl+K'})`}
         className="md:hidden flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors cursor-pointer shrink-0"
       >
         <Search className="w-4 h-4" />
@@ -888,7 +888,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
             </span>
           )}
           <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[10px] font-semibold text-[var(--text-secondary)] shrink-0">
-            {isMacPlatform ? '⌘K' : 'Ctrl K'}
+            {isMacPlatform ? 'Cmd+K' : 'Ctrl K'}
           </kbd>
         </span>
       </button>
@@ -1239,21 +1239,21 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                 </span>
                 <span aria-hidden="true">·</span>
                 <span>
-                  <strong className="font-mono text-[var(--text-secondary)]">↵</strong>{' '}
+                  <strong className="font-mono text-[var(--text-secondary)]">Enter</strong>{' '}
                   Assign / Jump
                 </span>
                 <span className="hidden sm:inline" aria-hidden="true">
                   ·
                 </span>
                 <span className="hidden sm:inline">
-                  <strong className="font-mono text-[var(--text-secondary)]">⇧↵</strong>{' '}
+                  <strong className="font-mono text-[var(--text-secondary)]">Shift+Enter</strong>{' '}
                   Edit in Builder
                 </span>
                 <span className="hidden md:inline" aria-hidden="true">
                   ·
                 </span>
                 <span className="hidden md:inline">
-                  <strong className="font-mono text-[var(--text-secondary)]">⌥↵</strong>{' '}
+                  <strong className="font-mono text-[var(--text-secondary)]">Opt+Enter</strong>{' '}
                   Test
                 </span>
                 <span aria-hidden="true">·</span>

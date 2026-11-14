@@ -107,7 +107,7 @@ export const ConnectOverlay: React.FC<ConnectOverlayProps> = ({
             <Cpu size={15} className="text-[var(--accent)] shrink-0" />
             <div className="min-w-0">
               <div className="font-semibold text-[var(--text-primary)] truncate">8 Keys + Mode</div>
-              <div className="text-[10px] text-[var(--text-muted)] truncate tabular-nums">Tap &amp; 450 ms Hold</div>
+              <div className="text-[10px] text-[var(--text-muted)] truncate tabular-nums">Tap &amp; 500 ms Hold</div>
             </div>
           </div>
           <div className="p-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center gap-2.5">

@@ -110,11 +110,11 @@ const ACTION_TABS: {
 ];
 
 const MODIFIER_OPTIONS: { id: string; label: string }[] = [
-  { id: 'cmd', label: '⌘ Cmd' },
-  { id: 'ctrl', label: '⌃ Ctrl' },
-  { id: 'alt', label: '⌥ Opt/Alt' },
-  { id: 'shift', label: '⇧ Shift' },
-  { id: 'win', label: '⊞ Win' }
+  { id: 'cmd', label: 'Cmd' },
+  { id: 'ctrl', label: 'Ctrl' },
+  { id: 'alt', label: 'Opt/Alt' },
+  { id: 'shift', label: 'Shift' },
+  { id: 'win', label: 'Win' }
 ];
 
 export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
@@ -515,15 +515,15 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
     const zoomInAction = isMac ? 'SHORTCUT:cmd:=' : 'SHORTCUT:ctrl:=';
     const zoomOutAction = isMac ? 'SHORTCUT:cmd:-' : 'SHORTCUT:ctrl:-';
     const zoomResetAction = isMac ? 'SHORTCUT:cmd:0' : 'SHORTCUT:ctrl:0';
-    const zoomHint = isMac ? '⌘+' : 'Ctrl++';
-    const zoomOutHint = isMac ? '⌘-' : 'Ctrl+-';
-    const zoomResetHint = isMac ? '⌘0' : 'Ctrl+0';
+    const zoomHint = isMac ? 'Cmd++' : 'Ctrl++';
+    const zoomOutHint = isMac ? 'Cmd+-' : 'Ctrl+-';
+    const zoomResetHint = isMac ? 'Cmd+0' : 'Ctrl+0';
 
     return [
       {
         id: 'bright_up',
         label: 'Brightness Up',
-        shortcutHint: isMac ? 'F15 / ☀+' : '☀+',
+        shortcutHint: isMac ? 'F15 / Bright+' : 'Bright+',
         action: 'MEDIA:BRIGHT_UP',
         icon: 'sun',
         color: '#F2A33A',
@@ -533,7 +533,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
       {
         id: 'bright_down',
         label: 'Brightness Down',
-        shortcutHint: isMac ? 'F14 / ☀-' : '☀-',
+        shortcutHint: isMac ? 'F14 / Bright-' : 'Bright-',
         action: 'MEDIA:BRIGHT_DOWN',
         icon: 'sun-dim',
         color: '#ECEAE4',

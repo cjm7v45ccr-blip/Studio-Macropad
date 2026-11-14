@@ -1379,7 +1379,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-[var(--text-muted)]">
-                  3 independent Bluetooth host profiles (<span className="font-mono">BertoPad</span>) with per-device OS mapping so shortcuts like Copy map automatically to ⌘C or Ctrl+C.
+                  3 independent Bluetooth host profiles (<span className="font-mono">BertoPad</span>) with per-device OS mapping so shortcuts like Copy map automatically to Cmd+C or Ctrl+C.
                 </p>
               </div>
             </div>

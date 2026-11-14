@@ -1250,7 +1250,11 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className={`fixed bottom-16 sm:bottom-5 right-3 sm:right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border shadow-2xl text-xs font-medium max-w-[92vw] sm:max-w-md ${
+          className={`fixed ${
+            activeSection === 'macros'
+              ? 'bottom-24 sm:bottom-20'
+              : 'bottom-16 sm:bottom-5'
+          } right-3 sm:right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border shadow-2xl text-xs font-medium max-w-[92vw] sm:max-w-md ${
             toast.variant === 'error'
               ? 'border-[var(--accent)] text-[var(--text-primary)]'
               : 'border-[var(--border-strong)] text-[var(--text-primary)]'

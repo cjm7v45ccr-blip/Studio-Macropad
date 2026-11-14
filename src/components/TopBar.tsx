@@ -452,7 +452,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Search size={16} className="text-[var(--text-muted)]" />
             <span>Search actions &amp; macros</span>
             <kbd className="ml-auto rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-muted)]">
-              {isMac ? '⌘K' : 'Ctrl K'}
+              {isMac ? 'Cmd+K' : 'Ctrl K'}
             </kbd>
           </div>
         </div>

@@ -115,7 +115,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
           <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-strong)] text-[10px] text-[var(--text-muted)] space-y-1">
             <div className="font-semibold text-[var(--text-secondary)]">Third-Party Trademark Notices</div>
             <p>
-              Vizio SmartCast is a registered trademark of Vizio, Inc. Spotify is a registered trademark of Spotify AB. Apple and ⌘ are registered trademarks of Apple Inc. BertoPad is an independent hardware project and is not affiliated with, sponsored by, or endorsed by Vizio, Spotify, Apple, or any other third-party brand.
+              Vizio SmartCast is a registered trademark of Vizio, Inc. Spotify is a registered trademark of Spotify AB. Apple and Command (Cmd) are registered trademarks of Apple Inc. BertoPad is an independent hardware project and is not affiliated with, sponsored by, or endorsed by Vizio, Spotify, Apple, or any other third-party brand.
             </p>
           </div>
         </div>

@@ -267,6 +267,18 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const hasKeyHold = hasKeyHoldCapability(connection.telemetry?.capabilities);
   const hasMotion = hasMotionCapability(connection.telemetry?.capabilities);
 
+  const wasConnectedRef = useRef(connection.connected);
+
+  useEffect(() => {
+    const wasConnected = wasConnectedRef.current;
+    wasConnectedRef.current = connection.connected;
+    if (wasConnected && !connection.connected) {
+      setTestLog([]);
+      setFlashedSlots(new Set());
+      setOledToast(null);
+    }
+  }, [connection.connected]);
+
   useEffect(() => {
     const slotFromProf = profileIdToBleSlot(activeProfileId);
     if (slotFromProf) {
@@ -1465,11 +1477,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             onPointerCancel={handlePointerCancel}
             onClick={e => handleClick(`enc_sub_${encoderIndex}_ccw`, e, () => triggerEncoderSpin(encoderIndex, 'ccw'))}
             title={`Knob ${encoderIndex} Turn Left: ${ccwInfo.fullLabel}`}
-            className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
+            className={`inline-flex items-center gap-0.5 hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
               isCcwSelected ? 'text-[#F2A33A] font-semibold' : ''
             }`}
           >
-            ↺ {ccwInfo.shortLabel}
+            <RotateCcw className="w-2.5 h-2.5 shrink-0" />
+            <span className="truncate">{ccwInfo.shortLabel}</span>
           </button>
           <span aria-hidden="true" className="text-[#A3A6AD]/50">
             ·
@@ -1501,11 +1514,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             onPointerCancel={handlePointerCancel}
             onClick={e => handleClick(`enc_sub_${encoderIndex}_cw`, e, () => triggerEncoderSpin(encoderIndex, 'cw'))}
             title={`Knob ${encoderIndex} Turn Right: ${cwInfo.fullLabel}`}
-            className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
+            className={`inline-flex items-center gap-0.5 hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
               isCwSelected ? 'text-[#F2A33A] font-semibold' : ''
             }`}
           >
-            {cwInfo.shortLabel} ↻
+            <span className="truncate">{cwInfo.shortLabel}</span>
+            <RotateCw className="w-2.5 h-2.5 shrink-0" />
           </button>
         </div>
 
@@ -1524,7 +1538,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               onPointerCancel={handlePointerCancel}
               onClick={e => handleClick('enc1_push_ccw', e, () => triggerEncoderHoldSpin('ccw'))}
               title={`Knob 1 Hold + Turn Left: ${pushCcwInfo.fullLabel}`}
-              className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
+              className={`inline-flex items-center gap-0.5 hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
                 isPushCcwSelected || isPushCcwFlashed
                   ? 'text-[#F2A33A] font-semibold'
                   : !pushCcwBind.value
@@ -1532,7 +1546,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   : ''
               }`}
             >
-              ↺ {pushCcwBind.value ? pushCcwInfo.shortLabel : '—'}
+              <RotateCcw className="w-2.5 h-2.5 shrink-0" />
+              <span className="truncate">{pushCcwBind.value ? pushCcwInfo.shortLabel : '—'}</span>
             </button>
             <span aria-hidden="true" className="text-[#A3A6AD]/50">
               ·
@@ -1546,7 +1561,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               onPointerCancel={handlePointerCancel}
               onClick={e => handleClick('enc1_push_cw', e, () => triggerEncoderHoldSpin('cw'))}
               title={`Knob 1 Hold + Turn Right: ${pushCwInfo.fullLabel}`}
-              className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
+              className={`inline-flex items-center gap-0.5 hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
                 isPushCwSelected || isPushCwFlashed
                   ? 'text-[#F2A33A] font-semibold'
                   : !pushCwBind.value
@@ -1554,7 +1569,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   : ''
               }`}
             >
-              {pushCwBind.value ? pushCwInfo.shortLabel : '—'} ↻
+              <span className="truncate">{pushCwBind.value ? pushCwInfo.shortLabel : '—'}</span>
+              <RotateCw className="w-2.5 h-2.5 shrink-0" />
             </button>
           </div>
         )}
@@ -2508,74 +2524,74 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-[var(--border-subtle)]">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {connection.transport === 'demo' && (
-                    <>
-                      <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] mr-1">
-                        Simulate:
-                      </span>
-                      {(
-                        [
-                          { slot: 'b1', label: 'Key 1' },
-                          { slot: 'b2', label: 'Key 2' },
-                          { slot: 'b3', label: 'Key 3' },
-                          { slot: 'b4', label: 'Key 4' },
-                          { slot: 'b5', label: 'Key 5' },
-                          { slot: 'b6', label: 'Key 6' },
-                          { slot: 'b7', label: 'Key 7' },
-                          { slot: 'b8', label: 'Key 8' },
-                          ...(hasKeyHold
-                            ? HOLD_SLOTS.map((hs, i) => ({
-                                slot: hs,
-                                label: `K${i + 1} Hold`
-                              }))
-                            : []),
-                          { slot: 'dial', label: 'Knob 1' },
-                          { slot: 'enc_ccw', label: 'K1 Left' },
-                          { slot: 'enc_cw', label: 'K1 Right' },
-                          { slot: 'push_ccw', label: 'K1 Hold+L' },
-                          { slot: 'push_cw', label: 'K1 Hold+R' },
-                          { slot: 'dial2', label: 'Knob 2' },
-                          { slot: 'e2_ccw', label: 'K2 Left' },
-                          { slot: 'e2_cw', label: 'K2 Right' },
-                          ...(hasMotion
-                            ? MOTION_SLOTS.map(ms => ({
-                                slot: ms,
-                                label:
-                                  ms === 'g_shake'
-                                    ? 'Shake'
-                                    : ms === 'g_down'
-                                    ? 'Face Down'
-                                    : 'Face Up'
-                              }))
-                            : []),
-                          { slot: 'mode', label: 'Mode' }
-                        ] as { slot: HardwareFlashSlot; label: string }[]
-                      ).map(btn => (
-                        <button
-                          key={btn.slot}
-                          type="button"
-                          onClick={() => usbHardware.simulateDemoPadInput(btn.slot)}
-                          className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[10px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-                        >
-                          {btn.label}
-                        </button>
-                      ))}
-                    </>
-                  )}
+              {connection.transport === 'demo' && (
+                <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-[var(--border-subtle)]">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] mr-1">
+                      Simulate:
+                    </span>
+                    {(
+                      [
+                        { slot: 'b1', label: 'Key 1' },
+                        { slot: 'b2', label: 'Key 2' },
+                        { slot: 'b3', label: 'Key 3' },
+                        { slot: 'b4', label: 'Key 4' },
+                        { slot: 'b5', label: 'Key 5' },
+                        { slot: 'b6', label: 'Key 6' },
+                        { slot: 'b7', label: 'Key 7' },
+                        { slot: 'b8', label: 'Key 8' },
+                        ...(hasKeyHold
+                          ? HOLD_SLOTS.map((hs, i) => ({
+                              slot: hs,
+                              label: `K${i + 1} Hold`
+                            }))
+                          : []),
+                        { slot: 'dial', label: 'Knob 1' },
+                        { slot: 'enc_ccw', label: 'K1 Left' },
+                        { slot: 'enc_cw', label: 'K1 Right' },
+                        { slot: 'push_ccw', label: 'K1 Hold+L' },
+                        { slot: 'push_cw', label: 'K1 Hold+R' },
+                        { slot: 'dial2', label: 'Knob 2' },
+                        { slot: 'e2_ccw', label: 'K2 Left' },
+                        { slot: 'e2_cw', label: 'K2 Right' },
+                        ...(hasMotion
+                          ? MOTION_SLOTS.map(ms => ({
+                              slot: ms,
+                              label:
+                                ms === 'g_shake'
+                                  ? 'Shake'
+                                  : ms === 'g_down'
+                                  ? 'Face Down'
+                                  : 'Face Up'
+                            }))
+                          : []),
+                        { slot: 'mode', label: 'Mode' }
+                      ] as { slot: HardwareFlashSlot; label: string }[]
+                    ).map(btn => (
+                      <button
+                        key={btn.slot}
+                        type="button"
+                        onClick={() => usbHardware.simulateDemoPadInput(btn.slot)}
+                        className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[10px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
 
-                  <button
-                    type="button"
-                    onClick={() => triggerModePlusDialHostSwitch('cw')}
-                    title="Simulate holding Mode + rotating Dial clockwise to switch BLE Host"
-                    className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[10px] font-mono text-[var(--accent)] cursor-pointer whitespace-nowrap flex items-center gap-1"
-                  >
-                    <Bluetooth className="w-3 h-3 shrink-0" />
-                    <span>Mode + Dial ↻ ([H{(((activeBleHost % 3) + 1))}])</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => triggerModePlusDialHostSwitch('cw')}
+                      title="Simulate holding Mode + rotating Dial clockwise to switch BLE Host"
+                      className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[10px] font-mono text-[var(--accent)] cursor-pointer whitespace-nowrap inline-flex items-center gap-1"
+                    >
+                      <Bluetooth className="w-3 h-3 shrink-0" />
+                      <span>Mode + Dial</span>
+                      <RotateCw className="w-2.5 h-2.5 shrink-0" />
+                      <span>([H{(((activeBleHost % 3) + 1))}])</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {testLog.length === 0 ? (
                 <p className="text-xs text-[var(--text-muted)] py-1.5">
