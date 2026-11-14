@@ -718,7 +718,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const showConsole = settingsTab === 'all' || settingsTab === 'console';
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-workspace-section">
       <div className="max-w-3xl mx-auto space-y-6">
         <div className="space-y-3.5">
           <div className="flex items-center justify-between gap-3 flex-wrap">

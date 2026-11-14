@@ -549,7 +549,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-panel-in">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-workspace-section">
       <div className="max-w-5xl mx-auto space-y-8">
         {/* Clean Header + Overflow Menu for Rare Backup / Restore / Reset Actions */}
         <div className="flex flex-wrap items-start justify-between gap-4">

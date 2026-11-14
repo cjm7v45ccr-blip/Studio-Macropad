@@ -31,7 +31,9 @@ import {
   Wifi,
   Bluetooth,
   Cpu,
-  PowerOff
+  PowerOff,
+  RefreshCw,
+  HardDrive
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -72,6 +74,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   isSyncingUsb,
   onConnectUsbPad,
   onOpenConnectModal,
+  onPullFromUsb,
   profiles,
   activeProfile,
   hostOsMap,
@@ -115,8 +118,18 @@ export const TopBar: React.FC<TopBarProps> = ({
         setConnPopoverOpen(false);
       }
     };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+        setConnPopoverOpen(false);
+      }
+    };
     window.addEventListener('mousedown', handleOutside);
-    return () => window.removeEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleEscape);
+    };
   }, [menuOpen, connPopoverOpen]);
 
   // Alt+1/2/3/4 shortcuts to switch profiles (supports macOS Option key via e.code)
@@ -497,58 +510,97 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Connection Details Popover */}
         {connPopoverOpen && (
-          <div className="absolute top-full right-0 mt-2 w-72 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] p-4 shadow-2xl z-50 animate-popover-in text-xs">
+          <div className="absolute top-full right-0 mt-2 w-80 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] p-4 shadow-2xl z-50 animate-popover-in text-xs">
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--border-subtle)]">
-              <div className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${DOT_COLOR[connState]}`} />
-                <span className="font-semibold text-sm text-[var(--text-primary)]">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${DOT_COLOR[connState]}`} />
+                <span className="font-semibold text-sm text-[var(--text-primary)] truncate">
                   Connection Details
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setConnPopoverOpen(false)}
-                aria-label="Close connection details"
-                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] cursor-pointer"
-              >
-                <X size={14} />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onPullFromUsb();
+                    setConnPopoverOpen(false);
+                  }}
+                  title="Pull latest config & status from BertoPad"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                >
+                  <RefreshCw size={11} className="text-[var(--accent)]" />
+                  <span>Read Pad</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConnPopoverOpen(false)}
+                  aria-label="Close connection details"
+                  className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-2.5 text-[var(--text-secondary)]">
-              <div className="flex items-center justify-between py-1 border-b border-[var(--border-subtle)]">
-                <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
+              <div className="flex items-center justify-between gap-2 py-1 border-b border-[var(--border-subtle)]">
+                <span className="flex items-center gap-1.5 text-[var(--text-muted)] shrink-0">
                   <Usb size={14} /> USB / Transport
                 </span>
-                <span className="font-mono text-[var(--text-primary)] font-medium">
+                <span className="font-mono text-[var(--text-primary)] font-medium truncate tabular-nums">
                   {connection.transport === 'demo'
-                    ? 'Demo Mode'
-                    : connection.deviceName || 'WebSerial Connected'}
+                    ? 'Demo Simulator'
+                    : connection.deviceName || 'USB 115,200 bd'}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between py-1 border-b border-[var(--border-subtle)]">
-                <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
+              <div className="flex items-center justify-between gap-2 py-1 border-b border-[var(--border-subtle)]">
+                <span className="flex items-center gap-1.5 text-[var(--text-muted)] shrink-0">
                   <Bluetooth size={14} /> Bluetooth (BLE)
                 </span>
-                <span className="font-mono text-[var(--text-primary)] font-medium tabular-nums">
+                <span className="font-mono text-[var(--text-primary)] font-medium truncate tabular-nums">
                   {connection.telemetry?.bleActiveHost
-                    ? `Host ${connection.telemetry.bleActiveHost} Active`
+                    ? `Device ${connection.telemetry.bleActiveHost} · ${
+                        connection.telemetry.bleConnected ? 'Connected' : 'Advertising'
+                      }`
                     : 'Ready (3 Hosts)'}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between py-1 border-b border-[var(--border-subtle)]">
-                <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
-                  <Wifi size={14} /> Wi-Fi Status
+              <div className="flex items-center justify-between gap-2 py-1 border-b border-[var(--border-subtle)]">
+                <span className="flex items-center gap-1.5 text-[var(--text-muted)] shrink-0">
+                  <Wifi size={14} /> Wi-Fi / TV Link
                 </span>
-                <span className="font-mono text-[var(--text-primary)] font-medium">
-                  {connection.telemetry?.wifiConnected ? 'Connected' : 'Disconnected'}
+                <span className="font-mono text-[var(--text-primary)] font-medium truncate tabular-nums">
+                  {connection.telemetry?.wifiConnected
+                    ? connection.telemetry.ip || connection.telemetry.ssid || 'Connected'
+                    : 'Disconnected'}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between py-1">
-                <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
+              {typeof connection.telemetry?.freeHeap === 'number' &&
+                connection.telemetry.freeHeap > 0 && (
+                  <div className="flex items-center justify-between gap-2 py-1 border-b border-[var(--border-subtle)]">
+                    <span className="flex items-center gap-1.5 text-[var(--text-muted)] shrink-0">
+                      <HardDrive size={14} /> SRAM / NVS
+                    </span>
+                    <span className="font-mono text-[var(--text-primary)] font-medium tabular-nums">
+                      {(connection.telemetry.freeHeap / 1024).toFixed(0)} KB free
+                      {typeof connection.telemetry.nvsUsed === 'number' &&
+                      typeof connection.telemetry.nvsFree === 'number' &&
+                      connection.telemetry.nvsUsed + connection.telemetry.nvsFree > 0
+                        ? ` · ${Math.round(
+                            (connection.telemetry.nvsUsed /
+                              (connection.telemetry.nvsUsed + connection.telemetry.nvsFree)) *
+                              100
+                          )}% NVS`
+                        : ''}
+                    </span>
+                  </div>
+                )}
+
+              <div className="flex items-center justify-between gap-2 py-1">
+                <span className="flex items-center gap-1.5 text-[var(--text-muted)] shrink-0">
                   <Cpu size={14} /> Firmware Rev
                 </span>
                 <span className="font-mono text-[var(--text-primary)] font-medium tabular-nums">

@@ -65,7 +65,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               type="button"
               onClick={() => onSelectSection(item.id)}
               title={item.tooltip}
-              className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl text-[10px] transition-colors cursor-pointer whitespace-nowrap ${
+              className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl text-[10px] transition-all duration-150 cursor-pointer whitespace-nowrap ${
                 active
                   ? 'bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] font-semibold'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -73,8 +73,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             >
               <span className="relative">
                 <Icon
-                  className={`w-4 h-4 shrink-0 ${
-                    active ? 'text-[var(--accent)]' : ''
+                  className={`w-4 h-4 shrink-0 transition-transform duration-150 ${
+                    active ? 'text-[var(--accent)] scale-105' : ''
                   }`}
                 />
                 {showDot && (
@@ -108,16 +108,22 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               type="button"
               onClick={() => onSelectSection(item.id)}
               title={showDot ? `${item.tooltip} (Firmware update available)` : item.tooltip}
-              className={`relative w-full py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${
+              className={`relative w-full py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-150 cursor-pointer whitespace-nowrap ${
                 active
-                  ? 'bg-[rgba(var(--accent-rgb),0.15)] text-[var(--text-primary)] font-semibold'
+                  ? 'bg-[rgba(var(--accent-rgb),0.15)] text-[var(--text-primary)] font-semibold shadow-2xs'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] font-medium'
               }`}
             >
+              {active && (
+                <span
+                  aria-hidden="true"
+                  className="absolute left-0 top-2.5 bottom-2.5 w-0.5 rounded-r-full bg-[var(--accent)]"
+                />
+              )}
               <span className="relative flex items-center justify-center">
                 <Icon
-                  className={`w-4 h-4 shrink-0 ${
-                    active ? 'text-[var(--accent)]' : ''
+                  className={`w-4 h-4 shrink-0 transition-transform duration-150 ${
+                    active ? 'text-[var(--accent)] scale-105' : ''
                   }`}
                 />
                 {showDot && (

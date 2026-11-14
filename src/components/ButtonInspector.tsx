@@ -67,7 +67,15 @@ interface ButtonInspectorProps {
   onOpenMacroBuilder: () => void;
 }
 
-const COLOR_SWATCHES = ['#ECEAE4', '#F2A33A', '#D97706', '#A3A6AD'];
+const COLOR_SWATCHES = [
+  '#ECEAE4',
+  '#F2A33A',
+  '#D97706',
+  '#10B981',
+  '#38BDF8',
+  '#F43F5E',
+  '#A3A6AD'
+];
 
 export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   keyConfig,

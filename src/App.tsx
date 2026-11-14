@@ -722,7 +722,7 @@ export default function App() {
         />
 
         {activeSection === 'device' && (
-          <div ref={deviceWorkspaceRef} className="relative flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-w-0">
+          <div ref={deviceWorkspaceRef} className="relative flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-w-0 animate-workspace-section">
             <MacropadCanvas
               activeProfileId={studio.activeProfile.id}
               activeProfileName={studio.activeProfile.name}
