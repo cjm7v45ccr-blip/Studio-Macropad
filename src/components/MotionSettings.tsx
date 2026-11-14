@@ -53,7 +53,6 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
   const effectiveEnabled = motion?.enabled ?? true;
   const effectiveWake = motion?.wake ?? true;
   const effectiveSensitivity = Math.max(1, Math.min(5, Math.round(motion?.sensitivity ?? 3)));
-  const effectiveWho = motion?.who ?? 0x68;
 
   const [enabled, setEnabled] = useState<boolean>(effectiveEnabled);
   const [wake, setWake] = useState<boolean>(effectiveWake);
@@ -273,10 +272,7 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
             <Compass className="w-4 h-4 text-[var(--accent)] shrink-0" />
             <span>Motion &amp; Orientation Sensor</span>
             <span className="font-mono text-[11px] font-normal text-[var(--text-muted)] tabular-nums">
-              ·{' '}
-              {effectivePresent
-                ? `GY-521 · 0x${effectiveWho.toString(16).toUpperCase()}`
-                : 'Sensor offline'}
+              · {effectivePresent ? 'Connected' : 'Sensor offline'}
             </span>
           </div>
           <p className="text-xs text-[var(--text-muted)] leading-relaxed">
@@ -307,7 +303,7 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
         <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-start gap-2.5 text-xs text-[var(--text-secondary)]">
           <ShieldAlert className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
           <span>
-            No MPU-6050 / GY-521 sensor responded on I2C (SDA GPIO 21, SCL GPIO 22). Check wiring and refresh status to enable motion controls.
+            Motion sensor not detected. Check connection and refresh status to enable motion controls.
           </span>
         </div>
       ) : (
@@ -460,13 +456,8 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
           <div className="pt-3 border-t border-[var(--border-subtle)] space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
               <div className="space-y-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <div className="text-xs font-semibold text-[var(--text-primary)]">
-                    Sensor Calibration &amp; 3D Normalization
-                  </div>
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--accent)] font-semibold">
-                    GY-521 · MPU6050
-                  </span>
+                <div className="text-xs font-semibold text-[var(--text-primary)]">
+                  Sensor Calibration &amp; 3D Normalization
                 </div>
                 <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
                   Calibrate the physical flat resting reference and guide directional tilts (left, right, forward) to normalize rotation inputs for the 3D Tactile pad view.
@@ -572,12 +563,12 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(['g_shake', 'g_down', 'g_up'] as const).map(slot => {
                 const isFlashing = flashedSlot === slot;
-                const meta =
+                const title =
                   slot === 'g_shake'
-                    ? { title: 'Shake', idLabel: 'g_shake' }
+                    ? 'Shake'
                     : slot === 'g_down'
-                    ? { title: 'Face Down', idLabel: 'g_down' }
-                    : { title: 'Face Up', idLabel: 'g_up' };
+                    ? 'Face Down'
+                    : 'Face Up';
 
                 return (
                   <button
@@ -593,14 +584,7 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                         : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-primary)]'
                     }`}
                   >
-                    <span className="text-xs font-semibold truncate">{meta.title}</span>
-                    <span
-                      className={`font-mono text-[10px] tabular-nums shrink-0 ${
-                        isFlashing ? 'text-[var(--accent-contrast)]' : 'text-[var(--text-muted)]'
-                      }`}
-                    >
-                      {meta.idLabel}
-                    </span>
+                    <span className="text-xs font-semibold truncate">{title}</span>
                   </button>
                 );
               })}

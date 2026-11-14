@@ -11,8 +11,7 @@ import {
   HardwareSlotId,
   HostOsType,
   KeyboardLayoutId,
-  SlotRepeatMap,
-  profileShortTag
+  SlotRepeatMap
 } from '../types/studio';
 import {
   FACTORY_DEFAULT_SLOTS,
@@ -26,7 +25,6 @@ import {
   RotateCw,
   RotateCcw,
   Disc,
-  Undo2,
   ArrowLeftRight,
   XCircle
 } from 'lucide-react';
@@ -118,19 +116,6 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
       ? encoder.pushCw || { type: 'none', value: '' }
       : encoder.pushCcw || { type: 'none', value: '' };
 
-  const selectionKey = `${activeProfileId}:${selectedSubControl}`;
-  const [trackedKey, setTrackedKey] = useState(selectionKey);
-  const [initialBindingOnSelect, setInitialBindingOnSelect] = useState<ActionBinding>(
-    activeBinding
-  );
-
-  useEffect(() => {
-    if (trackedKey !== selectionKey) {
-      setTrackedKey(selectionKey);
-      setInitialBindingOnSelect(activeBinding);
-    }
-  }, [selectionKey, trackedKey, activeBinding]);
-
   const slotMeta = SLOT_LABELS[selectedSubControl];
   const factoryDefaultAction = FACTORY_DEFAULT_SLOTS[activeProfileId][selectedSubControl];
   const factoryDesc = describeFirmwareAction(
@@ -138,11 +123,6 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
     undefined,
     customMacros
   );
-
-  const canUndoSelection =
-    activeBinding.value !== initialBindingOnSelect.value ||
-    JSON.stringify(activeBinding.repeatConfig || null) !==
-      JSON.stringify(initialBindingOnSelect.repeatConfig || null);
 
   const isAlreadyFactoryDefault =
     activeBinding.value === factoryDefaultAction && !activeBinding.repeatConfig;
@@ -352,24 +332,12 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                 {slotMeta.full}
               </h2>
               <p className="text-xs text-[var(--text-muted)] truncate tabular-nums">
-                {activeProfileName} · {profileShortTag(activeProfileId)} · {slotMeta.short}
-                {slotMeta.pin ? ` · ${slotMeta.pin}` : ''}
+                {activeProfileName} · {slotMeta.short}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              disabled={!canUndoSelection}
-              onClick={() => onUpdateSlot(selectedSubControl, initialBindingOnSelect)}
-              title="Undo changes to this knob control"
-              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <Undo2 className="w-3 h-3 shrink-0" />
-              <span>Undo</span>
-            </button>
-
             <button
               type="button"
               disabled={isAlreadyUnassigned}
@@ -514,7 +482,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
       </div>
 
       {/* Single-Scroll Body */}
-      <div key={selectionKey} className="p-4 sm:p-5 space-y-4 animate-panel-in">
+      <div key={`${activeProfileId}:${selectedSubControl}`} className="p-4 sm:p-5 space-y-4 animate-panel-in">
         {/* Quick Knob Presets & Swap Directions */}
         <div className="p-3 rounded-xl bg-[var(--bg-input)] space-y-2.5">
           <div className="flex items-center justify-between gap-2">

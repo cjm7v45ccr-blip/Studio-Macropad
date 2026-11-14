@@ -25,8 +25,6 @@ import {
 } from '../types/studio';
 import { KeycapIcon, summarizeAction } from '../data/iconRegistry';
 import {
-  HOLD_SLOTS,
-  MOTION_SLOTS,
   SLOT_LABELS,
   describeFirmwareAction,
   gestureTypeToMotionSlot,
@@ -51,7 +49,6 @@ import {
   Trash2,
   SlidersHorizontal,
   Play,
-  Usb,
   RefreshCw,
   Bluetooth,
   Wifi,
@@ -495,8 +492,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         triggerOledToast(`HOST ${hostNum}`, `BertoPad ${hostNum}`);
         pushLog(
           'Mode + Dial',
-          `[H${hostNum}]`,
-          `Switched BLE to BertoPad ${hostNum} (Device ${hostNum})`,
+          `Host ${hostNum}`,
+          `Switched wireless host to Device ${hostNum}`,
           'hardware'
         );
         return;
@@ -890,8 +887,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       await onSwitchBleHost(nextSlot);
       pushLog(
         'Mode + Dial',
-        `[H${nextSlot}]`,
-        `Switched BLE to BertoPad ${nextSlot} (Device ${nextSlot})`,
+        `Host ${nextSlot}`,
+        `Switched wireless host to Device ${nextSlot}`,
         'usb-test'
       );
     } else {
@@ -899,8 +896,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       onSelectProfile(bleSlotToProfileId(nextSlot));
       pushLog(
         'Mode + Dial',
-        `[H${nextSlot}]`,
-        `Switched workspace to Device ${nextSlot} (BertoPad ${nextSlot})`,
+        `Host ${nextSlot}`,
+        `Switched workspace to Device ${nextSlot}`,
         'sim'
       );
     }
@@ -1523,7 +1520,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </button>
         </div>
 
-        {encoderIndex === 1 && (
+        {encoderIndex === 1 && (Boolean(pushCcwBind.value) || Boolean(pushCwBind.value)) && (
           <div
             className="flex items-center gap-1 text-[10px] text-[#A3A6AD] text-center max-w-[178px] truncate"
             style={view3D ? { transform: 'translateZ(16px)', transformStyle: 'preserve-3d', zIndex: 20 } : undefined}
@@ -2003,17 +2000,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               <PlayCircle className="w-3.5 h-3.5 text-[var(--accent)]" />
               <span>Demo Mode</span>
             </button>
-            {usbHardware.browserSupportsWebSerial && (
-              <button
-                type="button"
-                onClick={onConnectUsbPad}
-                style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-95 transition-opacity cursor-pointer whitespace-nowrap flex items-center gap-1.5"
-              >
-                <Usb className="w-3.5 h-3.5" />
-                <span>Connect USB</span>
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -2025,7 +2011,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <div className="flex items-center gap-2">
               <Compass className="w-4 h-4 text-[var(--accent)] shrink-0" />
               <span className="text-xs font-bold text-[var(--text-primary)]">
-                GY-521 3D Directional Calibration
+                3D Motion Calibration
               </span>
               <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-input)] text-[var(--accent)] uppercase font-semibold">
                 Step: {calibStep}
@@ -2328,8 +2314,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   }
                   title={
                     connection.connected
-                      ? `Device ${oledBadgeHost} (BertoPad ${oledBadgeHost}) — click to switch host`
-                      : `Viewing Device ${oledBadgeHost} — click to cycle H1–H3`
+                      ? `Host ${oledBadgeHost} — click to switch host`
+                      : `Viewing Host ${oledBadgeHost} — click to cycle hosts`
                   }
                   style={view3D ? { transform: 'translateZ(4px)', transformStyle: 'preserve-3d', zIndex: 20 } : undefined}
                   className={`px-1.5 py-0.5 rounded bg-black border font-mono text-[10px] font-bold leading-none tracking-tight transition-colors cursor-pointer tabular-nums shrink-0 ${
@@ -2338,7 +2324,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                       : 'border-[#ECEAE4]/80 text-[#ECEAE4] hover:bg-[#ECEAE4] hover:text-[#14161B]'
                   }`}
                 >
-                  [H{oledBadgeHost}]
+                  Host {oledBadgeHost}
                 </button>
               )}
             </div>
@@ -2487,9 +2473,6 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                       </div>
                     </div>
                   </div>
-                  <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0">
-                    {slot}
-                  </span>
                 </button>
               );
             })}
@@ -2512,86 +2495,30 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 <span className="text-xs font-semibold text-[var(--text-primary)]">
                   Live Input Feed
                 </span>
-                {testLog.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setTestLog([])}
-                    className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    <span>Clear</span>
-                  </button>
-                )}
-              </div>
-
-              {connection.transport === 'demo' && (
-                <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-[var(--border-subtle)]">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] mr-1">
-                      Simulate:
-                    </span>
-                    {(
-                      [
-                        { slot: 'b1', label: 'Key 1' },
-                        { slot: 'b2', label: 'Key 2' },
-                        { slot: 'b3', label: 'Key 3' },
-                        { slot: 'b4', label: 'Key 4' },
-                        { slot: 'b5', label: 'Key 5' },
-                        { slot: 'b6', label: 'Key 6' },
-                        { slot: 'b7', label: 'Key 7' },
-                        { slot: 'b8', label: 'Key 8' },
-                        ...(hasKeyHold
-                          ? HOLD_SLOTS.map((hs, i) => ({
-                              slot: hs,
-                              label: `K${i + 1} Hold`
-                            }))
-                          : []),
-                        { slot: 'dial', label: 'Knob 1' },
-                        { slot: 'enc_ccw', label: 'K1 Left' },
-                        { slot: 'enc_cw', label: 'K1 Right' },
-                        { slot: 'push_ccw', label: 'K1 Hold+L' },
-                        { slot: 'push_cw', label: 'K1 Hold+R' },
-                        { slot: 'dial2', label: 'Knob 2' },
-                        { slot: 'e2_ccw', label: 'K2 Left' },
-                        { slot: 'e2_cw', label: 'K2 Right' },
-                        ...(hasMotion
-                          ? MOTION_SLOTS.map(ms => ({
-                              slot: ms,
-                              label:
-                                ms === 'g_shake'
-                                  ? 'Shake'
-                                  : ms === 'g_down'
-                                  ? 'Face Down'
-                                  : 'Face Up'
-                            }))
-                          : []),
-                        { slot: 'mode', label: 'Mode' }
-                      ] as { slot: HardwareFlashSlot; label: string }[]
-                    ).map(btn => (
-                      <button
-                        key={btn.slot}
-                        type="button"
-                        onClick={() => usbHardware.simulateDemoPadInput(btn.slot)}
-                        className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[10px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-                      >
-                        {btn.label}
-                      </button>
-                    ))}
-
+                <div className="flex items-center gap-2">
+                  {connection.transport === 'demo' && (
                     <button
                       type="button"
                       onClick={() => triggerModePlusDialHostSwitch('cw')}
-                      title="Simulate holding Mode + rotating Dial clockwise to switch BLE Host"
-                      className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[10px] font-mono text-[var(--accent)] cursor-pointer whitespace-nowrap inline-flex items-center gap-1"
+                      title="Simulate holding Mode + rotating Dial clockwise to switch wireless host"
+                      className="px-2 py-1 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--accent)] cursor-pointer whitespace-nowrap inline-flex items-center gap-1"
                     >
                       <Bluetooth className="w-3 h-3 shrink-0" />
-                      <span>Mode + Dial</span>
-                      <RotateCw className="w-2.5 h-2.5 shrink-0" />
-                      <span>([H{(((activeBleHost % 3) + 1))}])</span>
+                      <span>Switch to Host {((activeBleHost % 3) + 1)}</span>
                     </button>
-                  </div>
+                  )}
+                  {testLog.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setTestLog([])}
+                      className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Clear</span>
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
 
               {testLog.length === 0 ? (
                 <p className="text-xs text-[var(--text-muted)] py-1.5">

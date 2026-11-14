@@ -991,7 +991,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     />
                     <div>
                       <div className="text-xs font-semibold text-[var(--text-primary)]">
-                        Active Radio: BertoPad {activeBleSlot} ([H{activeBleSlot}])
+                        Active Radio: BertoPad {activeBleSlot}
                       </div>
                       <div className="text-[11px] font-mono text-[var(--text-muted)] tabular-nums">
                         {!connection.connected
@@ -1031,7 +1031,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2 font-mono text-[11px] tabular-nums">
-                          <span className="font-bold">[H{slot}]</span>
+                          <span className="font-bold">Host {slot}</span>
                           <span>{active ? 'Broadcasting' : 'Switch'}</span>
                         </div>
                         <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
@@ -1347,19 +1347,19 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
               {/* Clean Summary Grid */}
               <div className="rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] text-xs">
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 1 ([H1] BertoPad)</span>
+                  <span className="text-[var(--text-muted)]">Host 1 (BertoPad)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h1Name, 'HOST1')} · {presetLabel(h1Preset)}
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 2 ([H2] BertoPad)</span>
+                  <span className="text-[var(--text-muted)]">Host 2 (BertoPad)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h2Name, 'HOST2')} · {presetLabel(h2Preset)}
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 3 ([H3] BertoPad)</span>
+                  <span className="text-[var(--text-muted)]">Host 3 (BertoPad)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h3Name, 'HOST3')} · {presetLabel(h3Preset)}
                   </span>

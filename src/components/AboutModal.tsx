@@ -65,7 +65,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">Hardware Companion Studio</h3>
             <p>
-              BertoPad Studio is the standalone companion app and Web Serial configuration suite for the ESP32 BertoPad hardware macro pad. Engineered with real-time NVS synchronization, 3-host Easy-Switch Bluetooth profiles, OLED HUD previews, GY-521 motion calibration, and timed multi-step macro sequencing.
+              BertoPad Studio is the standalone companion app and USB configuration suite for your BertoPad wireless macro pad. Configure Bluetooth multi-host profiles, OLED keycap previews, 6-axis motion gestures, and multi-step macro sequences.
             </p>
           </div>
 
@@ -78,7 +78,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
             <ul className="space-y-1.5 list-disc list-inside text-[11px] text-[var(--text-muted)]">
               <li>Bluetooth multi-host isolation across 3 Easy-Switch hosts with per-slot virtual MACs.</li>
               <li>Timed pairing window (120s), strict security host filtering, and per-slot host forgetting.</li>
-              <li>GY-521 6-axis motion calibration and real-time 3D tactile chassis visualization.</li>
+              <li>6-axis motion gesture calibration and real-time 3D chassis visualization.</li>
               <li>Full JSON workspace backup &amp; restore alongside live firmware OTA and Web Serial flashing.</li>
               <li>Dual-theme Light &amp; Dark studio surfaces with Web Audio tactile switch synthesis.</li>
             </ul>

@@ -128,7 +128,7 @@ export const ConnectOverlay: React.FC<ConnectOverlayProps> = ({
             <Tv size={15} className="text-[var(--accent)] shrink-0" />
             <div className="min-w-0">
               <div className="font-semibold text-[var(--text-primary)] truncate">SmartCast + OLED</div>
-              <div className="text-[10px] text-[var(--text-muted)] truncate tabular-nums">128×64 SSD1306 HUD</div>
+              <div className="text-[10px] text-[var(--text-muted)] truncate tabular-nums">OLED Display</div>
             </div>
           </div>
         </div>

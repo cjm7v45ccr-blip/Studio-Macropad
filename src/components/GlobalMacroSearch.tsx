@@ -11,8 +11,7 @@ import {
   StudioProfile,
   TextMacroRepeatConfig,
   hostOsFullLabel,
-  isBleHostProfile,
-  profileShortTag
+  isBleHostProfile
 } from '../types/studio';
 import {
   FIRMWARE_STATIC_CATALOG,
@@ -351,7 +350,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           const sig = getMacroCanonicalSignature(raw, bind?.repeatConfig);
           if (!sig) return;
           const list = map.get(sig) || [];
-          list.push(`${profileShortTag(prof.id)} ${SLOT_LABELS[slot].short}`);
+          list.push(`${prof.name} · ${SLOT_LABELS[slot].short}`);
           map.set(sig, list);
         });
       });
@@ -459,10 +458,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
               customMacros
             );
 
-        const metaParts = [
-          `${prof.name} (${profileShortTag(prof.id)})`,
-          slotLabel
-        ];
+        const metaParts = [prof.name, slotLabel];
         if (!isTvEnabled && actionContainsTvSteps(rawAction, binding?.repeatConfig)) {
           metaParts.push('TV off');
         }
@@ -473,7 +469,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           filterGroup: 'assigned',
           title: displayTitle,
           metaParts,
-          searchBlob: `${displayTitle} ${prof.name} ${prof.id} ${profileShortTag(prof.id)} ${slotLabel} ${SLOT_LABELS[slot].full} ${slot} ${rawAction} ${desc?.description || ''} assigned pad key knob`.toLowerCase(),
+          searchBlob: `${displayTitle} ${prof.name} ${prof.id} ${slotLabel} ${SLOT_LABELS[slot].full} ${slot} ${rawAction} ${desc?.description || ''} assigned pad key knob`.toLowerCase(),
           icon: appearance.icon,
           iconColor: appearance.labelColor,
           action: rawAction,
@@ -489,8 +485,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         kind: 'assigned',
         filterGroup: 'assigned',
         title: 'Mode Key',
-        metaParts: [`${prof.name} (${profileShortTag(prof.id)})`, 'Key 9'],
-        searchBlob: `hardware mode switch key 9 k9 9th button profile toggle bluetooth ble host 1 2 3 dial setup oled ${prof.name} ${prof.id} ${profileShortTag(prof.id)}`.toLowerCase(),
+        metaParts: [prof.name, 'Key 9'],
+        searchBlob: `hardware mode switch key 9 k9 9th button profile toggle bluetooth ble host 1 2 3 dial setup oled ${prof.name} ${prof.id}`.toLowerCase(),
         icon: 'layers',
         iconColor: '#F2A33A',
         assignedProfileId: prof.id,
@@ -527,17 +523,16 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
     CURATED_PRESETS.filter(preset => isTvEnabled || preset.mode !== 'TV').forEach(preset => {
       const bleMode = isBleHostProfile(preset.mode);
+      const targetProfName =
+        profiles.find(p => p.id === preset.mode)?.name ||
+        (preset.mode === 'TV' ? 'TV' : 'Device');
       results.push({
         id: `preset-${preset.id}`,
         kind: 'preset',
         filterGroup: 'templates',
         title: preset.title,
-        metaParts: [
-          'Pad Preset',
-          `${profileShortTag(preset.mode)}`,
-          preset.subtitle
-        ],
-        searchBlob: `${preset.title} ${preset.subtitle} ${preset.description} ${preset.mode} ${profileShortTag(preset.mode)} preset layout profile`.toLowerCase(),
+        metaParts: ['Pad Preset', targetProfName, preset.subtitle],
+        searchBlob: `${preset.title} ${preset.subtitle} ${preset.description} ${preset.mode} ${targetProfName} preset layout profile`.toLowerCase(),
         icon: bleMode ? 'monitor' : 'tv',
         iconColor: bleMode ? '#F2A33A' : '#ECEAE4',
         presetMode: preset.mode,
@@ -882,11 +877,6 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           </span>
         </span>
         <span className="flex items-center gap-1.5 shrink-0">
-          {customMacros.length > 0 && (
-            <span className="hidden lg:inline font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-              {customMacros.length} {customMacros.length === 1 ? 'macro' : 'macros'}
-            </span>
-          )}
           <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[10px] font-semibold text-[var(--text-secondary)] shrink-0">
             {isMacPlatform ? 'Cmd+K' : 'Ctrl K'}
           </kbd>
@@ -1021,7 +1011,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                             setAssignProfile(prof.id);
                             modalInputRef.current?.focus();
                           }}
-                          title={`${prof.name} (${profileShortTag(prof.id)})`}
+                          title={prof.name}
                           className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                             active
                               ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
@@ -1029,7 +1019,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                           }`}
                         >
                           <ProfIcon className="w-3 h-3" />
-                          <span>{profileShortTag(prof.id)}</span>
+                          <span className="max-w-[5.5rem] truncate">{prof.name}</span>
                         </button>
                       );
                     })}
@@ -1214,7 +1204,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                               <span>
                                 Apply{' '}
                                 {entry.presetMode
-                                  ? profileShortTag(entry.presetMode)
+                                  ? profiles.find(p => p.id === entry.presetMode)?.name ||
+                                    (entry.presetMode === 'TV' ? 'TV' : 'Device')
                                   : ''}
                               </span>
                               <CornerDownLeft className="w-3 h-3" />

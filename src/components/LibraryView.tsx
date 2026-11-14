@@ -10,21 +10,16 @@ import {
   TextMacroRepeatConfig,
   UserPreset,
   isBleHostProfile,
-  normalizeHardwareProfileId,
-  profileShortTag
+  normalizeHardwareProfileId
 } from '../types/studio';
 import { CURATED_PRESETS, ProfilePreset } from '../data/presetProfiles';
 import {
   FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
-  HOLD_SLOTS,
-  MOTION_SLOTS,
   SLOT_LABELS,
   describeFirmwareAction,
   getProfilePresetSignature,
-  getVisibleHardwareSlots,
-  hasKeyHoldCapability,
-  hasMotionCapability
+  getVisibleHardwareSlots
 } from '../data/firmwareCatalog';
 import {
   extractProfileSlots,
@@ -105,27 +100,17 @@ type PendingModalAction =
       rows: DiffPreviewRow[];
     };
 
-const KEY_TAP_SLOTS: readonly HardwareSlotId[] = [
+const HIGHLIGHT_SLOTS: readonly HardwareSlotId[] = [
   'b1',
   'b2',
   'b3',
   'b4',
-  'b5',
-  'b6',
-  'b7',
-  'b8'
-] as const;
-
-const DIAL_SLOTS: readonly HardwareSlotId[] = [
-  'dial',
-  'enc_ccw',
   'enc_cw',
-  'push_ccw',
-  'push_cw',
-  'dial2',
-  'e2_ccw',
   'e2_cw'
 ] as const;
+
+const STUDIO_SHORT_LABEL = (name: string) =>
+  name.length > 10 ? `${name.slice(0, 9)}…` : name;
 
 function buildSlotDiffRows(
   profileLabel: string,
@@ -210,7 +195,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [pendingAction, setPendingAction] = useState<PendingModalAction | null>(null);
   const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
 
-  const hasKeyHold = hasKeyHoldCapability(capabilities);
   const visibleSlots = useMemo(
     () => getVisibleHardwareSlots(capabilities),
     [capabilities]
@@ -249,9 +233,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     profiles.find(p => p.id === id) || profiles[0];
 
   const formatProfileLabel = (id: HardwareProfileId): string => {
-    const prof = getProfile(id);
-    const short = profileShortTag(id);
-    return `${prof.name} (${short})`;
+    return getProfile(id).name;
   };
 
   // Detect whether saving `saveProfileTarget` matches an already-saved UserPreset
@@ -320,11 +302,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             )
             .join(' ')
         : '';
-      return `${snap.name} ${profileShortTag(target)} ${slotText}`
+      return `${snap.name} ${getProfile(target).name} ${slotText}`
         .toLowerCase()
         .includes(normalizedQuery);
     });
-  }, [userPresets, modeFilter, normalizedQuery, customMacros, visibleSlots]);
+  }, [userPresets, modeFilter, normalizedQuery, customMacros, visibleSlots, profiles]);
 
   const handleSaveMyPreset = () => {
     const fallbackName = `${getProfile(saveProfileTarget).name} Layout`;
@@ -420,81 +402,23 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     });
   };
 
-  const renderProfileSlotGrid = (
+  const renderProfileHighlights = (
     resolveAction: (slot: HardwareSlotId) => string,
     resolveRepeat?: (slot: HardwareSlotId) => TextMacroRepeatConfig | undefined
-  ) => (
-    <div className="space-y-2 pt-0.5 text-[11px]">
-      {/* Keys 1–8 with capability-gated Hold row directly under each key */}
-      <div className="grid grid-cols-2 gap-1.5">
-        {KEY_TAP_SLOTS.map((tapSlot, idx) => {
-          const holdSlot = HOLD_SLOTS[idx];
-          return (
-            <div key={tapSlot} className="flex flex-col gap-1 min-w-0">
-              <div className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-1.5 min-w-0">
-                <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums whitespace-nowrap">
-                  {SLOT_LABELS[tapSlot].short}
-                </span>
-                <ParsedActionBadge
-                  action={resolveAction(tapSlot)}
-                  repeatConfig={resolveRepeat?.(tapSlot)}
-                  showRawId={showAdvancedIds}
-                  customMacros={customMacros}
-                  maxSteps={1}
-                  className="min-w-0 flex-1"
-                />
-              </div>
+  ) => {
+    const picked = HIGHLIGHT_SLOTS.filter(s => Boolean(resolveAction(s))).slice(0, 4);
+    const totalMapped = visibleSlots.filter(s => Boolean(resolveAction(s))).length;
+    const remainingCount = Math.max(0, totalMapped - picked.length);
 
-              {hasKeyHold && (
-                <div className="px-2.5 py-1 rounded-md bg-[var(--bg-input)]/70 border border-[var(--border-subtle)] flex items-center gap-1.5 min-w-0">
-                  <span className="font-mono text-[9px] text-[var(--text-muted)] shrink-0 whitespace-nowrap">
-                    Hold
-                  </span>
-                  <ParsedActionBadge
-                    action={resolveAction(holdSlot)}
-                    repeatConfig={resolveRepeat?.(holdSlot)}
-                    showRawId={showAdvancedIds}
-                    customMacros={customMacros}
-                    maxSteps={1}
-                    className="min-w-0 flex-1"
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Rotary Dials: Knob 1 (Press, Left, Right, Hold+Left, Hold+Right) & Knob 2 */}
-      <div className="pt-1.5 border-t border-[var(--border-subtle)] grid grid-cols-2 gap-1.5">
-        {DIAL_SLOTS.map(slot => (
-          <div
-            key={slot}
-            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-1.5 min-w-0"
-          >
-            <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums whitespace-nowrap">
-              {SLOT_LABELS[slot].short}
-            </span>
-            <ParsedActionBadge
-              action={resolveAction(slot)}
-              repeatConfig={resolveRepeat?.(slot)}
-              showRawId={showAdvancedIds}
-              customMacros={customMacros}
-              maxSteps={1}
-              className="min-w-0 flex-1"
-            />
-          </div>
-        ))}
-      </div>
-
-      {hasMotionCapability(capabilities) && (
-        <div className="pt-1.5 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-          {MOTION_SLOTS.map(slot => (
+    return (
+      <div className="space-y-1.5 pt-0.5 text-[11px]">
+        <div className="grid grid-cols-2 gap-1.5">
+          {picked.map(slot => (
             <div
               key={slot}
               className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-1.5 min-w-0"
             >
-              <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 tabular-nums whitespace-nowrap">
+              <span className="text-[10px] text-[var(--text-muted)] shrink-0 whitespace-nowrap">
                 {SLOT_LABELS[slot].short}
               </span>
               <ParsedActionBadge
@@ -508,9 +432,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </div>
           ))}
         </div>
-      )}
-    </div>
-  );
+        {remainingCount > 0 && (
+          <p className="text-[11px] text-[var(--text-muted)] px-0.5">
+            +{remainingCount} more controls previewed before applying
+          </p>
+        )}
+      </div>
+    );
+  };
 
   const handleConfirmPendingAction = () => {
     if (!pendingAction) return;
@@ -763,7 +692,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 >
                   {profiles.map(p => (
                     <option key={p.id} value={p.id}>
-                      {profileShortTag(p.id)} · {p.name}
+                      {p.name}
                     </option>
                   ))}
                 </select>
@@ -837,7 +766,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             {snap.name}
                           </h3>
                           <p className="text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums">
-                            Saved {snap.createdAt} · {profileShortTag(defaultTarget)}
+                            Saved {snap.createdAt} · {formatProfileLabel(defaultTarget)}
                           </p>
                         </div>
                         <button
@@ -851,7 +780,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       </div>
 
                       {snap.profileSlots &&
-                        renderProfileSlotGrid(
+                        renderProfileHighlights(
                           s =>
                             snap.profileSlots![s] ??
                             FACTORY_DEFAULT_SLOTS[defaultTarget][s] ??
@@ -868,17 +797,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         onClick={() => openMyPresetPreview(snap, defaultTarget)}
                         className="flex-1 py-2 px-3 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
                       >
-                        Apply to {profileShortTag(defaultTarget)}
+                        Apply to {formatProfileLabel(defaultTarget)}
                       </button>
                       {otherTargets.map(altId => (
                         <button
                           key={altId}
                           type="button"
                           onClick={() => openMyPresetPreview(snap, altId)}
-                          className="py-2 px-2.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] font-mono text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                          className="py-2 px-2.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
                           title={`Apply "${snap.name}" to ${formatProfileLabel(altId)}`}
                         >
-                          {profileShortTag(altId)}
+                          {STUDIO_SHORT_LABEL(formatProfileLabel(altId))}
                         </button>
                       ))}
                       <button
@@ -954,27 +883,27 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         {preset.description}
                       </p>
 
-                      {renderProfileSlotGrid(slot => preset.bindings[slot] || '')}
+                      {renderProfileHighlights(slot => preset.bindings[slot] || '')}
                     </div>
 
-                    <div className="flex items-center gap-1.5 pt-1">
+                    <div className="flex items-center gap-1.5 pt-1 flex-wrap">
                       <button
                         type="button"
                         onClick={() => openCuratedPresetPreview(preset, primaryTarget)}
                         className="flex-1 py-2 px-2.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap truncate"
                         title={`Preview & apply to ${formatProfileLabel(primaryTarget)}`}
                       >
-                        Apply to {profileShortTag(primaryTarget)}
+                        Apply to {formatProfileLabel(primaryTarget)}
                       </button>
                       {secondaryTargets.map(altId => (
                         <button
                           key={altId}
                           type="button"
                           onClick={() => openCuratedPresetPreview(preset, altId)}
-                          className="py-2 px-2.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] font-mono text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                          className="py-2 px-2.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
                           title={`Preview & apply to ${formatProfileLabel(altId)}`}
                         >
-                          {profileShortTag(altId)}
+                          {STUDIO_SHORT_LABEL(formatProfileLabel(altId))}
                         </button>
                       ))}
                     </div>
@@ -1015,7 +944,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               >
                 {profiles.map(p => (
                   <option key={p.id} value={p.id}>
-                    {profileShortTag(p.id)} · {p.name}
+                    {p.name}
                   </option>
                 ))}
               </select>
@@ -1035,7 +964,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               >
                 {profiles.map(p => (
                   <option key={p.id} value={p.id} disabled={p.id === copySource}>
-                    {profileShortTag(p.id)} · {p.name}
+                    {p.name}
                   </option>
                 ))}
               </select>
@@ -1055,9 +984,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   key={`${src}-${tgt}`}
                   type="button"
                   onClick={() => openCopyConfirm(src, tgt)}
-                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] font-mono text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
-                  {profileShortTag(src)} → {profileShortTag(tgt)}
+                  {formatProfileLabel(src)} → {formatProfileLabel(tgt)}
                 </button>
               ))}
             </div>
@@ -1068,9 +997,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onClick={() => openCopyConfirm(copySource, copyTarget)}
               className="flex items-center justify-center gap-2 py-2 px-3.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
-              <span>Copy {profileShortTag(copySource)}</span>
+              <span>Copy {formatProfileLabel(copySource)}</span>
               <ArrowRight className="w-3.5 h-3.5 text-[var(--accent)]" />
-              <span>{profileShortTag(copyTarget)}</span>
+              <span>{formatProfileLabel(copyTarget)}</span>
             </button>
           </div>
         </section>
@@ -1099,7 +1028,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           pendingAction?.kind === 'reset_all'
             ? 'Reset All 4 Profiles'
             : pendingAction?.kind === 'copy_profile'
-            ? `Copy ${profileShortTag(pendingAction.source)} → ${profileShortTag(pendingAction.target)}`
+            ? `Copy ${formatProfileLabel(pendingAction.source)} → ${formatProfileLabel(pendingAction.target)}`
             : `Apply Preset (${controlCount} Controls)`
         }
         tone={pendingAction?.kind === 'reset_all' ? 'danger' : 'accent'}

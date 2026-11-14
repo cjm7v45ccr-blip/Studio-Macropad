@@ -14,8 +14,7 @@ import {
   MacroStepConfig,
   StudioProfile,
   TextMacroRepeatConfig,
-  isBleHostProfile,
-  profileShortTag
+  isBleHostProfile
 } from '../types/studio';
 import {
   FIRMWARE_STATIC_CATALOG,
@@ -89,7 +88,6 @@ import {
   Copy,
   Volume2,
   CornerDownLeft,
-  Eye,
   Search,
   X,
   ArrowLeft,
@@ -180,11 +178,11 @@ const ENCODER_SLOTS: {
   shortTitle: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { slot: 'dial', shortTitle: 'K1 Press', icon: Disc },
-  { slot: 'enc_ccw', shortTitle: 'K1 Left', icon: RotateCcw },
-  { slot: 'enc_cw', shortTitle: 'K1 Right', icon: RotateCw },
-  { slot: 'push_ccw', shortTitle: 'K1 Hold+L', icon: RotateCcw },
-  { slot: 'push_cw', shortTitle: 'K1 Hold+R', icon: RotateCw }
+  { slot: 'dial', shortTitle: 'Knob 1 Press', icon: Disc },
+  { slot: 'enc_ccw', shortTitle: 'Knob 1 Left', icon: RotateCcw },
+  { slot: 'enc_cw', shortTitle: 'Knob 1 Right', icon: RotateCw },
+  { slot: 'push_ccw', shortTitle: 'Knob 1 Push+L', icon: RotateCcw },
+  { slot: 'push_cw', shortTitle: 'Knob 1 Push+R', icon: RotateCw }
 ];
 
 const ENCODER_2_SLOTS: {
@@ -192,9 +190,9 @@ const ENCODER_2_SLOTS: {
   shortTitle: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { slot: 'dial2', shortTitle: 'K2 Press', icon: Disc },
-  { slot: 'e2_ccw', shortTitle: 'K2 Left', icon: RotateCcw },
-  { slot: 'e2_cw', shortTitle: 'K2 Right', icon: RotateCw }
+  { slot: 'dial2', shortTitle: 'Knob 2 Press', icon: Disc },
+  { slot: 'e2_ccw', shortTitle: 'Knob 2 Left', icon: RotateCcw },
+  { slot: 'e2_cw', shortTitle: 'Knob 2 Right', icon: RotateCw }
 ];
 
 const STEP_TYPE_ORDER: MacroStepActionType[] = [
@@ -763,14 +761,18 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     () => (isTvEnabled ? STEP_TYPE_ORDER : STEP_TYPE_ORDER.filter(t => t !== 'tv')),
     [isTvEnabled]
   );
-  const initialHydratedSteps = useMemo(
-    () =>
-      STARTER_TEMPLATES[0].steps.map((s, idx) => ({
+  const initialHydratedSteps = useMemo<MacroStepConfig[]>(() => {
+    if (externalTarget?.repeatConfig?.steps && externalTarget.repeatConfig.steps.length > 0) {
+      return externalTarget.repeatConfig.steps.map((s, idx) => ({
         ...s,
-        id: `init-step-${idx + 1}`
-      })),
-    []
-  );
+        id: s.id || `init-ext-step-${idx + 1}`
+      }));
+    }
+    return STARTER_TEMPLATES[0].steps.map((s, idx) => ({
+      ...s,
+      id: `init-step-${idx + 1}`
+    }));
+  }, [externalTarget]);
 
   const [libraryQuery, setLibraryQuery] = useState('');
   const [libraryTab, setLibraryTab] = useState<'all' | 'saved' | 'templates'>('all');
@@ -779,8 +781,12 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   const [importProfileId, setImportProfileId] =
     useState<HardwareProfileId>(activeProfileId);
 
-  const [selectedMacroId, setSelectedMacroId] = useState<string | null>(null);
-  const [macroName, setMacroName] = useState(STARTER_TEMPLATES[0].name);
+  const [selectedMacroId, setSelectedMacroId] = useState<string | null>(
+    externalTarget?.macroId ?? null
+  );
+  const [macroName, setMacroName] = useState(
+    externalTarget?.name || STARTER_TEMPLATES[0].name
+  );
   const [autoNamingActive, setAutoNamingActive] = useState<boolean>(false);
 
   const [justSavedFeedback, setJustSavedFeedback] = useState<{
@@ -1824,12 +1830,6 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   const isSimulating = Boolean(activeRepeatJob?.id.startsWith('sim-'));
   const isJobRunning = Boolean(activeRepeatJob);
 
-  const handlePreviewSimulation = () => {
-    if (!isSequenceValid || repeatMacroRunner.activeJob) return;
-    repeatMacroRunner.simulateInUi({ ...builtRepeatConfig, repeatCount: 1, loopUntilStopped: false })
-      .catch(() => onToast('Could not complete dry run. No actions were sent.', 'error'));
-  };
-
   const handleTestSingleStep = (step: MacroStepConfig) => {
     if (step.actionType === 'delay') return;
     const stepAction = canonicalizeFirmwareAction(stepToFirmwareAction(step));
@@ -2167,8 +2167,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             </span>
                             {firstBound ? (
                               <span className="text-[var(--accent)] font-medium">
-                                {profileShortTag(firstBound.profileId)}{' '}
-                                {SLOT_LABELS[firstBound.slot].short}
+                                {profiles.find(p => p.id === firstBound.profileId)?.name ||
+                                  firstBound.profileId}{' '}
+                                · {SLOT_LABELS[firstBound.slot].short}
                                 {boundSlots.length > 1 ? ` +${boundSlots.length - 1}` : ''}
                               </span>
                             ) : (
@@ -2363,16 +2364,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         key={p.id}
                         type="button"
                         onClick={() => setImportProfileId(p.id)}
-                        title={`${p.name} (${profileShortTag(p.id)})`}
+                        title={p.name}
                         className={`py-1 px-2 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap truncate ${
                           importProfileId === p.id
                             ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                             : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                         }`}
                       >
-                        <span className="font-mono text-[10px] opacity-75 mr-1">
-                          {profileShortTag(p.id)}
-                        </span>
                         <span>{p.name}</span>
                       </button>
                     ))}
@@ -2688,20 +2686,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       <button
                         type="button"
                         disabled={!isSequenceValid}
-                        onClick={handlePreviewSimulation}
-                        title="Preview one cycle safely: no keystrokes or device commands are sent"
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-                        <span>Dry run · no output</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={!isSequenceValid}
                         onClick={() => onTestBinding(builtBinding)}
                         title={
-                          'Review the timeline and confirm before sending real actions'
+                          'Review the timeline or preview safely before sending real actions'
                         }
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
                       >
@@ -2713,7 +2700,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 </div>
               </div>
 
-              {/* Flex-wrap Metadata Strip (Step Count, Duration, Size, Flags & Collapsed Bindings) */}
+              {/* Flex-wrap Metadata Strip (Step Count, Duration, Size warning near limit & Collapsed Bindings) */}
               <div
                 aria-label="Macro metadata"
                 className="w-full min-w-0 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--text-secondary)] tabular-nums"
@@ -2733,54 +2720,47 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   ~{formatDurationCompact(timingSummary.estimatedRunMs)} est. run
                 </span>
 
-                <span
-                  title="Onboard macro slot storage usage (512 B max per key)"
-                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--bg-input)] font-mono whitespace-nowrap shrink-0 ${
-                    memoryOverflow
-                      ? 'text-[#D97706] font-semibold'
-                      : draftValidation.byteLength > 400
-                      ? 'text-[var(--accent)] font-medium'
-                      : 'text-[var(--text-secondary)]'
-                  }`}
-                >
-                  <span>
-                    {draftValidation.byteLength} / {draftValidation.maxBytes} B
-                  </span>
+                {(memoryOverflow || draftValidation.byteLength >= 384) && (
                   <span
-                    aria-hidden="true"
-                    className="w-10 h-1.5 rounded-full bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-hidden inline-flex"
+                    title="Approaching onboard slot storage limit (512 B max per key)"
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--bg-input)] font-mono whitespace-nowrap shrink-0 ${
+                      memoryOverflow
+                        ? 'text-[#D97706] font-semibold'
+                        : 'text-[var(--accent)] font-medium'
+                    }`}
                   >
+                    <span>
+                      {draftValidation.byteLength} / {draftValidation.maxBytes} B
+                    </span>
                     <span
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          Math.max(
-                            4,
-                            Math.round(
-                              (draftValidation.byteLength /
-                                Math.max(1, draftValidation.maxBytes)) *
-                                100
+                      aria-hidden="true"
+                      className="w-10 h-1.5 rounded-full bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-hidden inline-flex"
+                    >
+                      <span
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.max(
+                              4,
+                              Math.round(
+                                (draftValidation.byteLength /
+                                  Math.max(1, draftValidation.maxBytes)) *
+                                  100
+                              )
                             )
-                          )
-                        )}%`
-                      }}
-                      className={`h-full rounded-full ${
-                        memoryOverflow ? 'bg-[#D97706]' : 'bg-[var(--accent)]'
-                      }`}
-                    />
+                          )}%`
+                        }}
+                        className={`h-full rounded-full ${
+                          memoryOverflow ? 'bg-[#D97706]' : 'bg-[var(--accent)]'
+                        }`}
+                      />
+                    </span>
                   </span>
-                </span>
+                )}
 
-                {needsLiveRunner ? (
+                {needsLiveRunner && (
                   <span className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] text-[var(--accent)] font-medium whitespace-nowrap shrink-0">
                     USB Assisted
-                  </span>
-                ) : (
-                  <span
-                    title="Runs 100% standalone on the physical BertoPad over Bluetooth or Wi-Fi without needing the Studio app open"
-                    className="px-2 py-0.5 rounded-md bg-[var(--bg-input)] text-[var(--text-secondary)] whitespace-nowrap shrink-0"
-                  >
-                    Standalone BLE
                   </span>
                 )}
 
@@ -2790,7 +2770,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   </span>
                 )}
 
-                {activeMacroBoundSlots.length > 0 ? (
+                {activeMacroBoundSlots.length > 0 && (
                   <>
                     {(showAllBoundSlots
                       ? activeMacroBoundSlots
@@ -2802,16 +2782,16 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           type="button"
                           onClick={() => onJumpToControl(b.profileId, b.slot)}
                           title={`Jump to ${b.profileName} · ${SLOT_LABELS[b.slot].short}`}
-                          className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] font-mono font-medium text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0"
+                          className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] font-medium text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0"
                         >
-                          {profileShortTag(b.profileId)} {SLOT_LABELS[b.slot].short}
+                          {b.profileName} · {SLOT_LABELS[b.slot].short}
                         </button>
                       ) : (
                         <span
                           key={`${b.profileId}-${b.slot}`}
-                          className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] font-mono text-[var(--accent)] font-medium whitespace-nowrap shrink-0"
+                          className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] text-[var(--accent)] font-medium whitespace-nowrap shrink-0"
                         >
-                          {profileShortTag(b.profileId)} {SLOT_LABELS[b.slot].short}
+                          {b.profileName} · {SLOT_LABELS[b.slot].short}
                         </span>
                       )
                     )}
@@ -2821,9 +2801,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         onClick={() => setShowAllBoundSlots(v => !v)}
                         title={activeMacroBoundSlots
                           .slice(3)
-                          .map(b => `${profileShortTag(b.profileId)} ${SLOT_LABELS[b.slot].short}`)
+                          .map(b => `${b.profileName} · ${SLOT_LABELS[b.slot].short}`)
                           .join(', ')}
-                        className="px-2 py-0.5 rounded-md bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] font-mono font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 transition-colors"
+                        className="px-2 py-0.5 rounded-md bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 transition-colors"
                       >
                         {showAllBoundSlots
                           ? 'Show fewer'
@@ -2831,10 +2811,6 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       </button>
                     )}
                   </>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-md bg-[var(--bg-input)] text-[var(--text-muted)] whitespace-nowrap shrink-0">
-                    Unassigned
-                  </span>
                 )}
               </div>
             </div>
@@ -3496,11 +3472,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               >
                                 {stepTag.prettyValue}
                               </span>
-                              {showAdvancedIds && stepTag.prettyValue !== stepTag.value && (
-                                <span className="text-[11px] font-mono text-[var(--text-muted)] truncate hidden sm:inline">
-                                  {stepTag.value}
-                                </span>
-                              )}
+                              {showAdvancedIds &&
+                                step.actionType !== 'text' &&
+                                stepTag.prettyValue !== stepTag.value && (
+                                  <span className="text-[11px] font-mono text-[var(--text-muted)] truncate hidden sm:inline">
+                                    {stepTag.value}
+                                  </span>
+                                )}
                               {!isTvEnabled && step.actionType === 'tv' && (
                                 <span className="text-[11px] text-[var(--accent)] shrink-0">
                                   · TV off
@@ -3613,11 +3591,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               >
                                 {stepTag.prettyValue}
                               </span>
-                              {showAdvancedIds && stepTag.prettyValue !== stepTag.value && (
-                                <span className="font-mono text-[11px] text-[var(--text-muted)] truncate">
-                                  {stepTag.value}
-                                </span>
-                              )}
+                              {showAdvancedIds &&
+                                step.actionType !== 'text' &&
+                                stepTag.prettyValue !== stepTag.value && (
+                                  <span className="font-mono text-[11px] text-[var(--text-muted)] truncate">
+                                    {stepTag.value}
+                                  </span>
+                                )}
                             </div>
 
                             <div className="flex items-center gap-1 shrink-0">
@@ -4614,7 +4594,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         key={p.id}
                         type="button"
                         onClick={() => setTargetProfile(p.id)}
-                        title={`${p.name} (${profileShortTag(p.id)})`}
+                        title={p.name}
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                           active
                             ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs'
@@ -4622,10 +4602,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         }`}
                       >
                         <ProfIcon className="w-3.5 h-3.5 shrink-0" />
-                        <span className="font-mono text-[10px] opacity-75">
-                          {profileShortTag(p.id)}
-                        </span>
-                        <span className="truncate max-w-[96px]">{p.name}</span>
+                        <span className="truncate max-w-[110px]">{p.name}</span>
                       </button>
                     );
                   })}
@@ -4969,16 +4946,6 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 )}
               </div>
 
-              <button
-                type="button"
-                disabled={!isSequenceValid}
-                onClick={() => onTestBinding(builtBinding)}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
-              >
-                <Play className="w-3.5 h-3.5 text-[var(--accent)]" />
-                <span>Test</span>
-              </button>
-
               {/* One Primary CTA Button */}
               <button
                 type="button"
@@ -4988,7 +4955,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>
-                  Assign to {profileShortTag(targetProfile)} {SLOT_LABELS[targetSlot].short}
+                  Assign to {activeTargetProfileObj.name} · {SLOT_LABELS[targetSlot].short}
                 </span>
               </button>
             </div>

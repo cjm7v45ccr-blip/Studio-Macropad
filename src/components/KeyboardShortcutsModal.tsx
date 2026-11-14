@@ -113,8 +113,8 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
           <div className="flex items-center gap-2">
             <Volume2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
             <div className="text-xs">
-              <span className="font-semibold text-[var(--text-primary)]">Acoustic Feedback: </span>
-              <span className="text-[var(--text-secondary)]">Mechanical switch click synthesis</span>
+              <span className="font-semibold text-[var(--text-primary)]">Switch Sound: </span>
+              <span className="text-[var(--text-secondary)]">Tactile switch click synthesis</span>
             </div>
           </div>
           <div className="flex items-center gap-1">

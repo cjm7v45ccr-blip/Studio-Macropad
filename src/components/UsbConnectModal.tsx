@@ -211,7 +211,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                       }`}
                     />
                     <span className="truncate tabular-nums">
-                      [H{telemetry.bleActiveHost}] {telemetry.bleConnected ? 'Ready' : 'Down'}
+                      Host {telemetry.bleActiveHost} · {telemetry.bleConnected ? 'Ready' : 'Down'}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">

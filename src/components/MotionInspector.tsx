@@ -9,8 +9,7 @@ import {
   HostOsType,
   KeyboardLayoutId,
   MotionControlConfig,
-  MotionSlotId,
-  profileShortTag
+  MotionSlotId
 } from '../types/studio';
 import {
   FACTORY_DEFAULT_SLOTS,
@@ -134,8 +133,6 @@ export const MotionInspector: React.FC<MotionInspectorProps> = ({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-[11px] font-mono text-[var(--text-muted)] tabular-nums">
-              <span>{profileShortTag(activeProfileId)}</span>
-              <span aria-hidden="true">·</span>
               <span className="truncate">{activeProfileName}</span>
               {showAdvancedIds && (
                 <>

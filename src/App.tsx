@@ -16,8 +16,7 @@ import {
   MotionSlotId,
   SidebarSection,
   bleSlotToProfileId,
-  isBleHostProfile,
-  profileShortTag
+  isBleHostProfile
 } from './types/studio';
 import {
   ToastVariant,
@@ -464,7 +463,7 @@ export default function App() {
 
       if (!connection.connected) {
         studio.selectProfile(targetProfId);
-        showToast(`Editing ${friendlyName} ([H${slot}]) — connect USB to switch hardware BLE slot`);
+        showToast(`Editing ${friendlyName} — connect USB to switch wireless host`);
         return;
       }
       try {
@@ -606,8 +605,8 @@ export default function App() {
     return {
       srcProf,
       tgtProf,
-      srcLabel: `${srcProf.name} (${profileShortTag(pendingCopyPair.source)})`,
-      tgtLabel: `${tgtProf.name} (${profileShortTag(pendingCopyPair.target)})`
+      srcLabel: srcProf.name,
+      tgtLabel: tgtProf.name
     };
   }, [pendingCopyPair, studio.profiles]);
 
@@ -617,7 +616,7 @@ export default function App() {
     const tgtSlots = extractProfileSlots(pendingCopyLabels.tgtProf);
     return visibleSlots.map(slot => ({
       id: `${pendingCopyPair.target}-${slot}`,
-      slotLabel: `${profileShortTag(pendingCopyPair.target)} · ${SLOT_LABELS[slot].short}`,
+      slotLabel: `${pendingCopyLabels.tgtLabel} · ${SLOT_LABELS[slot].short}`,
       beforeLabel: tgtSlots[slot]
         ? describeFirmwareAction(tgtSlots[slot]).shortLabel
         : 'Unassigned',
@@ -1138,10 +1137,8 @@ export default function App() {
             : ''
         }
         confirmLabel={
-          pendingCopyPair
-            ? `Copy ${profileShortTag(pendingCopyPair.source)} → ${profileShortTag(
-                pendingCopyPair.target
-              )}`
+          pendingCopyLabels
+            ? `Copy ${pendingCopyLabels.srcLabel} → ${pendingCopyLabels.tgtLabel}`
             : 'Copy'
         }
         rows={topBarCopyDiffRows}

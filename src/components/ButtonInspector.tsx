@@ -13,9 +13,7 @@ import {
   KeyboardLayoutId,
   StudioProfile,
   bleSlotToProfileId,
-  isBleHostProfile,
-  profileIdToBleSlot,
-  profileShortTag
+  profileIdToBleSlot
 } from '../types/studio';
 import { ICON_LIBRARY, KeycapIcon } from '../data/iconRegistry';
 import {
@@ -28,7 +26,6 @@ import { ActionKeyId, KEY_TO_HOLD_SLOT } from '../data/presetTemplates';
 import { ActionPickerControl } from './ActionPickerControl';
 import {
   RotateCcw,
-  Undo2,
   Upload,
   Search,
   Layers,
@@ -123,19 +120,15 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
 
   const selectionKey = `${activeProfileId}:${keyConfig.id}:${effectiveTrigger}`;
   const [trackedSelectionKey, setTrackedSelectionKey] = useState(selectionKey);
-  const [initialBindingOnSelect, setInitialBindingOnSelect] = useState<ActionBinding>(
-    activeBinding
-  );
 
   useEffect(() => {
     if (trackedSelectionKey !== selectionKey) {
       setTrackedSelectionKey(selectionKey);
-      setInitialBindingOnSelect(activeBinding);
       if (effectiveTrigger === 'hold') {
         setInspectorSection('action');
       }
     }
-  }, [selectionKey, trackedSelectionKey, activeBinding, effectiveTrigger]);
+  }, [selectionKey, trackedSelectionKey, effectiveTrigger]);
 
   const isTvEnabled = tvEnabled ?? (connection.telemetry?.tvEnabled !== false);
   const activeBleHost: BleHostSlot =
@@ -309,11 +302,6 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     }
   };
 
-  const canUndoSelection =
-    activeBinding.value !== initialBindingOnSelect.value ||
-    JSON.stringify(activeBinding.repeatConfig || null) !==
-      JSON.stringify(initialBindingOnSelect.repeatConfig || null);
-
   const isAlreadyFactoryDefault =
     activeBinding.value === factoryDefaultAction && !activeBinding.repeatConfig;
 
@@ -378,17 +366,6 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
 
           {/* Compact Subtle Control Actions */}
           <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              disabled={!canUndoSelection}
-              onClick={() => handleActiveBindingChange(initialBindingOnSelect)}
-              title="Undo changes to this key"
-              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <Undo2 className="w-3 h-3 shrink-0" />
-              <span>Undo</span>
-            </button>
-
             <button
               type="button"
               disabled={isAlreadyUnassigned}
@@ -528,12 +505,9 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                   <span>OLED Preview</span>
                 </span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] text-[#A3A6AD]">128×64 1-bit · {slotMeta.short}</span>
-                  {isBleHostProfile(activeProfileId) && (
-                    <span className="px-1.5 py-0.5 rounded bg-black border border-[#ECEAE4]/75 text-[#ECEAE4] font-mono text-[9px] font-bold leading-none tabular-nums">
-                      [{profileShortTag(activeProfileId)}]
-                    </span>
-                  )}
+                  <span className="text-[9px] text-[#A3A6AD]">
+                    {activeProfileName} · {slotMeta.short}
+                  </span>
                 </div>
               </div>
               <div className="py-2.5 flex flex-col items-center justify-center space-y-1.5">

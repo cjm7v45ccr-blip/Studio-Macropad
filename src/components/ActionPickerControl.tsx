@@ -59,7 +59,6 @@ import {
   Sliders,
   Wand2,
   Zap,
-  Code2,
   Plus,
   Monitor
 } from 'lucide-react';
@@ -660,17 +659,28 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               <span className="text-xs text-[var(--text-muted)]">Unassigned</span>
             )}
           </div>
-          {binding.value && (
-            <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
-              <span>{showAdvancedIds ? binding.value : currentInfo.fullLabel}</span>
-              {!isTvEnabled && actionContainsTvSteps(binding.value, binding.repeatConfig) && (
-                <span className="text-[var(--accent)] font-medium">
-                  {' '}
-                  · TV off
-                </span>
-              )}
-            </div>
-          )}
+          {binding.value && (() => {
+            const hasDistinctDetail =
+              showAdvancedIds ||
+              (!matchedSavedMacro &&
+                currentInfo.fullLabel.trim().toLowerCase() !==
+                  currentInfo.shortLabel.trim().toLowerCase());
+            const hasTvOffWarning =
+              !isTvEnabled && actionContainsTvSteps(binding.value, binding.repeatConfig);
+            if (!hasDistinctDetail && !hasTvOffWarning) return null;
+            return (
+              <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
+                {hasDistinctDetail && (
+                  <span>{showAdvancedIds ? binding.value : currentInfo.fullLabel}</span>
+                )}
+                {hasTvOffWarning && (
+                  <span className="text-[var(--accent)] font-medium">
+                    {hasDistinctDetail ? ' · TV off' : 'TV off'}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
@@ -791,23 +801,6 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
           >
             {moreCategoriesOpen ? 'Fewer categories' : 'More categories…'}
           </button>
-          {onToggleAdvancedIds && (
-            <div className="pt-1.5 mt-1 border-t border-[var(--border-subtle)]">
-              <button
-                type="button"
-                onClick={onToggleAdvancedIds}
-                title="Show or hide raw firmware command IDs (e.g. PLAY_PAUSE, VOL_DOWN)"
-                className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                  showAdvancedIds
-                    ? 'bg-[rgba(var(--accent-rgb),0.14)] text-[var(--accent)] font-semibold'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                <Code2 className="w-3 h-3 shrink-0" />
-                <span>{showAdvancedIds ? 'Hide IDs' : 'Show IDs'}</span>
-              </button>
-            </div>
-          )}
         </nav>
 
         {/* Right Actions / Builder Pane */}

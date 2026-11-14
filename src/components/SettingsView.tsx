@@ -17,7 +17,7 @@ import {
   bleSlotToProfileId
 } from '../types/studio';
 import { ToastVariant } from '../hooks/useStudioState';
-import { STUDIO_VERSION, FIRMWARE_VERSION, FIRMWARE_INO_FILENAME, FIRMWARE_SOURCE_LABEL } from '../utils/version';
+import { STUDIO_VERSION, FIRMWARE_VERSION, FIRMWARE_INO_FILENAME } from '../utils/version';
 import { getVisibleHardwareSlots } from '../data/firmwareCatalog';
 import { isTvDisabledResponse, usbHardware } from '../services/usbHardwareService';
 import { DiffConfirmModal } from './DiffConfirmModal';
@@ -101,15 +101,6 @@ interface SettingsViewProps {
   onToast: (msg: string, variant?: ToastVariant) => void;
 }
 
-const BERTOPAD_PALETTE = [
-  { label: 'Graphite', hex: '#14161B', role: 'Canvas' },
-  { label: 'Panel', hex: '#1E2128', role: 'Surface' },
-  { label: 'Bone', hex: '#ECEAE4', role: 'Text' },
-  { label: 'Muted', hex: '#A3A6AD', role: 'Secondary' },
-  { label: 'Amber', hex: '#F2A33A', role: 'Dark accent' },
-  { label: 'Amber deep', hex: '#D97706', role: 'Light accent' }
-];
-
 const KEYBOARD_LAYOUTS: { id: KeyboardLayoutId; label: string }[] = [
   { id: 'us_qwerty', label: 'US English (QWERTY)' },
   { id: 'uk_qwerty', label: 'UK English (ISO)' },
@@ -128,7 +119,7 @@ type SettingsSectionTab =
   | 'firmware'
   | 'wifi_tv'
   | 'preferences'
-  | 'console';
+  | 'developer';
 
 const BASE_SETTINGS_TABS: { id: SettingsSectionTab; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -137,7 +128,7 @@ const BASE_SETTINGS_TABS: { id: SettingsSectionTab; label: string }[] = [
   { id: 'firmware', label: 'Firmware' },
   { id: 'wifi_tv', label: 'Wi-Fi & TV' },
   { id: 'preferences', label: 'Preferences' },
-  { id: 'console', label: 'Console & Reset' }
+  { id: 'developer', label: 'Developer' }
 ];
 
 const DISPLAY_DIM_PRESETS: { label: string; seconds: number }[] = [
@@ -715,30 +706,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const showFirmware = settingsTab === 'all' || settingsTab === 'firmware';
   const showWifiTv = settingsTab === 'all' || settingsTab === 'wifi_tv';
   const showPreferences = settingsTab === 'all' || settingsTab === 'preferences';
-  const showConsole = settingsTab === 'all' || settingsTab === 'console';
+  const showDeveloper = settingsTab === 'developer';
 
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-workspace-section">
       <div className="max-w-3xl mx-auto space-y-6">
         <div className="space-y-3.5">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <h1 className="text-lg font-bold text-[var(--text-primary)]">
-                Settings & Diagnostics
-              </h1>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Device diagnostics, OLED display power, motion gestures, firmware updates, Bluetooth hosts, Wi-Fi, SmartCast TV pairing, preferences, and serial console.
-              </p>
-            </div>
-            {connection.connected && (
-              <button
-                type="button"
-                onClick={onPullFromUsb}
-                className="px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
-              >
-                Refresh Status
-              </button>
-            )}
+          <div>
+            <h1 className="text-lg font-bold text-[var(--text-primary)]">
+              Settings
+            </h1>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Bluetooth hosts, OLED display, motion gestures, firmware updates, Wi-Fi, SmartCast TV, and preferences.
+            </p>
           </div>
 
           {/* Segmented Settings Sub-Navigation */}
@@ -832,22 +812,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </section>
         )}
 
-        {/* 1. Live Device Diagnostics Card */}
+        {/* 1. Consumer Device Status Summary (Connection & Hosts) */}
         {showConnection && (
           <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                 <Cpu className="w-4 h-4 text-[var(--accent)]" />
-                <span>Device Diagnostics</span>
+                <span>Device Status</span>
               </div>
 
               <div className="flex items-center gap-2.5 flex-wrap">
                 <div className="flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
-                  <span>{syncStatus}</span>
-                  <span className="text-[var(--text-muted)]" aria-hidden="true">
-                    ·
+                  <span>
+                    {connection.connected
+                      ? `${syncStatus} · ${connection.deviceName}`
+                      : 'Offline'}
                   </span>
-                  <span>{connection.connected ? connection.deviceName : 'Disconnected'}</span>
                   {connection.connected && connection.lastSyncedAt && (
                     <>
                       <span className="text-[var(--text-muted)]" aria-hidden="true">
@@ -860,343 +840,103 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                {connection.connected && (
                   <button
                     type="button"
-                    onClick={handleCopyDiagnostics}
-                    title="Copy full diagnostics report to clipboard"
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                    disabled={diagRefreshing}
+                    onClick={async () => {
+                      setDiagRefreshing(true);
+                      try {
+                        await usbHardware.fetchStatus();
+                        onToast('Refreshed device status');
+                      } catch (err: any) {
+                        onToast(err?.message || 'Could not query BertoPad status', 'error');
+                      } finally {
+                        setDiagRefreshing(false);
+                      }
+                    }}
+                    title="Refresh live status from BertoPad"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    <Copy className="w-3 h-3 text-[var(--accent)]" />
-                    <span>Copy diagnostics</span>
+                    <RefreshCw
+                      className={`w-3 h-3 ${diagRefreshing ? 'animate-spin text-[var(--accent)]' : ''}`}
+                    />
+                    <span>Refresh</span>
                   </button>
-                  {connection.connected && (
-                    <button
-                      type="button"
-                      disabled={diagRefreshing}
-                      onClick={async () => {
-                        setDiagRefreshing(true);
-                        try {
-                          await usbHardware.fetchStatus();
-                          onToast('Refreshed live hardware diagnostics');
-                        } catch (err: any) {
-                          onToast(err?.message || 'Could not query BertoPad status', 'error');
-                        } finally {
-                          setDiagRefreshing(false);
-                        }
-                      }}
-                      title="Poll /api/status from BertoPad right now (also auto-updates every 4s)"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap"
-                    >
-                      <RefreshCw
-                        className={`w-3 h-3 ${diagRefreshing ? 'animate-spin text-[var(--accent)]' : ''}`}
-                      />
-                      <span>Refresh</span>
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
             </div>
 
-            {(() => {
-              const fullDeviceId = connection.deviceId || currentDeviceId || '';
-              const liveRev =
-                connection.connected && typeof connection.rev === 'number'
-                  ? connection.rev
-                  : currentRev;
-              const reportedRawFw = telemetry?.reportedFirmwareVersion;
-              const hasEmbeddedFwDiff = Boolean(
-                connection.connected &&
-                  reportedRawFw &&
-                  reportedRawFw !== connection.firmwareVersion
-              );
-              const heapBytes = telemetry?.freeHeap ?? 0;
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-1">
+                <div className="text-[11px] text-[var(--text-muted)]">Connection</div>
+                <div className="font-semibold text-[var(--text-primary)] truncate">
+                  {connection.connected
+                    ? isDemo
+                      ? 'Demo Mode'
+                      : 'USB Connected'
+                    : 'Offline'}
+                </div>
+                <div className="text-[11px] text-[var(--text-muted)] truncate">
+                  {connection.connected
+                    ? connection.deviceName
+                    : currentDeviceId
+                    ? 'Drafts saved locally'
+                    : 'Connect pad via USB'}
+                </div>
+              </div>
 
-              return (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-2.5 text-xs">
-                    {/* Device ID (2 cols on desktop so full ESP32 MAC ID never truncates) */}
-                    <div className="sm:col-span-2 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-[var(--text-muted)]">Device ID</span>
-                        {fullDeviceId && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(fullDeviceId);
-                                onToast(`Copied Device ID (${fullDeviceId})`);
-                              } catch {
-                                onToast('Could not copy Device ID', 'error');
-                              }
-                            }}
-                            title="Copy full Device ID"
-                            className="inline-flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
-                          >
-                            <Copy className="w-3 h-3" />
-                            <span>Copy</span>
-                          </button>
-                        )}
-                      </div>
-                      <div className="font-mono font-bold text-[var(--text-primary)] break-all tabular-nums">
-                        {fullDeviceId || '—'}
-                      </div>
-                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-                        {connection.connected
-                          ? isDemo
-                            ? 'Virtual Demo Transport'
-                            : `USB Serial 115,200 bd${
-                                connection.vendorProduct ? ` · ${connection.vendorProduct}` : ''
-                              }`
-                          : currentDeviceId
-                          ? 'Cached offline workspace'
-                          : 'No BertoPad connected'}
-                      </div>
-                    </div>
+              <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-1">
+                <div className="text-[11px] text-[var(--text-muted)]">Firmware</div>
+                <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                  {connection.connected
+                    ? connection.firmwareVersion
+                    : settings.lastKnownFirmware || '—'}
+                </div>
+                <div className="text-[11px] text-[var(--text-muted)]">
+                  {connection.connected ? 'Up to date' : 'Connect USB to read'}
+                </div>
+              </div>
 
-                    {/* Firmware Version */}
-                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
-                      <div className="text-[11px] text-[var(--text-muted)]">
-                        {connection.connected ? 'Firmware version' : 'Last synced FW'}
-                      </div>
-                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
-                        {connection.connected
-                          ? connection.firmwareVersion
-                          : settings.lastKnownFirmware || '—'}
-                      </div>
-                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-                        {hasEmbeddedFwDiff
-                          ? `config.h: ${reportedRawFw}`
-                          : connection.connected
-                          ? telemetry?.supportsNativeDelay
-                            ? 'Native Delay + 512B'
-                            : 'Standard BertoLink'
-                          : 'Connect USB to read'}
-                      </div>
-                    </div>
+              <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-1">
+                <div className="text-[11px] text-[var(--text-muted)]">Wireless Host</div>
+                <div className="font-semibold text-[var(--text-primary)] truncate">
+                  {connection.connected && telemetry
+                    ? profiles.find(p => p.id === bleSlotToProfileId(telemetry.bleActiveHost))?.name ||
+                      telemetry.bleDeviceName
+                    : '—'}
+                </div>
+                <div className="text-[11px] text-[var(--text-muted)]">
+                  {connection.connected && telemetry
+                    ? telemetry.bleConnected
+                      ? 'Bluetooth connected'
+                      : 'Advertising'
+                    : '3 saved hosts'}
+                </div>
+              </div>
 
-                    {/* API Version */}
-                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
-                      <div className="text-[11px] text-[var(--text-muted)]">API version</div>
-                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
-                        {connection.connected && telemetry ? `v${telemetry.apiVersion}` : '—'}
-                      </div>
-                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-                        {connection.connected && telemetry
-                          ? telemetry.connectionType || 'USB'
-                          : 'BertoLink JSON'}
-                      </div>
-                    </div>
-
-                    {/* Config Revision */}
-                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
-                      <div className="text-[11px] text-[var(--text-muted)]">Config revision</div>
-                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
-                        rev {liveRev}
-                      </div>
-                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-                        {connection.connected && telemetry
-                          ? `Active: ${telemetry.activeProfile}`
-                          : 'Local NVS mirror'}
-                      </div>
-                    </div>
-
-                    {/* Free SRAM */}
-                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
-                      <div className="text-[11px] text-[var(--text-muted)]">Free SRAM</div>
-                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
-                        {connection.connected && telemetry && heapBytes > 0
-                          ? `${(heapBytes / 1024).toFixed(1)} KB`
-                          : '—'}
-                      </div>
-                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-                        {connection.connected && telemetry && heapBytes > 0
-                          ? typeof telemetry.minFreeHeap === 'number' && telemetry.minFreeHeap > 0
-                            ? `Min ${(telemetry.minFreeHeap / 1024).toFixed(1)} KB`
-                            : `${heapBytes.toLocaleString()} B free`
-                          : 'ESP32 heap'}
-                      </div>
-                    </div>
-
-                    {/* NVS Flash Entry Meter (v4.8+ `nvs_used` / `nvs_free`) */}
-                    {(() => {
-                      const hasNvs =
-                        connection.connected &&
-                        typeof telemetry?.nvsUsed === 'number' &&
-                        typeof telemetry?.nvsFree === 'number';
-                      const nvsUsed = hasNvs ? Math.max(0, telemetry!.nvsUsed!) : 0;
-                      const nvsFree = hasNvs ? Math.max(0, telemetry!.nvsFree!) : 0;
-                      const nvsTotal = nvsUsed + nvsFree;
-                      const nvsPct =
-                        hasNvs && nvsTotal > 0
-                          ? Math.min(100, Math.round((nvsUsed / nvsTotal) * 100))
-                          : 0;
-                      const isHighNvs = hasNvs && nvsPct >= 85;
-
-                      return (
-                        <div className="sm:col-span-4 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] text-[var(--text-muted)]">
-                              NVS storage
-                            </span>
-                            <span
-                              className={`font-mono text-[11px] font-semibold tabular-nums ${
-                                !hasNvs
-                                  ? 'text-[var(--text-muted)]'
-                                  : isHighNvs
-                                  ? 'text-[#D97706]'
-                                  : 'text-[var(--accent)]'
-                              }`}
-                            >
-                              {hasNvs ? `${nvsPct}% used` : '—'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
-                              {hasNvs
-                                ? `${nvsUsed.toLocaleString()} / ${nvsTotal.toLocaleString()} entries`
-                                : '—'}
-                            </span>
-                            <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-                              {hasNvs
-                                ? `${nvsFree.toLocaleString()} free`
-                                : connection.connected
-                                ? 'Requires FW v4.8+'
-                                : 'Connect USB to read'}
-                            </span>
-                          </div>
-
-                          <div
-                            role="progressbar"
-                            aria-label="NVS storage usage"
-                            aria-valuemin={0}
-                            aria-valuemax={hasNvs && nvsTotal > 0 ? nvsTotal : 100}
-                            aria-valuenow={hasNvs ? nvsUsed : 0}
-                            className="h-2 w-full rounded-full bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-hidden"
-                          >
-                            <div
-                              style={{
-                                width: hasNvs
-                                  ? `${Math.max(nvsUsed > 0 ? 2 : 0, nvsPct)}%`
-                                  : '0%'
-                              }}
-                              className={`h-full rounded-full transition-opacity ${
-                                isHighNvs ? 'bg-[#D97706]' : 'bg-[var(--accent)]'
-                              }`}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Uptime & Boot Health (v4.8+ `uptime_s` / `boot_reason` / `abnormal_resets`) */}
-                    <div className="sm:col-span-2 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-[var(--text-muted)]">Uptime & boot</span>
-                        {connection.connected &&
-                          typeof telemetry?.abnormalResets === 'number' &&
-                          telemetry.abnormalResets > 0 && (
-                            <button
-                              type="button"
-                              disabled={clearingCrashBusy}
-                              onClick={handleClearCrashDiagnostics}
-                              title="Clear abnormal reset counter in NVS"
-                              className="font-mono text-[10px] text-[#D97706] hover:underline cursor-pointer disabled:opacity-45"
-                            >
-                              Clear ({telemetry.abnormalResets})
-                            </button>
-                          )}
-                      </div>
-                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
-                        {connection.connected ? formatUptime(telemetry?.uptimeSeconds) : '—'}
-                      </div>
-                      <div className="font-mono text-[10px] text-[var(--text-muted)] truncate tabular-nums">
-                        {connection.connected && telemetry
-                          ? telemetry.abnormalResets && telemetry.abnormalResets > 0
-                            ? `${telemetry.abnormalResets} crash${
-                                telemetry.abnormalResets === 1 ? '' : 'es'
-                              }${
-                                telemetry.lastAbnormalReset
-                                  ? ` · ${telemetry.lastAbnormalReset}`
-                                  : ''
-                              }`
-                            : telemetry.bootReason
-                            ? `Boot: ${telemetry.bootReason}`
-                            : 'Nominal boot'
-                          : 'ESP32 reset health'}
-                      </div>
-                    </div>
-
-
-                  </div>
-
-                  {connection.connected && telemetry && (
-                    <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center gap-x-2.5 gap-y-1 flex-wrap font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
-                      <span>
-                        BLE:{' '}
-                        <span
-                          className={
-                            telemetry.bleConnected
-                              ? 'text-[var(--accent)] font-semibold'
-                              : 'text-[var(--text-muted)]'
-                          }
-                        >
-                          H{telemetry.bleActiveHost} {telemetry.bleDeviceName} (
-                          {telemetry.bleConnected ? 'Connected' : 'Advertising'})
-                        </span>
-                      </span>
-                      <span className="text-[var(--text-muted)]" aria-hidden="true">
-                        ·
-                      </span>
-                      <span>
-                        Wi-Fi:{' '}
-                        <span
-                          className={
-                            telemetry.wifiConnected
-                              ? 'text-[var(--accent)] font-semibold'
-                              : 'text-[var(--text-muted)]'
-                          }
-                        >
-                          {telemetry.wifiConnected
-                            ? `${telemetry.ssid || 'Online'}${
-                                telemetry.ip ? ` (${telemetry.ip})` : ''
-                              }`
-                            : telemetry.ssid
-                            ? `${telemetry.ssid} (Offline)`
-                            : 'Not configured'}
-                        </span>
-                      </span>
-                      <span className="text-[var(--text-muted)]" aria-hidden="true">
-                        ·
-                      </span>
-                      <span>
-                        TV:{' '}
-                        <span
-                          className={
-                            telemetry.tvPaired
-                              ? 'text-[var(--accent)] font-semibold'
-                              : 'text-[var(--text-muted)]'
-                          }
-                        >
-                          {telemetry.tvPaired
-                            ? `Paired (${telemetry.tvHost}:${telemetry.tvPort})`
-                            : telemetry.tvConfigured
-                            ? `${telemetry.tvHost} (Unpaired)`
-                            : 'Unpaired'}
-                        </span>
-                      </span>
-                      <span className="text-[var(--text-muted)]" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-[var(--text-muted)]">
-                        Events: {telemetry.eventsEnabled !== false ? 'Live' : 'Muted'}
-                      </span>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
+              <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-1">
+                <div className="text-[11px] text-[var(--text-muted)]">Wi-Fi &amp; TV</div>
+                <div className="font-semibold text-[var(--text-primary)] truncate">
+                  {connection.connected && telemetry
+                    ? telemetry.wifiConnected
+                      ? telemetry.ssid || 'Wi-Fi Online'
+                      : telemetry.tvPaired
+                      ? 'TV Paired'
+                      : 'Not configured'
+                    : '—'}
+                </div>
+                <div className="text-[11px] text-[var(--text-muted)] truncate">
+                  {connection.connected && telemetry
+                    ? telemetry.tvPaired
+                      ? `SmartCast TV (${telemetry.tvHost})`
+                      : telemetry.wifiConnected
+                      ? 'SmartCast TV not paired'
+                      : 'Configure in Wi-Fi & TV'
+                    : 'Stored on pad'}
+                </div>
+              </div>
+            </div>
 
             {isDemo && telemetry && (
               <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 flex-wrap">
@@ -1253,106 +993,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* 1B. MacroPad Firmware Updates + Source Studio */}
+        {/* 1B. MacroPad Firmware Updates */}
         {showFirmware && (
-          <>
-            <FirmwareUpdaterCard
-              settings={settings}
-              connection={connection}
-              firmwareUpdate={firmwareUpdate}
-              installProgress={installProgress}
-              isUploadingFirmware={isUploadingFirmware}
-              isFirmwareBannerDismissed={isFirmwareBannerDismissed}
-              onDismissFirmwareBanner={onDismissFirmwareBanner}
-              onCheckFirmwareUpdate={onCheckFirmwareUpdate}
-              onUploadFirmwareToMacropad={onUploadFirmwareToMacropad}
-              onUploadLocalFirmwareFile={onUploadLocalFirmwareFile}
-              onUpdateSettings={onUpdateSettings}
-              onExportBackupFile={onExportBackupFile}
-              onToast={onToast}
-            />
-
-            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div className="space-y-1 min-w-0">
-                  <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
-                    <Code2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                    <span>ESP32 Firmware {STUDIO_VERSION} Source Studio</span>
-                    <span className="font-mono text-[11px] font-medium text-[var(--text-muted)]">
-                      · Arduino / PlatformIO
-                    </span>
-                  </div>
-                  <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                    Complete C++ sketch engineered for your 9-button + dual rotary encoder ESP32 BertoPad with Bluetooth multi-host isolation, timed pairing mode, TV mode toggle, and macro repeat/delays.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setFirmwareBinGuideOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    <HelpCircle className="w-3.5 h-3.5 text-[var(--accent)]" />
-                    <span>Firmware .bin Guide</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={sourceBusy}
-                    onClick={handleCopyV47Source}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-                    <span>Copy C++ Sketch</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={sourceBusy}
-                    onClick={handleDownloadV47Source}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download {FIRMWARE_INO_FILENAME}</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="pt-3.5 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-xs text-[var(--text-secondary)]">
-                <div>
-                  <div className="font-semibold text-[var(--text-primary)]">
-                    Dual Rotary Encoders &amp; GPIO Pinout
-                  </div>
-                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums">
-                    Knob 1 on GPIO 32 / 33 / 25 · Knob 2 on CLK GPIO 34, DT GPIO 35 (external 3.3V pull-ups), SW GPIO 15 (internal pull-up).
-                  </div>
-                </div>
-                <div>
-                  <div className="font-semibold text-[var(--text-primary)]">
-                    Native DELAY:&lt;ms&gt; &amp; 8 KB Serial Buffer
-                  </div>
-                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums">
-                    Runs up to 10 s per DELAY step unplugged, with 512 B per-slot NVS storage and 8,192 B JSON frames.
-                  </div>
-                </div>
-                <div>
-                  <div className="font-semibold text-[var(--text-primary)]">
-                    Hardware Panic-Cancel &amp; Velocity Dials
-                  </div>
-                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    Tap any physical key during a wait to abort a running macro; fast spins accelerate both knobs 2×–3×.
-                  </div>
-                </div>
-                <div>
-                  <div className="font-semibold text-[var(--text-primary)]">
-                    TV Mode Toggle &amp; Radio-Safe USB OTA
-                  </div>
-                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    Switch TV mode on/off in NVS without losing bindings, plus BLE/Wi-Fi quiescing during 128×64 OLED OTA flashes.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
+          <FirmwareUpdaterCard
+            settings={settings}
+            connection={connection}
+            firmwareUpdate={firmwareUpdate}
+            installProgress={installProgress}
+            isUploadingFirmware={isUploadingFirmware}
+            isFirmwareBannerDismissed={isFirmwareBannerDismissed}
+            onDismissFirmwareBanner={onDismissFirmwareBanner}
+            onCheckFirmwareUpdate={onCheckFirmwareUpdate}
+            onUploadFirmwareToMacropad={onUploadFirmwareToMacropad}
+            onUploadLocalFirmwareFile={onUploadLocalFirmwareFile}
+            onUpdateSettings={onUpdateSettings}
+            onExportBackupFile={onExportBackupFile}
+            onToast={onToast}
+          />
         )}
 
         {/* 2. Multi-Host Bluetooth Engine */}
@@ -1374,7 +1031,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span>Multi-Host Bluetooth Engine</span>
                   {connection.connected && telemetry && (
                     <span className="font-mono text-[11px] font-semibold text-[var(--accent)] tabular-nums">
-                      · H{telemetry.bleActiveHost} {telemetry.bleDeviceName}
+                      · {telemetry.bleDeviceName}
                     </span>
                   )}
                 </div>
@@ -1394,7 +1051,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }`}
             >
               {!connection.connected
-                ? 'Pad Disconnected'
+                ? 'Pad Offline'
                 : telemetry?.bleConnected
                 ? 'BLE Connected'
                 : 'BLE Disconnected'}
@@ -1428,19 +1085,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       onClick={() => handleSwitchBleHost(slot)}
                       className="min-w-0 text-left cursor-pointer disabled:cursor-default flex-1"
                     >
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[11px] font-bold text-[var(--accent)] tabular-nums shrink-0">
-                          H{slot}
-                        </span>
-                        <span className="text-[var(--text-muted)]" aria-hidden="true">
-                          ·
-                        </span>
-                        <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                          {customName}
-                        </span>
+                      <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                        {customName}
                       </div>
-                      <div className="font-mono text-[11px] text-[var(--text-muted)] mt-0.5 truncate tabular-nums">
-                        BertoPad · Slot {slot}
+                      <div className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
+                        Bluetooth Host {slot}
                       </div>
                     </button>
                     {isActive && (
@@ -1519,7 +1168,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <h2 id="settings-display-heading">Display</h2>
                 </div>
                 <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                  Configure 128×64 SSD1306 OLED idle dimming, screen-off sleep timeout, and peak brightness contrast stored on the pad.
+                  Configure OLED idle dimming, screen-off sleep timeout, and peak contrast stored on the pad.
                 </p>
               </div>
 
@@ -1763,7 +1412,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Motion
               </h2>
               <span className="font-mono text-[11px] text-[var(--text-muted)]">
-                {connection.connected ? 'Stored on pad NVS' : 'Connect USB pad to manage'}
+                {connection.connected ? 'Stored on pad' : 'Connect USB pad to manage'}
               </span>
             </div>
 
@@ -2175,39 +1824,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
 
-          <div className="space-y-2 pt-3 border-t border-[var(--border-subtle)]">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="text-xs font-medium text-[var(--text-secondary)]">
-                BertoPad Brand Palette
-              </span>
-              <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
-                Accent adapts automatically (#F2A33A dark · #D97706 light)
-              </span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-              {BERTOPAD_PALETTE.map(swatch => (
-                <div
-                  key={swatch.hex}
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]"
-                >
-                  <span
-                    className="w-4 h-4 rounded-md border border-[var(--border-strong)] shrink-0"
-                    style={{ backgroundColor: swatch.hex }}
-                  />
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
-                      {swatch.label}
-                    </div>
-                    <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-                      {swatch.hex}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-[var(--border-subtle)]">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[var(--border-subtle)]">
             {/* Live Events Toggle */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-[var(--text-secondary)]">
@@ -2236,10 +1853,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
 
-            {/* Tactile Switch Audio */}
+            {/* Switch Sound */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-[var(--text-secondary)]">
-                Tactile Switch Audio
+                Audio
               </label>
               <button
                 type="button"
@@ -2258,35 +1875,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </span>
                 <span className="font-mono text-[11px] text-[var(--text-muted)]">
                   {settings.soundEnabled ? 'ON' : 'OFF'}
-                </span>
-              </button>
-            </div>
-
-            {/* Advanced Raw Firmware IDs Toggle */}
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-[var(--text-secondary)]">
-                Advanced Labels
-              </label>
-              <button
-                type="button"
-                onClick={() =>
-                  onUpdateSettings({ showAdvancedIds: !settings.showAdvancedIds })
-                }
-                title="Show or hide raw firmware command strings like PLAY_PAUSE and VOL_DOWN"
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--text-primary)] cursor-pointer"
-              >
-                <span className="flex items-center gap-2">
-                  <Code2
-                    className={`w-4 h-4 ${
-                      settings.showAdvancedIds
-                        ? 'text-[var(--accent)]'
-                        : 'text-[var(--text-muted)]'
-                    }`}
-                  />
-                  <span>Raw Firmware IDs</span>
-                </span>
-                <span className="font-mono text-[11px] text-[var(--text-muted)]">
-                  {settings.showAdvancedIds ? 'ON' : 'OFF'}
                 </span>
               </button>
             </div>
@@ -2391,113 +1979,493 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* 7. Debug Console (Redacted Serial Traffic + Copy & Clear) */}
-        {showConsole && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-              <Terminal className="w-4 h-4 text-[var(--accent)]" />
-              <span>Debug console</span>
-              <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
-                ({debugLogs.length} lines · secrets redacted)
-              </span>
-            </div>
+        {/* Developer Tab: Hardware Internals, Raw IDs, Source Studio & Serial Console */}
+        {showDeveloper && (
+          <div className="space-y-5">
+            {/* Detailed Hardware & Memory Diagnostics */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+                  <Cpu className="w-4 h-4 text-[var(--accent)]" />
+                  <span>Hardware &amp; Memory Diagnostics</span>
+                </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleCopyDebugConsole}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>Copy</span>
-              </button>
-              <button
-                type="button"
-                disabled={debugLogs.length === 0}
-                onClick={() => {
-                  usbHardware.clearDebugLogs();
-                  onToast('Cleared debug console');
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Clear</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="h-44 overflow-y-auto rounded-xl bg-[#14161B] border border-[var(--border-subtle)] p-3 font-mono text-[11px] space-y-1 tabular-nums">
-            {debugLogs.length === 0 ? (
-              <div className="text-[#A3A6AD] py-4 text-center">
-                No serial traffic logged yet. Connect the USB pad or start demo mode to inspect JSON lines.
-              </div>
-            ) : (
-              debugLogs.map(entry => (
-                <div key={entry.id} className="flex items-start gap-2 leading-relaxed break-all">
-                  <span className="text-[#A3A6AD] shrink-0">{entry.timestamp}</span>
-                  <span
-                    className={`uppercase font-bold shrink-0 ${
-                      entry.direction === 'tx'
-                        ? 'text-[#F2A33A]'
-                        : entry.direction === 'rx'
-                        ? 'text-[#ECEAE4]'
-                        : entry.direction === 'error'
-                        ? 'text-[#D97706]'
-                        : 'text-[#A3A6AD]'
-                    }`}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyDiagnostics}
+                    title="Copy full diagnostics report to clipboard"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    {entry.direction}
-                  </span>
-                  <span className="text-[#ECEAE4]">{entry.line}</span>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Collapsible Advanced Developer Protocol Reference */}
-          <div className="pt-2 border-t border-[var(--border-subtle)]">
-            <button
-              type="button"
-              onClick={() => setShowAdvancedProtocol(v => !v)}
-              className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] cursor-pointer"
-            >
-              {showAdvancedProtocol ? (
-                <ChevronDown className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5" />
-              )}
-              <span>Advanced serial & HTTP protocol details</span>
-            </button>
-            {showAdvancedProtocol && (
-              <div className="mt-2.5 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-[11px] text-[var(--text-muted)] space-y-1 leading-relaxed">
-                <div>
-                  USB Serial: 115200 baud NDJSON ·{' '}
-                  <span className="text-[var(--text-secondary)]">/api/status</span>,{' '}
-                  <span className="text-[var(--text-secondary)]">/api/profiles</span>,{' '}
-                  <span className="text-[var(--text-secondary)]">/api/customizer/save</span>,{' '}
-                  <span className="text-[var(--text-secondary)]">/api/macro/test</span>,{' '}
-                  <span className="text-[var(--text-secondary)]">/api/macro/cancel</span>
-                </div>
-                <div>
-                  Provisioning:{' '}
-                  <span className="text-[var(--text-secondary)]">{"{\"mode\":\"setup\"}"}</span>{' '}
-                  · <span className="text-[var(--text-secondary)]">/api/setup/complete</span> ·{' '}
-                  <span className="text-[var(--text-secondary)]">/api/auth/set</span> ·{' '}
-                  <span className="text-[var(--text-secondary)]">/api/events/set</span>
-                </div>
-                <div>
-                  ESP32 Flash Layout: Compatible with Standard Dual-OTA and Huge APP (3MB No OTA) via WebSerial bootloader or{' '}
-                  <span className="text-[var(--text-secondary)]">/api/ota/begin</span>.
+                    <Copy className="w-3 h-3 text-[var(--accent)]" />
+                    <span>Copy diagnostics</span>
+                  </button>
+                  {connection.connected && (
+                    <button
+                      type="button"
+                      disabled={diagRefreshing}
+                      onClick={async () => {
+                        setDiagRefreshing(true);
+                        try {
+                          await usbHardware.fetchStatus();
+                          onToast('Refreshed live hardware diagnostics');
+                        } catch (err: any) {
+                          onToast(err?.message || 'Could not query BertoPad status', 'error');
+                        } finally {
+                          setDiagRefreshing(false);
+                        }
+                      }}
+                      title="Poll /api/status from BertoPad right now (also auto-updates every 4s)"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      <RefreshCw
+                        className={`w-3 h-3 ${diagRefreshing ? 'animate-spin text-[var(--accent)]' : ''}`}
+                      />
+                      <span>Refresh</span>
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
+
+              {(() => {
+                const fullDeviceId = connection.deviceId || currentDeviceId || '';
+                const liveRev =
+                  connection.connected && typeof connection.rev === 'number'
+                    ? connection.rev
+                    : currentRev;
+                const reportedRawFw = telemetry?.reportedFirmwareVersion;
+                const hasEmbeddedFwDiff = Boolean(
+                  connection.connected &&
+                    reportedRawFw &&
+                    reportedRawFw !== connection.firmwareVersion
+                );
+                const heapBytes = telemetry?.freeHeap ?? 0;
+
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-2.5 text-xs">
+                    <div className="sm:col-span-2 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-[var(--text-muted)]">Device ID</span>
+                        {fullDeviceId && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(fullDeviceId);
+                                onToast(`Copied Device ID (${fullDeviceId})`);
+                              } catch {
+                                onToast('Could not copy Device ID', 'error');
+                              }
+                            }}
+                            title="Copy full Device ID"
+                            className="inline-flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </button>
+                        )}
+                      </div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] break-all tabular-nums">
+                        {fullDeviceId || '—'}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                        {connection.connected
+                          ? isDemo
+                            ? 'Virtual Demo Transport'
+                            : `USB Serial 115,200 bd${
+                                connection.vendorProduct ? ` · ${connection.vendorProduct}` : ''
+                              }`
+                          : currentDeviceId
+                          ? 'Cached offline workspace'
+                          : 'No BertoPad connected'}
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="text-[11px] text-[var(--text-muted)]">
+                        {connection.connected ? 'Firmware version' : 'Last synced FW'}
+                      </div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                        {connection.connected
+                          ? connection.firmwareVersion
+                          : settings.lastKnownFirmware || '—'}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                        {hasEmbeddedFwDiff
+                          ? `config.h: ${reportedRawFw}`
+                          : connection.connected
+                          ? telemetry?.supportsNativeDelay
+                            ? 'Native Delay + 512B'
+                            : 'Standard BertoLink'
+                          : 'Connect USB to read'}
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="text-[11px] text-[var(--text-muted)]">API version</div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                        {connection.connected && telemetry ? `v${telemetry.apiVersion}` : '—'}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                        {connection.connected && telemetry
+                          ? telemetry.connectionType || 'USB'
+                          : 'BertoLink JSON'}
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="text-[11px] text-[var(--text-muted)]">Config revision</div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                        rev {liveRev}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                        {connection.connected && telemetry
+                          ? `Active: ${telemetry.activeProfile}`
+                          : 'Local NVS mirror'}
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="text-[11px] text-[var(--text-muted)]">Free SRAM</div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                        {connection.connected && telemetry && heapBytes > 0
+                          ? `${(heapBytes / 1024).toFixed(1)} KB`
+                          : '—'}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                        {connection.connected && telemetry && heapBytes > 0
+                          ? typeof telemetry.minFreeHeap === 'number' && telemetry.minFreeHeap > 0
+                            ? `Min ${(telemetry.minFreeHeap / 1024).toFixed(1)} KB`
+                            : `${heapBytes.toLocaleString()} B free`
+                          : 'ESP32 heap'}
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const hasNvs =
+                        connection.connected &&
+                        typeof telemetry?.nvsUsed === 'number' &&
+                        typeof telemetry?.nvsFree === 'number';
+                      const nvsUsed = hasNvs ? Math.max(0, telemetry!.nvsUsed!) : 0;
+                      const nvsFree = hasNvs ? Math.max(0, telemetry!.nvsFree!) : 0;
+                      const nvsTotal = nvsUsed + nvsFree;
+                      const nvsPct =
+                        hasNvs && nvsTotal > 0
+                          ? Math.min(100, Math.round((nvsUsed / nvsTotal) * 100))
+                          : 0;
+                      const isHighNvs = hasNvs && nvsPct >= 85;
+
+                      return (
+                        <div className="sm:col-span-4 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-[var(--text-muted)]">
+                              NVS storage
+                            </span>
+                            <span
+                              className={`font-mono text-[11px] font-semibold tabular-nums ${
+                                !hasNvs
+                                  ? 'text-[var(--text-muted)]'
+                                  : isHighNvs
+                                  ? 'text-[#D97706]'
+                                  : 'text-[var(--accent)]'
+                              }`}
+                            >
+                              {hasNvs ? `${nvsPct}% used` : '—'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                              {hasNvs
+                                ? `${nvsUsed.toLocaleString()} / ${nvsTotal.toLocaleString()} entries`
+                                : '—'}
+                            </span>
+                            <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                              {hasNvs
+                                ? `${nvsFree.toLocaleString()} free`
+                                : connection.connected
+                                ? 'Requires FW v4.8+'
+                                : 'Connect USB to read'}
+                            </span>
+                          </div>
+
+                          <div
+                            role="progressbar"
+                            aria-label="NVS storage usage"
+                            aria-valuemin={0}
+                            aria-valuemax={hasNvs && nvsTotal > 0 ? nvsTotal : 100}
+                            aria-valuenow={hasNvs ? nvsUsed : 0}
+                            className="h-2 w-full rounded-full bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-hidden"
+                          >
+                            <div
+                              style={{
+                                width: hasNvs
+                                  ? `${Math.max(nvsUsed > 0 ? 2 : 0, nvsPct)}%`
+                                  : '0%'
+                              }}
+                              className={`h-full rounded-full transition-opacity ${
+                                isHighNvs ? 'bg-[#D97706]' : 'bg-[var(--accent)]'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="sm:col-span-2 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between gap-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-[var(--text-muted)]">Uptime & boot</span>
+                        {connection.connected &&
+                          typeof telemetry?.abnormalResets === 'number' &&
+                          telemetry.abnormalResets > 0 && (
+                            <button
+                              type="button"
+                              disabled={clearingCrashBusy}
+                              onClick={handleClearCrashDiagnostics}
+                              title="Clear abnormal reset counter in NVS"
+                              className="font-mono text-[10px] text-[#D97706] hover:underline cursor-pointer disabled:opacity-45"
+                            >
+                              Clear ({telemetry.abnormalResets})
+                            </button>
+                          )}
+                      </div>
+                      <div className="font-mono font-bold text-[var(--text-primary)] tabular-nums">
+                        {connection.connected ? formatUptime(telemetry?.uptimeSeconds) : '—'}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] truncate tabular-nums">
+                        {connection.connected && telemetry
+                          ? telemetry.abnormalResets && telemetry.abnormalResets > 0
+                            ? `${telemetry.abnormalResets} crash${
+                                telemetry.abnormalResets === 1 ? '' : 'es'
+                              }${
+                                telemetry.lastAbnormalReset
+                                  ? ` · ${telemetry.lastAbnormalReset}`
+                                  : ''
+                              }`
+                            : telemetry.bootReason
+                            ? `Boot: ${telemetry.bootReason}`
+                            : 'Nominal boot'
+                          : 'ESP32 reset health'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Raw Firmware IDs Toggle */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                  <Code2 className="w-4 h-4 text-[var(--accent)]" />
+                  <span>Raw Firmware IDs</span>
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Show underlying firmware tokens (such as PLAY_PAUSE, VOL_DOWN, and slot codes) next to plain-English action names.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSettings({ showAdvancedIds: !settings.showAdvancedIds })
+                }
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+              >
+                <span className="font-mono text-[11px] text-[var(--accent)]">
+                  {settings.showAdvancedIds ? 'Shown' : 'Hidden'}
+                </span>
+              </button>
+            </div>
+
+            {/* ESP32 Firmware Source Studio */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
+                    <Code2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                    <span>ESP32 Firmware {STUDIO_VERSION} Source Studio</span>
+                    <span className="font-mono text-[11px] font-medium text-[var(--text-muted)]">
+                      · Arduino / PlatformIO
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                    Complete C++ sketch engineered for your 9-button + dual rotary encoder ESP32 BertoPad with Bluetooth multi-host isolation, timed pairing mode, TV mode toggle, and macro repeat/delays.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setFirmwareBinGuideOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    <span>Firmware .bin Guide</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={sourceBusy}
+                    onClick={handleCopyV47Source}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                    <span>Copy C++ Sketch</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={sourceBusy}
+                    onClick={handleDownloadV47Source}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download {FIRMWARE_INO_FILENAME}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-3.5 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-xs text-[var(--text-secondary)]">
+                <div>
+                  <div className="font-semibold text-[var(--text-primary)]">
+                    Dual Rotary Encoders &amp; GPIO Pinout
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums">
+                    Knob 1 on GPIO 32 / 33 / 25 · Knob 2 on CLK GPIO 34, DT GPIO 35 (external 3.3V pull-ups), SW GPIO 15 (internal pull-up).
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-[var(--text-primary)]">
+                    Native DELAY:&lt;ms&gt; &amp; 8 KB Serial Buffer
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums">
+                    Runs up to 10 s per DELAY step unplugged, with 512 B per-slot NVS storage and 8,192 B JSON frames.
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-[var(--text-primary)]">
+                    Hardware Panic-Cancel &amp; Velocity Dials
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    Tap any physical key during a wait to abort a running macro; fast spins accelerate both knobs 2×–3×.
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-[var(--text-primary)]">
+                    TV Mode Toggle &amp; Radio-Safe USB OTA
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    Switch TV mode on/off in NVS without losing bindings, plus BLE/Wi-Fi quiescing during 128×64 OLED OTA flashes.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Debug Console (Redacted Serial Traffic + Copy & Clear) */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+                  <Terminal className="w-4 h-4 text-[var(--accent)]" />
+                  <span>Debug console</span>
+                  <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                    ({debugLogs.length} lines · secrets redacted)
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyDebugConsole}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={debugLogs.length === 0}
+                    onClick={() => {
+                      usbHardware.clearDebugLogs();
+                      onToast('Cleared debug console');
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="h-44 overflow-y-auto rounded-xl bg-[#14161B] border border-[var(--border-subtle)] p-3 font-mono text-[11px] space-y-1 tabular-nums">
+                {debugLogs.length === 0 ? (
+                  <div className="text-[#A3A6AD] py-4 text-center">
+                    No serial traffic logged yet. Connect the USB pad or start demo mode to inspect JSON lines.
+                  </div>
+                ) : (
+                  debugLogs.map(entry => (
+                    <div key={entry.id} className="flex items-start gap-2 leading-relaxed break-all">
+                      <span className="text-[#A3A6AD] shrink-0">{entry.timestamp}</span>
+                      <span
+                        className={`uppercase font-bold shrink-0 ${
+                          entry.direction === 'tx'
+                            ? 'text-[#F2A33A]'
+                            : entry.direction === 'rx'
+                            ? 'text-[#ECEAE4]'
+                            : entry.direction === 'error'
+                            ? 'text-[#D97706]'
+                            : 'text-[#A3A6AD]'
+                        }`}
+                      >
+                        {entry.direction}
+                      </span>
+                      <span className="text-[#ECEAE4]">{entry.line}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Collapsible Advanced Developer Protocol Reference */}
+              <div className="pt-2 border-t border-[var(--border-subtle)]">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedProtocol(v => !v)}
+                  className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] cursor-pointer"
+                >
+                  {showAdvancedProtocol ? (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  )}
+                  <span>Advanced serial &amp; HTTP protocol details</span>
+                </button>
+                {showAdvancedProtocol && (
+                  <div className="mt-2.5 p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-[11px] text-[var(--text-muted)] space-y-1 leading-relaxed">
+                    <div>
+                      USB Serial: 115200 baud NDJSON ·{' '}
+                      <span className="text-[var(--text-secondary)]">/api/status</span>,{' '}
+                      <span className="text-[var(--text-secondary)]">/api/profiles</span>,{' '}
+                      <span className="text-[var(--text-secondary)]">/api/customizer/save</span>,{' '}
+                      <span className="text-[var(--text-secondary)]">/api/macro/test</span>,{' '}
+                      <span className="text-[var(--text-secondary)]">/api/macro/cancel</span>
+                    </div>
+                    <div>
+                      Provisioning:{' '}
+                      <span className="text-[var(--text-secondary)]">{"{\"mode\":\"setup\"}"}</span>{' '}
+                      · <span className="text-[var(--text-secondary)]">/api/setup/complete</span> ·{' '}
+                      <span className="text-[var(--text-secondary)]">/api/auth/set</span> ·{' '}
+                      <span className="text-[var(--text-secondary)]">/api/events/set</span>
+                    </div>
+                    <div>
+                      ESP32 Flash Layout: Compatible with Standard Dual-OTA and Huge APP (3MB No OTA) via WebSerial bootloader or{' '}
+                      <span className="text-[var(--text-secondary)]">/api/ota/begin</span>.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
         )}
 
         {/* 8. Reset All 4 Profiles & Clear Browser Cache */}
-        {showConsole && (
+        {showPreferences && (
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
@@ -2505,7 +2473,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Reset all 4 profiles to factory defaults
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Asks you to type <span className="font-mono font-semibold">RESET</span> and restores universal defaults across Host 1, Host 2, Host 3, and TV while keeping Wi-Fi & TV pairing intact.
+                Asks you to type <span className="font-mono font-semibold">RESET</span> and restores universal defaults across all Bluetooth hosts and TV while keeping Wi-Fi &amp; TV pairing intact.
               </p>
             </div>
 

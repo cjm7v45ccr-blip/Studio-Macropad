@@ -3,8 +3,7 @@ import {
   HardwareProfileId,
   HardwareSlotId,
   StudioProfile,
-  isBleHostProfile,
-  profileShortTag
+  isBleHostProfile
 } from '../types/studio';
 import {
   HOLD_SLOTS,
@@ -56,9 +55,9 @@ const KNOB_1_BASE_SLOTS: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { slot: 'dial', label: 'K1 Press', icon: Disc },
-  { slot: 'enc_ccw', label: 'K1 Left', icon: RotateCcw },
-  { slot: 'enc_cw', label: 'K1 Right', icon: RotateCw }
+  { slot: 'dial', label: 'Knob 1 Press', icon: Disc },
+  { slot: 'enc_ccw', label: 'Knob 1 Left', icon: RotateCcw },
+  { slot: 'enc_cw', label: 'Knob 1 Right', icon: RotateCw }
 ];
 
 const KNOB_1_HOLD_SLOTS: {
@@ -66,8 +65,8 @@ const KNOB_1_HOLD_SLOTS: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { slot: 'push_ccw', label: 'K1 Hold+Left', icon: RotateCcw },
-  { slot: 'push_cw', label: 'K1 Hold+Right', icon: RotateCw }
+  { slot: 'push_ccw', label: 'Knob 1 Push+Left', icon: RotateCcw },
+  { slot: 'push_cw', label: 'Knob 1 Push+Right', icon: RotateCw }
 ];
 
 const KNOB_2_SLOTS: {
@@ -75,9 +74,9 @@ const KNOB_2_SLOTS: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { slot: 'dial2', label: 'K2 Press', icon: Disc },
-  { slot: 'e2_ccw', label: 'K2 Left', icon: RotateCcw },
-  { slot: 'e2_cw', label: 'K2 Right', icon: RotateCw }
+  { slot: 'dial2', label: 'Knob 2 Press', icon: Disc },
+  { slot: 'e2_ccw', label: 'Knob 2 Left', icon: RotateCcw },
+  { slot: 'e2_cw', label: 'Knob 2 Right', icon: RotateCw }
 ];
 
 export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
@@ -197,10 +196,6 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
             const isBle = isBleHostProfile(prof.id);
             const ProfileIcon = isBle ? Bluetooth : Tv;
             const isActive = prof.id === activeProfileId;
-            const assignedCount = visibleSlots.filter(s =>
-              Boolean(slots[s])
-            ).length;
-
             return (
               <section
                 key={prof.id}
@@ -213,10 +208,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                 {/* Profile Header */}
                 <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-[var(--border-subtle)]">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-strong)] font-mono text-[11px] font-bold text-[var(--accent)] tabular-nums shrink-0">
-                      [{profileShortTag(prof.id)}]
-                    </span>
-                    <ProfileIcon className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
+                    <ProfileIcon className="w-4 h-4 text-[var(--accent)] shrink-0" />
                     <h3 className="text-xs sm:text-sm font-bold text-[var(--text-primary)] truncate">
                       {prof.name}
                     </h3>
@@ -233,9 +225,6 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                         Active
                       </span>
                     )}
-                    <span className="text-[var(--text-muted)]">
-                      {assignedCount}/{controlCount} mapped
-                    </span>
                   </div>
                 </div>
 

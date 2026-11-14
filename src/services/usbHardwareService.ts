@@ -20,6 +20,7 @@ import {
   MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES,
   MOTION_SLOTS,
   STANDALONE_TICK_MS,
+  describeFirmwareAction,
   isFirmwareAtLeast,
   isHoldSlot,
   isMotionSlot,
@@ -1612,7 +1613,10 @@ class PadLinkService {
         if (!d.wifiConnected) return reply({ ok: false, message: 'Pad Wi-Fi is disconnected.' });
         if (!d.tvPaired) return reply({ ok: false, message: 'Vizio TV is not paired.' });
       }
-      return reply({ ok: true, message: `Demo pad fired ${act.replace(/\n/g, '\\n')}` });
+      return reply({
+        ok: true,
+        message: `Demo pad: ${describeFirmwareAction(act).shortLabel}`
+      });
     }
 
     if (path === '/api/wifi') {

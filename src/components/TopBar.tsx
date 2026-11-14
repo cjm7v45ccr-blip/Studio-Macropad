@@ -10,8 +10,7 @@ import {
   SyncStatusPill,
   hostOsFullLabel,
   hostOsShortLabel,
-  isBleHostProfile,
-  profileShortTag
+  isBleHostProfile
 } from '../types/studio';
 import { validateFirmwareAlias } from '../data/firmwareCatalog';
 import {
@@ -278,7 +277,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 aria-selected={selected}
                 type="button"
                 onClick={() => onSelectProfile(prof.id)}
-                title={`${prof.name} (${profileShortTag(prof.id)})${isLive ? ' — Active on hardware' : ''}`}
+                title={`${prof.name}${isLive ? ' — Active on hardware' : ''}`}
                 className={`flex h-8 items-center gap-2 rounded-lg px-2.5 sm:px-3 text-xs sm:text-sm font-medium transition cursor-pointer whitespace-nowrap shrink-0 ${
                   selected
                     ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-xs'
@@ -329,9 +328,6 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <span className="flex items-center gap-2">
                   <Pencil size={14} className="text-[var(--text-muted)]" /> Rename profile
                 </span>
-                <span className="font-mono text-[10px] text-[var(--text-muted)]">
-                  {profileShortTag(activeProfile.id)}
-                </span>
               </button>
 
               <div className="my-1 border-t border-[var(--border-subtle)]" />
@@ -352,9 +348,6 @@ export const TopBar: React.FC<TopBarProps> = ({
                     className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition cursor-pointer"
                   >
                     <span className="truncate">{target.name}</span>
-                    <span className="font-mono text-[10px] text-[var(--text-muted)]">
-                      {profileShortTag(target.id)}
-                    </span>
                   </button>
                 ))}
 
