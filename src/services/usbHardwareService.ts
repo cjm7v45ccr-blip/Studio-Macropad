@@ -778,9 +778,9 @@ class PadLinkService {
       let initialH2 = { ...FACTORY_DEFAULT_SLOTS.HOST2 };
       let initialH3 = { ...FACTORY_DEFAULT_SLOTS.HOST3 };
       let initialTv = { ...FACTORY_DEFAULT_SLOTS.TV };
-      let h1Name = 'Host 1';
-      let h2Name = 'Host 2';
-      let h3Name = 'Host 3';
+      let h1Name = 'Device 1';
+      let h2Name = 'Device 2';
+      let h3Name = 'Device 3';
       let tvName = 'TV';
       let mode: 'MAC' | 'TV' = 'MAC';
       let bleSlot: BleHostSlot = 1;
@@ -806,9 +806,12 @@ class PadLinkService {
               mode = 'MAC';
               bleSlot = 1;
             }
-            h1Name = p.h1_name || p.mac_name || 'Host 1';
-            h2Name = p.h2_name || 'Host 2';
-            h3Name = p.h3_name || 'Host 3';
+            const rawH1 = p.h1_name || p.mac_name;
+            const rawH2 = p.h2_name;
+            const rawH3 = p.h3_name;
+            h1Name = !rawH1 || rawH1 === 'Host 1' ? 'Device 1' : rawH1;
+            h2Name = !rawH2 || rawH2 === 'Host 2' ? 'Device 2' : rawH2;
+            h3Name = !rawH3 || rawH3 === 'Host 3' ? 'Device 3' : rawH3;
             tvName = p.tv_name || 'TV';
             const migrateEnc2 = (rawObj?: Record<string, any>) => {
               if (!rawObj || typeof rawObj !== 'object') return {};
@@ -2191,17 +2194,17 @@ class PadLinkService {
             items: [
               {
                 id: 'HOST1',
-                name: exp.h1_name || 'Host 1',
+                name: !exp.h1_name || exp.h1_name === 'Host 1' ? 'Device 1' : exp.h1_name,
                 controls: extractPrefix('h1', FACTORY_DEFAULT_SLOTS.HOST1)
               },
               {
                 id: 'HOST2',
-                name: exp.h2_name || 'Host 2',
+                name: !exp.h2_name || exp.h2_name === 'Host 2' ? 'Device 2' : exp.h2_name,
                 controls: extractPrefix('h2', FACTORY_DEFAULT_SLOTS.HOST2)
               },
               {
                 id: 'HOST3',
-                name: exp.h3_name || 'Host 3',
+                name: !exp.h3_name || exp.h3_name === 'Host 3' ? 'Device 3' : exp.h3_name,
                 controls: extractPrefix('h3', FACTORY_DEFAULT_SLOTS.HOST3)
               },
               {

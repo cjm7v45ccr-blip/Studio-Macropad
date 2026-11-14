@@ -792,6 +792,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     slot: HardwareSlotId;
   } | null>(null);
   const [studioSenseOpen, setStudioSenseOpen] = useState<boolean>(false);
+  const [showAllBoundSlots, setShowAllBoundSlots] = useState<boolean>(false);
   const [builderMenuOpen, setBuilderMenuOpen] = useState<boolean>(false);
   const builderMenuRef = useRef<HTMLDivElement>(null);
 
@@ -1300,6 +1301,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     repeatConfig?: TextMacroRepeatConfig
   ) => {
     setSelectedMacroId(macroId);
+    setShowAllBoundSlots(false);
     setRecordingStepId(null);
     setIsRecordingSequence(false);
     setStepRecorderError(null);
@@ -2575,9 +2577,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-              <div className="flex-1 min-w-0 space-y-2">
-                <div className="flex items-center gap-2">
+            <div className="space-y-2.5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
                   <input
                     id="macro-sequence-name"
                     type="text"
@@ -2591,115 +2593,25 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     placeholder={smartNameSuggestion || 'Name this Smart Action…'}
                     className="w-full bg-transparent text-lg sm:text-xl font-bold text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border-b border-transparent hover:border-[var(--border-strong)] focus:border-[var(--accent)] focus:outline-none py-0.5 transition-colors"
                   />
-                </div>
-
-                {showSmartRenameHint && (
-                  <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                    <span>Suggested name:</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMacroName(smartNameSuggestion);
-                        setAutoNamingActive(true);
-                      }}
-                      className="font-semibold text-[var(--accent)] hover:underline cursor-pointer truncate"
-                    >
-                      {smartNameSuggestion}
-                    </button>
-                  </div>
-                )}
-
-                {/* Compact Stats · Estimated Run Time · Storage Badge · Bound Provenance */}
-                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-[var(--text-secondary)] tabular-nums">
-                  <span className="font-mono">
-                    {macroSteps.length} {macroSteps.length === 1 ? 'step' : 'steps'}
-                  </span>
-                  <span className="text-[var(--text-muted)]" aria-hidden="true">
-                    ·
-                  </span>
-                  <span
-                    className="font-mono"
-                    title={`Estimated run time: ${formatDurationCompact(
-                      timingSummary.totalDelayMs
-                    )} explicit wait + ${
-                      timingSummary.firmwareOverheadMs
-                    } ms firmware pacing (50 ms after each step)`}
-                  >
-                    ~{formatDurationCompact(timingSummary.estimatedRunMs)} est. run
-                  </span>
-                  <span className="text-[var(--text-muted)]" aria-hidden="true">
-                    ·
-                  </span>
-                  <span
-                    title="Onboard macro slot storage usage (512 B max per key)"
-                    className={`font-mono text-[11px] ${
-                      memoryOverflow
-                        ? 'text-[#D97706] font-semibold'
-                        : draftValidation.byteLength > 400
-                        ? 'text-[var(--accent)] font-medium'
-                        : 'text-[var(--text-secondary)]'
-                    }`}
-                  >
-                    {draftValidation.byteLength} / {draftValidation.maxBytes} B
-                  </span>
-                  {needsLiveRunner && (
-                    <>
-                      <span className="text-[var(--text-muted)]" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-[var(--accent)] font-medium">
-                        USB Assisted
-                      </span>
-                    </>
-                  )}
-                  {!isTvEnabled && actionContainsTvSteps(builtAction, builtRepeatConfig) && (
-                    <>
-                      <span className="text-[var(--text-muted)]" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-[var(--accent)] font-medium">
-                        TV off
-                      </span>
-                    </>
-                  )}
-                  <span className="text-[var(--text-muted)]" aria-hidden="true">
-                    ·
-                  </span>
-                  {activeMacroBoundSlots.length > 0 ? (
-                    <span className="inline-flex items-center gap-1.5 flex-wrap">
-                      {activeMacroBoundSlots.map((b, bIdx) => (
-                        <React.Fragment key={`${b.profileId}-${b.slot}`}>
-                          {bIdx > 0 && (
-                            <span className="text-[var(--text-muted)]" aria-hidden="true">
-                              ·
-                            </span>
-                          )}
-                          {onJumpToControl ? (
-                            <button
-                              type="button"
-                              onClick={() => onJumpToControl(b.profileId, b.slot)}
-                              className="px-1.5 py-0.5 rounded-md bg-[var(--accent-soft)] font-mono text-[11px] font-medium text-[var(--accent)] hover:underline cursor-pointer"
-                            >
-                              {profileShortTag(b.profileId)} {SLOT_LABELS[b.slot].short}
-                            </button>
-                          ) : (
-                            <span className="font-mono text-[11px] text-[var(--accent)] font-medium">
-                              {profileShortTag(b.profileId)} {SLOT_LABELS[b.slot].short}
-                            </span>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-[var(--text-muted)]">
-                      Unassigned
-                    </span>
+                  {showSmartRenameHint && (
+                    <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                      <span>Suggested name:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMacroName(smartNameSuggestion);
+                          setAutoNamingActive(true);
+                        }}
+                        className="font-semibold text-[var(--accent)] hover:underline cursor-pointer truncate"
+                      >
+                        {smartNameSuggestion}
+                      </button>
+                    </div>
                   )}
                 </div>
-              </div>
 
-              {/* Clean Studio Action Toolbar */}
-              <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                {/* Clean Studio Action Toolbar */}
+                <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                 <div className="flex items-center rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-0.5">
                   <button
                     type="button"
@@ -2786,6 +2698,111 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       <span>Preview & test</span>
                     </button>
                   </>
+                )}
+                </div>
+              </div>
+
+              {/* Full-width Metadata · Estimated Run Time · Storage · Bound Slots */}
+              <div className="w-full flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-[var(--text-secondary)] tabular-nums">
+                <span className="font-mono whitespace-nowrap">
+                  {macroSteps.length} {macroSteps.length === 1 ? 'step' : 'steps'}
+                </span>
+                <span className="text-[var(--text-muted)]" aria-hidden="true">
+                  ·
+                </span>
+                <span
+                  className="font-mono whitespace-nowrap"
+                  title={`Estimated run time: ${formatDurationCompact(
+                    timingSummary.totalDelayMs
+                  )} explicit wait + ${
+                    timingSummary.firmwareOverheadMs
+                  } ms firmware pacing (50 ms after each step)`}
+                >
+                  ~{formatDurationCompact(timingSummary.estimatedRunMs)} est. run
+                </span>
+                <span className="text-[var(--text-muted)]" aria-hidden="true">
+                  ·
+                </span>
+                <span
+                  title="Onboard macro slot storage usage (512 B max per key)"
+                  className={`font-mono text-[11px] whitespace-nowrap ${
+                    memoryOverflow
+                      ? 'text-[#D97706] font-semibold'
+                      : draftValidation.byteLength > 400
+                      ? 'text-[var(--accent)] font-medium'
+                      : 'text-[var(--text-secondary)]'
+                  }`}
+                >
+                  {draftValidation.byteLength} / {draftValidation.maxBytes} B
+                </span>
+                {needsLiveRunner && (
+                  <>
+                    <span className="text-[var(--text-muted)]" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="text-[var(--accent)] font-medium whitespace-nowrap">
+                      USB Assisted
+                    </span>
+                  </>
+                )}
+                {!isTvEnabled && actionContainsTvSteps(builtAction, builtRepeatConfig) && (
+                  <>
+                    <span className="text-[var(--text-muted)]" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="text-[var(--accent)] font-medium whitespace-nowrap">
+                      TV off
+                    </span>
+                  </>
+                )}
+                <span className="text-[var(--text-muted)]" aria-hidden="true">
+                  ·
+                </span>
+                {activeMacroBoundSlots.length > 0 ? (
+                  <div className="inline-flex items-center gap-1.5 flex-wrap">
+                    {(showAllBoundSlots
+                      ? activeMacroBoundSlots
+                      : activeMacroBoundSlots.slice(0, 3)
+                    ).map(b =>
+                      onJumpToControl ? (
+                        <button
+                          key={`${b.profileId}-${b.slot}`}
+                          type="button"
+                          onClick={() => onJumpToControl(b.profileId, b.slot)}
+                          title={`Jump to ${b.profileName} · ${SLOT_LABELS[b.slot].short}`}
+                          className="px-1.5 py-0.5 rounded-md bg-[var(--accent-soft)] font-mono text-[11px] font-medium text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0"
+                        >
+                          {profileShortTag(b.profileId)} {SLOT_LABELS[b.slot].short}
+                        </button>
+                      ) : (
+                        <span
+                          key={`${b.profileId}-${b.slot}`}
+                          className="px-1.5 py-0.5 rounded-md bg-[var(--accent-soft)] font-mono text-[11px] text-[var(--accent)] font-medium whitespace-nowrap shrink-0"
+                        >
+                          {profileShortTag(b.profileId)} {SLOT_LABELS[b.slot].short}
+                        </span>
+                      )
+                    )}
+                    {activeMacroBoundSlots.length > 3 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllBoundSlots(v => !v)}
+                        title={activeMacroBoundSlots
+                          .slice(3)
+                          .map(b => `${profileShortTag(b.profileId)} ${SLOT_LABELS[b.slot].short}`)
+                          .join(', ')}
+                        className="px-1.5 py-0.5 rounded-md bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] font-mono text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 transition-colors"
+                      >
+                        {showAllBoundSlots
+                          ? 'Show fewer'
+                          : `+${activeMacroBoundSlots.length - 3} more`}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-[var(--text-muted)] whitespace-nowrap">
+                    Unassigned
+                  </span>
                 )}
               </div>
             </div>

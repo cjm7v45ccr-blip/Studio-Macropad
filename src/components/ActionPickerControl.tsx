@@ -679,7 +679,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               type="button"
               onClick={onOpenMacroBuilder}
               title="Open multi-step sequence builder for this control"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               <Sliders className="w-3 h-3 text-[var(--accent)]" />
               <span>Sequence</span>
@@ -690,7 +690,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             <button
               type="button"
               onClick={onStopRepeat}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--accent-soft)] hover:opacity-90 text-[11px] font-semibold text-[var(--accent)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--accent-soft)] hover:opacity-90 border border-[var(--accent)] text-[11px] font-semibold text-[var(--accent)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               <Square className="w-3 h-3 fill-current" />
               <span>Stop</span>
@@ -705,7 +705,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 title={
                   'Review a safe dry-run timeline before optionally running real actions'
                 }
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] text-[11px] font-semibold text-[var(--text-primary)] disabled:opacity-40 shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] disabled:opacity-40 shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Play className="w-3 h-3 text-[var(--accent)]" />
                 <span>Preview & test</span>

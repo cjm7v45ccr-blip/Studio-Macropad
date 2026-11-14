@@ -552,7 +552,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <Cpu size={14} /> Firmware Rev
                 </span>
                 <span className="font-mono text-[var(--text-primary)] font-medium tabular-nums">
-                  v{connection.firmwareVersion || '4.10.1'} (Rev {connection.rev ?? currentRev})
+                  v{(connection.firmwareVersion || '4.10.1').replace(/^[vV]+/, '')} (Rev {connection.rev ?? currentRev})
                 </span>
               </div>
             </div>

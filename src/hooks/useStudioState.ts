@@ -157,6 +157,18 @@ function migrateStoredSlotRecord(rawObj?: Record<string, any>): Partial<Record<H
   return out;
 }
 
+function normalizeHostAlias(
+  rawName: string | undefined | null,
+  id: HardwareProfileId
+): string {
+  const trimmed = (rawName || '').trim();
+  if (!trimmed) return defaultProfileAlias(id);
+  if (id === 'HOST1' && trimmed === 'Host 1') return 'Device 1';
+  if (id === 'HOST2' && trimmed === 'Host 2') return 'Device 2';
+  if (id === 'HOST3' && trimmed === 'Host 3') return 'Device 3';
+  return trimmed;
+}
+
 function readStoredPadRecord(deviceId: string): StoredPadRecord | null {
   try {
     const raw = localStorage.getItem(`pad:${deviceId}`);
@@ -166,10 +178,10 @@ function readStoredPadRecord(deviceId: string): StoredPadRecord | null {
     const rawProfiles = parsed.profiles as SerializedPadProfiles;
     const normalizedProfiles: SerializedPadProfiles = {
       active: normalizeHardwareProfileId(rawProfiles.active, 1),
-      h1_name: rawProfiles.h1_name || rawProfiles.mac_name || 'Host 1',
-      h2_name: rawProfiles.h2_name || 'Host 2',
-      h3_name: rawProfiles.h3_name || 'Host 3',
-      tv_name: rawProfiles.tv_name || 'TV',
+      h1_name: normalizeHostAlias(rawProfiles.h1_name || rawProfiles.mac_name, 'HOST1'),
+      h2_name: normalizeHostAlias(rawProfiles.h2_name, 'HOST2'),
+      h3_name: normalizeHostAlias(rawProfiles.h3_name, 'HOST3'),
+      tv_name: normalizeHostAlias(rawProfiles.tv_name, 'TV'),
       h1: {
         ...FACTORY_DEFAULT_SLOTS.HOST1,
         ...migrateStoredSlotRecord(rawProfiles.mac),
@@ -331,13 +343,13 @@ export function snapshotToSerializedProfiles(
 ): SerializedPadProfiles {
   const h1Prof =
     profiles.find(p => p.id === 'HOST1') ||
-    buildHardwareProfile('HOST1', 'Host 1', FACTORY_DEFAULT_SLOTS.HOST1);
+    buildHardwareProfile('HOST1', 'Device 1', FACTORY_DEFAULT_SLOTS.HOST1);
   const h2Prof =
     profiles.find(p => p.id === 'HOST2') ||
-    buildHardwareProfile('HOST2', 'Host 2', FACTORY_DEFAULT_SLOTS.HOST2);
+    buildHardwareProfile('HOST2', 'Device 2', FACTORY_DEFAULT_SLOTS.HOST2);
   const h3Prof =
     profiles.find(p => p.id === 'HOST3') ||
-    buildHardwareProfile('HOST3', 'Host 3', FACTORY_DEFAULT_SLOTS.HOST3);
+    buildHardwareProfile('HOST3', 'Device 3', FACTORY_DEFAULT_SLOTS.HOST3);
   const tvProf =
     profiles.find(p => p.id === 'TV') ||
     buildHardwareProfile('TV', 'TV', FACTORY_DEFAULT_SLOTS.TV);
@@ -434,12 +446,18 @@ export function statusPacketToSerializedProfiles(
 
   return {
     active: normalizeHardwareProfileId(pkt.profiles?.active, activeHost),
-    h1_name:
-      h1Item?.name || (activeHost === 1 && macItem?.name ? macItem.name : 'Host 1'),
-    h2_name:
-      h2Item?.name || (activeHost === 2 && macItem?.name ? macItem.name : 'Host 2'),
-    h3_name:
-      h3Item?.name || (activeHost === 3 && macItem?.name ? macItem.name : 'Host 3'),
+    h1_name: normalizeHostAlias(
+      h1Item?.name || (activeHost === 1 && macItem?.name ? macItem.name : undefined),
+      'HOST1'
+    ),
+    h2_name: normalizeHostAlias(
+      h2Item?.name || (activeHost === 2 && macItem?.name ? macItem.name : undefined),
+      'HOST2'
+    ),
+    h3_name: normalizeHostAlias(
+      h3Item?.name || (activeHost === 3 && macItem?.name ? macItem.name : undefined),
+      'HOST3'
+    ),
     tv_name: tvItem?.name || 'TV',
     h1: buildHostSlots(1, h1Item, FACTORY_DEFAULT_SLOTS.HOST1),
     h2: buildHostSlots(2, h2Item, FACTORY_DEFAULT_SLOTS.HOST2),
@@ -506,10 +524,10 @@ function getSerializedProfileName(
   serialized: SerializedPadProfiles,
   id: HardwareProfileId
 ): string {
-  if (id === 'TV') return serialized.tv_name || 'TV';
-  if (id === 'HOST2') return serialized.h2_name || 'Host 2';
-  if (id === 'HOST3') return serialized.h3_name || 'Host 3';
-  return serialized.h1_name || 'Host 1';
+  if (id === 'TV') return normalizeHostAlias(serialized.tv_name, 'TV');
+  if (id === 'HOST2') return normalizeHostAlias(serialized.h2_name, 'HOST2');
+  if (id === 'HOST3') return normalizeHostAlias(serialized.h3_name, 'HOST3');
+  return normalizeHostAlias(serialized.h1_name, 'HOST1');
 }
 
 function serializedProfilesToStudioProfiles(
@@ -610,13 +628,13 @@ export function buildBackupFromProfiles(
 ): HardwareBackupPayload {
   const h1Prof =
     profiles.find(p => p.id === 'HOST1') ||
-    buildHardwareProfile('HOST1', 'Host 1', FACTORY_DEFAULT_SLOTS.HOST1);
+    buildHardwareProfile('HOST1', 'Device 1', FACTORY_DEFAULT_SLOTS.HOST1);
   const h2Prof =
     profiles.find(p => p.id === 'HOST2') ||
-    buildHardwareProfile('HOST2', 'Host 2', FACTORY_DEFAULT_SLOTS.HOST2);
+    buildHardwareProfile('HOST2', 'Device 2', FACTORY_DEFAULT_SLOTS.HOST2);
   const h3Prof =
     profiles.find(p => p.id === 'HOST3') ||
-    buildHardwareProfile('HOST3', 'Host 3', FACTORY_DEFAULT_SLOTS.HOST3);
+    buildHardwareProfile('HOST3', 'Device 3', FACTORY_DEFAULT_SLOTS.HOST3);
   const tvProf =
     profiles.find(p => p.id === 'TV') ||
     buildHardwareProfile('TV', 'TV', FACTORY_DEFAULT_SLOTS.TV);
@@ -849,7 +867,7 @@ export function useStudioState(
             deviceId: lastId,
             rev: rec.rev,
             dirty: rec.dirty,
-            hasStoredPad: true,
+            hasStoredPad: lastId !== 'demo-pad',
             tvEnabled: bootTvEnabled,
             inferredHostOsMap: !initialUiPrefs.hadStoredHostOsMap
               ? {
@@ -1047,9 +1065,14 @@ export function useStudioState(
     } catch {}
   }, [settings, userPresets, snapshot.customMacros, appearanceOverrides]);
 
+  const wasConnectedRef = useRef<boolean>(usbHardware.info.connected);
+
   useEffect(() => {
     const unsub = usbHardware.onConnectionChange(info => {
       setIsConnected(info.connected);
+      if (info.connected) {
+        wasConnectedRef.current = true;
+      }
       if (info.connected && info.telemetry) {
         const liveTv = info.telemetry.tvEnabled !== false;
         setLiveTvEnabled(liveTv);
@@ -1088,6 +1111,10 @@ export function useStudioState(
         );
       }
       if (!info.connected) {
+        if (wasConnectedRef.current) {
+          wasConnectedRef.current = false;
+          setIsSyncedWithHardware(false);
+        }
         setLiveTvEnabled(null);
         setSavingCount(0);
         setConflictPrompt(null);
@@ -2439,9 +2466,9 @@ export function useStudioState(
   const resetBothProfilesToDefault = useCallback(async () => {
     const prevSnap = snapshotRef.current;
     const nextProfiles: StudioProfile[] = [
-      buildHardwareProfile('HOST1', 'Host 1', { ...FACTORY_DEFAULT_SLOTS.HOST1 }),
-      buildHardwareProfile('HOST2', 'Host 2', { ...FACTORY_DEFAULT_SLOTS.HOST2 }),
-      buildHardwareProfile('HOST3', 'Host 3', { ...FACTORY_DEFAULT_SLOTS.HOST3 }),
+      buildHardwareProfile('HOST1', 'Device 1', { ...FACTORY_DEFAULT_SLOTS.HOST1 }),
+      buildHardwareProfile('HOST2', 'Device 2', { ...FACTORY_DEFAULT_SLOTS.HOST2 }),
+      buildHardwareProfile('HOST3', 'Device 3', { ...FACTORY_DEFAULT_SLOTS.HOST3 }),
       buildHardwareProfile('TV', 'TV', { ...FACTORY_DEFAULT_SLOTS.TV })
     ];
     const activeHostSlot = usbHardware.info.telemetry?.bleActiveHost ?? 1;
@@ -3194,28 +3221,28 @@ export function useStudioState(
         profiles: [
           buildHardwareProfile(
             'HOST1',
-            backup.h1_name || backup.mac_name || prevH1?.name || 'Host 1',
+            normalizeHostAlias(backup.h1_name || backup.mac_name || prevH1?.name, 'HOST1'),
             h1Slots,
             prevH1,
             normalizedRepeats
           ),
           buildHardwareProfile(
             'HOST2',
-            backup.h2_name || prevH2?.name || 'Host 2',
+            normalizeHostAlias(backup.h2_name || prevH2?.name, 'HOST2'),
             h2Slots,
             prevH2,
             normalizedRepeats
           ),
           buildHardwareProfile(
             'HOST3',
-            backup.h3_name || prevH3?.name || 'Host 3',
+            normalizeHostAlias(backup.h3_name || prevH3?.name, 'HOST3'),
             h3Slots,
             prevH3,
             normalizedRepeats
           ),
           buildHardwareProfile(
             'TV',
-            backup.tv_name || prevTv?.name || 'TV',
+            normalizeHostAlias(backup.tv_name || prevTv?.name, 'TV'),
             tvSlots,
             prevTv,
             normalizedRepeats
@@ -3341,9 +3368,9 @@ export function useStudioState(
     } catch {}
 
     const factoryProfiles: StudioProfile[] = [
-      buildHardwareProfile('HOST1', 'Host 1', { ...FACTORY_DEFAULT_SLOTS.HOST1 }),
-      buildHardwareProfile('HOST2', 'Host 2', { ...FACTORY_DEFAULT_SLOTS.HOST2 }),
-      buildHardwareProfile('HOST3', 'Host 3', { ...FACTORY_DEFAULT_SLOTS.HOST3 }),
+      buildHardwareProfile('HOST1', 'Device 1', { ...FACTORY_DEFAULT_SLOTS.HOST1 }),
+      buildHardwareProfile('HOST2', 'Device 2', { ...FACTORY_DEFAULT_SLOTS.HOST2 }),
+      buildHardwareProfile('HOST3', 'Device 3', { ...FACTORY_DEFAULT_SLOTS.HOST3 }),
       buildHardwareProfile('TV', 'TV', { ...FACTORY_DEFAULT_SLOTS.TV })
     ];
 

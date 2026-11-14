@@ -260,6 +260,27 @@ export default function App() {
   }, [connection.connected, showToast]);
 
   useEffect(() => {
+    const handleGlobalShortcutsKey = (e: KeyboardEvent) => {
+      if (e.key !== '?' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      setShortcutsModalOpen(true);
+    };
+    window.addEventListener('keydown', handleGlobalShortcutsKey);
+    return () => window.removeEventListener('keydown', handleGlobalShortcutsKey);
+  }, []);
+
+  useEffect(() => {
     if (!activeRepeatJob) return;
     const handleGlobalEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -696,7 +717,6 @@ export default function App() {
           }
           resolvedTheme={resolvedTheme}
           onToggleTheme={handleToggleTheme}
-          onOpenShortcuts={() => setShortcutsModalOpen(true)}
           macroCount={studio.customMacros.length}
           hasFirmwareUpdate={hasFirmwareUpdateNotification}
         />

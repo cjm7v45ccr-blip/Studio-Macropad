@@ -292,22 +292,33 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   liveEventsEnabledRef.current = liveEventsEnabled;
 
   const lastPointerDownRef = useRef<{ id: string; time: number } | null>(null);
-  const lastTriggerTimeRef = useRef<number>(0);
+  const suppressNextClickRef = useRef<{ id: string; expiresAt: number } | null>(null);
 
-  const handlePointerDown = (id: string, _e: React.PointerEvent) => {
+  const handlePointerDown = (id: string, e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     lastPointerDownRef.current = { id, time: performance.now() };
   };
 
-  const handlePointerUp = (id: string, _e: React.PointerEvent, onAction: () => void) => {
+  const handlePointerUp = (
+    id: string,
+    e: React.PointerEvent,
+    onAction: () => void
+  ) => {
     const down = lastPointerDownRef.current;
     lastPointerDownRef.current = null;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (down && down.id === id) {
-      const now = performance.now();
-      if (now - lastTriggerTimeRef.current > 100) {
-        lastTriggerTimeRef.current = now;
-        onAction();
-      }
+      suppressNextClickRef.current = {
+        id,
+        expiresAt: performance.now() + 800
+      };
+      onAction();
     }
+  };
+
+  const handlePointerCancel = () => {
+    lastPointerDownRef.current = null;
+    suppressNextClickRef.current = null;
   };
 
   const triggerSlotFlash = useCallback((slot: HardwareFlashSlot) => {
@@ -331,12 +342,19 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }, 260);
   }, []);
 
-  const handleClick = (onAction: () => void) => {
-    const now = performance.now();
-    if (now - lastTriggerTimeRef.current > 60) {
-      lastTriggerTimeRef.current = now;
-      onAction();
+  const handleClick = (
+    id: string,
+    e: React.MouseEvent,
+    onAction: () => void
+  ) => {
+    const suppressed = suppressNextClickRef.current;
+    if (suppressed && performance.now() > suppressed.expiresAt) {
+      suppressNextClickRef.current = null;
+    } else if (suppressed && suppressed.id === id && e.detail !== 0) {
+      suppressNextClickRef.current = null;
+      return;
     }
+    onAction();
   };
 
   const triggerOledToast = (title: string, subtitle?: string, durationMs = 950) => {
@@ -1220,9 +1238,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               } catch {}
               handlePointerUp(`enc_${encoderIndex}_ccw`, e, () => triggerEncoderSpin(encoderIndex, 'ccw'));
             }}
+            onPointerCancel={handlePointerCancel}
             onClick={e => {
               e.stopPropagation();
-              handleClick(() => triggerEncoderSpin(encoderIndex, 'ccw'));
+              handleClick(`enc_${encoderIndex}_ccw`, e, () =>
+                triggerEncoderSpin(encoderIndex, 'ccw')
+              );
             }}
             title={`Knob ${encoderIndex} Turn Left (${ccwInfo.fullLabel}) — click to ${
               viewMode === 'edit' ? 'configure' : 'trigger'
@@ -1278,13 +1299,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             }}
             onPointerCancel={e => {
               setPressed(false);
+              handlePointerCancel();
               try {
                 if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
                   (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
                 }
               } catch {}
             }}
-            onClick={() => handleClick(() => activateDialPush(encoderIndex))}
+            onClick={e => handleClick(`dial_${encoderIndex}`, e, () => activateDialPush(encoderIndex))}
             onKeyDown={e => {
               if (e.key === 'ArrowRight') {
                 e.preventDefault();
@@ -1394,9 +1416,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               } catch {}
               handlePointerUp(`enc_${encoderIndex}_cw`, e, () => triggerEncoderSpin(encoderIndex, 'cw'));
             }}
+            onPointerCancel={handlePointerCancel}
             onClick={e => {
               e.stopPropagation();
-              handleClick(() => triggerEncoderSpin(encoderIndex, 'cw'));
+              handleClick(`enc_${encoderIndex}_cw`, e, () =>
+                triggerEncoderSpin(encoderIndex, 'cw')
+              );
             }}
             title={`Knob ${encoderIndex} Turn Right (${cwInfo.fullLabel}) — click to ${
               viewMode === 'edit' ? 'configure' : 'trigger'
@@ -1437,7 +1462,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             onPointerUp={e =>
               handlePointerUp(`enc_sub_${encoderIndex}_ccw`, e, () => triggerEncoderSpin(encoderIndex, 'ccw'))
             }
-            onClick={() => handleClick(() => triggerEncoderSpin(encoderIndex, 'ccw'))}
+            onPointerCancel={handlePointerCancel}
+            onClick={e => handleClick(`enc_sub_${encoderIndex}_ccw`, e, () => triggerEncoderSpin(encoderIndex, 'ccw'))}
             title={`Knob ${encoderIndex} Turn Left: ${ccwInfo.fullLabel}`}
             className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
               isCcwSelected ? 'text-[#F2A33A] font-semibold' : ''
@@ -1454,7 +1480,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             onPointerUp={e =>
               handlePointerUp(`enc_sub_${encoderIndex}_press`, e, () => activateDialPush(encoderIndex))
             }
-            onClick={() => handleClick(() => activateDialPush(encoderIndex))}
+            onPointerCancel={handlePointerCancel}
+            onClick={e => handleClick(`enc_sub_${encoderIndex}_press`, e, () => activateDialPush(encoderIndex))}
             title={`Knob ${encoderIndex} Press: ${dialInfo.fullLabel}`}
             className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
               isDialSelected ? 'text-[#F2A33A] font-semibold' : ''
@@ -1471,7 +1498,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             onPointerUp={e =>
               handlePointerUp(`enc_sub_${encoderIndex}_cw`, e, () => triggerEncoderSpin(encoderIndex, 'cw'))
             }
-            onClick={() => handleClick(() => triggerEncoderSpin(encoderIndex, 'cw'))}
+            onPointerCancel={handlePointerCancel}
+            onClick={e => handleClick(`enc_sub_${encoderIndex}_cw`, e, () => triggerEncoderSpin(encoderIndex, 'cw'))}
             title={`Knob ${encoderIndex} Turn Right: ${cwInfo.fullLabel}`}
             className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
               isCwSelected ? 'text-[#F2A33A] font-semibold' : ''
@@ -1493,7 +1521,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               onPointerUp={e =>
                 handlePointerUp('enc1_push_ccw', e, () => triggerEncoderHoldSpin('ccw'))
               }
-              onClick={() => handleClick(() => triggerEncoderHoldSpin('ccw'))}
+              onPointerCancel={handlePointerCancel}
+              onClick={e => handleClick('enc1_push_ccw', e, () => triggerEncoderHoldSpin('ccw'))}
               title={`Knob 1 Hold + Turn Left: ${pushCcwInfo.fullLabel}`}
               className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
                 isPushCcwSelected || isPushCcwFlashed
@@ -1514,7 +1543,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               onPointerUp={e =>
                 handlePointerUp('enc1_push_cw', e, () => triggerEncoderHoldSpin('cw'))
               }
-              onClick={() => handleClick(() => triggerEncoderHoldSpin('cw'))}
+              onPointerCancel={handlePointerCancel}
+              onClick={e => handleClick('enc1_push_cw', e, () => triggerEncoderHoldSpin('cw'))}
               title={`Knob 1 Hold + Turn Right: ${pushCwInfo.fullLabel}`}
               className={`hover:text-[#ECEAE4] transition-colors cursor-pointer truncate ${
                 isPushCwSelected || isPushCwFlashed
@@ -1599,13 +1629,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           }}
           onPointerCancel={e => {
             if (pressedKey === kid) setPressedKey(null);
+            handlePointerCancel();
             try {
               if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
                 (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
               }
             } catch {}
           }}
-          onClick={() => handleClick(() => activateKeyControl(kid))}
+          onClick={e => handleClick(`key_${kid}`, e, () => activateKeyControl(kid))}
           style={{
             borderColor: isFlashed
               ? '#F2A33A'
@@ -1723,7 +1754,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               } catch {}
               handlePointerUp(`hold_${actionKid}`, e, () => activateKeyHoldControl(actionKid));
             }}
-            onClick={() => handleClick(() => activateKeyHoldControl(actionKid))}
+            onPointerCancel={handlePointerCancel}
+            onClick={e => handleClick(`hold_${actionKid}`, e, () => activateKeyHoldControl(actionKid))}
             style={
               view3D
                 ? {
@@ -2235,7 +2267,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     type="button"
                     onPointerDown={e => handlePointerDown('oled_pull', e)}
                     onPointerUp={e => handlePointerUp('oled_pull', e, onPullFromUsb)}
-                    onClick={() => handleClick(onPullFromUsb)}
+                    onPointerCancel={handlePointerCancel}
+                    onClick={e => handleClick('oled_pull', e, onPullFromUsb)}
                     title="Refresh status & all 4 profiles"
                     style={view3D ? { transform: 'translateZ(4px)', transformStyle: 'preserve-3d', zIndex: 20 } : undefined}
                     className="text-[#ECEAE4] hover:underline flex items-center gap-1 cursor-pointer"
@@ -2265,8 +2298,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                       }
                     })
                   }
-                  onClick={() =>
-                    handleClick(() => {
+                  onPointerCancel={handlePointerCancel}
+                  onClick={e =>
+                    handleClick('oled_host', e, () => {
                       const nextSlot = (((oledBadgeHost % 3) + 1) as BleHostSlot);
                       if (connection.connected) {
                         onSwitchBleHost(nextSlot);
