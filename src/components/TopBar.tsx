@@ -13,6 +13,7 @@ import {
   isBleHostProfile
 } from '../types/studio';
 import { validateFirmwareAlias } from '../data/firmwareCatalog';
+import { FIRMWARE_VERSION } from '../utils/version';
 import {
   Undo2,
   Redo2,
@@ -597,7 +598,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <Cpu size={14} /> Firmware Rev
                 </span>
                 <span className="font-mono text-[var(--text-primary)] font-medium tabular-nums">
-                  v{(connection.firmwareVersion || '4.10.1').replace(/^[vV]+/, '')} (Rev {connection.rev ?? currentRev})
+                  v{(connection.firmwareVersion || FIRMWARE_VERSION).replace(/^[vV]+/, '')} (Rev {connection.rev ?? currentRev})
                 </span>
               </div>
             </div>

@@ -7,8 +7,42 @@ export const DEFAULT_GYRO_CALIBRATION: GyroCalibrationProfile = {
   yawOffset: 0,
   pitchScale: 1.0,
   rollScale: 1.0,
-  yawScale: 1.0
+  yawScale: 1.0,
+  invertPitch: false,
+  invertRoll: false,
+  swapXY: false,
+  deadzoneDeg: 0.4
 };
+
+export function applyMotionOrientationAndDeadzone(
+  rawPitch: number,
+  rawRoll: number,
+  rawYaw: number,
+  profile: GyroCalibrationProfile
+): { pitchDelta: number; rollDelta: number; yawDelta: number } {
+  const calibratedPitch = profile.isCalibrated
+    ? (rawPitch - profile.pitchOffset) * profile.pitchScale
+    : rawPitch;
+  const calibratedRoll = profile.isCalibrated
+    ? (rawRoll - profile.rollOffset) * profile.rollScale
+    : rawRoll;
+  const calibratedYaw = profile.isCalibrated
+    ? (rawYaw - (profile.yawOffset || 0)) * (profile.yawScale || 1.0)
+    : rawYaw;
+
+  const orientedPitch = profile.swapXY ? calibratedRoll : calibratedPitch;
+  const orientedRoll = profile.swapXY ? calibratedPitch : calibratedRoll;
+
+  const signedPitch = orientedPitch * (profile.invertPitch ? -1 : 1);
+  const signedRoll = orientedRoll * (profile.invertRoll ? -1 : 1);
+
+  const deadzone = Math.max(0, Math.min(8, Number(profile.deadzoneDeg ?? 0.4)));
+  const pitchDelta = Math.abs(signedPitch) < deadzone ? 0 : signedPitch;
+  const rollDelta = Math.abs(signedRoll) < deadzone ? 0 : signedRoll;
+  const yawDelta = Math.abs(calibratedYaw) < deadzone ? 0 : calibratedYaw;
+
+  return { pitchDelta, rollDelta, yawDelta };
+}
 
 export function computeGyroCalibration(
   flatPitch: number,
@@ -17,7 +51,8 @@ export function computeGyroCalibration(
   leftRoll: number,
   rightRoll: number,
   backwardPitch: number,
-  forwardPitch: number
+  forwardPitch: number,
+  existing?: Partial<GyroCalibrationProfile>
 ): GyroCalibrationProfile {
   const rollDiff = rightRoll - leftRoll;
   const rawRollScale = Math.abs(rollDiff) > 3 ? 60 / rollDiff : 1.0;
@@ -35,6 +70,11 @@ export function computeGyroCalibration(
     pitchScale: Number(pitchScale.toFixed(3)),
     rollScale: Number(rollScale.toFixed(3)),
     yawScale: 1.0,
+    invertPitch: Boolean(existing?.invertPitch),
+    invertRoll: Boolean(existing?.invertRoll),
+    swapXY: Boolean(existing?.swapXY),
+    deadzoneDeg: existing?.deadzoneDeg ?? 0.4,
     calibratedAt: new Date().toISOString()
   };
 }
+

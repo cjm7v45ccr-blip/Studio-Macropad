@@ -79,6 +79,8 @@ const EMPTY_HOLD_SLOTS = {
   b6h: '',
   b7h: '',
   b8h: '',
+  push_cw2: '',
+  push_ccw2: '',
   g_shake: '',
   g_down: '',
   g_up: ''
@@ -684,7 +686,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         </div>
 
         {/* Step Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
+        <div className="p-5 sm:p-6 pb-8 overflow-y-auto space-y-5 flex-1">
           {/* Connection Prompt Banner if unplugged */}
           {!connection.connected && (
             <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">

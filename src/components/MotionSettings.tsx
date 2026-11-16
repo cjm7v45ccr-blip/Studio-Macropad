@@ -12,7 +12,7 @@ import { MotionSlotId, GyroCalibrationProfile } from '../types/studio';
 import { gestureTypeToMotionSlot, SLOT_LABELS } from '../data/firmwareCatalog';
 import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
-import { computeGyroCalibration } from '../utils/motionCalibration';
+import { DEFAULT_GYRO_CALIBRATION } from '../utils/motionCalibration';
 
 export interface MotionTelemetryState {
   present: boolean;
@@ -76,20 +76,12 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
 
   // 3D Directional Calibration States
   const [profile, setProfile] = useState<GyroCalibrationProfile>(() => {
-    if (gyroCalibration) return gyroCalibration;
+    if (gyroCalibration) return { ...DEFAULT_GYRO_CALIBRATION, ...gyroCalibration };
     try {
       const raw = localStorage.getItem('bertopad_gyro_calib');
-      if (raw) return JSON.parse(raw);
+      if (raw) return { ...DEFAULT_GYRO_CALIBRATION, ...JSON.parse(raw) };
     } catch {}
-    return {
-      isCalibrated: false,
-      pitchOffset: 0,
-      rollOffset: 0,
-      yawOffset: 0,
-      pitchScale: 1.0,
-      rollScale: 1.0,
-      yawScale: 1.0
-    };
+    return { ...DEFAULT_GYRO_CALIBRATION };
   });
 
   const committedSensitivityRef = useRef<number>(effectiveSensitivity);
@@ -97,7 +89,7 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
 
   useEffect(() => {
     if (gyroCalibration) {
-      setProfile(gyroCalibration);
+      setProfile({ ...DEFAULT_GYRO_CALIBRATION, ...gyroCalibration });
     }
   }, [gyroCalibration]);
 
@@ -504,25 +496,25 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                 )}
               </div>
 
-              {(profile.isCalibrated || profile.rollScale !== 1 || profile.pitchScale !== 1 || profile.pitchOffset !== 0 || profile.rollOffset !== 0) && (
+              {(profile.isCalibrated ||
+                profile.rollScale !== 1 ||
+                profile.pitchScale !== 1 ||
+                profile.pitchOffset !== 0 ||
+                profile.rollOffset !== 0 ||
+                profile.invertPitch ||
+                profile.invertRoll ||
+                profile.swapXY ||
+                (profile.deadzoneDeg ?? 0.4) !== 0.4) && (
                 <button
                   type="button"
                   onClick={() => {
-                    const neutral: GyroCalibrationProfile = {
-                      isCalibrated: false,
-                      pitchOffset: 0,
-                      rollOffset: 0,
-                      yawOffset: 0,
-                      pitchScale: 1.0,
-                      rollScale: 1.0,
-                      yawScale: 1.0
-                    };
+                    const neutral: GyroCalibrationProfile = { ...DEFAULT_GYRO_CALIBRATION };
                     setProfile(neutral);
                     localStorage.setItem('bertopad_gyro_calib', JSON.stringify(neutral));
                     onUpdateGyroCalibration?.(neutral);
                     window.dispatchEvent(new CustomEvent('bertopad_gyro_calib_updated', { detail: neutral }));
                     soundEngine.playDialTick();
-                    onToast('3D calibration reset to uncalibrated neutral.', 'success');
+                    onToast('3D calibration & orientation reset to defaults.', 'success');
                   }}
                   className="flex items-center gap-1 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
                 >
@@ -530,6 +522,94 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                   <span>Reset Calibration</span>
                 </button>
               )}
+            </div>
+
+            {/* MPU-6050 Axis Orientation & Tilt Deadzone */}
+            <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-[var(--text-primary)]">
+                  Axis Orientation &amp; Tilt Deadzone
+                </span>
+                <span className="font-mono text-[11px] text-[var(--accent)] font-semibold tabular-nums">
+                  Deadzone {(profile.deadzoneDeg ?? 0.4).toFixed(1)}°
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {(
+                  [
+                    { key: 'invertPitch', label: 'Invert Pitch' },
+                    { key: 'invertRoll', label: 'Invert Roll' },
+                    { key: 'swapXY', label: 'Swap X-Y Axes' }
+                  ] as const
+                ).map(item => {
+                  const active = Boolean(profile[item.key]);
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        const next: GyroCalibrationProfile = {
+                          ...profile,
+                          [item.key]: !active
+                        };
+                        setProfile(next);
+                        localStorage.setItem('bertopad_gyro_calib', JSON.stringify(next));
+                        onUpdateGyroCalibration?.(next);
+                        window.dispatchEvent(
+                          new CustomEvent('bertopad_gyro_calib_updated', { detail: next })
+                        );
+                        soundEngine.playKeyClick();
+                      }}
+                      className={`px-3 py-2 rounded-lg border text-xs font-medium flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                        active
+                          ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--text-primary)]'
+                          : 'bg-[var(--bg-panel)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      <span className="font-mono text-[10px] uppercase text-[var(--accent)]">
+                        {active ? 'ON' : 'OFF'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+                <label
+                  htmlFor="mpu-deadzone-slider"
+                  className="text-[11px] font-medium text-[var(--text-secondary)] whitespace-nowrap"
+                >
+                  Deadzone angle
+                </label>
+                <input
+                  id="mpu-deadzone-slider"
+                  type="range"
+                  min={0}
+                  max={3.0}
+                  step={0.1}
+                  value={profile.deadzoneDeg ?? 0.4}
+                  onChange={e => {
+                    const nextVal = Math.max(0, Math.min(3.0, Number(e.target.value)));
+                    const next: GyroCalibrationProfile = {
+                      ...profile,
+                      deadzoneDeg: Number(nextVal.toFixed(1))
+                    };
+                    setProfile(next);
+                    localStorage.setItem('bertopad_gyro_calib', JSON.stringify(next));
+                    onUpdateGyroCalibration?.(next);
+                    window.dispatchEvent(
+                      new CustomEvent('bertopad_gyro_calib_updated', { detail: next })
+                    );
+                  }}
+                  className="flex-1 min-w-[140px] accent-[var(--accent)] cursor-pointer"
+                />
+                <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums whitespace-nowrap">
+                  0.0° – 3.0°
+                </span>
+              </div>
             </div>
 
             {calibrationStatus && (

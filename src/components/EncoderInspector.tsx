@@ -105,6 +105,9 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   const cwSlot: EncoderSubControlId = encoderIndex === 2 ? 'e2_cw' : 'enc_cw';
   const ccwSlot: EncoderSubControlId = encoderIndex === 2 ? 'e2_ccw' : 'enc_ccw';
 
+  const pushCwSlot: EncoderSubControlId = encoderIndex === 2 ? 'push_cw2' : 'push_cw';
+  const pushCcwSlot: EncoderSubControlId = encoderIndex === 2 ? 'push_ccw2' : 'push_ccw';
+
   const activeBinding: ActionBinding =
     selectedSubControl === 'dial' || selectedSubControl === 'dial2'
       ? encoder.dial
@@ -112,7 +115,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
       ? encoder.cw
       : selectedSubControl === 'enc_ccw' || selectedSubControl === 'e2_ccw'
       ? encoder.ccw
-      : selectedSubControl === 'push_cw'
+      : selectedSubControl === 'push_cw' || selectedSubControl === 'push_cw2'
       ? encoder.pushCw || { type: 'none', value: '' }
       : encoder.pushCcw || { type: 'none', value: '' };
 
@@ -213,8 +216,10 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
 
   const handleSwapDirections = () => {
     const isHoldTurn =
-      encoderIndex === 1 &&
-      (selectedSubControl === 'push_cw' || selectedSubControl === 'push_ccw');
+      selectedSubControl === 'push_cw' ||
+      selectedSubControl === 'push_ccw' ||
+      selectedSubControl === 'push_cw2' ||
+      selectedSubControl === 'push_ccw2';
 
     if (isHoldTurn) {
       const pushCwBind = encoder.pushCw || { type: 'none', value: '' };
@@ -224,18 +229,18 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
 
       const repeatOverrides: SlotRepeatMap = {};
       if (pushCcwBind.repeatConfig) {
-        repeatOverrides[`${activeProfileId}:push_cw`] = pushCcwBind.repeatConfig;
+        repeatOverrides[`${activeProfileId}:${pushCwSlot}`] = pushCcwBind.repeatConfig;
       }
       if (pushCwBind.repeatConfig) {
-        repeatOverrides[`${activeProfileId}:push_ccw`] = pushCwBind.repeatConfig;
+        repeatOverrides[`${activeProfileId}:${pushCcwSlot}`] = pushCwBind.repeatConfig;
       }
 
       onApplyKnobSlots(
         {
-          push_cw: pushCcwAct,
-          push_ccw: pushCwAct
+          [pushCwSlot]: pushCcwAct,
+          [pushCcwSlot]: pushCwAct
         },
-        'Swapped Knob 1 Hold+Left & Hold+Right directions',
+        `Swapped Knob ${encoderIndex} Hold+Left & Hold+Right directions`,
         repeatOverrides
       );
       return;
@@ -297,23 +302,20 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
     title: string;
     icon: React.ComponentType<{ className?: string }>;
     binding: ActionBinding;
-  }[] =
-    encoderIndex === 1
-      ? [
-          {
-            id: 'push_ccw',
-            title: 'Hold + Left',
-            icon: RotateCcw,
-            binding: encoder.pushCcw || { type: 'none', value: '' }
-          },
-          {
-            id: 'push_cw',
-            title: 'Hold + Right',
-            icon: RotateCw,
-            binding: encoder.pushCw || { type: 'none', value: '' }
-          }
-        ]
-      : [];
+  }[] = [
+    {
+      id: pushCcwSlot,
+      title: 'Hold + Left',
+      icon: RotateCcw,
+      binding: encoder.pushCcw || { type: 'none', value: '' }
+    },
+    {
+      id: pushCwSlot,
+      title: 'Hold + Right',
+      icon: RotateCw,
+      binding: encoder.pushCw || { type: 'none', value: '' }
+    }
+  ];
 
   return (
     <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">

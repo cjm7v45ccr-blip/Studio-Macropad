@@ -377,7 +377,11 @@ export function buildHardwareProfile(
           existingProfile?.layers[0]?.encoder2?.color || '#F2A33A',
           repeatConfigs?.[`${id}:dial2`],
           repeatConfigs?.[`${id}:e2_cw`],
-          repeatConfigs?.[`${id}:e2_ccw`]
+          repeatConfigs?.[`${id}:e2_ccw`],
+          slots?.push_cw2 || '',
+          slots?.push_ccw2 || '',
+          repeatConfigs?.[`${id}:push_cw2`],
+          repeatConfigs?.[`${id}:push_ccw2`]
         ),
         motion: buildHardwareMotion(
           slots?.g_shake || '',

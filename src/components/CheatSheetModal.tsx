@@ -9,6 +9,7 @@ import {
   HOLD_SLOTS,
   MOTION_SLOTS,
   SLOT_LABELS,
+  describeFirmwareAction,
   getVisibleHardwareSlots,
   hasKeyHoldCapability,
   hasMotionCapability
@@ -77,6 +78,15 @@ const KNOB_2_SLOTS: {
   { slot: 'dial2', label: 'Knob 2 Press', icon: Disc },
   { slot: 'e2_ccw', label: 'Knob 2 Left', icon: RotateCcw },
   { slot: 'e2_cw', label: 'Knob 2 Right', icon: RotateCw }
+];
+
+const KNOB_2_HOLD_SLOTS: {
+  slot: HardwareSlotId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { slot: 'push_ccw2', label: 'Knob 2 Push+Left', icon: RotateCcw },
+  { slot: 'push_cw2', label: 'Knob 2 Push+Right', icon: RotateCw }
 ];
 
 export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
@@ -244,7 +254,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                             onJumpToControl(prof.id, slot);
                             onClose();
                           }}
-                          title={`Configure ${prof.name} · ${SLOT_LABELS[slot].short}`}
+                          title={`${prof.name} · ${SLOT_LABELS[slot].full}: ${describeFirmwareAction(act, bind?.repeatConfig).fullLabel}`}
                           className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex items-center justify-between gap-2 text-left transition-colors cursor-pointer min-w-0"
                         >
                           <span className="font-mono text-[10px] font-semibold text-[var(--text-muted)] tabular-nums shrink-0">
@@ -366,7 +376,39 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                             onJumpToControl(prof.id, slot);
                             onClose();
                           }}
-                          title={`Configure ${prof.name} · ${SLOT_LABELS[slot].full}`}
+                          title={`${prof.name} · ${SLOT_LABELS[slot].full}: ${describeFirmwareAction(act, bind?.repeatConfig).fullLabel}`}
+                          className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
+                        >
+                          <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
+                            <KnobIcon className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{label}</span>
+                          </div>
+                          <div className="min-w-0 overflow-hidden">
+                            <ParsedActionBadge
+                              action={act}
+                              repeatConfig={bind?.repeatConfig}
+                              labelMode={labelMode}
+                              maxSteps={1}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {KNOB_2_HOLD_SLOTS.map(({ slot, label, icon: KnobIcon }) => {
+                      const act = slots[slot];
+                      const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => {
+                            onJumpToControl(prof.id, slot);
+                            onClose();
+                          }}
+                          title={`${prof.name} · ${SLOT_LABELS[slot].full}: ${describeFirmwareAction(act, bind?.repeatConfig).fullLabel}`}
                           className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
                         >
                           <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">

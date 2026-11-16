@@ -7,6 +7,7 @@ import {
 } from '../types/studio';
 import { ToastVariant } from '../hooks/useStudioState';
 import { usbHardware } from '../services/usbHardwareService';
+import { FIRMWARE_VERSION } from '../utils/version';
 import {
   Bluetooth,
   Radio,
@@ -157,7 +158,7 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
               Bluetooth Pairing &amp; Security ({activeProf.name} · Host {hostSlotNum})
             </h3>
             <p className="text-[11px] text-[var(--text-muted)] truncate">
-              Firmware v4.11.0 multi-host isolation &amp; seamless switching
+              Firmware v{FIRMWARE_VERSION} multi-host isolation &amp; seamless switching
             </p>
           </div>
         </div>

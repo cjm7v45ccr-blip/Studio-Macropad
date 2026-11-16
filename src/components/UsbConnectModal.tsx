@@ -249,7 +249,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--accent-soft)] hover:opacity-90 border border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <SlidersHorizontal className="w-3 h-3 text-[var(--accent)]" />
-                    <span>Open Setup Wizard</span>
+                    <span>Run Guided Setup</span>
                   </button>
                 </div>
               )}
@@ -360,6 +360,24 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
                   without showing the port picker again.
                 </span>
               </div>
+              {onOpenSetupWizard && (
+                <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-[11px] text-[var(--text-muted)]">
+                    First time setting up Hosts 1–3, OS layouts, or TV?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenSetupWizard();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+                  >
+                    <SlidersHorizontal className="w-3 h-3 text-[var(--accent)]" />
+                    <span>Run Guided Setup</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

@@ -192,7 +192,9 @@ const ENCODER_2_SLOTS: {
 }[] = [
   { slot: 'dial2', shortTitle: 'Knob 2 Press', icon: Disc },
   { slot: 'e2_ccw', shortTitle: 'Knob 2 Left', icon: RotateCcw },
-  { slot: 'e2_cw', shortTitle: 'Knob 2 Right', icon: RotateCw }
+  { slot: 'e2_cw', shortTitle: 'Knob 2 Right', icon: RotateCw },
+  { slot: 'push_ccw2', shortTitle: 'Knob 2 Push+L', icon: RotateCcw },
+  { slot: 'push_cw2', shortTitle: 'Knob 2 Push+R', icon: RotateCw }
 ];
 
 const STEP_TYPE_ORDER: MacroStepActionType[] = [
@@ -825,7 +827,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     setSelectedMacroId(null);
     setAutoNamingActive(false);
     setMacroName(title);
-    setMacroSteps(nextSteps);
+    setStepsDirect(nextSteps);
     setExpandedStepId(null);
     setRepeatCountInput('1');
     setLoopUntilStopped(false);
@@ -833,40 +835,99 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     commitBaseline(title, nextSteps, '1', false, '500');
   };
 
-  // Visual step sequence state + undo/redo stack
-  const [macroSteps, setMacroSteps] = useState<MacroStepConfig[]>(initialHydratedSteps);
-  const [stepPast, setStepPast] = useState<MacroStepConfig[][]>([]);
-  const [stepFuture, setStepFuture] = useState<MacroStepConfig[][]>([]);
+  // Visual step sequence state + atomic undo/redo stack
+  const [stepsHistory, setStepsHistory] = useState<{
+    steps: MacroStepConfig[];
+    past: MacroStepConfig[][];
+    future: MacroStepConfig[][];
+  }>(() => ({
+    steps: initialHydratedSteps,
+    past: [],
+    future: []
+  }));
+  const macroSteps = stepsHistory.steps;
+  const stepPast = stepsHistory.past;
+  const stepFuture = stepsHistory.future;
+  const [saveBlockedReason, setSaveBlockedReason] = useState<string | null>(null);
+
+  const setStepsDirect = (nextSteps: MacroStepConfig[]) => {
+    setSaveBlockedReason(null);
+    setStepsHistory({ steps: nextSteps, past: [], future: [] });
+  };
 
   const commitSteps = (
     updater: MacroStepConfig[] | ((prev: MacroStepConfig[]) => MacroStepConfig[]),
     recordHistory = true
   ) => {
-    setMacroSteps(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      if (recordHistory && serializeDraftSteps(prev) !== serializeDraftSteps(next)) {
-        setStepPast(h => [...h.slice(-24), prev]);
-        setStepFuture([]);
+    setSaveBlockedReason(null);
+    setStepsHistory(curr => {
+      const next = typeof updater === 'function' ? updater(curr.steps) : updater;
+      const changed = serializeDraftSteps(curr.steps) !== serializeDraftSteps(next);
+      if (!changed || !recordHistory) {
+        return { ...curr, steps: next };
       }
-      return next;
+      return {
+        steps: next,
+        past: [...curr.past.slice(-24), curr.steps],
+        future: []
+      };
     });
   };
 
   const handleUndoSteps = () => {
-    if (stepPast.length === 0) return;
-    const previous = stepPast[stepPast.length - 1];
-    setStepPast(h => h.slice(0, -1));
-    setStepFuture(f => [macroSteps, ...f.slice(0, 24)]);
-    setMacroSteps(previous);
+    setSaveBlockedReason(null);
+    setStepsHistory(curr => {
+      if (curr.past.length === 0) return curr;
+      const previous = curr.past[curr.past.length - 1];
+      return {
+        steps: previous,
+        past: curr.past.slice(0, -1),
+        future: [curr.steps, ...curr.future.slice(0, 24)]
+      };
+    });
   };
 
   const handleRedoSteps = () => {
-    if (stepFuture.length === 0) return;
-    const next = stepFuture[0];
-    setStepFuture(f => f.slice(1));
-    setStepPast(h => [...h.slice(-24), macroSteps]);
-    setMacroSteps(next);
+    setSaveBlockedReason(null);
+    setStepsHistory(curr => {
+      if (curr.future.length === 0) return curr;
+      const next = curr.future[0];
+      return {
+        steps: next,
+        past: [...curr.past.slice(-24), curr.steps],
+        future: curr.future.slice(1)
+      };
+    });
   };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey && stepPast.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleUndoSteps();
+      } else if (((key === 'z' && e.shiftKey) || (key === 'y' && !e.shiftKey)) && stepFuture.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleRedoSteps();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [stepPast.length, stepFuture.length]);
 
   // Progressive disclosure: only one step expanded at a time (null = all collapsed)
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
@@ -990,8 +1051,6 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     setIsRecordingSequence(false);
     setStepRecorderError(null);
     setSequenceRecorderNotice(null);
-    setStepPast([]);
-    setStepFuture([]);
 
     if (externalTarget.targetProfile) {
       setTargetProfile(externalTarget.targetProfile);
@@ -1035,7 +1094,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
     setAutoNamingActive(useAuto);
     setMacroName(resolvedName);
-    setMacroSteps(nextSteps);
+    setStepsDirect(nextSteps);
     setRepeatCountInput(repCountStr);
     setLoopUntilStopped(loopBool);
     setRepeatDelayInput(repDelayStr);
@@ -1320,8 +1379,6 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     setIsRecordingSequence(false);
     setStepRecorderError(null);
     setSequenceRecorderNotice(null);
-    setStepPast([]);
-    setStepFuture([]);
 
     const convertedSteps = actionToMacroSteps(action, repeatConfig);
     const nextSteps =
@@ -1337,7 +1394,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
     setAutoNamingActive(useAuto);
     setMacroName(resolvedName);
-    setMacroSteps(nextSteps);
+    setStepsDirect(nextSteps);
     setExpandedStepId(nextSteps.length === 1 ? nextSteps[0].id : null);
     setRepeatCountInput(repCountStr);
     setLoopUntilStopped(loopBool);
@@ -1351,15 +1408,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     setIsRecordingSequence(false);
     setStepRecorderError(null);
     setSequenceRecorderNotice(null);
-    setStepPast([]);
-    setStepFuture([]);
     setAutoNamingActive(false);
     setMacroName(tpl.name);
     const nextSteps = tpl.steps.map((s, idx) => ({
       ...s,
       id: `tpl-${Date.now()}-${idx}`
     }));
-    setMacroSteps(nextSteps);
+    setStepsDirect(nextSteps);
     setExpandedStepId(null);
     setRepeatCountInput('1');
     setLoopUntilStopped(false);
@@ -1373,11 +1428,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     setIsRecordingSequence(false);
     setStepRecorderError(null);
     setSequenceRecorderNotice(null);
-    setStepPast([]);
-    setStepFuture([]);
     setAutoNamingActive(true);
     setMacroName('');
-    setMacroSteps([]);
+    setStepsDirect([]);
     setExpandedStepId(null);
     setRepeatCountInput('1');
     setLoopUntilStopped(false);
@@ -1870,19 +1923,27 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     };
 
     const result = onSaveMacro(item, { forceNew, silent });
-    const savedItem = result && 'saved' in result && result.saved ? result.saved : item;
+    const savedItem = result && 'saved' in result ? result.saved : item;
+    if (!savedItem) {
+      setSaveBlockedReason('Check step limits');
+      return null;
+    }
     const updatedSlots = result && 'updatedSlotCount' in result ? result.updatedSlotCount : 0;
 
+    setSaveBlockedReason(null);
     setSelectedMacroId(savedItem.id);
-    if (!silent || !trimmedInput) {
+    const shouldSyncTitle =
+      !silent || !trimmedInput || isGenericMacroName(trimmedInput) || autoNamingActive;
+    if (shouldSyncTitle && savedItem.name !== macroName) {
       setMacroName(savedItem.name);
-      setAutoNamingActive(false);
+      if (!silent) setAutoNamingActive(false);
     }
     if (!silent) {
       setJustSavedFeedback({ mode: forceNew ? 'new' : 'saved', updatedSlots });
     }
+    const committedName = shouldSyncTitle ? savedItem.name : trimmedInput || savedItem.name;
     commitBaseline(
-      silent && trimmedInput ? trimmedInput : savedItem.name,
+      committedName,
       macroSteps,
       repeatCountInput,
       loopUntilStopped,
@@ -1907,7 +1968,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     ) {
       return;
     }
-    const delayMs = stepCountChanged ? 80 : 300;
+    const delayMs = stepCountChanged ? 80 : 180;
     const timer = setTimeout(() => {
       handleSaveMacroItem({ silent: true });
     }, delayMs);
@@ -2152,10 +2213,23 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               ) : (
                 <div className="space-y-1.5">
                   {filteredSavedMacros.map(m => {
-                    const stepsForMacro = actionToMacroSteps(m.action, m.repeatConfig);
-                    const { estimatedRunMs } = calculateStepsTiming(stepsForMacro);
                     const isSelected = selectedMacroId === m.id;
-                    const mSig = getMacroCanonicalSignature(m.action, m.repeatConfig);
+                    const useLiveDraft = isSelected && macroSteps.length > 0;
+                    const cardName = useLiveDraft
+                      ? macroName.trim() || smartNameSuggestion || m.name
+                      : m.name;
+                    const cardAction =
+                      useLiveDraft && builtAction ? builtAction : m.action;
+                    const cardRepeatConfig = useLiveDraft
+                      ? effectiveRepeatConfig
+                      : m.repeatConfig;
+                    const stepsForMacro = useLiveDraft
+                      ? macroSteps
+                      : actionToMacroSteps(m.action, m.repeatConfig);
+                    const { estimatedRunMs } = useLiveDraft
+                      ? timingSummary
+                      : calculateStepsTiming(stepsForMacro);
+                    const mSig = getMacroCanonicalSignature(cardAction, cardRepeatConfig);
                     const boundSlots = mSig ? signatureSlotUsageMap.get(mSig) || [] : [];
                     const firstBound = boundSlots[0];
 
@@ -2178,13 +2252,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           className="min-w-0 flex-1 text-left cursor-pointer space-y-1"
                         >
                           <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                            {m.name}
+                            {cardName}
                           </div>
 
                           <div className="min-w-0">
                             <ParsedActionBadge
-                              action={m.action}
-                              repeatConfig={m.repeatConfig}
+                              action={cardAction}
+                              repeatConfig={cardRepeatConfig}
                               maxSteps={2}
                               showRawId={showAdvancedIds}
                               customMacros={customMacros}
@@ -2208,7 +2282,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                 Unassigned
                               </span>
                             )}
-                            {!isTvEnabled && actionContainsTvSteps(m.action, m.repeatConfig) && (
+                            {!isTvEnabled && actionContainsTvSteps(cardAction, cardRepeatConfig) && (
                               <span className="text-[var(--accent)] font-sans font-medium">
                                 TV off
                               </span>
@@ -2661,7 +2735,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       type="button"
                       disabled={stepPast.length === 0}
                       onClick={handleUndoSteps}
-                      title="Undo step edit"
+                      title="Undo step edit (Cmd/Ctrl+Z)"
+                      aria-label="Undo step edit"
                       className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                     >
                       <Undo2 className="w-3.5 h-3.5" />
@@ -2670,7 +2745,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       type="button"
                       disabled={stepFuture.length === 0}
                       onClick={handleRedoSteps}
-                      title="Redo step edit"
+                      title="Redo step edit (Shift+Cmd/Ctrl+Z)"
+                      aria-label="Redo step edit"
                       className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                     >
                       <Redo2 className="w-3.5 h-3.5" />
@@ -3258,10 +3334,10 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
             {/* 1-Click Sequence Optimizer */}
             {optimization.canOptimize && isSequenceValid && (
-              <div className="px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2 min-w-0 text-[var(--text-secondary)]">
-                  <Wand2 className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                  <span className="truncate">{optimization.reasons.join(' · ')}</span>
+              <div className="px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-start justify-between gap-3 text-xs">
+                <div className="flex items-start gap-2 min-w-0 text-[var(--text-secondary)]">
+                  <Wand2 className="w-3.5 h-3.5 text-[var(--accent)] shrink-0 mt-0.5" />
+                  <span className="leading-relaxed break-words">{optimization.reasons.join(' · ')}</span>
                 </div>
                 <button
                   type="button"
@@ -3269,7 +3345,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     commitSteps(optimization.optimizedSteps);
                     setExpandedStepId(null);
                   }}
-                  className="font-semibold text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0"
+                  className="font-semibold text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0 mt-0.5"
                 >
                   Optimize sequence
                 </button>
@@ -3280,10 +3356,63 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
           {/* Connected Smart Actions Step Flow Timeline */}
           <section className="space-y-2.5" aria-label="Macro steps">
             <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Layers className="w-3.5 h-3.5 text-[var(--accent)]" />
                 <span className="font-semibold text-[var(--text-primary)]">
                   Action Flow
+                </span>
+                <span
+                  title="Onboard macro sequence step budget"
+                  className={`px-2 py-0.5 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] font-mono text-[10px] tabular-nums whitespace-nowrap ${
+                    macroSteps.length >= 16
+                      ? 'text-[#D97706] border-[#D97706]/50 font-semibold'
+                      : macroSteps.length >= 12
+                      ? 'text-[var(--accent)]'
+                      : 'text-[var(--text-muted)]'
+                  }`}
+                >
+                  {macroSteps.length} / 16 steps
+                </span>
+                <span
+                  title="Compiled NVS action payload size (512 B max per hardware slot)"
+                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] font-mono text-[10px] tabular-nums whitespace-nowrap ${
+                    memoryOverflow
+                      ? 'text-[#D97706] border-[#D97706]/50 font-semibold'
+                      : draftValidation.byteLength >= 384
+                      ? 'text-[var(--accent)]'
+                      : 'text-[var(--text-muted)]'
+                  }`}
+                >
+                  <span>
+                    {draftValidation.byteLength} / {draftValidation.maxBytes} B NVS
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="w-8 h-1 rounded-full bg-[var(--bg-input)] overflow-hidden inline-flex"
+                  >
+                    <span
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.max(
+                            4,
+                            Math.round(
+                              (draftValidation.byteLength /
+                                Math.max(1, draftValidation.maxBytes)) *
+                                100
+                            )
+                          )
+                        )}%`
+                      }}
+                      className={`h-full rounded-full transition-all ${
+                        memoryOverflow
+                          ? 'bg-[#D97706]'
+                          : draftValidation.byteLength >= 384
+                          ? 'bg-[var(--accent)]'
+                          : 'bg-[var(--text-secondary)]/70'
+                      }`}
+                    />
+                  </span>
                 </span>
               </div>
 
@@ -4970,6 +5099,12 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   ? 'Saved copy ✓'
                   : !isSequenceValid
                   ? 'Incomplete step'
+                  : saveBlockedReason
+                  ? saveBlockedReason
+                  : duplicateMacroMatch
+                  ? duplicateMacroMatch.reason === 'identical_actions'
+                    ? 'Duplicate sequence'
+                    : 'Name already used'
                   : isDraftDirty
                   ? 'Autosaving…'
                   : selectedMacroId

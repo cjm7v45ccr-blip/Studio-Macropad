@@ -13,6 +13,7 @@ import {
   HardwareSlotId,
   HostOsType,
   KeyId,
+  LiveInputEvent,
   MotionSlotId,
   SidebarSection,
   bleSlotToProfileId,
@@ -26,6 +27,7 @@ import {
 import { useFirmwareUpdateCheck } from './hooks/useFirmwareUpdateCheck';
 import { usbHardware } from './services/usbHardwareService';
 import { repeatMacroRunner } from './services/repeatMacroRunner';
+import { soundEngine, SoundProfile } from './services/soundEffects';
 import {
   SLOT_LABELS,
   actionToMacroSteps,
@@ -56,6 +58,8 @@ import { MacropadCanvas } from './components/MacropadCanvas';
 import { ButtonInspector } from './components/ButtonInspector';
 import { EncoderInspector } from './components/EncoderInspector';
 import { MotionInspector } from './components/MotionInspector';
+import { LiveTelemetryInspector } from './components/LiveTelemetryInspector';
+import { OledScreenComposerModal } from './components/OledScreenComposerModal';
 import { MacroEditorExternalTarget, MacroEditorView } from './components/MacroEditorView';
 import { GlobalMacroSearch } from './components/GlobalMacroSearch';
 import { LibraryView } from './components/LibraryView';
@@ -165,6 +169,22 @@ export default function App() {
   const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const [aboutModalOpen, setAboutModalOpen] = useState(false);
+  const [oledComposerOpen, setOledComposerOpen] = useState(false);
+  const [soundProfile, setSoundProfile] = useState<SoundProfile>(soundEngine.soundProfile);
+  const [testEvents, setTestEvents] = useState<LiveInputEvent[]>([]);
+
+  const handleChangeSoundProfile = useCallback((next: SoundProfile) => {
+    soundEngine.setProfile(next);
+    setSoundProfile(next);
+  }, []);
+
+  const handleAddTestEvent = useCallback((evt: LiveInputEvent) => {
+    setTestEvents(prev => [evt, ...prev].slice(0, 60));
+  }, []);
+
+  const handleClearTestEvents = useCallback(() => {
+    setTestEvents([]);
+  }, []);
 
   const [connection, setConnection] = useState<DeviceConnectionInfo>(usbHardware.info);
   const [activeRepeatJob, setActiveRepeatJob] = useState<ActiveRepeatJob | null>(
@@ -175,6 +195,8 @@ export default function App() {
     if (connection.connected) {
       setConnectOverlayOpen(false);
       setConnectModalOpen(false);
+    } else {
+      setTestEvents([]);
     }
   }, [connection.connected]);
 
@@ -481,7 +503,9 @@ export default function App() {
     selectedControl === 'encoder2' ||
     selectedControl === 'dial2' ||
     selectedControl === 'e2_cw' ||
-    selectedControl === 'e2_ccw';
+    selectedControl === 'e2_ccw' ||
+    selectedControl === 'push_cw2' ||
+    selectedControl === 'push_ccw2';
 
   const isEncoderControlSelected =
     isEncoder2Selected ||
@@ -499,6 +523,10 @@ export default function App() {
       ? 'e2_cw'
       : selectedControl === 'e2_ccw'
       ? 'e2_ccw'
+      : selectedControl === 'push_cw2'
+      ? 'push_cw2'
+      : selectedControl === 'push_ccw2'
+      ? 'push_ccw2'
       : 'dial2'
     : selectedControl === 'enc_cw'
     ? 'enc_cw'
@@ -581,7 +609,9 @@ export default function App() {
         slot === 'push_ccw' ||
         slot === 'dial2' ||
         slot === 'e2_cw' ||
-        slot === 'e2_ccw'
+        slot === 'e2_ccw' ||
+        slot === 'push_cw2' ||
+        slot === 'push_ccw2'
       ) {
         setSelectedControl(slot);
       } else if (isMotionSlot(slot)) {
@@ -714,6 +744,8 @@ export default function App() {
           onToggleSound={() =>
             studio.updateSettings({ soundEnabled: !studio.settings.soundEnabled })
           }
+          soundProfile={soundProfile}
+          onChangeSoundProfile={handleChangeSoundProfile}
           resolvedTheme={resolvedTheme}
           onToggleTheme={handleToggleTheme}
           macroCount={studio.customMacros.length}
@@ -735,6 +767,9 @@ export default function App() {
               connection={connection}
               tvEnabled={studio.tvEnabled}
               isSyncedWithHardware={studio.isSyncedWithHardware}
+              oledComposer={studio.settings.oledComposer}
+              onAddTestEvent={handleAddTestEvent}
+              onClearTestLog={handleClearTestEvents}
               onSelectControl={handleSelectCanvasControl}
               onChangeViewMode={setViewMode}
               onChangeEncoderPlacement={placement =>
@@ -750,13 +785,27 @@ export default function App() {
               onOpenSetupWizard={handleOpenSetupWizard}
               onOpenCheatSheet={() => setCheatSheetOpen(true)}
               onOpenShortcuts={() => setShortcutsModalOpen(true)}
+              onOpenOledComposer={() => setOledComposerOpen(true)}
             />
 
             <div ref={inspectorAnchorRef} className="lg:hidden shrink-0 flex items-center justify-between px-4 py-2 bg-[var(--bg-panel)] border-t border-[var(--border-subtle)] text-xs">
-              <span className="text-[var(--text-secondary)]">Selected control</span>
+              <span className="text-[var(--text-secondary)]">
+                {viewMode === 'test' ? 'Live telemetry' : 'Selected control'}
+              </span>
               <button type="button" onClick={() => deviceWorkspaceRef.current?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })} className="text-[var(--accent)] font-semibold px-2 py-1 cursor-pointer">Back to pad ↑</button>
             </div>
-            {isEncoderControlSelected ? (
+            {viewMode === 'test' ? (
+              <LiveTelemetryInspector
+                connection={connection}
+                activeProfileId={studio.activeProfile.id}
+                activeProfileName={studio.activeProfile.name}
+                testLog={testEvents}
+                gyroCalibration={studio.settings.gyroCalibration}
+                onClearLog={handleClearTestEvents}
+                onBackToEdit={() => setViewMode('edit')}
+                onSimulateHostSwitch={slot => handleSwitchBleHost(slot)}
+              />
+            ) : isEncoderControlSelected ? (
               <EncoderInspector
                 encoder={
                   selectedEncoderIndex === 2
@@ -767,21 +816,33 @@ export default function App() {
                 encoder1Color={studio.activeLayer.encoder.color}
                 encoder2Color={studio.activeLayer.encoder2.color}
                 onSelectEncoder={idx => {
+                  const isHoldCw =
+                    selectedEncoderSubControl === 'push_cw' ||
+                    selectedEncoderSubControl === 'push_cw2';
+                  const isHoldCcw =
+                    selectedEncoderSubControl === 'push_ccw' ||
+                    selectedEncoderSubControl === 'push_ccw2';
                   const isCw =
                     selectedEncoderSubControl === 'enc_cw' ||
-                    selectedEncoderSubControl === 'push_cw' ||
                     selectedEncoderSubControl === 'e2_cw';
                   const isCcw =
                     selectedEncoderSubControl === 'enc_ccw' ||
-                    selectedEncoderSubControl === 'push_ccw' ||
                     selectedEncoderSubControl === 'e2_ccw';
                   setSelectedControl(
                     idx === 2
-                      ? isCw
+                      ? isHoldCw
+                        ? 'push_cw2'
+                        : isHoldCcw
+                        ? 'push_ccw2'
+                        : isCw
                         ? 'e2_cw'
                         : isCcw
                         ? 'e2_ccw'
                         : 'dial2'
+                      : isHoldCw
+                      ? 'push_cw'
+                      : isHoldCcw
+                      ? 'push_ccw'
                       : isCw
                       ? 'enc_cw'
                       : isCcw
@@ -844,9 +905,11 @@ export default function App() {
                       : selectedEncoderSubControl === 'enc_cw' ||
                         selectedEncoderSubControl === 'e2_cw'
                       ? activeEnc.cw
-                      : selectedEncoderSubControl === 'push_cw'
+                      : selectedEncoderSubControl === 'push_cw' ||
+                        selectedEncoderSubControl === 'push_cw2'
                       ? activeEnc.pushCw ?? { type: 'none', value: '' }
-                      : selectedEncoderSubControl === 'push_ccw'
+                      : selectedEncoderSubControl === 'push_ccw' ||
+                        selectedEncoderSubControl === 'push_ccw2'
                       ? activeEnc.pushCcw ?? { type: 'none', value: '' }
                       : activeEnc.ccw;
                   handleOpenMacroBuilderForSlot(selectedEncoderSubControl, activeBind);
@@ -1062,6 +1125,7 @@ export default function App() {
             onJumpToMotionSlot={slot =>
               handleJumpToSlotControl(studio.activeProfile.id, slot)
             }
+            onOpenOledComposer={() => setOledComposerOpen(true)}
             onOpenAbout={() => setAboutModalOpen(true)}
             onToast={showToast}
           />
@@ -1179,6 +1243,17 @@ export default function App() {
       <AboutModal
         isOpen={aboutModalOpen}
         onClose={() => setAboutModalOpen(false)}
+      />
+
+      {/* 128x64 OLED Screen Composer Modal */}
+      <OledScreenComposerModal
+        isOpen={oledComposerOpen}
+        config={studio.settings.oledComposer}
+        activeProfileName={studio.activeProfile.name}
+        connection={connection}
+        onSaveConfig={next => studio.updateSettings({ oledComposer: next })}
+        onClose={() => setOledComposerOpen(false)}
+        onToast={showToast}
       />
 
       {pendingTest && (

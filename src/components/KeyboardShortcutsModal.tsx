@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, Command, Volume2 } from 'lucide-react';
-import { soundEngine, SoundProfile } from '../services/soundEffects';
+import { X, Command } from 'lucide-react';
 
 interface KeyboardShortcutsModalProps {
   isOpen: boolean;
@@ -23,6 +22,10 @@ const SHORTCUT_GROUPS: {
       { keys: ['['], description: 'Rotate Knob 1 counter-clockwise (Left)' },
       { keys: [']'], description: 'Rotate Knob 1 clockwise (Right)' },
       { keys: ['Space'], description: 'Push Knob 1 (Dial button press)' },
+      { keys: ['{'], description: 'Rotate Knob 2 counter-clockwise (Left)' },
+      { keys: ['}'], description: 'Rotate Knob 2 clockwise (Right)' },
+      { keys: ['Shift', 'Space'], description: 'Push Knob 2 (Dial button press)' },
+      { keys: ['Alt', 'Wheel'], description: 'Hold + Turn either Knob on canvas' },
       { keys: ['Alt', '1–3'], description: 'Quick-switch Device 1, 2, or 3 profile' }
     ]
   },
@@ -53,10 +56,6 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   isOpen,
   onClose
 }) => {
-  const [activeProfile, setActiveProfile] = React.useState<SoundProfile>(
-    soundEngine.soundProfile
-  );
-
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -108,36 +107,6 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
           </button>
         </div>
 
-        {/* Acoustic Sound Switcher bar */}
-        <div className="p-3 rounded-2xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Volume2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
-            <div className="text-xs">
-              <span className="font-semibold text-[var(--text-primary)]">Switch Sound: </span>
-              <span className="text-[var(--text-secondary)]">Tactile switch click synthesis</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            {(['thock', 'click', 'tactile'] as const).map(p => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => {
-                  soundEngine.setProfile(p);
-                  setActiveProfile(p);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
-                  activeProfile === p
-                    ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-xs'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Shortcut Groups */}
         <div className="space-y-4">
           {SHORTCUT_GROUPS.map(group => (
@@ -175,7 +144,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
 
         {/* Footer tip */}
         <div className="pt-2 text-center text-[11px] text-[var(--text-muted)]">
-          Tip: Press <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-input)] font-mono text-[10px]">?</kbd> anytime to open this HUD
+          Tip: Press <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-input)] font-mono text-[10px]">?</kbd> anytime to open this HUD · Adjust switch feel from <span className="text-[var(--text-secondary)] font-medium">Sound</span> in the sidebar
         </div>
       </div>
     </div>

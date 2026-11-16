@@ -150,6 +150,8 @@ function controlToHardwareSlot(control: ControlId): HardwareSlotId {
   if (control === 'dial' || control === 'encoder') return 'dial';
   if (control === 'e2_cw') return 'e2_cw';
   if (control === 'e2_ccw') return 'e2_ccw';
+  if (control === 'push_cw2') return 'push_cw2';
+  if (control === 'push_ccw2') return 'push_ccw2';
   if (control === 'dial2' || control === 'encoder2') return 'dial2';
   return 'b1';
 }
@@ -164,6 +166,8 @@ function hardwareSlotToControl(slot: HardwareSlotId): ControlId {
   if (slot === 'dial2') return 'dial2';
   if (slot === 'e2_cw') return 'e2_cw';
   if (slot === 'e2_ccw') return 'e2_ccw';
+  if (slot === 'push_cw2') return 'push_cw2';
+  if (slot === 'push_ccw2') return 'push_ccw2';
   return SLOT_TO_ACTION_KEY[slot as ButtonSlotId];
 }
 

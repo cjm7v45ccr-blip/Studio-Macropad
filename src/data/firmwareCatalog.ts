@@ -44,7 +44,9 @@ export const BASE_16_SLOTS: readonly HardwareSlotId[] = [
   'push_ccw',
   'dial2',
   'e2_cw',
-  'e2_ccw'
+  'e2_ccw',
+  'push_cw2',
+  'push_ccw2'
 ] as const;
 
 export const MOTION_SLOTS: readonly MotionSlotId[] = [
@@ -115,6 +117,8 @@ export const SLOT_LABELS: Record<HardwareSlotId, { short: string; full: string; 
   dial2: { short: 'Knob 2 Press', full: 'Knob 2 Press', pin: 'GPIO 15' },
   e2_cw: { short: 'Knob 2 Right', full: 'Knob 2 Turn Right', pin: 'GPIO 34 / 35' },
   e2_ccw: { short: 'Knob 2 Left', full: 'Knob 2 Turn Left', pin: 'GPIO 34 / 35' },
+  push_cw2: { short: 'Knob 2 Push+R', full: 'Knob 2 Hold + Turn Right', pin: 'GPIO 15 + 34 / 35' },
+  push_ccw2: { short: 'Knob 2 Push+L', full: 'Knob 2 Hold + Turn Left', pin: 'GPIO 15 + 34 / 35' },
   b1h: { short: 'Key 1 Hold', full: 'Key 1 Hold (500 ms)', pin: '' },
   b2h: { short: 'Key 2 Hold', full: 'Key 2 Hold (500 ms)', pin: '' },
   b3h: { short: 'Key 3 Hold', full: 'Key 3 Hold (500 ms)', pin: '' },
@@ -145,6 +149,8 @@ export const UNIVERSAL_BLE_DEFAULT_SLOTS: Record<HardwareSlotId, string> = {
   dial2: 'MEDIA:PLAY_PAUSE',
   e2_cw: 'SHORTCUT:cmd:=',
   e2_ccw: 'SHORTCUT:cmd:-',
+  push_cw2: '',
+  push_ccw2: '',
   b1h: '',
   b2h: '',
   b3h: '',
@@ -182,6 +188,8 @@ export const FACTORY_DEFAULT_SLOTS: Record<
     dial2: 'TV:OK',
     e2_cw: 'TV:CH_UP',
     e2_ccw: 'TV:CH_DOWN',
+    push_cw2: '',
+    push_ccw2: '',
     b1h: '',
     b2h: '',
     b3h: '',

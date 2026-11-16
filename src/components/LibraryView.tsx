@@ -402,6 +402,20 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     });
   };
 
+  const buildFullBindingTooltip = (
+    resolveAction: (slot: HardwareSlotId) => string,
+    resolveRepeat?: (slot: HardwareSlotId) => TextMacroRepeatConfig | undefined
+  ): string => {
+    const lines: string[] = [];
+    for (const slot of visibleSlots) {
+      const raw = resolveAction(slot);
+      if (!raw) continue;
+      const desc = describeFirmwareAction(raw, resolveRepeat?.(slot), customMacros);
+      lines.push(`${SLOT_LABELS[slot].short}: ${desc.fullLabel}`);
+    }
+    return lines.length > 0 ? lines.join('\n') : 'No controls assigned';
+  };
+
   const renderProfileHighlights = (
     resolveAction: (slot: HardwareSlotId) => string,
     resolveRepeat?: (slot: HardwareSlotId) => TextMacroRepeatConfig | undefined
@@ -409,32 +423,41 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     const picked = HIGHLIGHT_SLOTS.filter(s => Boolean(resolveAction(s))).slice(0, 4);
     const totalMapped = visibleSlots.filter(s => Boolean(resolveAction(s))).length;
     const remainingCount = Math.max(0, totalMapped - picked.length);
+    const fullTooltip = buildFullBindingTooltip(resolveAction, resolveRepeat);
 
     return (
-      <div className="space-y-1.5 pt-0.5 text-[11px]">
+      <div className="space-y-1.5 pt-0.5 text-[11px]" title={fullTooltip}>
         <div className="grid grid-cols-2 gap-1.5">
-          {picked.map(slot => (
-            <div
-              key={slot}
-              className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex items-center gap-1.5 min-w-0"
-            >
-              <span className="text-[10px] text-[var(--text-muted)] shrink-0 whitespace-nowrap">
-                {SLOT_LABELS[slot].short}
-              </span>
-              <ParsedActionBadge
-                action={resolveAction(slot)}
-                repeatConfig={resolveRepeat?.(slot)}
-                showRawId={showAdvancedIds}
-                customMacros={customMacros}
-                maxSteps={1}
-                className="min-w-0 flex-1"
-              />
-            </div>
-          ))}
+          {picked.map(slot => {
+            const raw = resolveAction(slot);
+            const desc = describeFirmwareAction(raw, resolveRepeat?.(slot), customMacros);
+            return (
+              <div
+                key={slot}
+                title={`${SLOT_LABELS[slot].full}: ${desc.fullLabel}`}
+                className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex flex-col gap-0.5 min-w-0"
+              >
+                <span className="text-[10px] font-mono text-[var(--text-muted)] truncate">
+                  {SLOT_LABELS[slot].short}
+                </span>
+                <ParsedActionBadge
+                  action={raw}
+                  repeatConfig={resolveRepeat?.(slot)}
+                  showRawId={showAdvancedIds}
+                  customMacros={customMacros}
+                  maxSteps={2}
+                  className="min-w-0 w-full"
+                />
+              </div>
+            );
+          })}
         </div>
         {remainingCount > 0 && (
-          <p className="text-[11px] text-[var(--text-muted)] px-0.5">
-            +{remainingCount} more controls previewed before applying
+          <p
+            title={fullTooltip}
+            className="text-[11px] text-[var(--text-muted)] px-0.5 cursor-help"
+          >
+            +{remainingCount} more controls · hover to inspect all {totalMapped}
           </p>
         )}
       </div>
