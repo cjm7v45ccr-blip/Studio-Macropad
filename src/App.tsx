@@ -172,6 +172,12 @@ export default function App() {
   const [oledComposerOpen, setOledComposerOpen] = useState(false);
   const [soundProfile, setSoundProfile] = useState<SoundProfile>(soundEngine.soundProfile);
   const [testEvents, setTestEvents] = useState<LiveInputEvent[]>([]);
+  const [macroHistoryBridge, setMacroHistoryBridge] = useState<{
+    canUndo: boolean;
+    canRedo: boolean;
+    undo: () => void;
+    redo: () => void;
+  } | null>(null);
 
   const handleChangeSoundProfile = useCallback((next: SoundProfile) => {
     soundEngine.setProfile(next);
@@ -683,10 +689,30 @@ export default function App() {
         onRequestCopyProfile={(source, target) =>
           setPendingCopyPair({ source, target })
         }
-        canUndo={studio.canUndo}
-        canRedo={studio.canRedo}
-        onUndo={studio.undo}
-        onRedo={studio.redo}
+        canUndo={
+          activeSection === 'macros' && macroHistoryBridge?.canUndo
+            ? true
+            : studio.canUndo
+        }
+        canRedo={
+          activeSection === 'macros' && macroHistoryBridge?.canRedo
+            ? true
+            : studio.canRedo
+        }
+        onUndo={() => {
+          if (activeSection === 'macros' && macroHistoryBridge?.canUndo) {
+            macroHistoryBridge.undo();
+            return;
+          }
+          studio.undo();
+        }}
+        onRedo={() => {
+          if (activeSection === 'macros' && macroHistoryBridge?.canRedo) {
+            macroHistoryBridge.redo();
+            return;
+          }
+          studio.redo();
+        }}
         onSwitchBleHost={handleSwitchBleHost}
         onDisconnect={async () => {
           await usbHardware.disconnect(true);
@@ -1078,6 +1104,8 @@ export default function App() {
             hostOsMap={studio.settings.hostOsMap}
             tvEnabled={studio.tvEnabled}
             showAdvancedIds={studio.settings.showAdvancedIds}
+            syncStatus={studio.syncStatus}
+            onHistoryBridgeChange={setMacroHistoryBridge}
             onSaveMacro={studio.saveCustomMacro}
             onDeleteMacro={studio.deleteCustomMacro}
             onCleanUpDuplicateMacros={studio.cleanUpDuplicateMacros}
@@ -1154,6 +1182,8 @@ export default function App() {
             }
             onOpenOledComposer={() => setOledComposerOpen(true)}
             onOpenAbout={() => setAboutModalOpen(true)}
+            soundProfile={soundProfile}
+            onSelectSoundProfile={handleChangeSoundProfile}
             onToast={showToast}
           />
         )}
@@ -1194,6 +1224,7 @@ export default function App() {
         onClose={() => setConnectOverlayOpen(false)}
         onConnectSuccess={() => showToast('Connected to BertoPad via USB')}
         onStartDemo={handleStartDemoMode}
+        onOpenSetupWizard={handleOpenSetupWizard}
         resolvedTheme={resolvedTheme}
       />
 

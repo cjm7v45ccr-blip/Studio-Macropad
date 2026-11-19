@@ -20,6 +20,7 @@ import { ToastVariant } from '../hooks/useStudioState';
 import { STUDIO_VERSION, FIRMWARE_VERSION, FIRMWARE_INO_FILENAME } from '../utils/version';
 import { getVisibleHardwareSlots } from '../data/firmwareCatalog';
 import { isTvDisabledResponse, usbHardware } from '../services/usbHardwareService';
+import { SoundProfile } from '../services/soundEffects';
 import { generateBitmapsHeader, generateConfigHeader } from '../utils/firmwareHeaderExport';
 import { DiffConfirmModal } from './DiffConfirmModal';
 import {
@@ -102,6 +103,8 @@ interface SettingsViewProps {
   onJumpToMotionSlot?: (slot: MotionSlotId) => void;
   onOpenOledComposer?: () => void;
   onOpenAbout?: () => void;
+  soundProfile?: SoundProfile;
+  onSelectSoundProfile?: (profile: SoundProfile) => void;
   onToast: (msg: string, variant?: ToastVariant) => void;
 }
 
@@ -214,6 +217,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onJumpToMotionSlot,
   onOpenOledComposer,
   onOpenAbout,
+  soundProfile = 'thock',
+  onSelectSoundProfile,
   onToast
 }) => {
   const importBackupFileRef = React.useRef<HTMLInputElement>(null);
@@ -1953,8 +1958,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
 
-            {/* Switch Sound */}
-            <div className="space-y-1">
+            {/* Switch Sound & Mechanical Audio Profile */}
+            <div className="space-y-1.5">
               <label className="text-xs font-medium text-[var(--text-secondary)]">
                 Audio
               </label>
@@ -1977,6 +1982,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {settings.soundEnabled ? 'ON' : 'OFF'}
                 </span>
               </button>
+
+              {onSelectSoundProfile && (
+                <div
+                  role="group"
+                  aria-label="Mechanical switch sound profile"
+                  className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]"
+                >
+                  {(
+                    [
+                      { id: 'thock' as const, label: 'Thock' },
+                      { id: 'click' as const, label: 'Click' },
+                      { id: 'tactile' as const, label: 'Tactile' }
+                    ] as const
+                  ).map(opt => {
+                    const active = soundProfile === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          if (!settings.soundEnabled) {
+                            onUpdateSettings({ soundEnabled: true });
+                          }
+                          onSelectSoundProfile(opt.id);
+                        }}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                          active
+                            ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-xs'
+                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Shortcut Recorder Layout */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Usb, PlayCircle, AlertCircle, LoaderCircle, Cpu, RotateCw, Bluetooth, Tv } from 'lucide-react';
+import { X, Usb, PlayCircle, AlertCircle, LoaderCircle, Cpu, RotateCw, Bluetooth, Tv, SlidersHorizontal } from 'lucide-react';
 import { usbHardware } from '../services/usbHardwareService';
 
 interface ConnectOverlayProps {
@@ -7,6 +7,7 @@ interface ConnectOverlayProps {
   onClose: () => void;
   onConnectSuccess: () => void;
   onStartDemo: () => void;
+  onOpenSetupWizard?: () => void;
   resolvedTheme?: 'light' | 'dark';
 }
 
@@ -15,6 +16,7 @@ export const ConnectOverlay: React.FC<ConnectOverlayProps> = ({
   onClose,
   onConnectSuccess,
   onStartDemo,
+  onOpenSetupWizard,
   resolvedTheme = 'dark'
 }) => {
   const [busy, setBusy] = useState(false);
@@ -57,7 +59,7 @@ export const ConnectOverlay: React.FC<ConnectOverlayProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-black/60 dark:bg-[#14161B]/90 backdrop-blur-2xl text-[var(--text-primary)] select-none animate-panel-in"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-[#090B0E]/92 dark:bg-[#080A0D]/95 backdrop-blur-2xl text-[var(--text-primary)] select-none animate-panel-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby="connect-overlay-title"
@@ -164,6 +166,21 @@ export const ConnectOverlay: React.FC<ConnectOverlayProps> = ({
             <PlayCircle size={18} className="text-[var(--accent)]" />
             <span>Start Demo Mode</span>
           </button>
+
+          {onOpenSetupWizard && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenSetupWizard();
+              }}
+              disabled={busy}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-5 rounded-2xl text-xs font-semibold bg-transparent hover:bg-[var(--bg-input)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer border border-[var(--border-subtle)] hover:border-[var(--accent)] disabled:opacity-50 whitespace-nowrap"
+            >
+              <SlidersHorizontal size={15} className="text-[var(--accent)]" />
+              <span>Run Guided Setup</span>
+            </button>
+          )}
         </div>
 
         <p className="text-[11px] text-[var(--text-muted)] mt-4 leading-relaxed">

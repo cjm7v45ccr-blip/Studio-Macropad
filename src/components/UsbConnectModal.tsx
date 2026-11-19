@@ -114,7 +114,7 @@ export const UsbConnectModal: React.FC<UsbConnectModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080A0D]/88 backdrop-blur-xl"
       role="dialog"
       aria-modal="true"
       aria-labelledby="usb-connect-modal-title"

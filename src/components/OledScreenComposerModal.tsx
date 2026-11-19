@@ -225,9 +225,13 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
       role="dialog"
       aria-modal="true"
       aria-labelledby="oled-composer-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-panel-in"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080A0D]/92 backdrop-blur-xl animate-panel-in"
     >
-      <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl">
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl"
+      >
         {/* Header */}
         <div className="sticky top-0 z-10 bg-[var(--bg-panel)]/95 backdrop-blur-md px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">

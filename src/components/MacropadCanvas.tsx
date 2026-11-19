@@ -379,7 +379,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
       if (chassis3dRef.current) {
         const scale = target.shakeActive ? 0.91 : 0.94;
-        const nextTransform = `rotateX(${current.pitch.toFixed(2)}deg) rotateY(${current.roll.toFixed(2)}deg) translateZ(${current.zOffset.toFixed(2)}px) scale(${scale})`;
+        const nextTransform = `translateZ(${(24 + current.zOffset).toFixed(2)}px) rotateX(${current.pitch.toFixed(2)}deg) rotateY(${current.roll.toFixed(2)}deg) scale(${scale})`;
         if (chassis3dRef.current.style.transform !== nextTransform) {
           chassis3dRef.current.style.transform = nextTransform;
         }
@@ -2738,7 +2738,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         className={`my-auto flex flex-col items-center justify-center w-full ${
           view3D ? 'px-6 sm:px-10 py-6 sm:py-8 overflow-visible' : 'py-4 sm:py-6 transition-all duration-300'
         }`}
-        style={view3D ? { perspective: '1400px', transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
+        style={view3D ? { perspective: '1400px', pointerEvents: 'auto' } : undefined}
       >
         <div
           ref={chassis3dRef}
@@ -2763,17 +2763,18 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 rounded-[inherit] border border-[#ECEAE4]/8 bg-gradient-to-b from-[#171A20] to-[#0B0C10]"
-                style={{ transform: 'translateZ(-8px)' }}
+                style={{ transform: 'translateZ(-8px)', backfaceVisibility: 'hidden' }}
               />
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 rounded-[inherit] border border-[#050608] bg-gradient-to-b from-[#111318] to-[#07080B] shadow-[0_26px_42px_rgba(0,0,0,0.85)]"
-                style={{ transform: 'translateZ(-16px)' }}
+                style={{ transform: 'translateZ(-16px)', backfaceVisibility: 'hidden' }}
               />
               <div
                 ref={specular3dRef}
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 rounded-[inherit] overflow-hidden"
+                className="pointer-events-none absolute inset-0 rounded-[inherit]"
+                style={{ transform: 'translateZ(1px)', backfaceVisibility: 'hidden' }}
               />
             </>
           )}

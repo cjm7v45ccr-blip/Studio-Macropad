@@ -34,7 +34,7 @@
 #ifdef FIRMWARE_VERSION
 #undef FIRMWARE_VERSION
 #endif
-#define FIRMWARE_VERSION "4.10.1"
+#define FIRMWARE_VERSION "4.12.1"
 #ifndef SETUP_AP_PREFIX
 #define SETUP_AP_PREFIX "BertoPad"
 #endif

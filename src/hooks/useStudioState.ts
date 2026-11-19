@@ -3241,7 +3241,7 @@ export function useStudioState(
   const saveCustomMacro = useCallback(
     (
       item: CustomMacroItem,
-      options?: { forceNew?: boolean; silent?: boolean }
+      options?: { forceNew?: boolean; silent?: boolean; recordHistory?: boolean }
     ): { saved: CustomMacroItem | null; updatedSlotCount: number } => {
       const silent = Boolean(options?.silent);
       const steps =
@@ -3524,8 +3524,10 @@ export function useStudioState(
       setSnapshot(nextSnap);
 
       if (updatedSlotCount > 0) {
-        setPast(h => [...h.slice(-34), prevSnap]);
-        setFuture([]);
+        if (options?.recordHistory !== false) {
+          setPast(h => [...h.slice(-34), prevSnap]);
+          setFuture([]);
+        }
         runConnectedWrite(
           prevSnap,
           nextSnap,

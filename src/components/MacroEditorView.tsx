@@ -13,6 +13,7 @@ import {
   MacroStepActionType,
   MacroStepConfig,
   StudioProfile,
+  SyncStatusPill,
   TextMacroRepeatConfig,
   isBleHostProfile
 } from '../types/studio';
@@ -131,9 +132,18 @@ interface MacroEditorViewProps {
   hostOsMap?: HostOsMap;
   tvEnabled?: boolean;
   showAdvancedIds?: boolean;
+  syncStatus?: SyncStatusPill;
+  onHistoryBridgeChange?: (
+    bridge: {
+      canUndo: boolean;
+      canRedo: boolean;
+      undo: () => void;
+      redo: () => void;
+    } | null
+  ) => void;
   onSaveMacro: (
     macro: CustomMacroItem,
-    options?: { forceNew?: boolean; silent?: boolean }
+    options?: { forceNew?: boolean; silent?: boolean; recordHistory?: boolean }
   ) => { saved: CustomMacroItem | null; updatedSlotCount: number } | void;
   onDeleteMacro: (id: string) => void;
   onCleanUpDuplicateMacros?: () => void;
@@ -747,6 +757,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   hostOsMap,
   tvEnabled,
   showAdvancedIds = false,
+  syncStatus,
+  onHistoryBridgeChange,
   onSaveMacro,
   onDeleteMacro,
   onCleanUpDuplicateMacros,
@@ -929,6 +941,27 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [stepPast.length, stepFuture.length]);
+
+  const undoStepsRef = useRef(handleUndoSteps);
+  undoStepsRef.current = handleUndoSteps;
+  const redoStepsRef = useRef(handleRedoSteps);
+  redoStepsRef.current = handleRedoSteps;
+
+  useEffect(() => {
+    if (!onHistoryBridgeChange) return;
+    onHistoryBridgeChange({
+      canUndo: stepPast.length > 0,
+      canRedo: stepFuture.length > 0,
+      undo: () => undoStepsRef.current(),
+      redo: () => redoStepsRef.current()
+    });
+  }, [onHistoryBridgeChange, stepPast.length, stepFuture.length]);
+
+  useEffect(() => {
+    return () => {
+      onHistoryBridgeChange?.(null);
+    };
+  }, [onHistoryBridgeChange]);
 
   // Progressive disclosure: only one step expanded at a time (null = all collapsed)
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
@@ -1374,6 +1407,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     nameLabel: string,
     repeatConfig?: TextMacroRepeatConfig
   ) => {
+    lastKnownSavedMacroRef.current = macroId
+      ? {
+          id: macroId,
+          action,
+          name: nameLabel,
+          repeatJson: JSON.stringify(repeatConfig || null)
+        }
+      : null;
     setSelectedMacroId(macroId);
     setShowAllBoundSlots(false);
     setRecordingStepId(null);
@@ -1923,7 +1964,11 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
       source: 'user'
     };
 
-    const result = onSaveMacro(item, { forceNew, silent });
+    const result = onSaveMacro(item, {
+      forceNew,
+      silent,
+      recordHistory: !silent
+    });
     const savedItem = result && 'saved' in result ? result.saved : item;
     if (!savedItem) {
       setSaveBlockedReason('Check step limits');
@@ -1932,6 +1977,12 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     const updatedSlots = result && 'updatedSlotCount' in result ? result.updatedSlotCount : 0;
 
     setSaveBlockedReason(null);
+    lastKnownSavedMacroRef.current = {
+      id: savedItem.id,
+      action: savedItem.action,
+      name: savedItem.name,
+      repeatJson: JSON.stringify(savedItem.repeatConfig || null)
+    };
     setSelectedMacroId(savedItem.id);
     const shouldSyncTitle =
       !silent || !trimmedInput || isGenericMacroName(trimmedInput) || autoNamingActive;
@@ -1988,6 +2039,55 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
     loopUntilStopped,
     repeatDelayInput
   ]);
+
+  const lastKnownSavedMacroRef = useRef<{
+    id: string;
+    action: string;
+    name: string;
+    repeatJson: string;
+  } | null>(null);
+
+  // Re-hydrate editor if an external workspace undo/redo changes the currently selected macro
+  useEffect(() => {
+    if (!selectedMacroId || isDraftDirty) return;
+    const liveMacro = customMacros.find(m => m.id === selectedMacroId);
+    if (!liveMacro) return;
+    const liveRepeatJson = JSON.stringify(liveMacro.repeatConfig || null);
+    const known = lastKnownSavedMacroRef.current;
+    if (
+      known &&
+      known.id === liveMacro.id &&
+      known.action === liveMacro.action &&
+      known.name === liveMacro.name &&
+      known.repeatJson === liveRepeatJson
+    ) {
+      return;
+    }
+    lastKnownSavedMacroRef.current = {
+      id: liveMacro.id,
+      action: liveMacro.action,
+      name: liveMacro.name,
+      repeatJson: liveRepeatJson
+    };
+    const liveSteps = actionToMacroSteps(liveMacro.action, liveMacro.repeatConfig);
+    const liveStepsKey = serializeDraftSteps(liveSteps);
+    const liveRepCount = String(liveMacro.repeatConfig?.repeatCount || 1);
+    const liveLoop = Boolean(liveMacro.repeatConfig?.loopUntilStopped);
+    const liveRepDelay = String(liveMacro.repeatConfig?.repeatDelayMs || 500);
+    const liveRepeatKey = `${liveRepCount}:${liveLoop}:${liveRepDelay}`;
+    if (
+      liveStepsKey !== baseline.stepsKey ||
+      liveMacro.name.trim() !== baseline.name ||
+      liveRepeatKey !== baseline.repeatKey
+    ) {
+      setMacroName(liveMacro.name);
+      setStepsDirect(liveSteps.length > 0 ? liveSteps : [createDefaultStep('shortcut', 1)]);
+      setRepeatCountInput(liveRepCount);
+      setLoopUntilStopped(liveLoop);
+      setRepeatDelayInput(liveRepDelay);
+      commitBaseline(liveMacro.name, liveSteps, liveRepCount, liveLoop, liveRepDelay);
+    }
+  }, [customMacros, selectedMacroId, isDraftDirty, baseline]);
 
   const handleAssignToControl = () => {
     if (!isSequenceValid) return;
@@ -5182,8 +5282,8 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   ? duplicateMacroMatch.reason === 'identical_actions'
                     ? 'Duplicate sequence'
                     : 'Name already used'
-                  : isDraftDirty
-                  ? 'Autosaving…'
+                  : isDraftDirty || syncStatus === 'Saving'
+                  ? 'Saving…'
                   : selectedMacroId
                   ? 'Saved ✓'
                   : 'Ready'}

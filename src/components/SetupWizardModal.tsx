@@ -609,7 +609,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-md overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-[#080A0D]/88 backdrop-blur-xl overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby="setup-wizard-title"
@@ -686,10 +686,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         </div>
 
         {/* Step Body */}
-        <div className="p-5 sm:p-6 pb-8 overflow-y-auto space-y-5 flex-1">
+        <div className="px-5 py-4 sm:px-6 sm:py-5 pb-6 overflow-y-auto space-y-4 flex-1">
           {/* Connection Prompt Banner if unplugged */}
           {!connection.connected && (
-            <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-0.5 text-xs">
                 <div className="font-semibold text-[var(--text-primary)]">
                   No BertoPad connected over USB yet
@@ -702,14 +702,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 <button
                   type="button"
                   onClick={onStartDemoSetup}
-                  className="px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                  className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Demo Setup
                 </button>
                 <button
                   type="button"
                   onClick={onConnectUsbPad}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Usb className="w-3.5 h-3.5" />
                   <span>Connect USB</span>
@@ -720,8 +720,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
           {/* STEP 01: DEVICES & OS */}
           {step === 0 && (
-            <div className="space-y-5">
-              <div className="space-y-1">
+            <div className="space-y-3.5">
+              <div className="space-y-0.5">
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                   01. Choose your primary starter layout
                 </h3>
@@ -730,7 +730,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {(
                   [
                     {
@@ -770,7 +770,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       key={card.id}
                       type="button"
                       onClick={() => handleSelectPrimaryOs(card.id)}
-                      className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer space-y-1.5 ${
+                      className={`p-3 rounded-xl border text-left transition-colors cursor-pointer space-y-1 ${
                         selected
                           ? 'bg-[var(--bg-elevated)] border-[var(--accent)] text-[var(--text-primary)]'
                           : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
@@ -792,7 +792,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       <div className="text-[11px] font-mono text-[var(--text-muted)]">
                         {card.meta}
                       </div>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                      <p className="text-[11px] text-[var(--text-secondary)] leading-snug">
                         {card.desc}
                       </p>
                     </button>
@@ -925,7 +925,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 </div>
 
                 {supportsWizardTvToggle && (
-                  <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-4">
+                  <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-4">
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-2">
                         <Tv className="w-4 h-4 text-[var(--accent)] shrink-0" />
@@ -939,8 +939,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                           · {wizardTvEnabled ? 'On' : 'Off'}
                         </span>
                       </div>
-                      <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                        Turn off if you only use Bluetooth hosts — setup will skip Wi-Fi and SmartCast TV pairing. You can turn TV mode back on anytime in Settings.
+                      <p className="text-[11px] text-[var(--text-muted)] leading-snug">
+                        Turn off if you only use Bluetooth hosts — setup will skip Wi-Fi and SmartCast TV pairing.
                       </p>
                     </div>
 
