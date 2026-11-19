@@ -66,7 +66,7 @@ export function MacroTestModal({ binding, connection, activeJob, onClose, onRun 
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-md flex items-center justify-center p-3 sm:p-6" onClick={onClose}>
       <div
         ref={dialogRef}
         role="dialog"
@@ -74,7 +74,7 @@ export function MacroTestModal({ binding, connection, activeJob, onClose, onRun 
         aria-labelledby="macro-test-title"
         aria-describedby="macro-test-description"
         tabIndex={-1}
-        className="w-full max-w-xl max-h-[90dvh] flex flex-col rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-panel)] shadow-2xl outline-none"
+        className="studio-popover w-full max-w-xl max-h-[90dvh] flex flex-col rounded-2xl outline-none animate-popover-in"
         onClick={e => e.stopPropagation()}
         onKeyDown={e => {
           if (e.key === 'Escape') {

@@ -318,19 +318,19 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
   ];
 
   return (
-    <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
+    <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 studio-chrome border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
       {/* Sticky Single-Scroll Header */}
-      <div className="sticky top-0 z-20 bg-[var(--bg-panel)]/95 backdrop-blur-md px-4 sm:px-5 py-3.5 border-b border-[var(--border-subtle)] space-y-2.5">
+      <div className="sticky top-0 z-20 studio-chrome px-4 sm:px-5 py-3.5 border-b border-[var(--border-subtle)] space-y-2.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-9 h-9 rounded-full bg-[var(--bg-input)] border-2 flex items-center justify-center shrink-0"
+              className="w-9 h-9 rounded-full studio-well border-2 flex items-center justify-center shrink-0"
               style={{ borderColor: encoder.color }}
             >
               <RotateCw className="w-4 h-4 text-[var(--text-primary)]" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight truncate">
                 {slotMeta.full}
               </h2>
               <p className="text-xs text-[var(--text-muted)] truncate tabular-nums">
@@ -339,7 +339,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               disabled={isAlreadyUnassigned}
@@ -349,7 +349,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                   : onUpdateSlot(selectedSubControl, { type: 'none', value: '' })
               }
               title="Clear this knob control"
-              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1 py-1.5 px-2.5 rounded-lg studio-btn text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer whitespace-nowrap"
             >
               <XCircle className="w-3 h-3 shrink-0" />
               <span>Clear</span>
@@ -360,7 +360,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
               disabled={isAlreadyFactoryDefault}
               onClick={() => onResetSlotToDefault(selectedSubControl)}
               title={`Reset to default: ${factoryDesc.fullLabel}`}
-              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1 py-1.5 px-2.5 rounded-lg studio-btn text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer whitespace-nowrap"
             >
               <RotateCcw className="w-3 h-3 shrink-0" />
               <span>Default</span>
@@ -372,7 +372,7 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
         <div
           role="group"
           aria-label="Select rotary encoder"
-          className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[var(--bg-input)]"
+          className="grid grid-cols-2 gap-1 p-1 rounded-xl studio-well"
         >
           {([1, 2] as const).map(idx => {
             const active = encoderIndex === idx;
@@ -382,9 +382,9 @@ export const EncoderInspector: React.FC<EncoderInspectorProps> = ({
                 key={idx}
                 type="button"
                 onClick={() => onSelectEncoder(idx)}
-                className={`flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                className={`flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
                   active
-                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
+                    ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                 }`}
               >

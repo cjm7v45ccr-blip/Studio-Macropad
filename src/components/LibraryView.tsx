@@ -504,15 +504,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-workspace-section">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-workspace-section studio-stage-backdrop">
       <div className="max-w-5xl mx-auto space-y-8">
         {/* Clean Header + Overflow Menu for Rare Backup / Restore / Reset Actions */}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-lg font-bold text-[var(--text-primary)]">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)]">
               Profiles &amp; Presets
             </h1>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5 tabular-nums">
+            <p className="text-xs text-[var(--text-muted)] mt-1 tabular-nums">
               Apply {controlCount}-control layouts across Devices 1–3 and Smart TV, save snapshots, or clone profiles.
             </p>
           </div>
@@ -522,7 +522,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <button
                 type="button"
                 onClick={onOpenMacros}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
+                className="studio-btn flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
               >
                 <Sliders className="w-3.5 h-3.5 text-[var(--accent)]" />
                 <span>My Macros ({customMacros.length})</span>
@@ -537,10 +537,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 aria-haspopup="menu"
                 aria-label="Backup, restore, and reset options"
                 title="Backup, restore & reset"
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                className={`studio-btn flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer whitespace-nowrap shrink-0 ${
                   overflowMenuOpen
-                    ? 'bg-[var(--bg-elevated)] border-[var(--border-strong)] text-[var(--text-primary)]'
-                    : 'bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    ? '!border-[var(--border-strong)] text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 <MoreHorizontal className="w-4 h-4" />
@@ -550,7 +550,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               {overflowMenuOpen && (
                 <div
                   role="menu"
-                  className="absolute right-0 top-full mt-1.5 w-60 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-xl p-1.5 z-30 space-y-0.5 animate-popover-in"
+                  className="studio-popover absolute right-0 top-full mt-2 w-60 rounded-2xl p-1.5 z-30 space-y-0.5 animate-popover-in"
                 >
                   <button
                     type="button"
@@ -665,10 +665,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   key={prof.id}
                   type="button"
                   onClick={() => onOpenDeviceProfile?.(prof.id)}
-                  className={`group text-left p-3 rounded-2xl bg-[var(--bg-panel)] border transition-all cursor-pointer space-y-2.5 ${
+                  className={`studio-panel studio-panel-interactive group text-left p-3.5 rounded-2xl cursor-pointer space-y-2.5 ${
                     isCurrent
-                      ? 'border-[var(--accent)] shadow-sm'
-                      : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                      ? '!border-[var(--accent)] ring-1 ring-[rgba(var(--accent-rgb),0.28)]'
+                      : ''
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 min-w-0">
@@ -716,7 +716,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Filter presets or bound actions…"
               aria-label="Filter presets"
-              className="w-full pl-9 pr-8 py-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+              className="studio-well w-full pl-9 pr-8 py-2 rounded-xl text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
             />
             {searchQuery && (
               <button
@@ -733,7 +733,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <div
             role="group"
             aria-label="Filter presets by target mode"
-            className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] shrink-0 self-start sm:self-auto"
+            className="studio-well flex items-center gap-1 p-1 rounded-xl shrink-0 self-start sm:self-auto"
           >
             {(
               [
@@ -748,9 +748,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setModeFilter(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                     active
-                      ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                      ? 'studio-pill-active text-[var(--text-primary)]'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                   }`}
                 >
@@ -781,7 +781,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     setSaveProfileTarget(e.target.value as HardwareProfileId)
                   }
                   aria-label="Profile to snapshot"
-                  className="px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                  className="studio-well px-3 py-1.5 rounded-xl text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 >
                   {profiles.map(p => (
                     <option key={p.id} value={p.id}>
@@ -800,12 +800,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   }}
                   placeholder={`${getProfile(saveProfileTarget).name} Layout`}
                   aria-label="Snapshot name"
-                  className="px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+                  className="studio-well px-3 py-1.5 rounded-xl text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
                 />
                 <button
                   type="button"
                   onClick={handleSaveMyPreset}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap shrink-0"
+                  className="studio-cta flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <BookmarkPlus className="w-3.5 h-3.5" />
                   <span>
@@ -825,7 +825,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
 
           {filteredUserPresets.length === 0 ? (
-            <div className="p-6 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-center space-y-1">
+            <div className="studio-panel p-6 rounded-2xl text-center space-y-1">
               <div className="text-xs font-semibold text-[var(--text-secondary)]">
                 {userPresets.length === 0
                   ? 'No saved snapshots yet'
@@ -850,7 +850,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 return (
                   <div
                     key={snap.id}
-                    className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex flex-col justify-between gap-4"
+                    className="studio-panel studio-panel-interactive p-4 rounded-2xl flex flex-col justify-between gap-4"
                   >
                     <div className="space-y-2.5">
                       <div className="flex items-start justify-between gap-2">
@@ -905,7 +905,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <button
                         type="button"
                         onClick={() => openMyPresetPreview(snap, defaultTarget)}
-                        className="flex-1 py-2 px-3 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+                        className="studio-cta flex-1 py-2 px-3 rounded-xl text-xs font-semibold cursor-pointer whitespace-nowrap"
                       >
                         Apply to {formatProfileLabel(defaultTarget)}
                       </button>
@@ -914,7 +914,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           key={altId}
                           type="button"
                           onClick={() => openMyPresetPreview(snap, altId)}
-                          className="py-2 px-2.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                          className="studio-btn py-2 px-2.5 rounded-xl text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                           title={`Apply "${snap.name}" to ${formatProfileLabel(altId)}`}
                         >
                           {STUDIO_SHORT_LABEL(formatProfileLabel(altId))}
@@ -925,7 +925,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         onClick={() =>
                           onApplyHardwareBackup(snap.backup, snap.repeatConfigs)
                         }
-                        className="py-2 px-2.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                        className="studio-btn py-2 px-2.5 rounded-xl text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                         title="Restore all 4 profiles from this full snapshot"
                       >
                         Restore All
@@ -950,7 +950,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
 
           {filteredCuratedPresets.length === 0 ? (
-            <div className="p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs text-[var(--text-muted)] text-center">
+            <div className="studio-panel p-5 rounded-2xl text-xs text-[var(--text-muted)] text-center">
               No starter presets match &ldquo;{searchQuery}&rdquo;.
             </div>
           ) : (
@@ -971,7 +971,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 return (
                   <div
                     key={preset.id}
-                    className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] flex flex-col justify-between gap-4 transition-colors"
+                    className="studio-panel studio-panel-interactive p-4 rounded-2xl flex flex-col justify-between gap-4"
                   >
                     <div className="space-y-2.5">
                       <div className="min-w-0">
@@ -1007,7 +1007,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <button
                         type="button"
                         onClick={() => openCuratedPresetPreview(preset, primaryTarget)}
-                        className="flex-1 py-2 px-2.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap truncate"
+                        className="studio-cta flex-1 py-2 px-2.5 rounded-xl text-xs font-semibold cursor-pointer whitespace-nowrap truncate"
                         title={`Preview & apply to ${formatProfileLabel(primaryTarget)}`}
                       >
                         Apply to {formatProfileLabel(primaryTarget)}
@@ -1017,7 +1017,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           key={altId}
                           type="button"
                           onClick={() => openCuratedPresetPreview(preset, altId)}
-                          className="py-2 px-2.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                          className="studio-btn py-2 px-2.5 rounded-xl text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                           title={`Preview & apply to ${formatProfileLabel(altId)}`}
                         >
                           {STUDIO_SHORT_LABEL(formatProfileLabel(altId))}
@@ -1032,7 +1032,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </section>
 
         {/* Section 3: Clone Bindings Between Profiles */}
-        <section className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex flex-col justify-between gap-4">
+        <section className="studio-panel p-4 sm:p-5 rounded-2xl flex flex-col justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
               <Copy className="w-4 h-4 text-[var(--accent)]" />
@@ -1057,7 +1057,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   }
                 }}
                 aria-label="Source profile to copy from"
-                className="w-full px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                className="studio-well w-full px-3 py-2 rounded-xl text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
               >
                 {profiles.map(p => (
                   <option key={p.id} value={p.id}>
@@ -1077,7 +1077,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 value={copyTarget}
                 onChange={e => setCopyTarget(e.target.value as HardwareProfileId)}
                 aria-label="Target profile to overwrite"
-                className="w-full px-3 py-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                className="studio-well w-full px-3 py-2 rounded-xl text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
               >
                 {profiles.map(p => (
                   <option key={p.id} value={p.id} disabled={p.id === copySource}>
@@ -1101,7 +1101,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   key={`${src}-${tgt}`}
                   type="button"
                   onClick={() => openCopyConfirm(src, tgt)}
-                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  className="studio-btn px-2.5 py-1.5 rounded-lg text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                 >
                   {formatProfileLabel(src)} → {formatProfileLabel(tgt)}
                 </button>
@@ -1112,7 +1112,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               type="button"
               disabled={copySource === copyTarget}
               onClick={() => openCopyConfirm(copySource, copyTarget)}
-              className="flex items-center justify-center gap-2 py-2 px-3.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="studio-btn flex items-center justify-center gap-2 py-2 px-3.5 rounded-xl text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
             >
               <span>Copy {formatProfileLabel(copySource)}</span>
               <ArrowRight className="w-3.5 h-3.5 text-[var(--accent)]" />

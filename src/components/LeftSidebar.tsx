@@ -81,7 +81,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     return (
       <nav
         aria-label="Primary mobile navigation"
-        className="sm:hidden shrink-0 bg-[var(--bg-panel)] border-t border-[var(--border-subtle)] px-2 py-1.5 grid grid-cols-4 gap-1 select-none z-20"
+        className="sm:hidden shrink-0 studio-chrome border-t border-[var(--border-subtle)] px-2 py-1.5 grid grid-cols-4 gap-1 select-none z-20"
       >
         {NAV_ITEMS.map(item => {
           const Icon = item.icon;
@@ -95,7 +95,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               title={item.tooltip}
               className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl text-[10px] transition-all duration-150 cursor-pointer whitespace-nowrap ${
                 active
-                  ? 'bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] font-semibold'
+                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
@@ -121,7 +121,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   }
 
   return (
-    <aside className="hidden sm:flex w-[74px] shrink-0 bg-[var(--bg-panel)] border-r border-[var(--border-subtle)] flex-col items-center justify-between py-3 px-1.5 select-none z-30">
+    <aside className="hidden sm:flex w-[76px] shrink-0 studio-chrome border-r border-[var(--border-subtle)] flex-col items-center justify-between py-3.5 px-2 select-none z-30">
       <nav
         aria-label="Primary navigation"
         className="space-y-1.5 w-full flex flex-col items-center"
@@ -136,21 +136,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               type="button"
               onClick={() => onSelectSection(item.id)}
               title={showDot ? `${item.tooltip} (Firmware update available)` : item.tooltip}
-              className={`relative w-full py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-150 cursor-pointer whitespace-nowrap ${
+              className={`relative w-full py-2.5 px-1 rounded-xl flex flex-col items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer whitespace-nowrap ${
                 active
-                  ? 'bg-[rgba(var(--accent-rgb),0.15)] text-[var(--text-primary)] font-semibold shadow-2xs'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] font-medium'
+                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]/50 font-medium'
               }`}
             >
-              {active && (
-                <span
-                  aria-hidden="true"
-                  className="absolute left-0 top-2.5 bottom-2.5 w-0.5 rounded-r-full bg-[var(--accent)]"
-                />
-              )}
               <span className="relative flex items-center justify-center">
                 <Icon
-                  className={`w-4 h-4 shrink-0 transition-transform duration-150 ${
+                  className={`w-[17px] h-[17px] shrink-0 transition-transform duration-150 ${
                     active ? 'text-[var(--accent)] scale-105' : ''
                   }`}
                 />
@@ -161,7 +155,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   />
                 )}
               </span>
-              <span className="text-[10px] leading-none">{item.label}</span>
+              <span className="text-[10px] tracking-[0.01em] leading-none">{item.label}</span>
             </button>
           );
         })}
@@ -225,7 +219,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <div
               role="dialog"
               aria-label="Switch sound preferences"
-              className="absolute left-full bottom-0 ml-2.5 w-56 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-2xl p-3 space-y-2.5 z-50 animate-popover-in"
+              className="absolute left-full bottom-0 ml-3 w-56 rounded-2xl studio-popover p-3 space-y-2.5 z-50 animate-popover-in"
             >
               <div className="flex items-center justify-between gap-2 pb-2 border-b border-[var(--border-subtle)]">
                 <span className="text-xs font-semibold text-[var(--text-primary)]">

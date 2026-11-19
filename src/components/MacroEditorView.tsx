@@ -2118,7 +2118,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
   return (
     <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-w-0 bg-[var(--bg-canvas)] animate-workspace-section">
       {/* Left Library Rail: Smart Actions Library, Recipes & Pad Loader */}
-      <aside className="w-full lg:w-72 xl:w-80 shrink-0 bg-[var(--bg-panel)] border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] flex flex-col lg:overflow-hidden">
+      <aside className="studio-chrome w-full lg:w-72 xl:w-80 shrink-0 border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] flex flex-col lg:overflow-hidden">
         <div className="p-4 border-b border-[var(--border-subtle)] space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -2135,7 +2135,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 runWithUnsavedCheck('a new blank macro', () => startBlankMacroImmediate())
               }
               title="Create a new blank Smart Action"
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="studio-btn inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
             >
               <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
               <span>New</span>
@@ -2149,7 +2149,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               value={libraryQuery}
               onChange={e => setLibraryQuery(e.target.value)}
               placeholder="Search macros or recipes…"
-              className="w-full pl-8 pr-7 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+              className="studio-well w-full pl-8 pr-7 py-1.5 rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
             />
             {libraryQuery && (
               <button
@@ -2167,7 +2167,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
           <div
             role="tablist"
             aria-label="Library view filter"
-            className="grid grid-cols-3 gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]"
+            className="studio-well grid grid-cols-3 gap-1 p-0.5 rounded-lg"
           >
             {(
               [
@@ -2182,9 +2182,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 role="tab"
                 aria-selected={libraryTab === tab.id}
                 onClick={() => setLibraryTab(tab.id)}
-                className={`py-1 px-2 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap truncate tabular-nums ${
+                className={`py-1 px-2 rounded-md text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap truncate tabular-nums ${
                   libraryTab === tab.id
-                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                    ? 'studio-pill-active text-[var(--text-primary)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                 }`}
               >
@@ -2596,7 +2596,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   disabled={customMacros.length === 0}
                   onClick={onExportMacrosFile}
                   title="Export saved macros to JSON"
-                  className="flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
+                  className="studio-btn flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Download className="w-3 h-3" />
                   <span>Export</span>
@@ -2608,7 +2608,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     type="button"
                     onClick={() => importMacrosInputRef.current?.click()}
                     title="Import macros from JSON"
-                    className="flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                    className="studio-btn flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Upload className="w-3 h-3" />
                     <span>Import</span>
@@ -2633,7 +2633,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 type="button"
                 onClick={onCleanUpDuplicateMacros}
                 title="Normalize macro names and merge canonical duplicates"
-                className="flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                className="studio-btn flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Wand2 className="w-3 h-3 text-[var(--accent)]" />
                 <span>Clean Library</span>
@@ -2756,14 +2756,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
                 {/* Clean Studio Action Toolbar */}
                 <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                  <div className="flex items-center rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-0.5">
+                  <div className="studio-well flex items-center rounded-xl p-0.5">
                     <button
                       type="button"
                       disabled={stepPast.length === 0}
                       onClick={handleUndoSteps}
                       title="Undo step edit (Cmd/Ctrl+Z)"
                       aria-label="Undo step edit"
-                      className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-colors"
+                      className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-colors"
                     >
                       <Undo2 className="w-3.5 h-3.5" />
                     </button>
@@ -2773,7 +2773,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       onClick={handleRedoSteps}
                       title="Redo step edit (Shift+Cmd/Ctrl+Z)"
                       aria-label="Redo step edit"
-                      className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-colors"
+                      className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-colors"
                     >
                       <Redo2 className="w-3.5 h-3.5" />
                     </button>
@@ -2783,7 +2783,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     <button
                       type="button"
                       onClick={onStopRepeat}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[#D97706] hover:bg-[var(--accent-soft)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
+                      className="studio-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl !border-[#D97706] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
                     >
                       <Square className="w-3.5 h-3.5 fill-current text-[#D97706]" />
                       <span>
@@ -2795,10 +2795,10 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleToggleSequenceRecorder(false)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer whitespace-nowrap shrink-0 ${
                           isRecordingSequence
-                            ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--text-primary)] font-semibold'
-                            : 'bg-[var(--bg-panel)] border-[var(--border-subtle)] hover:border-[var(--accent)] text-[var(--text-primary)]'
+                            ? 'bg-[var(--accent-soft)] border border-[var(--accent)] text-[var(--text-primary)] font-semibold'
+                            : 'studio-btn text-[var(--text-primary)]'
                         }`}
                         title="Record live keystrokes with smart text coalescing"
                       >
@@ -2809,10 +2809,10 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setSmartComposerOpen(v => !v)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer whitespace-nowrap shrink-0 ${
                           smartComposerOpen
-                            ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.12)] text-[var(--text-primary)]'
-                            : 'bg-[var(--bg-panel)] border-[var(--border-subtle)] hover:border-[var(--accent)] text-[var(--text-primary)]'
+                            ? 'border border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.12)] text-[var(--text-primary)]'
+                            : 'studio-btn text-[var(--text-primary)]'
                         }`}
                         title="Build multi-field login flows or multi-line command sequences"
                       >
@@ -2827,7 +2827,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         title={
                           'Review the timeline or preview safely before sending real actions'
                         }
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-strong)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                        className="studio-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none cursor-pointer whitespace-nowrap shrink-0"
                       >
                         <Play className="w-3.5 h-3.5 text-[var(--accent)]" />
                         <span>Preview & test</span>
@@ -3011,7 +3011,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
 
             {/* Logi Options+ Style Smart Flow Composer */}
             {smartComposerOpen && (
-              <div className="p-4 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-strong)] space-y-4 animate-panel-in">
+              <div className="studio-panel p-4 rounded-2xl space-y-4 animate-panel-in">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-[var(--accent)]" />
@@ -3019,13 +3019,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       Smart Flow Builder
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                  <div className="studio-well flex items-center gap-1 p-0.5 rounded-lg">
                     <button
                       type="button"
                       onClick={() => setComposerMode('form')}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-all ${
                         composerMode === 'form'
-                          ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                          ? 'studio-pill-active text-[var(--text-primary)]'
                           : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                       }`}
                     >
@@ -3034,9 +3034,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setComposerMode('script')}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-all ${
                         composerMode === 'script'
-                          ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                          ? 'studio-pill-active text-[var(--text-primary)]'
                           : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                       }`}
                     >
@@ -3442,7 +3442,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <div className="flex items-center gap-1.5 text-[11px]">
                     <Gauge className="w-3 h-3 text-[var(--text-muted)]" />
                     <span className="text-[var(--text-muted)]">Pacing</span>
-                    <div className="inline-flex items-center rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-0.5">
+                    <div className="studio-well inline-flex items-center rounded-lg p-0.5">
                       {(
                         [
                           { label: '100ms', ms: 100, title: 'Fast 100ms between steps' },
@@ -3468,7 +3468,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setExpandedStepId(null)}
-                    className="px-2 py-1 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                    className="studio-btn px-2.5 py-1 rounded-lg text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
                   >
                     Collapse
                   </button>
@@ -3483,7 +3483,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       setExpandedStepId(first.id);
                     }}
                     title="Reset sequence to a single step"
-                    className="px-2 py-1 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[#D97706] text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                    className="studio-btn px-2.5 py-1 rounded-lg text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
                   >
                     Reset
                   </button>
@@ -3492,7 +3492,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
             </div>
 
             {macroSteps.length === 0 ? (
-              <div className="p-5 sm:p-6 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+              <div className="studio-panel p-5 sm:p-6 rounded-2xl space-y-4">
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-[var(--text-primary)]">
                     Start a new macro
@@ -3505,9 +3505,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleToggleSequenceRecorder(false)}
-                    className="group text-left p-3.5 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)]/60 hover:border-[var(--accent)] transition-all cursor-pointer flex items-start gap-3"
+                    className="group text-left p-3.5 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)]/60 hover:border-[var(--accent)] hover:-translate-y-0.5 transition-all cursor-pointer flex items-start gap-3"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] flex items-center justify-center shrink-0 shadow-sm">
                       <Radio className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
@@ -3523,9 +3523,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setSmartComposerOpen(true)}
-                    className="group text-left p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-all cursor-pointer flex items-start gap-3"
+                    className="studio-btn group text-left p-3.5 rounded-xl cursor-pointer flex items-start gap-3"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-[var(--accent)] flex items-center justify-center shrink-0">
+                    <div className="studio-well w-8 h-8 rounded-lg text-[var(--accent)] flex items-center justify-center shrink-0">
                       <Sparkles className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
@@ -3541,9 +3541,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => appendStep('shortcut')}
-                    className="group text-left p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-all cursor-pointer flex items-start gap-3"
+                    className="studio-btn group text-left p-3.5 rounded-xl cursor-pointer flex items-start gap-3"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-[var(--text-primary)] flex items-center justify-center shrink-0">
+                    <div className="studio-well w-8 h-8 rounded-lg text-[var(--text-primary)] flex items-center justify-center shrink-0">
                       <Command className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
@@ -3559,9 +3559,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setLibraryTab('templates')}
-                    className="group text-left p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-all cursor-pointer flex items-start gap-3"
+                    className="studio-btn group text-left p-3.5 rounded-xl cursor-pointer flex items-start gap-3"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-[var(--text-primary)] flex items-center justify-center shrink-0">
+                    <div className="studio-well w-8 h-8 rounded-lg text-[var(--text-primary)] flex items-center justify-center shrink-0">
                       <Layers className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
@@ -3695,12 +3695,12 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         /* COLLAPSED STEP CARD WITH SCULPTED STEP NODE BADGE */
                         <div
                           onClick={() => setExpandedStepId(step.id)}
-                          className={`group px-3.5 py-2.5 rounded-xl bg-[var(--bg-panel)] border flex items-center justify-between gap-3 transition-all cursor-pointer ${
+                          className={`studio-panel studio-panel-interactive group px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-3 cursor-pointer ${
                             isStepActive
-                              ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.12)] ring-1 ring-[var(--accent)]/35'
+                              ? '!border-[var(--accent)] ring-1 ring-[rgba(var(--accent-rgb),0.35)]'
                               : hasStepIssue
-                              ? 'border-[#D97706] bg-[var(--accent-soft)]'
-                              : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-elevated)]/40'
+                              ? '!border-[#D97706]'
+                              : ''
                           } ${isDragged ? 'opacity-45 border-dashed' : ''}`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -3833,12 +3833,12 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       ) : (
                         /* EXPANDED ACTIVE STEP EDITOR */
                         <div
-                          className={`p-3.5 sm:p-4 rounded-xl bg-[var(--bg-panel)] border space-y-3 animate-step-in ${
+                          className={`studio-panel p-3.5 sm:p-4 rounded-xl space-y-3 animate-step-in ${
                             isStepActive
-                              ? 'border-[var(--accent)]'
+                              ? '!border-[var(--accent)] ring-1 ring-[rgba(var(--accent-rgb),0.3)]'
                               : hasStepIssue
-                              ? 'border-[#D97706]'
-                              : 'border-[var(--border-strong)]'
+                              ? '!border-[#D97706]'
+                              : '!border-[var(--border-strong)]'
                           } ${isDragged ? 'opacity-45 border-dashed' : ''}`}
                         >
                           {/* Expanded Top Header */}
@@ -4731,7 +4731,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
             )}
 
             {/* "+ Add Step" Studio Palette Dock */}
-            <div className="p-2.5 rounded-xl bg-[var(--bg-panel)]/90 border border-[var(--border-subtle)] flex items-center gap-1.5 flex-wrap">
+            <div className="studio-panel p-2.5 rounded-xl flex items-center gap-1.5 flex-wrap">
               <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--text-muted)] px-1 mr-0.5">
                 Add step
               </span>
@@ -4743,7 +4743,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     key={type}
                     type="button"
                     onClick={() => appendStep(type)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer whitespace-nowrap shrink-0"
+                    className="studio-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Plus className="w-3 h-3 text-[var(--accent)]" />
                     <Icon className="w-3.5 h-3.5" />
@@ -4755,7 +4755,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
           </section>
 
           {/* Playback & Compact MacroPad Destination */}
-          <section className="p-3.5 sm:p-4 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">
+          <section className="studio-panel p-3.5 sm:p-4 rounded-2xl space-y-3.5">
             {/* Trigger & Repeat Mode */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -4763,16 +4763,16 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   When Triggered
                 </span>
 
-                <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <div className="studio-well flex items-center gap-1 p-0.5 rounded-lg">
                   <button
                     type="button"
                     onClick={() => {
                       setLoopUntilStopped(false);
                       setRepeatCountInput('1');
                     }}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
                       !loopUntilStopped && parsedRepeatCount === 1
-                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                        ? 'studio-pill-active text-[var(--text-primary)]'
                         : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
                   >
@@ -4784,9 +4784,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       setLoopUntilStopped(false);
                       if (parsedRepeatCount <= 1) setRepeatCountInput('3');
                     }}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
                       !loopUntilStopped && parsedRepeatCount > 1
-                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                        ? 'studio-pill-active text-[var(--text-primary)]'
                         : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
                   >
@@ -4795,9 +4795,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setLoopUntilStopped(true)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
                       loopUntilStopped
-                        ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                        ? 'studio-pill-active text-[var(--text-primary)]'
                         : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
                   >
@@ -4877,7 +4877,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     Target Host &amp; Control
                   </span>
 
-                  <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex-wrap">
+                  <div className="studio-well flex items-center gap-1 p-0.5 rounded-lg flex-wrap">
                     {profiles.filter(p => p.id !== 'TV' || isTvEnabled).map(p => {
                       const ProfIcon = isBleHostProfile(p.id) ? Bluetooth : Tv;
                       const active = targetProfile === p.id;
@@ -4887,9 +4887,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           type="button"
                           onClick={() => setTargetProfile(p.id)}
                           title={p.name}
-                          className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                             active
-                              ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs'
+                              ? 'studio-pill-active text-[var(--text-primary)]'
                               : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                           }`}
                         >
@@ -4906,7 +4906,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     aria-label="Target control"
                     value={targetSlot}
                     onChange={e => setTargetSlot(e.target.value as HardwareSlotId)}
-                    className="px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer max-w-[230px]"
+                    className="studio-well px-2.5 py-1 rounded-lg text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer max-w-[230px]"
                   >
                     {visibleSlots.map(slot => {
                       const slotAct = targetProfileSlots[slot];
@@ -4935,7 +4935,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     type="button"
                     onClick={() => setTargetPadDrawerOpen(v => !v)}
                     aria-expanded={targetPadDrawerOpen}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    className="studio-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <span>{targetPadDrawerOpen ? 'Hide pad' : 'Pick on pad'}</span>
                     {targetPadDrawerOpen ? (
@@ -5140,7 +5140,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
         </div>
 
         {/* Simplified Sticky Bottom Bar: Autosave status + Overflow Menu + Single Primary Assign CTA */}
-        <footer className="sticky bottom-0 z-20 bg-[var(--bg-panel)]/95 backdrop-blur-md border-t border-[var(--border-subtle)] px-4 py-3 sm:px-8">
+        <footer className="studio-chrome sticky bottom-0 z-20 border-t border-[var(--border-subtle)] px-4 py-3 sm:px-8">
           <div className="max-w-3xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] min-w-0 flex-wrap">
               {justAssignedSlot &&
@@ -5196,7 +5196,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onJumpToControl(targetProfile, targetSlot)}
-                    className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    className="studio-btn flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <span>View on Device</span>
                     <ArrowUpRight className="w-3.5 h-3.5" />
@@ -5211,13 +5211,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   aria-label="More macro actions"
                   aria-expanded={builderMenuOpen}
                   title="More macro actions (Save as copy, New blank, BertoSense)"
-                  className="p-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0"
+                  className="studio-btn p-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer shrink-0"
                 >
                   <MoreHorizontal className="w-4 h-4" />
                 </button>
 
                 {builderMenuOpen && (
-                  <div className="absolute right-0 bottom-full mb-2 w-56 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-xl py-1.5 z-40 text-xs animate-popover-in">
+                  <div className="studio-popover absolute right-0 bottom-full mb-2 w-56 rounded-2xl py-1.5 z-40 text-xs animate-popover-in">
                     <button
                       type="button"
                       disabled={!isSequenceValid}
@@ -5304,7 +5304,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     ? `Assign to ${activeTargetProfileObj.name} · ${SLOT_LABELS[targetSlot].short} (Replaces ${replacedActionLabel})`
                     : `Assign to ${activeTargetProfileObj.name} · ${SLOT_LABELS[targetSlot].short}`
                 }
-                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition-opacity cursor-pointer shrink-0 text-left"
+                className="studio-cta flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0 text-left"
               >
                 <Check className="w-3.5 h-3.5 shrink-0" />
                 <span className="flex flex-col leading-tight">

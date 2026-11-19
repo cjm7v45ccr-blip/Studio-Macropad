@@ -642,7 +642,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
       {/* Assigned action stays visible above common assignments. */}
       <div
         title={binding.value ? `Raw action: ${binding.value}` : 'Unassigned'}
-        className="px-3 py-2.5 rounded-xl bg-[var(--bg-input)] flex flex-wrap items-center justify-between gap-2.5"
+        className="px-3.5 py-3 rounded-2xl studio-panel flex flex-wrap items-center justify-between gap-2.5"
       >
         <div className="min-w-0 w-full">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -689,7 +689,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               type="button"
               onClick={onOpenMacroBuilder}
               title="Open multi-step sequence builder for this control"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg studio-btn hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
             >
               <Sliders className="w-3 h-3 text-[var(--accent)]" />
               <span>Sequence</span>
@@ -715,7 +715,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 title={
                   'Review a safe dry-run timeline before optionally running real actions'
                 }
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] disabled:opacity-40 shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg studio-btn hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Play className="w-3 h-3 text-[var(--accent)]" />
                 <span>Preview & test</span>
@@ -738,7 +738,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               : 'Search shortcuts, macros, or media actions…'
           }
           aria-label="Search actions"
-          className="w-full pl-8 pr-8 py-2 rounded-xl bg-[var(--bg-input)] border border-transparent focus:border-[var(--accent)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-colors"
+          className="w-full pl-8 pr-8 py-2 rounded-xl studio-well focus:border-[var(--accent)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-colors"
         />
         {searchQuery && (
           <button
@@ -757,7 +757,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
         {/* Left Category Rail */}
         <nav
           aria-label="Action categories"
-          className="w-[116px] sm:w-[124px] shrink-0 flex flex-col gap-0.5 p-1 rounded-xl bg-[var(--bg-input)]"
+          className="w-[116px] sm:w-[124px] shrink-0 flex flex-col gap-0.5 p-1 rounded-xl studio-well"
         >
           {ACTION_TABS.filter(t => isTvEnabled || (t.id !== 'tv' && t.id !== 'tv_app')).filter(t => moreCategoriesOpen || ['my_macros', 'os_shortcuts', 'media', 'shortcut', 'text'].includes(t.id) || t.id === effectiveTab).map(tab => {
             const Icon = tab.icon;
@@ -770,10 +770,10 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                   setSearchQuery('');
                   setActiveTab(tab.id);
                 }}
-                className={`w-full flex items-center justify-between gap-1.5 px-2.5 py-2 rounded-lg text-[11px] transition-colors cursor-pointer text-left whitespace-nowrap ${
+                className={`w-full flex items-center justify-between gap-1.5 px-2.5 py-2 rounded-lg text-[11px] transition-all cursor-pointer text-left whitespace-nowrap ${
                   active
-                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]/60 font-medium'
+                    ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]/50 font-medium'
                 }`}
               >
                 <span className="flex items-center gap-1.5 min-w-0 truncate">

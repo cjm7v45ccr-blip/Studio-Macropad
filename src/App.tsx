@@ -799,6 +799,16 @@ export default function App() {
                 studio.assignSlotAction(studio.activeProfile.id, slot, binding);
                 showToast(`Pasted action onto ${SLOT_LABELS[slot].short}`);
               }}
+              onBatchPasteSlotBinding={(slots, binding) =>
+                studio.batchPasteSlotBinding(studio.activeProfile.id, slots, binding)
+              }
+              onBatchResetSlotsToDefault={slots =>
+                studio.batchResetSlotsToDefault(studio.activeProfile.id, slots)
+              }
+              onBatchClearSlots={slots =>
+                studio.batchClearSlots(studio.activeProfile.id, slots)
+              }
+              onBatchUpdateKeyAppearance={studio.batchUpdateKeyAppearance}
             />
 
             <div ref={inspectorAnchorRef} className="lg:hidden shrink-0 flex items-center justify-between px-4 py-2 bg-[var(--bg-panel)] border-t border-[var(--border-subtle)] text-xs">

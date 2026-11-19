@@ -2537,6 +2537,204 @@ export function useStudioState(
     [assignSlotAction, onToast]
   );
 
+  const batchPasteSlotBinding = useCallback(
+    async (
+      profileId: HardwareProfileId,
+      slots: HardwareSlotId[],
+      binding: ActionBinding
+    ) => {
+      const uniqueSlots = Array.from(new Set(slots));
+      if (uniqueSlots.length === 0) return;
+
+      const isClearing = binding.type === 'none' && !binding.value;
+      const rawActionStr = isClearing ? '' : bindingToFirmwareAction(binding);
+      const actionStr = isClearing ? '' : canonicalizeFirmwareAction(rawActionStr);
+      if (!isClearing && (!actionStr || !isValidFirmwareAction(actionStr))) {
+        onToast('Rejected unsupported or incomplete firmware action', 'error');
+        return;
+      }
+
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const targetProf = prevSnap.profiles.find(p => p.id === profileId);
+      if (!targetProf) return;
+
+      const currentSlots = extractProfileSlots(targetProf);
+      const nextSlots: Record<HardwareSlotId, string> = { ...currentSlots };
+      const existingRepeats = extractRepeatMapFromProfiles(prevSnap.profiles);
+      const nextOverrides = { ...prevOverrides };
+
+      for (const s of uniqueSlots) {
+        nextSlots[s] = actionStr;
+        if (!isClearing && binding.repeatConfig) {
+          existingRepeats[`${profileId}:${s}`] = { ...binding.repeatConfig };
+        } else {
+          delete existingRepeats[`${profileId}:${s}`];
+        }
+        if (s in SLOT_TO_ACTION_KEY) {
+          const kid = SLOT_TO_ACTION_KEY[s as ButtonSlotId];
+          delete nextOverrides[`${profileId}:${kid}`];
+        }
+      }
+
+      const rebuiltBase = buildHardwareProfile(
+        profileId,
+        targetProf.name,
+        nextSlots,
+        targetProf,
+        existingRepeats,
+        prevSnap.customMacros
+      );
+
+      // Refresh appearance cleanly for updated button keys so labels/icons match the pasted action
+      const baseLayer = rebuiltBase.layers[0];
+      const nextKeys = { ...baseLayer.keys };
+      for (const s of uniqueSlots) {
+        if (s in SLOT_TO_ACTION_KEY) {
+          const kid = SLOT_TO_ACTION_KEY[s as ButtonSlotId];
+          const existingApp = targetProf.layers[0].keys[kid].appearance;
+          nextKeys[kid] = {
+            ...nextKeys[kid],
+            appearance: deriveAppearanceForAction(
+              actionStr,
+              {
+                ...existingApp,
+                customLabel: false,
+                customIcon: existingApp.icon.startsWith('data:image/')
+              },
+              !isClearing ? binding.repeatConfig : undefined,
+              prevSnap.customMacros
+            )
+          };
+        }
+      }
+
+      const rebuilt: StudioProfile = {
+        ...rebuiltBase,
+        layers: [{ ...baseLayer, keys: nextKeys }]
+      };
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: prevSnap.profiles.map(p => (p.id === profileId ? rebuilt : p)),
+        appearanceOverrides: nextOverrides
+      };
+
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+
+      const actionLabel = isClearing
+        ? 'Unassigned'
+        : describeFirmwareAction(actionStr, binding.repeatConfig, prevSnap.customMacros).shortLabel;
+      const msg = isClearing
+        ? `Cleared ${uniqueSlots.length} controls`
+        : `Applied "${actionLabel}" to ${uniqueSlots.length} controls`;
+
+      await runConnectedWrite(
+        prevSnap,
+        nextSnap,
+        () => usbHardware.saveFullProfile(profileId, nextSlots),
+        msg
+      );
+    },
+    [onToast, runConnectedWrite]
+  );
+
+  const batchResetSlotsToDefault = useCallback(
+    async (profileId: HardwareProfileId, slots: HardwareSlotId[]) => {
+      const uniqueSlots = Array.from(new Set(slots));
+      if (uniqueSlots.length === 0) return;
+
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const targetProf = prevSnap.profiles.find(p => p.id === profileId);
+      if (!targetProf) return;
+
+      const currentSlots = extractProfileSlots(targetProf);
+      const nextSlots: Record<HardwareSlotId, string> = { ...currentSlots };
+      const existingRepeats = extractRepeatMapFromProfiles(prevSnap.profiles);
+      const nextOverrides = { ...prevOverrides };
+
+      for (const s of uniqueSlots) {
+        nextSlots[s] = FACTORY_DEFAULT_SLOTS[profileId][s];
+        delete existingRepeats[`${profileId}:${s}`];
+        if (s in SLOT_TO_ACTION_KEY) {
+          const kid = SLOT_TO_ACTION_KEY[s as ButtonSlotId];
+          delete nextOverrides[`${profileId}:${kid}`];
+        }
+      }
+
+      const rebuiltBase = buildHardwareProfile(
+        profileId,
+        targetProf.name,
+        nextSlots,
+        targetProf,
+        existingRepeats,
+        prevSnap.customMacros
+      );
+
+      const baseLayer = rebuiltBase.layers[0];
+      const nextKeys = { ...baseLayer.keys };
+      for (const s of uniqueSlots) {
+        if (s in SLOT_TO_ACTION_KEY) {
+          const kid = SLOT_TO_ACTION_KEY[s as ButtonSlotId];
+          nextKeys[kid] = {
+            ...nextKeys[kid],
+            appearance: deriveAppearanceForAction(
+              nextSlots[s],
+              undefined,
+              undefined,
+              prevSnap.customMacros
+            )
+          };
+        }
+      }
+
+      const rebuilt: StudioProfile = {
+        ...rebuiltBase,
+        layers: [{ ...baseLayer, keys: nextKeys }]
+      };
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: prevSnap.profiles.map(p => (p.id === profileId ? rebuilt : p)),
+        appearanceOverrides: nextOverrides
+      };
+
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+
+      await runConnectedWrite(
+        prevSnap,
+        nextSnap,
+        () => usbHardware.saveFullProfile(profileId, nextSlots),
+        `Reset ${uniqueSlots.length} controls to default`
+      );
+    },
+    [runConnectedWrite]
+  );
+
+  const batchClearSlots = useCallback(
+    async (profileId: HardwareProfileId, slots: HardwareSlotId[]) => {
+      await batchPasteSlotBinding(profileId, slots, { type: 'none', value: '' });
+    },
+    [batchPasteSlotBinding]
+  );
+
   const resetBothProfilesToDefault = useCallback(async () => {
     const prevSnap = snapshotRef.current;
     const nextProfiles: StudioProfile[] = [
@@ -2850,6 +3048,61 @@ export function useStudioState(
       }
     },
     [activeProfile.id, conflictPrompt, saveOfflineDraft]
+  );
+
+  const batchUpdateKeyAppearance = useCallback(
+    (kids: KeyId[], patch: Partial<KeyAppearance>) => {
+      const validKids = Array.from(new Set(kids)).filter(k => k !== 'k9');
+      if (validKids.length === 0) return;
+
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const nextOverrides = { ...prevOverrides };
+
+      const nextProfiles = prevSnap.profiles.map(prof => {
+        if (prof.id !== activeProfile.id) return prof;
+        const layer = prof.layers[0];
+        const nextKeys = { ...layer.keys };
+        for (const kid of validKids) {
+          const prevApp = nextKeys[kid].appearance;
+          const updated: KeyAppearance = {
+            ...prevApp,
+            ...patch,
+            customLabel: patch.label !== undefined ? true : prevApp.customLabel,
+            customIcon: patch.icon !== undefined ? true : prevApp.customIcon
+          };
+          nextOverrides[`${prof.id}:${kid}`] = updated;
+          nextKeys[kid] = {
+            ...nextKeys[kid],
+            appearance: updated
+          };
+        }
+        return {
+          ...prof,
+          layers: [{ ...layer, keys: nextKeys }] as [typeof layer]
+        };
+      });
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: nextProfiles,
+        appearanceOverrides: nextOverrides
+      };
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+      if (!usbHardware.info.connected || conflictPrompt !== null) {
+        saveOfflineDraft(nextSnap);
+      }
+      onToast(`Updated legend style on ${validKids.length} keys`);
+    },
+    [activeProfile.id, conflictPrompt, onToast, saveOfflineDraft]
   );
 
   const resetKeyAppearance = useCallback(
@@ -3832,12 +4085,16 @@ export function useStudioState(
     assignProfileSlots,
     resetSlotToDefault,
     clearSlot,
+    batchPasteSlotBinding,
+    batchResetSlotsToDefault,
+    batchClearSlots,
     resetBothProfilesToDefault,
     updateKeyBinding,
     updateKeyHoldBinding,
     swapKeys,
     copyKey,
     updateKeyAppearance,
+    batchUpdateKeyAppearance,
     resetKeyAppearance,
     updateEncoderSlot,
     updateEncoderColor,

@@ -237,19 +237,21 @@ export const TopBar: React.FC<TopBarProps> = ({
     : 'Connect pad';
 
   const iconBtnStyle =
-    'flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer';
+    'flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer';
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-panel)] px-4 select-none shrink-0 shadow-xs">
+    <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between gap-2.5 border-b border-[var(--border-subtle)] studio-chrome px-4 select-none shrink-0">
       {/* Left: Brand + Device Tabs + Options Menu */}
       <div className="flex items-center gap-2.5 min-w-0">
-        <div className="flex items-center gap-2 pr-1 shrink-0">
-          <img
-            src={resolvedTheme === 'light' ? '/logo-mark-light.svg' : '/logo-mark-dark.svg'}
-            alt="BertoPad"
-            referrerPolicy="no-referrer"
-            className="h-7 w-7 rounded-lg object-contain shrink-0"
-          />
+        <div className="flex items-center gap-2.5 pr-1 shrink-0">
+          <div className="h-8 w-8 rounded-xl studio-well p-1 flex items-center justify-center shrink-0">
+            <img
+              src={resolvedTheme === 'light' ? '/logo-mark-light.svg' : '/logo-mark-dark.svg'}
+              alt="BertoPad"
+              referrerPolicy="no-referrer"
+              className="h-full w-full object-contain"
+            />
+          </div>
           <span className="hidden text-[15px] font-bold tracking-tight lg:inline whitespace-nowrap shrink-0">
             <span className="text-[var(--text-primary)]">Berto</span>
             <span className="text-[var(--accent)]">Pad</span>
@@ -260,7 +262,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <div
           role="tablist"
           aria-label="Devices"
-          className="flex items-center gap-0.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] p-1 overflow-x-auto min-w-0"
+          className="flex items-center gap-0.5 rounded-xl studio-well p-1 overflow-x-auto min-w-0"
         >
           {profiles.map(prof => {
             const isTvDisabled = prof.id === 'TV' && !isTvEnabled;
@@ -279,10 +281,10 @@ export const TopBar: React.FC<TopBarProps> = ({
                 type="button"
                 onClick={() => onSelectProfile(prof.id)}
                 title={`${prof.name}${isLive ? ' — Active on hardware' : ''}`}
-                className={`flex h-8 items-center gap-2 rounded-lg px-2.5 sm:px-3 text-xs sm:text-sm font-medium transition cursor-pointer whitespace-nowrap shrink-0 ${
+                className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 sm:px-3 text-xs font-medium transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                   selected
-                    ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-xs'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-panel)]'
+                    ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 <Icon
@@ -316,7 +318,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
 
           {menuOpen && (
-            <div className="absolute top-full left-0 mt-1.5 w-56 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-strong)] p-1.5 shadow-2xl z-50 animate-popover-in text-xs">
+            <div className="absolute top-full left-0 mt-2 w-56 rounded-2xl studio-popover p-1.5 z-50 animate-popover-in text-xs">
               <div className="px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-muted)] border-b border-[var(--border-subtle)] mb-1 truncate">
                 {activeProfile.name}
               </div>
@@ -485,7 +487,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={onConnectUsbPad}
-            className="ml-2 flex h-9 items-center rounded-xl bg-[var(--accent)] px-4 text-xs sm:text-sm font-semibold text-[var(--accent-contrast)] hover:opacity-90 transition cursor-pointer whitespace-nowrap shadow-xs shrink-0"
+            className="ml-2 flex h-9 items-center rounded-xl studio-cta px-4 text-xs sm:text-sm font-semibold cursor-pointer whitespace-nowrap shrink-0"
           >
             Connect pad
           </button>
@@ -495,7 +497,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             onClick={() => setConnPopoverOpen(prev => !prev)}
             title="Open connection details"
             aria-label="Connection details"
-            className="ml-2 flex h-9 items-center gap-2 rounded-xl bg-[var(--bg-input)] px-3 text-xs sm:text-sm text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition cursor-pointer whitespace-nowrap border border-[var(--border-subtle)] shrink-0"
+            className="ml-2 flex h-9 items-center gap-2 rounded-xl studio-btn px-3 text-xs sm:text-sm text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
           >
             <span className={`h-2 w-2 rounded-full ${DOT_COLOR[connState]}`} />
             <span className="font-medium truncate max-w-[120px]">{connLabel}</span>
@@ -504,7 +506,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Connection Details Popover */}
         {connPopoverOpen && (
-          <div className="absolute top-full right-0 mt-2 w-80 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] p-4 shadow-2xl z-50 animate-popover-in text-xs">
+          <div className="absolute top-full right-0 mt-2.5 w-80 rounded-2xl studio-popover p-4 z-50 animate-popover-in text-xs">
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--border-subtle)]">
               <div className="flex items-center gap-2 min-w-0">
                 <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${DOT_COLOR[connState]}`} />

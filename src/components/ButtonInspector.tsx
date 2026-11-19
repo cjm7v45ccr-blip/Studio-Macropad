@@ -142,14 +142,14 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     const activeHostDisplay = activeHostProf?.name || `Device ${activeBleHost}`;
 
     return (
-      <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
-        <div className="sticky top-0 z-20 bg-[var(--bg-panel)]/95 backdrop-blur-md px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
+      <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 studio-chrome border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
+        <div className="sticky top-0 z-20 studio-chrome px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[var(--bg-input)] flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl studio-well flex items-center justify-center">
               <Layers className="w-4 h-4 text-[var(--accent)]" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">
                 Mode Key
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
@@ -162,7 +162,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
         </div>
 
         <div key={selectionKey} className="p-5 space-y-4 animate-panel-in">
-          <div className="p-4 rounded-xl bg-[var(--bg-input)] space-y-2.5">
+          <div className="p-4 rounded-2xl studio-panel space-y-2.5">
             <div className="text-xs font-semibold text-[var(--text-primary)]">
               Hardware Gestures
             </div>
@@ -205,8 +205,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             <button
               type="button"
               onClick={onToggleProfileMode}
-              style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl studio-cta text-xs font-semibold cursor-pointer whitespace-nowrap"
             >
               <ArrowLeftRight className="w-4 h-4 shrink-0" />
               <span>
@@ -215,7 +214,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             </button>
           )}
 
-          <div className="p-4 rounded-xl bg-[var(--bg-input)] space-y-3">
+          <div className="p-4 rounded-2xl studio-panel space-y-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
                 <Bluetooth className="w-4 h-4 text-[var(--accent)] shrink-0" />
@@ -342,12 +341,12 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   };
 
   return (
-    <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
+    <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 studio-chrome border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
       {/* Sticky Single-Scroll Header */}
-      <div className="sticky top-0 z-20 bg-[var(--bg-panel)]/95 backdrop-blur-md px-4 sm:px-5 py-3.5 border-b border-[var(--border-subtle)] space-y-2.5">
+      <div className="sticky top-0 z-20 studio-chrome px-4 sm:px-5 py-3.5 border-b border-[var(--border-subtle)] space-y-2.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-[var(--bg-input)] flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-xl studio-well flex items-center justify-center shrink-0">
               <KeycapIcon
                 icon={keyConfig.appearance.icon}
                 className="w-4 h-4"
@@ -355,7 +354,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight truncate">
                 {keyConfig.appearance.label || slotMeta.full}
               </h2>
               <p className="text-xs text-[var(--text-muted)] truncate tabular-nums">
@@ -365,7 +364,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           </div>
 
           {/* Compact Subtle Control Actions */}
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               disabled={isAlreadyUnassigned}
@@ -375,7 +374,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                   : handleActiveBindingChange({ type: 'none', value: '' })
               }
               title="Clear this control so triggering it sends nothing"
-              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1 py-1.5 px-2.5 rounded-lg studio-btn text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer whitespace-nowrap"
             >
               <XCircle className="w-3 h-3 shrink-0" />
               <span>Clear</span>
@@ -386,7 +385,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               disabled={isAlreadyFactoryDefault}
               onClick={() => onResetSlotToDefault(slotId)}
               title={`Reset to default: ${factoryDesc.fullLabel || 'Unassigned'}`}
-              className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1 py-1.5 px-2.5 rounded-lg studio-btn text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer whitespace-nowrap"
             >
               <RotateCcw className="w-3 h-3 shrink-0" />
               <span>Default</span>
@@ -399,7 +398,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           <div
             role="group"
             aria-label="Key trigger type"
-            className="p-1 rounded-xl bg-[var(--bg-input)] space-y-1"
+            className="p-1 rounded-xl studio-well space-y-1"
           >
             <button
               type="button"
@@ -407,9 +406,9 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 onSelectTrigger?.('tap');
                 setInspectorSection('action');
               }}
-              className={`w-full px-3 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer ${
+              className={`w-full px-3 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs transition-all cursor-pointer ${
                 effectiveTrigger === 'tap'
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold ring-1 ring-[var(--accent)]'
+                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold ring-1 ring-[var(--accent)]/60'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
@@ -427,9 +426,9 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 onSelectTrigger?.('hold');
                 setInspectorSection('action');
               }}
-              className={`w-full px-3 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer ${
+              className={`w-full px-3 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs transition-all cursor-pointer ${
                 effectiveTrigger === 'hold'
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold ring-1 ring-[var(--accent)]'
+                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold ring-1 ring-[var(--accent)]/60'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
@@ -444,13 +443,13 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
         )}
 
         {/* Section Switcher: Action vs Keycap Legend */}
-        <div className="grid grid-cols-2 p-1 rounded-xl bg-[var(--bg-input)]">
+        <div className="grid grid-cols-2 gap-0.5 p-1 rounded-xl studio-well">
           <button
             type="button"
             onClick={() => setInspectorSection('action')}
             className={`py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
               inspectorSection === 'action'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
+                ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
@@ -461,7 +460,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             onClick={() => setInspectorSection('appearance')}
             className={`py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
               inspectorSection === 'appearance'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
+                ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >

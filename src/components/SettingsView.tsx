@@ -769,14 +769,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const showDeveloper = settingsTab === 'developer';
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-workspace-section">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-workspace-section studio-stage-backdrop">
       <div className="max-w-3xl mx-auto space-y-6">
-        <div className="space-y-3.5">
+        <div className="space-y-4">
           <div>
-            <h1 className="text-lg font-bold text-[var(--text-primary)]">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)]">
               Settings
             </h1>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+            <p className="text-xs text-[var(--text-muted)] mt-1">
               Bluetooth hosts, OLED display, motion gestures, firmware updates, Wi-Fi, SmartCast TV, and preferences.
             </p>
           </div>
@@ -784,7 +784,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Segmented Settings Sub-Navigation */}
           <nav
             aria-label="Settings sections"
-            className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-x-auto"
+            className="studio-well flex items-center gap-1 p-1 rounded-xl overflow-x-auto"
           >
             {visibleSettingsTabs.map(tab => {
               const active = settingsTab === tab.id;
@@ -793,9 +793,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setSettingsTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                     active
-                      ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm'
+                      ? 'studio-pill-active text-[var(--text-primary)]'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                   }`}
                 >
@@ -819,7 +819,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* Guided Setup & Hardware Setup Mode Provisioning */}
         {showConnection && onOpenSetupWizard && (
-          <section className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+          <section className="p-4 sm:p-5 rounded-2xl studio-panel space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
@@ -874,7 +874,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 1. Consumer Device Status Summary (Connection & Hosts) */}
         {showConnection && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+          <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                 <Cpu className="w-4 h-4 text-[var(--accent)]" />
@@ -1084,7 +1084,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 2. Multi-Host Bluetooth Engine */}
         {showConnection && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+        <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
               <div
@@ -1230,7 +1230,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <>
           <section
             aria-labelledby="settings-display-heading"
-            className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4"
+            className="p-4 sm:p-5 rounded-2xl studio-panel space-y-4"
           >
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div className="space-y-1 min-w-0">
@@ -1473,7 +1473,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {/* 128x64 OLED Screen Composer Card */}
           {onOpenOledComposer && (
-            <section className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
+            <section className="p-4 sm:p-5 rounded-2xl studio-panel flex items-center justify-between gap-4 flex-wrap">
               <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                   <Sparkles className="w-4 h-4 text-[var(--accent)] shrink-0" />
@@ -1548,7 +1548,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {supportsTvToggle && (
-              <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4">
+              <div className="p-4 sm:p-5 rounded-2xl studio-panel flex items-center justify-between gap-4">
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <Tv className="w-4 h-4 text-[var(--accent)] shrink-0" />
@@ -1608,7 +1608,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
 
             {/* 3. Wi-Fi Provisioning Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3.5">
+        <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-3.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
               <Wifi className="w-4 h-4 text-[var(--accent)]" />
@@ -1685,7 +1685,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {/* 4. SmartCast TV Pairing Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+        <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
               <Tv className="w-4 h-4 text-[var(--accent)]" />
@@ -1846,7 +1846,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {/* 5. Local HTTP API Security (Pad Only) */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+          <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                 <Shield className="w-4 h-4 text-[var(--accent)]" />
@@ -1887,7 +1887,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 6. Theme, Live Events Toggle, Audio & Keyboard Layout */}
         {showPreferences && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-5">
+        <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-5">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
@@ -2007,7 +2007,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* Backup & Restore Workspace Card */}
         {showPreferences && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+          <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-3">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
@@ -2065,7 +2065,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* Standalone Desktop & Mobile App Installation */}
         {showPreferences && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
+          <div className="p-4 sm:p-5 rounded-2xl studio-panel flex items-center justify-between gap-4 flex-wrap">
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
                 <Monitor className="w-4 h-4 text-[var(--accent)] shrink-0" />
@@ -2083,7 +2083,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {showDeveloper && (
           <div className="space-y-5">
             {/* Detailed Hardware & Memory Diagnostics */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+            <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                   <Cpu className="w-4 h-4 text-[var(--accent)]" />
@@ -2354,7 +2354,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {/* Raw Firmware IDs Toggle */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
+            <div className="p-4 sm:p-5 rounded-2xl studio-panel flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
                   <Code2 className="w-4 h-4 text-[var(--accent)]" />
@@ -2378,7 +2378,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {/* ESP32 Firmware Source Studio */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+            <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
@@ -2460,7 +2460,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {/* Direct C++ Firmware Header Exports (config.h & bitmaps.h) */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
+            <div className="p-4 sm:p-5 rounded-2xl studio-panel flex items-center justify-between gap-4 flex-wrap">
               <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                   <Code2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
@@ -2491,7 +2491,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {/* Debug Console (Redacted Serial Traffic + Copy & Clear) */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+            <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                   <Terminal className="w-4 h-4 text-[var(--accent)]" />
@@ -2661,7 +2661,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 8. Reset All 4 Profiles & Clear Browser Cache */}
         {showPreferences && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+        <div className="p-4 sm:p-5 rounded-2xl studio-panel space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
@@ -2755,7 +2755,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       />
 
       {/* About BertoPad Studio */}
-      <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
+      <div className="mt-6 p-4 sm:p-5 rounded-2xl studio-panel flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold text-[var(--text-primary)]">
             About BertoPad Studio ({STUDIO_VERSION})

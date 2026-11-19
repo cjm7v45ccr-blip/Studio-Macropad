@@ -856,7 +856,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         onClick={() => openCommandPalette()}
         aria-label="Open Command Palette & Macro Search (Cmd+K)"
         title={`Search macros, actions & presets (${isMacPlatform ? 'Cmd+K' : 'Ctrl+K'})`}
-        className="md:hidden flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors cursor-pointer shrink-0"
+        className="md:hidden flex h-9 w-9 items-center justify-center rounded-xl studio-well text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors cursor-pointer shrink-0"
       >
         <Search className="w-4 h-4" />
       </button>
@@ -868,10 +868,10 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         aria-label="Search macros, actions & presets (Cmd+K)"
-        className={`hidden md:flex items-center justify-between gap-2 px-3 h-9 rounded-xl bg-[var(--bg-input)] border transition-colors w-full cursor-pointer text-left group ${
+        className={`hidden md:flex items-center justify-between gap-2 px-3 h-9 rounded-xl studio-well transition-all w-full cursor-pointer text-left group ${
           isOpen
-            ? 'border-[var(--accent)] shadow-xs'
-            : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+            ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]/30'
+            : 'hover:border-[var(--border-strong)]'
         }`}
       >
         <span className="flex items-center gap-2 min-w-0 flex-1">
@@ -881,7 +881,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           </span>
         </span>
         <span className="flex items-center gap-1.5 shrink-0">
-          <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] font-mono text-[10px] font-semibold text-[var(--text-secondary)] shrink-0">
+          <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md studio-kbd font-mono text-[10px] font-semibold text-[var(--text-secondary)] shrink-0">
             {isMacPlatform ? 'Cmd+K' : 'Ctrl K'}
           </kbd>
         </span>
@@ -893,15 +893,15 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           role="dialog"
           aria-modal="true"
           aria-labelledby="global-macro-search-title"
-          className="fixed inset-0 z-50 flex items-start justify-center pt-10 sm:pt-16 px-3 sm:px-4 pb-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-start justify-center pt-10 sm:pt-16 px-3 sm:px-4 pb-4 bg-black/65 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => setIsOpen(false)}
         >
           <div
             onClick={e => e.stopPropagation()}
-            className="w-full max-w-2xl max-h-[calc(100dvh-5rem)] rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl flex flex-col overflow-hidden animate-popover-in"
+            className="w-full max-w-2xl max-h-[calc(100dvh-5rem)] rounded-2xl studio-popover flex flex-col overflow-hidden animate-popover-in"
           >
             {/* Dedicated Command Palette Search Input Header */}
-            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] shrink-0">
+            <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)]/70 shrink-0">
               <Search className="w-4 h-4 text-[var(--accent)] shrink-0" />
               <h2 id="global-macro-search-title" className="sr-only">
                 Global Macro &amp; Action Command Palette

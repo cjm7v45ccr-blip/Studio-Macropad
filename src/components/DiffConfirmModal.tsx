@@ -60,14 +60,14 @@ export const DiffConfirmModal: React.FC<DiffConfirmModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-labelledby="diff-confirm-modal-title"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-lg rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl overflow-hidden"
+        className="studio-popover w-full max-w-lg rounded-2xl overflow-hidden animate-popover-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

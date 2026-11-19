@@ -127,7 +127,7 @@ export const MotionInspector: React.FC<MotionInspectorProps> = ({
   const canResetDefault = currentActionStr !== defaultActionStr;
 
   return (
-    <aside className="w-full lg:w-[400px] xl:w-[430px] shrink-0 lg:h-full overflow-y-auto bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col">
+    <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 lg:h-full overflow-y-auto studio-chrome border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col">
       {/* Header + 3 Motion Gesture Selector Cards */}
       <div className="p-4 sm:p-5 border-b border-[var(--border-subtle)] space-y-3.5">
         <div className="flex items-start justify-between gap-2">

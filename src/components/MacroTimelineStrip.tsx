@@ -166,7 +166,7 @@ export const MacroTimelineStrip: React.FC<MacroTimelineStripProps> = ({
   return (
     <section
       aria-label="Sequence timeline"
-      className="rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] overflow-hidden"
+      className="studio-panel rounded-2xl overflow-hidden"
     >
       {/* Instrument Header */}
       <div className="px-4 py-2.5 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap">
@@ -310,7 +310,7 @@ export const MacroTimelineStrip: React.FC<MacroTimelineStripProps> = ({
         {/* Layer 2: Proportional Hardware Execution Gantt Bar */}
         <div className="space-y-1.5">
           <div
-            className="h-3 w-full rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] p-[2px] flex items-stretch gap-[2px] overflow-hidden"
+            className="studio-well h-3 w-full rounded-lg p-[2px] flex items-stretch gap-[2px] overflow-hidden"
             role="group"
             aria-label="Proportional step duration bar"
           >

@@ -609,12 +609,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-md overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby="setup-wizard-title"
     >
-      <div className="w-full max-w-2xl rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]">
+      <div className="studio-popover w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col max-h-[92dvh] animate-popover-in">
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3 min-w-0">

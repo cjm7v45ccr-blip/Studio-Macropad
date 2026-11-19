@@ -14,6 +14,7 @@ import {
   HardwareFlashSlot,
   HardwareProfileId,
   HardwareSlotId,
+  KeyAppearance,
   KeyId,
   LayerConfig,
   LiveInputEvent,
@@ -40,6 +41,15 @@ import {
   KEY_TO_HOLD_SLOT,
   KEY_TO_SLOT
 } from '../data/presetTemplates';
+import {
+  PROGRAMMABLE_KEY_IDS,
+  addKeyToMultiSelection,
+  buildCombinedMacroBindingFromKeys,
+  formatMultiKeySummary,
+  isProgrammableKeyId,
+  resolveAnchorActionKey,
+  toggleMultiSelectKey
+} from '../utils/keyMultiSelect';
 import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
 import { useMotionSensor } from '../hooks/useMotionSensor';
@@ -67,8 +77,22 @@ import {
   ClipboardPaste,
   Zap,
   XCircle,
-  Pencil
+  Pencil,
+  Check,
+  CheckSquare,
+  ArrowLeftRight,
+  PlusSquare,
+  X
 } from 'lucide-react';
+
+const MULTI_SELECT_LEGEND_SWATCHES = [
+  { hex: '#ECEAE4', label: 'Bone' },
+  { hex: '#F2A33A', label: 'Amber' },
+  { hex: '#38BDF8', label: 'Sky' },
+  { hex: '#34D399', label: 'Emerald' },
+  { hex: '#FB7185', label: 'Rose' },
+  { hex: '#A78BFA', label: 'Violet' }
+] as const;
 
 interface MacropadCanvasProps {
   activeProfileId: HardwareProfileId;
@@ -106,6 +130,10 @@ interface MacropadCanvasProps {
   onResetSlotToDefault?: (slot: HardwareSlotId) => void;
   onClearSlot?: (slot: HardwareSlotId) => void;
   onPasteSlotBinding?: (slot: HardwareSlotId, binding: ActionBinding) => void;
+  onBatchPasteSlotBinding?: (slots: HardwareSlotId[], binding: ActionBinding) => void;
+  onBatchResetSlotsToDefault?: (slots: HardwareSlotId[]) => void;
+  onBatchClearSlots?: (slots: HardwareSlotId[]) => void;
+  onBatchUpdateKeyAppearance?: (kids: KeyId[], patch: Partial<KeyAppearance>) => void;
 }
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
@@ -157,7 +185,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   onOpenMacroBuilderForSlot,
   onResetSlotToDefault,
   onClearSlot,
-  onPasteSlotBinding
+  onPasteSlotBinding,
+  onBatchPasteSlotBinding,
+  onBatchResetSlotsToDefault,
+  onBatchClearSlots,
+  onBatchUpdateKeyAppearance
 }) => {
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [view3D, setView3D] = useState(false);
@@ -175,7 +207,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
   const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
 
-  // Flagship direct manipulation: Drag-and-drop key reordering & right-click quick context menu
+  // Flagship direct manipulation: Shift+Click multi-select, drag-and-drop key reordering & right-click quick context menu
+  const [multiSelectedKeys, setMultiSelectedKeys] = useState<ActionKeyId[]>([]);
+  const [isShiftHeld, setIsShiftHeld] = useState(false);
+  const shiftHeldRef = useRef(false);
   const [draggedKey, setDraggedKey] = useState<KeyId | null>(null);
   const [dragOverKey, setDragOverKey] = useState<KeyId | null>(null);
   const [dragCopyMode, setDragCopyMode] = useState(false);
@@ -193,6 +228,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     binding: ActionBinding;
     keyId?: KeyId;
     encoderIndex?: EncoderIndex;
+    multiKeys?: ActionKeyId[];
   } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const knobScrubRef = useRef<{
@@ -202,6 +238,42 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     accum: number;
     moved: boolean;
   } | null>(null);
+
+  const syncShiftHeld = useCallback((held: boolean) => {
+    if (shiftHeldRef.current !== held) {
+      shiftHeldRef.current = held;
+      setIsShiftHeld(held);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || e.shiftKey) syncShiftHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || !e.shiftKey) syncShiftHeld(Boolean(e.shiftKey));
+    };
+    const onBlur = () => syncShiftHeld(false);
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [syncShiftHeld]);
+
+  // Clear multi-select when leaving edit mode or switching active profile
+  useEffect(() => {
+    if (viewMode !== 'edit') {
+      setMultiSelectedKeys([]);
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    setMultiSelectedKeys([]);
+  }, [activeProfileId]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -213,15 +285,27 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setContextMenu(null);
     };
+    const handleScroll = () => setContextMenu(null);
     window.addEventListener('mousedown', handleOutside);
     window.addEventListener('keydown', handleEsc);
-    window.addEventListener('scroll', () => setContextMenu(null), true);
+    window.addEventListener('scroll', handleScroll, true);
     return () => {
       window.removeEventListener('mousedown', handleOutside);
       window.removeEventListener('keydown', handleEsc);
-      window.removeEventListener('scroll', () => setContextMenu(null), true);
+      window.removeEventListener('scroll', handleScroll, true);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (multiSelectedKeys.length === 0 || contextMenu) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMultiSelectedKeys([]);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [multiSelectedKeys.length, contextMenu]);
   const motionSensor = useMotionSensor({
     enabled: view3D && connection.connected,
     pollIntervalMs: 25,
@@ -391,28 +475,41 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const onAddTestEventRef = useRef(onAddTestEvent);
   onAddTestEventRef.current = onAddTestEvent;
 
-  const lastPointerDownRef = useRef<{ id: string; time: number } | null>(null);
+  const lastPointerDownRef = useRef<{ id: string; time: number; shiftKey: boolean } | null>(null);
+  const lastShiftPointerDownRef = useRef<{ id: string; expiresAt: number } | null>(null);
   const suppressNextClickRef = useRef<{ id: string; expiresAt: number } | null>(null);
 
   const handlePointerDown = (id: string, e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    lastPointerDownRef.current = { id, time: performance.now() };
+    syncShiftHeld(e.shiftKey);
+    const isShift = Boolean(e.shiftKey);
+    lastPointerDownRef.current = { id, time: performance.now(), shiftKey: isShift };
+    if (isShift) {
+      lastShiftPointerDownRef.current = { id, expiresAt: performance.now() + 1500 };
+    } else if (lastShiftPointerDownRef.current?.id === id) {
+      lastShiftPointerDownRef.current = null;
+    }
   };
 
   const handlePointerUp = (
     id: string,
     e: React.PointerEvent,
-    onAction: () => void
+    onAction: (meta: { shiftKey: boolean }) => void
   ) => {
     const down = lastPointerDownRef.current;
     lastPointerDownRef.current = null;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    syncShiftHeld(e.shiftKey);
     if (down && down.id === id) {
       suppressNextClickRef.current = {
         id,
         expiresAt: performance.now() + 800
       };
-      onAction();
+      const shiftKey = Boolean(e.shiftKey || down.shiftKey);
+      if (lastShiftPointerDownRef.current?.id === id) {
+        lastShiftPointerDownRef.current = null;
+      }
+      onAction({ shiftKey });
     }
   };
 
@@ -445,7 +542,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const handleClick = (
     id: string,
     e: React.MouseEvent,
-    onAction: () => void
+    onAction: (meta: { shiftKey: boolean }) => void
   ) => {
     const suppressed = suppressNextClickRef.current;
     if (suppressed && performance.now() > suppressed.expiresAt) {
@@ -454,7 +551,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       suppressNextClickRef.current = null;
       return;
     }
-    onAction();
+    const recentShift = lastShiftPointerDownRef.current;
+    const hadRecentShiftDown = Boolean(
+      recentShift && recentShift.id === id && performance.now() <= recentShift.expiresAt
+    );
+    if (recentShift && recentShift.id === id) {
+      lastShiftPointerDownRef.current = null;
+    }
+    onAction({ shiftKey: Boolean(e.shiftKey || hadRecentShiftDown) });
   };
 
   const triggerOledToast = (title: string, subtitle?: string, durationMs = 950) => {
@@ -839,9 +943,24 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const hasConflict = (id: ControlId) =>
     conflicts.some(c => c.controlA === id || c.controlB === id);
 
-  const activateKeyControl = async (kid: KeyId) => {
+  const activateKeyControl = async (
+    kid: KeyId,
+    opts?: { shiftKey?: boolean }
+  ) => {
+    if (opts?.shiftKey) {
+      if (viewModeRef.current === 'edit' && isProgrammableKeyId(kid)) {
+        const result = toggleMultiSelectKey(multiSelectedKeys, selectedControl, kid);
+        setMultiSelectedKeys(result.nextMultiKeys);
+        onSelectControl(result.nextPrimaryControl);
+      }
+      return;
+    }
+
     soundEngine.playKeyClick();
     if (viewModeRef.current === 'edit') {
+      if (multiSelectedKeys.length > 0) {
+        setMultiSelectedKeys([]);
+      }
       onSelectControl(kid);
     }
 
@@ -920,10 +1039,23 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     }
   };
 
-  const activateKeyHoldControl = async (kid: ActionKeyId) => {
+  const activateKeyHoldControl = async (
+    kid: ActionKeyId,
+    opts?: { shiftKey?: boolean }
+  ) => {
+    if (opts?.shiftKey) {
+      if (viewModeRef.current === 'edit') {
+        const result = toggleMultiSelectKey(multiSelectedKeys, selectedControl, kid);
+        setMultiSelectedKeys(result.nextMultiKeys);
+        onSelectControl(result.nextPrimaryControl);
+      }
+      return;
+    }
+
     soundEngine.playKeyClick();
     const holdSlot = KEY_TO_HOLD_SLOT[kid];
     if (viewModeRef.current === 'edit') {
+      if (multiSelectedKeys.length > 0) setMultiSelectedKeys([]);
       onSelectControl(holdSlot);
     }
     triggerSlotFlash(holdSlot);
@@ -1032,6 +1164,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         : 'enc_ccw';
 
     if (viewModeRef.current === 'edit') {
+      if (multiSelectedKeys.length > 0) setMultiSelectedKeys([]);
       onSelectControl(subId);
     }
     triggerSlotFlash(subId);
@@ -1158,6 +1291,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       encoderIndex === 2 ? 'dial2' : 'dial';
     triggerSlotFlash(dialSlot);
     if (viewModeRef.current === 'edit') {
+      if (multiSelectedKeys.length > 0) setMultiSelectedKeys([]);
       onSelectControl(dialSlot);
     }
 
@@ -1794,7 +1928,16 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       ? 'mode'
       : cfg.slot || (`b${index + 1}` as HardwareFlashSlot);
     const isFlashed = flashedSlots.has(slotKey);
-    const isSelected = selectedControl === kid && viewMode === 'edit';
+    const isMultiSelected =
+      viewMode === 'edit' &&
+      !cfg.isModeSwitch &&
+      isProgrammableKeyId(kid) &&
+      multiSelectedKeys.includes(kid);
+    const multiSelectOrder = isMultiSelected
+      ? multiSelectedKeys.indexOf(kid as ActionKeyId) + 1
+      : 0;
+    const isSelected =
+      (selectedControl === kid || isMultiSelected) && viewMode === 'edit';
     const isDown = pressedKey === kid || isFlashed;
     const conflict = hasConflict(kid);
     const isUnassigned = !cfg.isModeSwitch && !cfg.triggers.tap.value;
@@ -1822,7 +1965,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       >
         <button
           type="button"
-          draggable={viewMode === 'edit' && !cfg.isModeSwitch && Boolean(onSwapKeys)}
+          draggable={!isShiftHeld && viewMode === 'edit' && !cfg.isModeSwitch && Boolean(onSwapKeys)}
           aria-label={`${badgeText}: ${cfg.appearance.label}`}
           title={
             cfg.isModeSwitch
@@ -1830,10 +1973,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 ? 'Mode Switch (short press: Host/TV, hold+dial: Host 1–3)'
                 : 'Mode Switch (short press: flash current host, hold+dial: Host 1–3)'
               : isUnassigned
-              ? `Key ${index + 1} — Unassigned (drag onto another key to swap, right-click for menu)`
-              : `Key ${index + 1}: ${summarizeAction(cfg.triggers.tap, customMacros)} (drag to swap, Alt+drag to copy, right-click for menu)`
+              ? `Key ${index + 1} — Unassigned (Shift+click to multi-select, drag to swap, right-click for menu)`
+              : `Key ${index + 1}: ${summarizeAction(cfg.triggers.tap, customMacros)} (Shift+click to multi-select, drag to swap, Alt+drag to copy, right-click for menu)`
           }
           onDragStart={e => {
+            if (e.shiftKey || shiftHeldRef.current) {
+              e.preventDefault();
+              return;
+            }
             if (viewMode !== 'edit' || cfg.isModeSwitch || !onSwapKeys) return;
             setPressedKey(null);
             lastPointerDownRef.current = null;
@@ -1874,29 +2021,55 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             setDragCopyMode(false);
           }}
           onContextMenu={e => {
-            if (cfg.isModeSwitch || kid === 'k9') return;
+            if (cfg.isModeSwitch || kid === 'k9' || !isProgrammableKeyId(kid)) return;
             e.preventDefault();
-            const tapSlot = KEY_TO_SLOT[kid as ActionKeyId];
+            const tapSlot = KEY_TO_SLOT[kid];
+            let activeMultiKeys = multiSelectedKeys;
+            if (viewMode === 'edit' && e.shiftKey) {
+              activeMultiKeys = addKeyToMultiSelection(multiSelectedKeys, selectedControl, kid);
+              setMultiSelectedKeys(activeMultiKeys);
+              onSelectControl(kid);
+            }
+            const useMulti =
+              viewMode === 'edit' &&
+              activeMultiKeys.length > 1 &&
+              activeMultiKeys.includes(kid);
             setContextMenu({
-              x: Math.min(e.clientX, window.innerWidth - 236),
-              y: Math.min(e.clientY, window.innerHeight - 280),
-              title: `Key ${index + 1}`,
-              subtitle: cfg.appearance.label || 'Unassigned',
+              x: Math.min(Math.max(12, e.clientX), window.innerWidth - 268),
+              y: Math.min(Math.max(12, e.clientY), window.innerHeight - (useMulti ? 410 : 320)),
+              title: useMulti ? `${activeMultiKeys.length} Keys Selected` : `Key ${index + 1}`,
+              subtitle: useMulti
+                ? formatMultiKeySummary(activeMultiKeys)
+                : cfg.appearance.label || 'Unassigned',
               slot: tapSlot,
               controlId: kid,
               binding: cfg.triggers.tap,
-              keyId: kid
+              keyId: kid,
+              multiKeys: useMulti ? activeMultiKeys : undefined
             });
           }}
-          onMouseDown={() => setPressedKey(kid)}
+          onMouseDown={e => {
+            if (e.button !== 0) return;
+            syncShiftHeld(e.shiftKey);
+            if (e.shiftKey) {
+              e.preventDefault();
+              return;
+            }
+            setPressedKey(kid);
+          }}
           onMouseUp={() => setPressedKey(null)}
           onMouseLeave={() => {
             if (pressedKey === kid) setPressedKey(null);
           }}
           onPointerDown={e => {
             if (e.pointerType === 'mouse' && e.button !== 0) return;
-            setPressedKey(kid);
-            if (viewMode !== 'edit' || cfg.isModeSwitch || !onSwapKeys) {
+            syncShiftHeld(e.shiftKey);
+            if (e.shiftKey) {
+              e.preventDefault();
+            } else {
+              setPressedKey(kid);
+            }
+            if (e.shiftKey || viewMode !== 'edit' || cfg.isModeSwitch || !onSwapKeys) {
               try {
                 (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
               } catch {}
@@ -1910,7 +2083,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
               }
             } catch {}
-            handlePointerUp(`key_${kid}`, e, () => activateKeyControl(kid));
+            handlePointerUp(`key_${kid}`, e, ({ shiftKey }) =>
+              activateKeyControl(kid, { shiftKey })
+            );
           }}
           onPointerCancel={e => {
             if (pressedKey === kid) setPressedKey(null);
@@ -1921,7 +2096,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               }
             } catch {}
           }}
-          onClick={e => handleClick(`key_${kid}`, e, () => activateKeyControl(kid))}
+          onClick={e => {
+            handleClick(`key_${kid}`, e, ({ shiftKey }) =>
+              activateKeyControl(kid, { shiftKey })
+            );
+          }}
           style={{
             borderColor:
               dragOverKey === kid
@@ -1976,6 +2155,14 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           {dragOverKey === kid && (
             <span className="pointer-events-none absolute -top-2.5 left-1/2 -translate-x-1/2 z-30 px-1.5 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[9px] font-bold uppercase tracking-wider shadow-md whitespace-nowrap">
               {dragCopyMode ? 'Copy' : 'Swap'}
+            </span>
+          )}
+          {isMultiSelected && multiSelectedKeys.length > 1 && dragOverKey !== kid && (
+            <span
+              aria-label={`Selected #${multiSelectOrder}`}
+              className="pointer-events-none absolute -top-2 -right-2 z-30 min-w-[20px] h-5 px-1 rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[10px] font-bold flex items-center justify-center shadow-[0_2px_8px_rgba(0,0,0,0.5)] ring-2 ring-[#161920] tabular-nums"
+            >
+              {multiSelectOrder}
             </span>
           )}
           <div className="w-full flex items-center justify-between pointer-events-none">
@@ -2043,6 +2230,11 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 : `Key ${index + 1} Hold (500 ms) — Unassigned`
             }
             onPointerDown={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
+              syncShiftHeld(e.shiftKey);
+              if (e.shiftKey) {
+                e.preventDefault();
+              }
               try {
                 (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
               } catch {}
@@ -2054,10 +2246,16 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
                 }
               } catch {}
-              handlePointerUp(`hold_${actionKid}`, e, () => activateKeyHoldControl(actionKid));
+              handlePointerUp(`hold_${actionKid}`, e, ({ shiftKey }) =>
+                activateKeyHoldControl(actionKid, { shiftKey })
+              );
             }}
             onPointerCancel={handlePointerCancel}
-            onClick={e => handleClick(`hold_${actionKid}`, e, () => activateKeyHoldControl(actionKid))}
+            onClick={e =>
+              handleClick(`hold_${actionKid}`, e, ({ shiftKey }) =>
+                activateKeyHoldControl(actionKid, { shiftKey })
+              )
+            }
             style={
               view3D
                 ? {
@@ -2108,15 +2306,15 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
   return (
     <div className="flex-1 @container flex flex-col items-center p-4 sm:p-6 lg:overflow-y-auto relative min-w-0 studio-stage-backdrop">
-      {/* Top Canvas Toolbar (Clean Filled Controls, Minimal Outlines) */}
+      {/* Top Canvas Toolbar (Machined Floating Studio Instrument Controls) */}
       <div className="w-full max-w-2xl flex items-center justify-between gap-2 flex-wrap shrink-0">
-        <div className="flex items-center p-1 rounded-xl bg-[var(--bg-panel)] shadow-2xs">
+        <div className="flex items-center gap-0.5 p-1 rounded-xl studio-well">
           <button
             type="button"
             onClick={() => onChangeViewMode('edit')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
               viewMode === 'edit'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
+                ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
@@ -2126,13 +2324,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <button
             type="button"
             onClick={() => onChangeViewMode('test')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
               viewMode === 'test'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
+                ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
-            <Play className="w-3.5 h-3.5" />
+            <Play className="w-3.5 h-3.5 text-[var(--accent)]" />
             <span>Test controls</span>
           </button>
         </div>
@@ -2146,10 +2344,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 ? `GY-521 Motion Active · Pitch: ${motionSensor.pitch.toFixed(0)}° · Roll: ${motionSensor.roll.toFixed(0)}° · Yaw: ${motionSensor.yaw.toFixed(0)}°`
                 : 'Toggle high-fidelity 3D tactile view with real-time GY-521 motion tracking'
             }
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer whitespace-nowrap shrink-0 ${
               view3D
-                ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
-                : 'bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                ? 'studio-cta font-semibold'
+                : 'studio-btn text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
@@ -2170,7 +2368,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 setCalibStep('flat');
               }}
               title="Calibrate Left/Right Tilt and Zero Point for 3D View"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl studio-btn text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
             >
               <Compass className="w-3.5 h-3.5 text-[var(--accent)]" />
               <span>Calibrate Gyro</span>
@@ -2182,7 +2380,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               type="button"
               onClick={onOpenCheatSheet}
               title="Open printable 4-profile Desk Reference Cheat Sheet"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl studio-btn text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
             >
               <BookOpen className="w-3.5 h-3.5 text-[var(--accent)]" />
               <span>Cheat Sheet</span>
@@ -2194,21 +2392,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               type="button"
               onClick={onOpenShortcuts || onOpenCheatSheet}
               title="Open Keyboard Shortcuts & Studio Controls HUD (?)"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl studio-btn text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
             >
               <Command className="w-3.5 h-3.5 text-[var(--accent)]" />
               <span>Shortcuts</span>
-              <kbd className="hidden sm:inline font-mono text-[9px] px-1 rounded bg-[var(--bg-input)] text-[var(--text-muted)]">?</kbd>
+              <kbd className="hidden sm:inline font-mono text-[9px] px-1.5 py-0.5 rounded studio-kbd text-[var(--text-muted)]">?</kbd>
             </button>
           )}
 
-          <div className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-panel)] shadow-2xs">
+          <div className="flex items-center gap-0.5 p-1 rounded-xl studio-well">
             <button
               type="button"
               onClick={() => onChangeEncoderPlacement('grid')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
                 encoderPlacement === 'grid'
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
+                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
@@ -2217,9 +2415,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <button
               type="button"
               onClick={() => onChangeEncoderPlacement('top')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
                 encoderPlacement === 'top'
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
+                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
@@ -2228,6 +2426,70 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Multi-Select Action Bar (appears when 2+ macro keys are Shift-selected) */}
+      {viewMode === 'edit' && multiSelectedKeys.length > 1 && (
+        <div
+          role="region"
+          aria-label="Multi-selected keys toolbar"
+          className="studio-chrome w-full max-w-2xl mt-2.5 px-3.5 py-2 rounded-2xl border border-[rgba(var(--accent-rgb),0.45)] flex items-center justify-between gap-2.5 flex-wrap animate-popover-in shrink-0"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <CheckSquare className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+            <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap tabular-nums">
+              {multiSelectedKeys.length} keys selected
+            </span>
+            <span className="font-mono text-[11px] text-[var(--accent)] truncate">
+              {formatMultiKeySummary(multiSelectedKeys)}
+            </span>
+            <span className="hidden sm:inline text-[11px] text-[var(--text-muted)] whitespace-nowrap">
+              · Right-click any selected key for bulk actions
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={e => {
+                const firstKey = multiSelectedKeys[0];
+                const rect = e.currentTarget.getBoundingClientRect();
+                setContextMenu({
+                  x: Math.min(Math.max(12, rect.left), window.innerWidth - 268),
+                  y: Math.min(Math.max(12, rect.bottom + 6), window.innerHeight - 410),
+                  title: `${multiSelectedKeys.length} Keys Selected`,
+                  subtitle: formatMultiKeySummary(multiSelectedKeys),
+                  slot: KEY_TO_SLOT[firstKey],
+                  controlId: firstKey,
+                  binding: layer.keys[firstKey].triggers.tap,
+                  keyId: firstKey,
+                  multiKeys: multiSelectedKeys
+                });
+              }}
+              className="studio-cta px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+            >
+              Actions
+            </button>
+            {multiSelectedKeys.length < PROGRAMMABLE_KEY_IDS.length && (
+              <button
+                type="button"
+                onClick={() => setMultiSelectedKeys([...PROGRAMMABLE_KEY_IDS])}
+                className="studio-btn px-2 py-1 rounded-lg text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+              >
+                Select all 8
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setMultiSelectedKeys([])}
+              title="Clear multi-selection (Esc)"
+              className="studio-btn p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+              aria-label="Clear multi-selection"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Unsupported Browser Banner (Firefox / Safari) */}
       {!usbHardware.browserSupportsWebSerial && !connection.connected && (
@@ -2926,134 +3188,506 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           )}
         </div>
       ) : null}
-      {/* Right-Click Tactile Studio Context Menu for Keys & Knobs */}
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          role="menu"
-          aria-label={`Quick actions for ${contextMenu.title}`}
-          style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
-          className="fixed z-[80] w-56 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-2xl p-1.5 text-xs animate-popover-in"
-        >
-          <div className="px-2.5 py-1.5 border-b border-[var(--border-subtle)] mb-1">
-            <div className="font-semibold text-[var(--text-primary)] truncate">
-              {contextMenu.title}
+      {/* Right-Click Tactile Studio Context Menu for Single & Multi-Selected Keys & Knobs */}
+      {contextMenu && (() => {
+        const multiKeys = contextMenu.multiKeys;
+        const isMultiMode = Boolean(multiKeys && multiKeys.length > 1);
+        const multiSlots: HardwareSlotId[] = isMultiMode
+          ? multiKeys!.map(k => KEY_TO_SLOT[k])
+          : [];
+        const combinedMacroBinding = isMultiMode
+          ? buildCombinedMacroBindingFromKeys(multiKeys!, layer.keys)
+          : null;
+        const clickedKeyActionLabel =
+          contextMenu.keyId && isProgrammableKeyId(contextMenu.keyId)
+            ? layer.keys[contextMenu.keyId].appearance.label || 'Unassigned'
+            : contextMenu.subtitle;
+        const clickedKeyHasAction = Boolean(contextMenu.binding.value);
+        const singleAnchorKey =
+          !isMultiMode &&
+          viewMode === 'edit' &&
+          contextMenu.keyId &&
+          isProgrammableKeyId(contextMenu.keyId)
+            ? resolveAnchorActionKey(selectedControl)
+            : null;
+
+        return (
+          <div
+            ref={contextMenuRef}
+            role="menu"
+            aria-label={`Quick actions for ${contextMenu.title}`}
+            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+            className="studio-popover fixed z-[80] w-64 rounded-2xl p-1.5 text-xs animate-popover-in"
+          >
+            <div className="px-2.5 py-1.5 border-b border-[var(--border-subtle)] mb-1">
+              <div className="font-semibold text-[var(--text-primary)] truncate flex items-center gap-1.5">
+                {isMultiMode && (
+                  <CheckSquare className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                )}
+                <span className="truncate">{contextMenu.title}</span>
+              </div>
+              <div className="text-[11px] text-[var(--text-muted)] truncate font-mono">
+                {contextMenu.subtitle}
+              </div>
             </div>
-            <div className="text-[11px] text-[var(--text-muted)] truncate">
-              {contextMenu.subtitle}
-            </div>
+
+            {isMultiMode && multiKeys ? (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const keysToRun = [...multiKeys];
+                    setContextMenu(null);
+                    keysToRun.forEach((k, i) => {
+                      window.setTimeout(() => {
+                        soundEngine.playKeyClick();
+                        triggerSlotFlash(KEY_TO_SLOT[k]);
+                        const cfg = layer.keys[k];
+                        if (cfg) {
+                          triggerOledToast(
+                            `KEY ${k.slice(1)}`,
+                            cfg.appearance.label || 'Unassigned'
+                          );
+                          pushLog(
+                            `Key ${k.slice(1)}`,
+                            'Batch Test',
+                            summarizeAction(cfg.triggers.tap, customMacros),
+                            'sim'
+                          );
+                        }
+                      }, i * 110);
+                    });
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                >
+                  <Play className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                  <span>Test all {multiKeys.length} keys</span>
+                </button>
+
+                {onOpenMacroBuilderForSlot && combinedMacroBinding && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const firstSlot = KEY_TO_SLOT[multiKeys[0]];
+                      setContextMenu(null);
+                      setMultiSelectedKeys([]);
+                      onOpenMacroBuilderForSlot(firstSlot, combinedMacroBinding);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    <span>Combine into Macro Studio</span>
+                  </button>
+                )}
+
+                {multiKeys.length === 2 && onSwapKeys && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const [a, b] = multiKeys;
+                      setContextMenu(null);
+                      soundEngine.playKeyClick();
+                      onSwapKeys(a, b);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  >
+                    <ArrowLeftRight className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    <span>
+                      Swap K{multiKeys[0].slice(1)} ↔ K{multiKeys[1].slice(1)}
+                    </span>
+                  </button>
+                )}
+
+                {contextMenu.keyId && clickedKeyHasAction && (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setCopiedClipboard({
+                          label: clickedKeyActionLabel,
+                          binding: { ...contextMenu.binding }
+                        });
+                        setContextMenu(null);
+                        soundEngine.playKeyClick();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
+                      <span className="truncate">
+                        Copy Key {contextMenu.keyId.slice(1)} action
+                      </span>
+                    </button>
+
+                    {(onBatchPasteSlotBinding || onPasteSlotBinding) && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          const bindingCopy = { ...contextMenu.binding };
+                          setContextMenu(null);
+                          soundEngine.playKeyClick();
+                          if (onBatchPasteSlotBinding) {
+                            onBatchPasteSlotBinding(multiSlots, bindingCopy);
+                          } else if (onPasteSlotBinding) {
+                            multiSlots.forEach(s => onPasteSlotBinding(s, bindingCopy));
+                          }
+                        }}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                      >
+                        <ClipboardPaste className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                        <span className="truncate">
+                          Apply &ldquo;{clickedKeyActionLabel}&rdquo; to all {multiKeys.length}
+                        </span>
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {copiedClipboard && (onBatchPasteSlotBinding || onPasteSlotBinding) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const clip = copiedClipboard;
+                      setContextMenu(null);
+                      soundEngine.playKeyClick();
+                      if (onBatchPasteSlotBinding) {
+                        onBatchPasteSlotBinding(multiSlots, { ...clip.binding });
+                      } else if (onPasteSlotBinding) {
+                        multiSlots.forEach(s => onPasteSlotBinding(s, { ...clip.binding }));
+                      }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    <span className="truncate">
+                      Paste &ldquo;{copiedClipboard.label}&rdquo; to all {multiKeys.length}
+                    </span>
+                  </button>
+                )}
+
+                {onBatchUpdateKeyAppearance && (
+                  <div className="px-2.5 py-1.5 mt-0.5 flex items-center justify-between gap-2 border-t border-[var(--border-subtle)]">
+                    <span className="text-[11px] text-[var(--text-muted)] whitespace-nowrap">
+                      Legend color
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {MULTI_SELECT_LEGEND_SWATCHES.map(swatch => (
+                        <button
+                          key={swatch.hex}
+                          type="button"
+                          title={`Set legend color to ${swatch.label} on ${multiKeys.length} keys`}
+                          aria-label={`Set legend color to ${swatch.label}`}
+                          onClick={() => {
+                            setContextMenu(null);
+                            soundEngine.playKeyClick();
+                            onBatchUpdateKeyAppearance(multiKeys, {
+                              labelColor: swatch.hex
+                            });
+                          }}
+                          style={{ backgroundColor: swatch.hex }}
+                          className="w-4 h-4 rounded-full border border-black/30 hover:scale-110 transition-transform cursor-pointer"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(onBatchResetSlotsToDefault ||
+                  onResetSlotToDefault ||
+                  onBatchClearSlots ||
+                  onClearSlot) && (
+                  <div className="my-1 border-t border-[var(--border-subtle)]" />
+                )}
+
+                {(onBatchResetSlotsToDefault || onResetSlotToDefault) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setContextMenu(null);
+                      soundEngine.playKeyClick();
+                      if (onBatchResetSlotsToDefault) {
+                        onBatchResetSlotsToDefault(multiSlots);
+                      } else if (onResetSlotToDefault) {
+                        multiSlots.forEach(s => onResetSlotToDefault(s));
+                      }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                    <span>Reset {multiKeys.length} keys to default</span>
+                  </button>
+                )}
+
+                {(onBatchClearSlots || onClearSlot) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setContextMenu(null);
+                      soundEngine.playKeyClick();
+                      if (onBatchClearSlots) {
+                        onBatchClearSlots(multiSlots);
+                      } else if (onClearSlot) {
+                        multiSlots.forEach(s => onClearSlot(s));
+                      }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  >
+                    <XCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Clear {multiKeys.length} keys</span>
+                  </button>
+                )}
+
+                <div className="my-1 border-t border-[var(--border-subtle)]" />
+
+                {multiKeys.length < PROGRAMMABLE_KEY_IDS.length && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMultiSelectedKeys([...PROGRAMMABLE_KEY_IDS]);
+                      setContextMenu(prev =>
+                        prev
+                          ? {
+                              ...prev,
+                              title: `${PROGRAMMABLE_KEY_IDS.length} Keys Selected`,
+                              subtitle: formatMultiKeySummary(PROGRAMMABLE_KEY_IDS),
+                              multiKeys: [...PROGRAMMABLE_KEY_IDS]
+                            }
+                          : null
+                      );
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  >
+                    <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+                    <span>Select all 8 keys</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setContextMenu(null);
+                    setMultiSelectedKeys([]);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                >
+                  <X className="w-3.5 h-3.5 shrink-0" />
+                  <span>Deselect all</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const target = contextMenu;
+                    setContextMenu(null);
+                    if (target.keyId) {
+                      activateKeyControl(target.keyId);
+                    } else if (target.encoderIndex) {
+                      activateDialPush(target.encoderIndex);
+                    }
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                >
+                  <Play className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                  <span>Test action</span>
+                </button>
+
+                {onOpenMacroBuilderForSlot && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const target = contextMenu;
+                      setContextMenu(null);
+                      onOpenMacroBuilderForSlot(target.slot, target.binding);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    <span>Open in Macro Studio</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const target = contextMenu;
+                    setCopiedClipboard({
+                      label: target.subtitle,
+                      binding: { ...target.binding }
+                    });
+                    setContextMenu(null);
+                    soundEngine.playKeyClick();
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                >
+                  <Copy className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
+                  <span>Copy action</span>
+                </button>
+
+                {copiedClipboard && onPasteSlotBinding && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const target = contextMenu;
+                      const clip = copiedClipboard;
+                      setContextMenu(null);
+                      soundEngine.playKeyClick();
+                      onPasteSlotBinding(target.slot, { ...clip.binding });
+                      onSelectControl(target.controlId);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    <span className="truncate">Paste &ldquo;{copiedClipboard.label}&rdquo;</span>
+                  </button>
+                )}
+
+                {viewMode === 'edit' &&
+                  contextMenu.keyId &&
+                  isProgrammableKeyId(contextMenu.keyId) && (
+                    <>
+                      <div className="my-1 border-t border-[var(--border-subtle)]" />
+                      {multiSelectedKeys.length > 0 &&
+                      !multiSelectedKeys.includes(contextMenu.keyId) ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            const kid = contextMenu.keyId as ActionKeyId;
+                            const next = addKeyToMultiSelection(
+                              multiSelectedKeys,
+                              selectedControl,
+                              kid
+                            );
+                            setMultiSelectedKeys(next);
+                            onSelectControl(kid);
+                            setContextMenu(prev =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    title: `${next.length} Keys Selected`,
+                                    subtitle: formatMultiKeySummary(next),
+                                    multiKeys: next
+                                  }
+                                : null
+                            );
+                          }}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                        >
+                          <PlusSquare className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                          <span>
+                            Add Key {contextMenu.keyId.slice(1)} to selection ({multiSelectedKeys.length + 1})
+                          </span>
+                        </button>
+                      ) : singleAnchorKey && singleAnchorKey !== contextMenu.keyId ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            const kid = contextMenu.keyId as ActionKeyId;
+                            const next: ActionKeyId[] = [singleAnchorKey, kid];
+                            setMultiSelectedKeys(next);
+                            onSelectControl(kid);
+                            setContextMenu(prev =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    title: `${next.length} Keys Selected`,
+                                    subtitle: formatMultiKeySummary(next),
+                                    multiKeys: next
+                                  }
+                                : null
+                            );
+                          }}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                        >
+                          <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                          <span>
+                            Multi-select with Key {singleAnchorKey.slice(1)}
+                          </span>
+                        </button>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMultiSelectedKeys([...PROGRAMMABLE_KEY_IDS]);
+                          setContextMenu(prev =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  title: `${PROGRAMMABLE_KEY_IDS.length} Keys Selected`,
+                                  subtitle: formatMultiKeySummary(PROGRAMMABLE_KEY_IDS),
+                                  multiKeys: [...PROGRAMMABLE_KEY_IDS]
+                                }
+                              : null
+                          );
+                        }}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+                        <span>Select all 8 keys</span>
+                      </button>
+                    </>
+                  )}
+
+                {(onResetSlotToDefault || onClearSlot) && (
+                  <div className="my-1 border-t border-[var(--border-subtle)]" />
+                )}
+
+                {onResetSlotToDefault && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const target = contextMenu;
+                      setContextMenu(null);
+                      onResetSlotToDefault(target.slot);
+                      onSelectControl(target.controlId);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                    <span>Reset to default</span>
+                  </button>
+                )}
+
+                {onClearSlot && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const target = contextMenu;
+                      setContextMenu(null);
+                      onClearSlot(target.slot);
+                      onSelectControl(target.controlId);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  >
+                    <XCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Clear control</span>
+                  </button>
+                )}
+              </>
+            )}
           </div>
-
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              const target = contextMenu;
-              setContextMenu(null);
-              if (target.keyId) {
-                activateKeyControl(target.keyId);
-              } else if (target.encoderIndex) {
-                activateDialPush(target.encoderIndex);
-              }
-            }}
-            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
-          >
-            <Play className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-            <span>Test action</span>
-          </button>
-
-          {onOpenMacroBuilderForSlot && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                const target = contextMenu;
-                setContextMenu(null);
-                onOpenMacroBuilderForSlot(target.slot, target.binding);
-              }}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
-            >
-              <Zap className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-              <span>Open in Macro Studio</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              const target = contextMenu;
-              setCopiedClipboard({
-                label: target.subtitle,
-                binding: { ...target.binding }
-              });
-              setContextMenu(null);
-              soundEngine.playKeyClick();
-            }}
-            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
-          >
-            <Copy className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
-            <span>Copy action</span>
-          </button>
-
-          {copiedClipboard && onPasteSlotBinding && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                const target = contextMenu;
-                const clip = copiedClipboard;
-                setContextMenu(null);
-                soundEngine.playKeyClick();
-                onPasteSlotBinding(target.slot, { ...clip.binding });
-                onSelectControl(target.controlId);
-              }}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
-            >
-              <ClipboardPaste className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-              <span className="truncate">Paste &ldquo;{copiedClipboard.label}&rdquo;</span>
-            </button>
-          )}
-
-          {(onResetSlotToDefault || onClearSlot) && (
-            <div className="my-1 border-t border-[var(--border-subtle)]" />
-          )}
-
-          {onResetSlotToDefault && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                const target = contextMenu;
-                setContextMenu(null);
-                onResetSlotToDefault(target.slot);
-                onSelectControl(target.controlId);
-              }}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
-            >
-              <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-              <span>Reset to default</span>
-            </button>
-          )}
-
-          {onClearSlot && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                const target = contextMenu;
-                setContextMenu(null);
-                onClearSlot(target.slot);
-                onSelectControl(target.controlId);
-              }}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
-            >
-              <XCircle className="w-3.5 h-3.5 shrink-0" />
-              <span>Clear control</span>
-            </button>
-          )}
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
