@@ -27,6 +27,7 @@ import {
 } from '../hooks/useStudioState';
 import { DiffConfirmModal, DiffPreviewRow } from './DiffConfirmModal';
 import { ParsedActionBadge } from './ActionTagBadge';
+import { MiniPadPreview } from './MiniPadPreview';
 import {
   Download,
   Upload,
@@ -65,6 +66,7 @@ interface LibraryViewProps {
   onSaveUserSnapshot: (name: string, profileId?: HardwareProfileId) => void;
   onDeleteUserSnapshot: (id: string) => void;
   onOpenMacros?: () => void;
+  onOpenDeviceProfile?: (profileId: HardwareProfileId) => void;
   onApplyHardwareBackup: (
     backup: HardwareBackupPayload,
     repeatConfigs?: SlotRepeatMap
@@ -181,6 +183,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onSaveUserSnapshot,
   onDeleteUserSnapshot,
   onOpenMacros,
+  onOpenDeviceProfile,
   onApplyHardwareBackup,
   onExportBackupFile,
   onImportBackupFile
@@ -636,6 +639,73 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         </div>
 
+        {/* Live 4-Profile Onboard Hardware Overview */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                Onboard Device Profiles
+              </h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                Inspect all 4 hardware memory layers at a glance — click any profile to open it on the pad.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {profiles.map(prof => {
+              const slots = extractProfileSlots(prof);
+              const repeatMap = extractRepeatMapFromProfiles([prof]);
+              const mappedCount = visibleSlots.filter(s => Boolean(slots[s])).length;
+              const isCurrent = prof.id === activeProfileId;
+              const isBle = isBleHostProfile(prof.id);
+              const Icon = isBle ? Bluetooth : Tv;
+              return (
+                <button
+                  key={prof.id}
+                  type="button"
+                  onClick={() => onOpenDeviceProfile?.(prof.id)}
+                  className={`group text-left p-3 rounded-2xl bg-[var(--bg-panel)] border transition-all cursor-pointer space-y-2.5 ${
+                    isCurrent
+                      ? 'border-[var(--accent)] shadow-sm'
+                      : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Icon className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                      <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                        {prof.name}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono text-[var(--text-muted)] tabular-nums shrink-0">
+                      {mappedCount}/{controlCount}
+                    </span>
+                  </div>
+
+                  <MiniPadPreview
+                    title={prof.name}
+                    active={isCurrent}
+                    compact
+                    customMacros={customMacros}
+                    resolveAction={s => slots[s] || ''}
+                    resolveRepeat={s => repeatMap[`${prof.id}:${s}`]}
+                  />
+
+                  <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+                    <span className={isCurrent ? 'text-[var(--accent)] font-semibold' : ''}>
+                      {isCurrent ? 'Active on studio' : isBle ? 'BLE Host' : 'Smart TV'}
+                    </span>
+                    <span className="group-hover:text-[var(--text-primary)] transition-colors">
+                      Edit →
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         {/* Search & Mode Filter Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="relative flex-1 min-w-0">
@@ -802,16 +872,33 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         </button>
                       </div>
 
-                      {snap.profileSlots &&
-                        renderProfileHighlights(
-                          s =>
-                            snap.profileSlots![s] ??
-                            FACTORY_DEFAULT_SLOTS[defaultTarget][s] ??
-                            '',
-                          s =>
-                            snap.repeatConfigs?.[`${defaultTarget}:${s}`] ||
-                            snap.repeatConfigs?.[`MAC:${s}`]
-                        )}
+                      {snap.profileSlots && (
+                        <>
+                          <MiniPadPreview
+                            title={snap.name}
+                            compact
+                            customMacros={customMacros}
+                            resolveAction={s =>
+                              snap.profileSlots![s] ??
+                              FACTORY_DEFAULT_SLOTS[defaultTarget][s] ??
+                              ''
+                            }
+                            resolveRepeat={s =>
+                              snap.repeatConfigs?.[`${defaultTarget}:${s}`] ||
+                              snap.repeatConfigs?.[`MAC:${s}`]
+                            }
+                          />
+                          {renderProfileHighlights(
+                            s =>
+                              snap.profileSlots![s] ??
+                              FACTORY_DEFAULT_SLOTS[defaultTarget][s] ??
+                              '',
+                            s =>
+                              snap.repeatConfigs?.[`${defaultTarget}:${s}`] ||
+                              snap.repeatConfigs?.[`MAC:${s}`]
+                          )}
+                        </>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -905,6 +992,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                         {preset.description}
                       </p>
+
+                      <MiniPadPreview
+                        title={preset.title}
+                        compact
+                        customMacros={customMacros}
+                        resolveAction={slot => preset.bindings[slot] || ''}
+                      />
 
                       {renderProfileHighlights(slot => preset.bindings[slot] || '')}
                     </div>

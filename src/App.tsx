@@ -786,6 +786,19 @@ export default function App() {
               onOpenCheatSheet={() => setCheatSheetOpen(true)}
               onOpenShortcuts={() => setShortcutsModalOpen(true)}
               onOpenOledComposer={() => setOledComposerOpen(true)}
+              onSwapKeys={studio.swapKeys}
+              onCopyKey={studio.copyKey}
+              onOpenMacroBuilderForSlot={handleOpenMacroBuilderForSlot}
+              onResetSlotToDefault={slot =>
+                studio.resetSlotToDefault(studio.activeProfile.id, slot)
+              }
+              onClearSlot={slot =>
+                studio.clearSlot(studio.activeProfile.id, slot)
+              }
+              onPasteSlotBinding={(slot, binding) => {
+                studio.assignSlotAction(studio.activeProfile.id, slot, binding);
+                showToast(`Pasted action onto ${SLOT_LABELS[slot].short}`);
+              }}
             />
 
             <div ref={inspectorAnchorRef} className="lg:hidden shrink-0 flex items-center justify-between px-4 py-2 bg-[var(--bg-panel)] border-t border-[var(--border-subtle)] text-xs">
@@ -1088,6 +1101,10 @@ export default function App() {
             onSaveUserSnapshot={studio.saveUserSnapshot}
             onDeleteUserSnapshot={studio.deleteUserSnapshot}
             onOpenMacros={() => setActiveSection('macros')}
+            onOpenDeviceProfile={profileId => {
+              studio.selectProfile(profileId);
+              setActiveSection('device');
+            }}
             onApplyHardwareBackup={studio.applyHardwareBackup}
             onExportBackupFile={studio.exportHardwareBackupFile}
             onImportBackupFile={studio.importHardwareBackupFile}
@@ -1317,7 +1334,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Toast Notification (Success / Error) */}
+      {/* Toast Notification (Success / Error) with Instant Undo for Reversible Edits */}
       {toast && (
         <div
           role="status"
@@ -1326,7 +1343,7 @@ export default function App() {
             activeSection === 'macros'
               ? 'bottom-24 sm:bottom-20'
               : 'bottom-16 sm:bottom-5'
-          } right-3 sm:right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border shadow-2xl text-xs font-medium max-w-[92vw] sm:max-w-md ${
+          } right-3 sm:right-5 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border shadow-2xl text-xs font-medium max-w-[92vw] sm:max-w-md animate-popover-in ${
             toast.variant === 'error'
               ? 'border-[var(--accent)] text-[var(--text-primary)]'
               : 'border-[var(--border-strong)] text-[var(--text-primary)]'
@@ -1338,6 +1355,20 @@ export default function App() {
             <CheckCircle2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
           )}
           <span className="leading-snug">{toast.message}</span>
+          {toast.variant === 'success' &&
+            studio.canUndo &&
+            /^(Swapped|Copied|Pasted|Cleared|Reset|Applied|Restored)/i.test(toast.message) && (
+              <button
+                type="button"
+                onClick={() => {
+                  studio.undo();
+                  setToast(null);
+                }}
+                className="ml-1 px-2 py-0.5 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--accent)] transition-colors cursor-pointer shrink-0"
+              >
+                Undo
+              </button>
+            )}
         </div>
       )}
     </div>

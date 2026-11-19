@@ -13,6 +13,7 @@ import {
   HardwareEventPacket,
   HardwareFlashSlot,
   HardwareProfileId,
+  HardwareSlotId,
   KeyId,
   LayerConfig,
   LiveInputEvent,
@@ -36,7 +37,8 @@ import {
 import {
   ActionKeyId,
   HOLD_SLOT_TO_ACTION_KEY,
-  KEY_TO_HOLD_SLOT
+  KEY_TO_HOLD_SLOT,
+  KEY_TO_SLOT
 } from '../data/presetTemplates';
 import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
@@ -60,7 +62,12 @@ import {
   ArrowDown,
   ArrowUp,
   Layers,
-  Command
+  Command,
+  Copy,
+  ClipboardPaste,
+  Zap,
+  XCircle,
+  Pencil
 } from 'lucide-react';
 
 interface MacropadCanvasProps {
@@ -93,6 +100,12 @@ interface MacropadCanvasProps {
   onOpenCheatSheet?: () => void;
   onOpenShortcuts?: () => void;
   onOpenOledComposer?: () => void;
+  onSwapKeys?: (sourceKey: KeyId, targetKey: KeyId) => void;
+  onCopyKey?: (sourceKey: KeyId, targetKey: KeyId) => void;
+  onOpenMacroBuilderForSlot?: (slot: HardwareSlotId, binding: ActionBinding) => void;
+  onResetSlotToDefault?: (slot: HardwareSlotId) => void;
+  onClearSlot?: (slot: HardwareSlotId) => void;
+  onPasteSlotBinding?: (slot: HardwareSlotId, binding: ActionBinding) => void;
 }
 
 const KEY_ORDER: KeyId[] = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
@@ -138,7 +151,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   onOpenSetupWizard,
   onOpenCheatSheet,
   onOpenShortcuts,
-  onOpenOledComposer
+  onOpenOledComposer,
+  onSwapKeys,
+  onCopyKey,
+  onOpenMacroBuilderForSlot,
+  onResetSlotToDefault,
+  onClearSlot,
+  onPasteSlotBinding
 }) => {
   const [pressedKey, setPressedKey] = useState<KeyId | null>(null);
   const [view3D, setView3D] = useState(false);
@@ -155,6 +174,54 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const [flashedSlots, setFlashedSlots] = useState<Set<HardwareFlashSlot>>(new Set());
   const [testLog, setTestLog] = useState<LiveInputEvent[]>([]);
   const [offlineBleHost, setOfflineBleHost] = useState<BleHostSlot>(1);
+
+  // Flagship direct manipulation: Drag-and-drop key reordering & right-click quick context menu
+  const [draggedKey, setDraggedKey] = useState<KeyId | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<KeyId | null>(null);
+  const [dragCopyMode, setDragCopyMode] = useState(false);
+  const [copiedClipboard, setCopiedClipboard] = useState<{
+    label: string;
+    binding: ActionBinding;
+  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    title: string;
+    subtitle: string;
+    slot: HardwareSlotId;
+    controlId: ControlId;
+    binding: ActionBinding;
+    keyId?: KeyId;
+    encoderIndex?: EncoderIndex;
+  } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const knobScrubRef = useRef<{
+    encoderIndex: EncoderIndex;
+    lastX: number;
+    lastY: number;
+    accum: number;
+    moved: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    window.addEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleEsc);
+    window.addEventListener('scroll', () => setContextMenu(null), true);
+    return () => {
+      window.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleEsc);
+      window.removeEventListener('scroll', () => setContextMenu(null), true);
+    };
+  }, [contextMenu]);
   const motionSensor = useMotionSensor({
     enabled: view3D && connection.connected,
     pollIntervalMs: 25,
@@ -1357,32 +1424,89 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <RotateCcw className="w-3.5 h-3.5 pointer-events-none" />
           </button>
 
-          {/* Physical Rotary Knob (`dial` / `dial2`) — BertoPad dial with Bone track + Amber level arc */}
+          {/* Physical Rotary Knob (`dial` / `dial2`) — BertoPad dial with Bone track + Amber level arc + direct drag-to-turn scrubbing */}
           <button
             type="button"
             aria-label={`Knob ${encoderIndex} Press: ${dialInfo.fullLabel}`}
+            title={`Knob ${encoderIndex} (${dialInfo.fullLabel}) — click to press, drag or scroll to turn, right-click for actions`}
             onWheel={e => handleEncoderWheel(encoderIndex, e)}
+            onContextMenu={e => {
+              e.preventDefault();
+              setContextMenu({
+                x: Math.min(e.clientX, window.innerWidth - 236),
+                y: Math.min(e.clientY, window.innerHeight - 280),
+                title: `Knob ${encoderIndex} Press`,
+                subtitle: dialInfo.shortLabel || 'Unassigned',
+                slot: dialId,
+                controlId: dialId,
+                binding: encCfg.dial,
+                encoderIndex
+              });
+            }}
             onMouseDown={() => setPressed(true)}
             onMouseUp={() => setPressed(false)}
-            onMouseLeave={() => setPressed(false)}
+            onMouseLeave={() => {
+              if (!knobScrubRef.current) setPressed(false);
+            }}
             onPointerDown={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
               setPressed(true);
+              knobScrubRef.current = {
+                encoderIndex,
+                lastX: e.clientX,
+                lastY: e.clientY,
+                accum: 0,
+                moved: false
+              };
               try {
                 (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
               } catch {}
               handlePointerDown(`dial_${encoderIndex}`, e);
             }}
+            onPointerMove={e => {
+              const scrub = knobScrubRef.current;
+              if (!scrub || scrub.encoderIndex !== encoderIndex) return;
+              const dx = e.clientX - scrub.lastX;
+              const dy = scrub.lastY - e.clientY;
+              scrub.lastX = e.clientX;
+              scrub.lastY = e.clientY;
+              const primaryDelta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
+              scrub.accum += primaryDelta;
+              const STEP_PX = 16;
+              if (Math.abs(scrub.accum) >= STEP_PX) {
+                scrub.moved = true;
+                setPressed(false);
+                const dir: 'cw' | 'ccw' = scrub.accum > 0 ? 'cw' : 'ccw';
+                scrub.accum = scrub.accum % STEP_PX;
+                if (e.altKey) {
+                  triggerEncoderHoldSpin(encoderIndex, dir);
+                } else {
+                  triggerEncoderSpin(encoderIndex, dir, e.shiftKey);
+                }
+              }
+            }}
             onPointerUp={e => {
               setPressed(false);
+              const scrub = knobScrubRef.current;
+              knobScrubRef.current = null;
               try {
                 if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
                   (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
                 }
               } catch {}
+              if (scrub?.moved) {
+                lastPointerDownRef.current = null;
+                suppressNextClickRef.current = {
+                  id: `dial_${encoderIndex}`,
+                  expiresAt: performance.now() + 800
+                };
+                return;
+              }
               handlePointerUp(`dial_${encoderIndex}`, e, () => activateDialPush(encoderIndex));
             }}
             onPointerCancel={e => {
               setPressed(false);
+              knobScrubRef.current = null;
               handlePointerCancel();
               try {
                 if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
@@ -1698,6 +1822,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       >
         <button
           type="button"
+          draggable={viewMode === 'edit' && !cfg.isModeSwitch && Boolean(onSwapKeys)}
           aria-label={`${badgeText}: ${cfg.appearance.label}`}
           title={
             cfg.isModeSwitch
@@ -1705,19 +1830,77 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 ? 'Mode Switch (short press: Host/TV, hold+dial: Host 1–3)'
                 : 'Mode Switch (short press: flash current host, hold+dial: Host 1–3)'
               : isUnassigned
-              ? `Key ${index + 1} — Unassigned`
-              : `Key ${index + 1}: ${summarizeAction(cfg.triggers.tap, customMacros)}`
+              ? `Key ${index + 1} — Unassigned (drag onto another key to swap, right-click for menu)`
+              : `Key ${index + 1}: ${summarizeAction(cfg.triggers.tap, customMacros)} (drag to swap, Alt+drag to copy, right-click for menu)`
           }
+          onDragStart={e => {
+            if (viewMode !== 'edit' || cfg.isModeSwitch || !onSwapKeys) return;
+            setPressedKey(null);
+            lastPointerDownRef.current = null;
+            setDraggedKey(kid);
+            setDragCopyMode(e.altKey);
+            e.dataTransfer.effectAllowed = 'copyMove';
+            e.dataTransfer.setData('text/plain', kid);
+          }}
+          onDragOver={e => {
+            if (!draggedKey || cfg.isModeSwitch || draggedKey === kid) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move';
+            if (dragOverKey !== kid) setDragOverKey(kid);
+            if (dragCopyMode !== e.altKey) setDragCopyMode(e.altKey);
+          }}
+          onDragLeave={() => {
+            if (dragOverKey === kid) setDragOverKey(null);
+          }}
+          onDrop={e => {
+            if (!draggedKey || cfg.isModeSwitch || draggedKey === kid) return;
+            e.preventDefault();
+            soundEngine.playKeyClick();
+            const src = draggedKey;
+            const copyIntent = e.altKey;
+            setDraggedKey(null);
+            setDragOverKey(null);
+            setDragCopyMode(false);
+            if (copyIntent && onCopyKey) {
+              onCopyKey(src, kid);
+            } else {
+              onSwapKeys?.(src, kid);
+            }
+            onSelectControl(kid);
+          }}
+          onDragEnd={() => {
+            setDraggedKey(null);
+            setDragOverKey(null);
+            setDragCopyMode(false);
+          }}
+          onContextMenu={e => {
+            if (cfg.isModeSwitch || kid === 'k9') return;
+            e.preventDefault();
+            const tapSlot = KEY_TO_SLOT[kid as ActionKeyId];
+            setContextMenu({
+              x: Math.min(e.clientX, window.innerWidth - 236),
+              y: Math.min(e.clientY, window.innerHeight - 280),
+              title: `Key ${index + 1}`,
+              subtitle: cfg.appearance.label || 'Unassigned',
+              slot: tapSlot,
+              controlId: kid,
+              binding: cfg.triggers.tap,
+              keyId: kid
+            });
+          }}
           onMouseDown={() => setPressedKey(kid)}
           onMouseUp={() => setPressedKey(null)}
           onMouseLeave={() => {
             if (pressedKey === kid) setPressedKey(null);
           }}
           onPointerDown={e => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
             setPressedKey(kid);
-            try {
-              (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
-            } catch {}
+            if (viewMode !== 'edit' || cfg.isModeSwitch || !onSwapKeys) {
+              try {
+                (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+              } catch {}
+            }
             handlePointerDown(`key_${kid}`, e);
           }}
           onPointerUp={e => {
@@ -1740,24 +1923,30 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           }}
           onClick={e => handleClick(`key_${kid}`, e, () => activateKeyControl(kid))}
           style={{
-            borderColor: isFlashed
-              ? '#F2A33A'
-              : isSelected
-              ? 'var(--accent)'
-              : conflict
-              ? '#F2A33A'
-              : cfg.isModeSwitch
-              ? 'rgba(242, 163, 58, 0.35)'
-              : 'rgba(236, 234, 228, 0.08)',
-            boxShadow: isFlashed
-              ? '0 0 0 4px rgba(242, 163, 58, 0.4), 0 0 24px rgba(242, 163, 58, 0.32)'
-              : isSelected
-              ? undefined
-              : isDown
-              ? '0 2px 4px rgba(0,0,0,0.6), inset 0 3px 6px rgba(0,0,0,0.6)'
-              : view3D
-              ? '0 8px 0 #0D0F13, 0 14px 22px rgba(0,0,0,0.58), inset 0 1px 0 rgba(236,234,228,0.12)'
-              : '0 6px 0 #14161B, 0 10px 18px rgba(0,0,0,0.46), inset 0 1px 0 rgba(236,234,228,0.08)',
+            borderColor:
+              dragOverKey === kid
+                ? '#F2A33A'
+                : isFlashed
+                ? '#F2A33A'
+                : isSelected
+                ? 'var(--accent)'
+                : conflict
+                ? '#F2A33A'
+                : cfg.isModeSwitch
+                ? 'rgba(242, 163, 58, 0.35)'
+                : 'rgba(236, 234, 228, 0.08)',
+            boxShadow:
+              dragOverKey === kid
+                ? '0 0 0 3px rgba(242, 163, 58, 0.45), 0 0 22px rgba(242, 163, 58, 0.28)'
+                : isFlashed
+                ? '0 0 0 4px rgba(242, 163, 58, 0.4), 0 0 24px rgba(242, 163, 58, 0.32)'
+                : isSelected
+                ? undefined
+                : isDown
+                ? '0 2px 4px rgba(0,0,0,0.6), inset 0 3px 6px rgba(0,0,0,0.6)'
+                : view3D
+                ? '0 8px 0 #0D0F13, 0 14px 22px rgba(0,0,0,0.58), inset 0 1px 0 rgba(236,234,228,0.12)'
+                : undefined,
             filter: isDown ? 'brightness(1.2)' : undefined,
             ...(view3D
               ? {
@@ -1772,16 +1961,23 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 }
               : {})
           }}
-          className={`relative shrink-0 w-[86px] h-[86px] sm:w-[96px] sm:h-[96px] xl:w-[106px] xl:h-[106px] 2xl:w-[112px] 2xl:h-[112px] rounded-2xl bg-[#1E2128] border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none ${
+          className={`relative shrink-0 w-[86px] h-[86px] sm:w-[96px] sm:h-[96px] xl:w-[106px] xl:h-[106px] 2xl:w-[112px] 2xl:h-[112px] rounded-2xl keycap-surface border-2 p-2.5 sm:p-3 flex flex-col items-center justify-between select-none ${
             view3D ? '' : 'transition-all duration-150 ease-out'
           } cursor-pointer ${
             !view3D && isSelected && !isFlashed ? 'keycap-selected-glow -translate-y-0.5' : ''
           } ${!view3D && isDown ? 'translate-y-1' : !view3D && !isSelected ? 'hover:-translate-y-0.5' : ''} ${
-            isUnassigned && !isSelected && !isFlashed
-              ? 'opacity-40 hover:opacity-75'
+            draggedKey === kid ? 'opacity-45 scale-95' : ''
+          } ${dragOverKey === kid ? 'scale-[1.03]' : ''} ${
+            isUnassigned && !isSelected && !isFlashed && dragOverKey !== kid
+              ? 'opacity-45 hover:opacity-80'
               : ''
           }`}
         >
+          {dragOverKey === kid && (
+            <span className="pointer-events-none absolute -top-2.5 left-1/2 -translate-x-1/2 z-30 px-1.5 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[9px] font-bold uppercase tracking-wider shadow-md whitespace-nowrap">
+              {dragCopyMode ? 'Copy' : 'Swap'}
+            </span>
+          )}
           <div className="w-full flex items-center justify-between pointer-events-none">
             <span
               className={`font-mono text-[9px] sm:text-[10px] leading-none font-medium tabular-nums pointer-events-none ${
@@ -1911,7 +2107,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const telemetry = connection.telemetry;
 
   return (
-    <div className="flex-1 @container flex flex-col items-center p-4 sm:p-6 lg:overflow-y-auto relative min-w-0">
+    <div className="flex-1 @container flex flex-col items-center p-4 sm:p-6 lg:overflow-y-auto relative min-w-0 studio-stage-backdrop">
       {/* Top Canvas Toolbar (Clean Filled Controls, Minimal Outlines) */}
       <div className="w-full max-w-2xl flex items-center justify-between gap-2 flex-wrap shrink-0">
         <div className="flex items-center p-1 rounded-xl bg-[var(--bg-panel)] shadow-2xs">
@@ -2480,6 +2676,25 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                   Host {oledBadgeHost}
                 </button>
               )}
+              {onOpenOledComposer && (
+                <button
+                  type="button"
+                  onPointerDown={e => handlePointerDown('oled_edit', e)}
+                  onPointerUp={e => handlePointerUp('oled_edit', e, onOpenOledComposer)}
+                  onPointerCancel={handlePointerCancel}
+                  onClick={e => handleClick('oled_edit', e, onOpenOledComposer)}
+                  title="Customize 128×64 OLED screen"
+                  aria-label="Customize OLED screen"
+                  style={view3D ? { transform: 'translateZ(4px)', transformStyle: 'preserve-3d', zIndex: 20 } : undefined}
+                  className={`p-1 rounded transition-colors cursor-pointer shrink-0 ${
+                    inverted
+                      ? 'text-[#040507]/70 hover:text-[#040507] hover:bg-[#040507]/10'
+                      : 'text-[#A3A6AD] hover:text-[#ECEAE4] hover:bg-[#ECEAE4]/10'
+                  }`}
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
             </div>
           </div>
             );
@@ -2711,6 +2926,134 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           )}
         </div>
       ) : null}
+      {/* Right-Click Tactile Studio Context Menu for Keys & Knobs */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          aria-label={`Quick actions for ${contextMenu.title}`}
+          style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+          className="fixed z-[80] w-56 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-2xl p-1.5 text-xs animate-popover-in"
+        >
+          <div className="px-2.5 py-1.5 border-b border-[var(--border-subtle)] mb-1">
+            <div className="font-semibold text-[var(--text-primary)] truncate">
+              {contextMenu.title}
+            </div>
+            <div className="text-[11px] text-[var(--text-muted)] truncate">
+              {contextMenu.subtitle}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = contextMenu;
+              setContextMenu(null);
+              if (target.keyId) {
+                activateKeyControl(target.keyId);
+              } else if (target.encoderIndex) {
+                activateDialPush(target.encoderIndex);
+              }
+            }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+          >
+            <Play className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+            <span>Test action</span>
+          </button>
+
+          {onOpenMacroBuilderForSlot && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const target = contextMenu;
+                setContextMenu(null);
+                onOpenMacroBuilderForSlot(target.slot, target.binding);
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+            >
+              <Zap className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+              <span>Open in Macro Studio</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = contextMenu;
+              setCopiedClipboard({
+                label: target.subtitle,
+                binding: { ...target.binding }
+              });
+              setContextMenu(null);
+              soundEngine.playKeyClick();
+            }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+          >
+            <Copy className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
+            <span>Copy action</span>
+          </button>
+
+          {copiedClipboard && onPasteSlotBinding && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const target = contextMenu;
+                const clip = copiedClipboard;
+                setContextMenu(null);
+                soundEngine.playKeyClick();
+                onPasteSlotBinding(target.slot, { ...clip.binding });
+                onSelectControl(target.controlId);
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+            >
+              <ClipboardPaste className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+              <span className="truncate">Paste &ldquo;{copiedClipboard.label}&rdquo;</span>
+            </button>
+          )}
+
+          {(onResetSlotToDefault || onClearSlot) && (
+            <div className="my-1 border-t border-[var(--border-subtle)]" />
+          )}
+
+          {onResetSlotToDefault && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const target = contextMenu;
+                setContextMenu(null);
+                onResetSlotToDefault(target.slot);
+                onSelectControl(target.controlId);
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+            >
+              <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+              <span>Reset to default</span>
+            </button>
+          )}
+
+          {onClearSlot && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const target = contextMenu;
+                setContextMenu(null);
+                onClearSlot(target.slot);
+                onSelectControl(target.controlId);
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+            >
+              <XCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Clear control</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

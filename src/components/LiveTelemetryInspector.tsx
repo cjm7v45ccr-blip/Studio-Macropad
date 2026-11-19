@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   BleHostSlot,
   DeviceConnectionInfo,
@@ -7,6 +7,7 @@ import {
   profileIdToBleSlot,
   HardwareProfileId
 } from '../types/studio';
+import { useMotionSensor } from '../hooks/useMotionSensor';
 import {
   Activity,
   Bluetooth,
@@ -44,6 +45,45 @@ export const LiveTelemetryInspector: React.FC<LiveTelemetryInspectorProps> = ({
   const activeBleHost: BleHostSlot = connection.connected
     ? telemetry?.bleActiveHost ?? 1
     : profileIdToBleSlot(activeProfileId) ?? 1;
+
+  const hasMotion = Boolean(telemetry?.capabilities?.includes('motion'));
+  const motion = useMotionSensor({
+    enabled: hasMotion && connection.connected,
+    pollIntervalMs: 80,
+    calibration: gyroCalibration,
+    defaultPitchBaseline: 0,
+    defaultRollBaseline: 0
+  });
+
+  // Real session actuation metrics & 12-slot activity rhythm derived strictly from testLog
+  const sessionMetrics = useMemo(() => {
+    const uniqueControls = new Set(testLog.map(item => item.controlLabel)).size;
+    const hwCount = testLog.filter(item => item.source === 'hardware').length;
+    const simCount = testLog.length - hwCount;
+
+    // Group the most recent 12 events by timestamp second-bucket density for a clean rhythm sparkline
+    const buckets = new Array<number>(12).fill(0);
+    if (testLog.length > 0) {
+      const parseSecs = (ts: string) => {
+        const parts = ts.split(':').map(Number);
+        if (parts.length !== 3 || parts.some(Number.isNaN)) return 0;
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      };
+      const newestSec = parseSecs(testLog[0].timestamp);
+      for (const evt of testLog) {
+        const diff = newestSec - parseSecs(evt.timestamp);
+        if (diff >= 0 && diff < 12) {
+          buckets[11 - diff] += 1;
+        }
+      }
+    }
+    const maxBucket = Math.max(1, ...buckets);
+    return { uniqueControls, hwCount, simCount, buckets, maxBucket };
+  }, [testLog]);
+
+  // Clamp reticle dot to [-18, +18] SVG units around center (28, 28)
+  const reticleX = 28 + Math.max(-18, Math.min(18, (motion.roll / 45) * 18));
+  const reticleY = 28 + Math.max(-18, Math.min(18, (motion.pitch / 45) * 18));
 
   return (
     <aside
@@ -84,13 +124,13 @@ export const LiveTelemetryInspector: React.FC<LiveTelemetryInspectorProps> = ({
       <div className="p-4 sm:p-5 space-y-4">
         {/* Test Mode Isolation Banner */}
         <div className="px-3.5 py-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] leading-relaxed">
-          Clicking keys, knobs, or gestures in <strong className="text-[var(--text-primary)]">Test controls</strong> fires live actions and logs telemetry without changing your Configure selection.
+          Clicking keys, dragging knobs, or triggering gestures in <strong className="text-[var(--text-primary)]">Test controls</strong> fires live actions and logs telemetry without changing your Configure selection.
         </div>
 
-        {/* Last Triggered Input Highlight Card */}
-        <div className="p-3.5 rounded-2xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2">
+        {/* Last Triggered Input Highlight Card + Real-Time Activity Rhythm */}
+        <div className="p-3.5 rounded-2xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+            <span className="text-[11px] font-semibold text-[var(--text-muted)]">
               Last Triggered Control
             </span>
             {latest && (
@@ -116,9 +156,56 @@ export const LiveTelemetryInspector: React.FC<LiveTelemetryInspectorProps> = ({
             </div>
           ) : (
             <p className="text-xs text-[var(--text-muted)] py-1">
-              Press any keycap, turn/hold-spin Knob 1 or Knob 2, or click a motion card on the pad to inspect live output.
+              Press any keycap, drag or turn Knob 1 / Knob 2, or click a motion card on the pad to inspect live output.
             </p>
           )}
+
+          {/* Session Actuation Strip + 12-Second SVG Rhythm Sparkline */}
+          <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-end justify-between gap-3">
+            <div className="flex items-center gap-4 text-[11px] tabular-nums">
+              <div>
+                <div className="text-[10px] text-[var(--text-muted)]">Events</div>
+                <div className="font-mono font-semibold text-[var(--text-primary)]">
+                  {testLog.length}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--text-muted)]">Controls</div>
+                <div className="font-mono font-semibold text-[var(--text-primary)]">
+                  {sessionMetrics.uniqueControls}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--text-muted)]">Source</div>
+                <div className="font-mono font-semibold text-[var(--text-secondary)]">
+                  {sessionMetrics.hwCount > 0 ? 'Hardware' : isDemo ? 'Demo' : 'Studio'}
+                </div>
+              </div>
+            </div>
+
+            <svg
+              viewBox="0 0 96 24"
+              aria-label="Recent input activity"
+              className="w-24 h-6 shrink-0"
+            >
+              {sessionMetrics.buckets.map((count, i) => {
+                const height = count === 0 ? 3 : Math.max(6, Math.round((count / sessionMetrics.maxBucket) * 22));
+                const y = 24 - height;
+                return (
+                  <rect
+                    key={i}
+                    x={i * 8 + 1}
+                    y={y}
+                    width="5"
+                    height={height}
+                    rx="1.5"
+                    fill={count > 0 ? 'var(--accent)' : 'var(--border-strong)'}
+                    opacity={count > 0 ? 0.9 : 0.45}
+                  />
+                );
+              })}
+            </svg>
+          </div>
         </div>
 
         {/* Live Pad Link State */}
@@ -150,32 +237,70 @@ export const LiveTelemetryInspector: React.FC<LiveTelemetryInspectorProps> = ({
           </div>
         </div>
 
-        {/* MPU-6050 Orientation Summary */}
-        {telemetry?.capabilities?.includes('motion') && (
-          <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <Compass className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-              <span className="font-medium text-[var(--text-primary)] truncate">
-                MPU-6050 Motion
-              </span>
+        {/* MPU-6050 Live Attitude Reticle & Orientation Summary */}
+        {hasMotion && (
+          <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 text-xs">
+            <div className="space-y-1.5 min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Compass className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                <span className="font-semibold text-[var(--text-primary)] truncate">
+                  MPU-6050 Attitude
+                </span>
+              </div>
+              <div className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
+                Pitch {motion.pitch.toFixed(1)}° · Roll {motion.roll.toFixed(1)}°
+              </div>
+              <div className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                {telemetry?.motion?.enabled ? `Sens ${telemetry.motion.sensitivity}/5` : 'Disabled'} ·{' '}
+                DZ {(gyroCalibration?.deadzoneDeg ?? 0.4).toFixed(1)}°
+                {motion.shakeActive ? ' · SHAKE' : ''}
+              </div>
             </div>
-            <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">
-              {telemetry.motion?.enabled ? `Sens ${telemetry.motion.sensitivity}/5` : 'Disabled'} ·{' '}
-              DZ {(gyroCalibration?.deadzoneDeg ?? 0.4).toFixed(1)}°
-            </span>
+
+            <svg
+              viewBox="0 0 56 56"
+              aria-label="Live tilt attitude reticle"
+              className="w-14 h-14 shrink-0"
+            >
+              <circle
+                cx="28"
+                cy="28"
+                r="24"
+                fill="var(--bg-panel)"
+                stroke="var(--border-strong)"
+                strokeWidth="1.2"
+              />
+              <circle
+                cx="28"
+                cy="28"
+                r="10"
+                fill="none"
+                stroke="var(--border-subtle)"
+                strokeDasharray="2 2"
+                strokeWidth="1"
+              />
+              <line x1="8" y1="28" x2="48" y2="28" stroke="var(--border-subtle)" strokeWidth="1" />
+              <line x1="28" y1="8" x2="28" y2="48" stroke="var(--border-subtle)" strokeWidth="1" />
+              <circle
+                cx={reticleX}
+                cy={reticleY}
+                r={motion.shakeActive ? 5.5 : 4}
+                fill="var(--accent)"
+              />
+            </svg>
           </div>
         )}
 
         {/* Quick Keyboard Test Reference */}
         <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-1.5 text-[11px] text-[var(--text-muted)]">
           <div className="font-semibold text-[var(--text-secondary)]">
-            Keyboard Test Shortcuts
+            Keyboard &amp; Mouse Test Shortcuts
           </div>
           <div className="grid grid-cols-2 gap-1.5 font-mono tabular-nums">
             <span>1–9 : Keys K1–K9</span>
             <span>[ / ] / Space : Knob 1</span>
             <span>{'{'} / {'}'} / ⇧Space : Knob 2</span>
-            <span>Alt+Wheel : Hold+Turn</span>
+            <span>Drag Knob : Scrub</span>
           </div>
         </div>
 

@@ -30,6 +30,15 @@ const SHORTCUT_GROUPS: {
     ]
   },
   {
+    category: 'Direct Pad Manipulation',
+    items: [
+      { keys: ['Drag Key'], description: 'Swap two keycaps (Tap, Hold & Legend) on the pad' },
+      { keys: ['Alt', 'Drag Key'], description: 'Copy a keycap binding & legend onto another key' },
+      { keys: ['Drag Knob'], description: 'Scrub Knob 1 or Knob 2 continuously with velocity' },
+      { keys: ['Right-Click'], description: 'Open quick menu (Test, Copy/Paste, Macro Studio, Reset)' }
+    ]
+  },
+  {
     category: 'View & Studio Workspace',
     items: [
       { keys: ['3'], description: 'Toggle 3D Tactile view with real-time gyro tracking' },

@@ -22,6 +22,7 @@ import { buildBlankHardwareProfiles } from '../src/data/presetTemplates';
 import { HARDWARE_SLOTS } from '../src/data/firmwareCatalog';
 import { extractProfileSlots } from '../src/hooks/useStudioState';
 import { LiveTelemetryInspector } from '../src/components/LiveTelemetryInspector';
+import { MiniPadPreview } from '../src/components/MiniPadPreview';
 import { StudioSettings } from '../src/types/studio';
 
 test('applyMotionOrientationAndDeadzone respects inversion, swapXY, and deadzone', () => {
@@ -177,4 +178,31 @@ test('LiveTelemetryInspector renders Test Mode telemetry and Knob 2 shortcut che
   assert.match(html, /Back to Configure/);
   assert.match(html, /Knob 2/);
   assert.match(html, /Next Track/);
+  assert.match(html, /Recent input activity/);
+  assert.match(html, /MPU-6050 Attitude/);
+  assert.match(html, /Live tilt attitude reticle/);
 });
+
+test('MiniPadPreview renders 3x3 key matrix, Mode key, OLED label, and dual rotary dials', () => {
+  const html = renderToStaticMarkup(
+    React.createElement(MiniPadPreview, {
+      title: 'Studio Desk',
+      active: true,
+      resolveAction: slot =>
+        slot === 'b1'
+          ? 'MEDIA:PLAY_PAUSE'
+          : slot === 'enc_cw'
+          ? 'MEDIA:VOL_UP'
+          : slot === 'e2_cw'
+          ? 'SHORTCUT:cmd:='
+          : ''
+    })
+  );
+
+  assert.match(html, /Studio Desk/);
+  assert.match(html, /MODE/);
+  assert.match(html, /K1/);
+  assert.match(html, /K2/);
+  assert.match(html, /Play \/ Pause/);
+});
+

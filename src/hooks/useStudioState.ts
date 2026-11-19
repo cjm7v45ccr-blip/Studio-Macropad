@@ -2591,6 +2591,210 @@ export function useStudioState(
     [activeProfile.id, assignSlotAction]
   );
 
+  const swapKeys = useCallback(
+    async (sourceKey: KeyId, targetKey: KeyId) => {
+      if (sourceKey === 'k9' || targetKey === 'k9' || sourceKey === targetKey) return;
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const profileId = activeProfile.id;
+      const targetProf = prevSnap.profiles.find(p => p.id === profileId);
+      if (!targetProf) return;
+
+      const srcLayer = targetProf.layers[0];
+      const srcKeyCfg = srcLayer.keys[sourceKey];
+      const tgtKeyCfg = srcLayer.keys[targetKey];
+      if (!srcKeyCfg || !tgtKeyCfg) return;
+
+      const srcTapSlot = KEY_TO_SLOT[sourceKey];
+      const tgtTapSlot = KEY_TO_SLOT[targetKey];
+      const srcHoldSlot = KEY_TO_HOLD_SLOT[sourceKey];
+      const tgtHoldSlot = KEY_TO_HOLD_SLOT[targetKey];
+
+      const currentSlots = extractProfileSlots(targetProf);
+      const nextSlots: Record<HardwareSlotId, string> = {
+        ...currentSlots,
+        [srcTapSlot]: currentSlots[tgtTapSlot],
+        [tgtTapSlot]: currentSlots[srcTapSlot],
+        [srcHoldSlot]: currentSlots[tgtHoldSlot],
+        [tgtHoldSlot]: currentSlots[srcHoldSlot]
+      };
+
+      const nextOverrides = { ...prevOverrides };
+      const srcOvKey = `${profileId}:${sourceKey}`;
+      const tgtOvKey = `${profileId}:${targetKey}`;
+      const srcOv = prevOverrides[srcOvKey];
+      const tgtOv = prevOverrides[tgtOvKey];
+      if (tgtOv) nextOverrides[srcOvKey] = tgtOv;
+      else delete nextOverrides[srcOvKey];
+      if (srcOv) nextOverrides[tgtOvKey] = srcOv;
+      else delete nextOverrides[tgtOvKey];
+
+      const nextProfiles = prevSnap.profiles.map(prof => {
+        if (prof.id !== profileId) return prof;
+        const layer = prof.layers[0];
+        return {
+          ...prof,
+          layers: [
+            {
+              ...layer,
+              keys: {
+                ...layer.keys,
+                [sourceKey]: {
+                  ...layer.keys[sourceKey],
+                  triggers: {
+                    tap: { ...tgtKeyCfg.triggers.tap },
+                    hold: tgtKeyCfg.triggers.hold
+                      ? { ...tgtKeyCfg.triggers.hold }
+                      : undefined
+                  },
+                  appearance: { ...tgtKeyCfg.appearance }
+                },
+                [targetKey]: {
+                  ...layer.keys[targetKey],
+                  triggers: {
+                    tap: { ...srcKeyCfg.triggers.tap },
+                    hold: srcKeyCfg.triggers.hold
+                      ? { ...srcKeyCfg.triggers.hold }
+                      : undefined
+                  },
+                  appearance: { ...srcKeyCfg.appearance }
+                }
+              }
+            }
+          ] as [typeof layer]
+        };
+      });
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: nextProfiles,
+        appearanceOverrides: nextOverrides
+      };
+
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+
+      const srcNum = sourceKey.slice(1);
+      const tgtNum = targetKey.slice(1);
+      const msg = `Swapped Key ${srcNum} ↔ Key ${tgtNum}`;
+
+      if (usbHardware.info.connected) {
+        await runConnectedWrite(
+          prevSnap,
+          nextSnap,
+          () => usbHardware.saveFullProfile(profileId, nextSlots),
+          msg
+        );
+      } else {
+        saveOfflineDraft(nextSnap);
+        onToast(msg);
+      }
+    },
+    [activeProfile.id, onToast, runConnectedWrite, saveOfflineDraft]
+  );
+
+  const copyKey = useCallback(
+    async (sourceKey: KeyId, targetKey: KeyId) => {
+      if (sourceKey === 'k9' || targetKey === 'k9' || sourceKey === targetKey) return;
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const profileId = activeProfile.id;
+      const targetProf = prevSnap.profiles.find(p => p.id === profileId);
+      if (!targetProf) return;
+
+      const srcLayer = targetProf.layers[0];
+      const srcKeyCfg = srcLayer.keys[sourceKey];
+      if (!srcKeyCfg) return;
+
+      const srcTapSlot = KEY_TO_SLOT[sourceKey];
+      const tgtTapSlot = KEY_TO_SLOT[targetKey];
+      const srcHoldSlot = KEY_TO_HOLD_SLOT[sourceKey];
+      const tgtHoldSlot = KEY_TO_HOLD_SLOT[targetKey];
+
+      const currentSlots = extractProfileSlots(targetProf);
+      const nextSlots: Record<HardwareSlotId, string> = {
+        ...currentSlots,
+        [tgtTapSlot]: currentSlots[srcTapSlot],
+        [tgtHoldSlot]: currentSlots[srcHoldSlot]
+      };
+
+      const nextOverrides = { ...prevOverrides };
+      const srcOvKey = `${profileId}:${sourceKey}`;
+      const tgtOvKey = `${profileId}:${targetKey}`;
+      if (prevOverrides[srcOvKey]) {
+        nextOverrides[tgtOvKey] = { ...prevOverrides[srcOvKey] };
+      } else {
+        delete nextOverrides[tgtOvKey];
+      }
+
+      const nextProfiles = prevSnap.profiles.map(prof => {
+        if (prof.id !== profileId) return prof;
+        const layer = prof.layers[0];
+        return {
+          ...prof,
+          layers: [
+            {
+              ...layer,
+              keys: {
+                ...layer.keys,
+                [targetKey]: {
+                  ...layer.keys[targetKey],
+                  triggers: {
+                    tap: { ...srcKeyCfg.triggers.tap },
+                    hold: srcKeyCfg.triggers.hold
+                      ? { ...srcKeyCfg.triggers.hold }
+                      : undefined
+                  },
+                  appearance: { ...srcKeyCfg.appearance }
+                }
+              }
+            }
+          ] as [typeof layer]
+        };
+      });
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: nextProfiles,
+        appearanceOverrides: nextOverrides
+      };
+
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+
+      const srcNum = sourceKey.slice(1);
+      const tgtNum = targetKey.slice(1);
+      const msg = `Copied Key ${srcNum} → Key ${tgtNum}`;
+
+      if (usbHardware.info.connected) {
+        await runConnectedWrite(
+          prevSnap,
+          nextSnap,
+          () => usbHardware.saveFullProfile(profileId, nextSlots),
+          msg
+        );
+      } else {
+        saveOfflineDraft(nextSnap);
+        onToast(msg);
+      }
+    },
+    [activeProfile.id, onToast, runConnectedWrite, saveOfflineDraft]
+  );
+
   const updateKeyAppearance = useCallback(
     (kid: KeyId, patch: Partial<KeyAppearance>) => {
       if (kid === 'k9') return;
@@ -3631,6 +3835,8 @@ export function useStudioState(
     resetBothProfilesToDefault,
     updateKeyBinding,
     updateKeyHoldBinding,
+    swapKeys,
+    copyKey,
     updateKeyAppearance,
     resetKeyAppearance,
     updateEncoderSlot,
