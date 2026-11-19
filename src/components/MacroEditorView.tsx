@@ -67,6 +67,7 @@ import {
 import { repeatMacroRunner } from '../services/repeatMacroRunner';
 import { ActionPrefixTag, ParsedActionBadge } from './ActionTagBadge';
 import { StudioSenseModal } from './StudioSenseModal';
+import { MacroTimelineStrip } from './MacroTimelineStrip';
 import {
   Plus,
   Trash2,
@@ -2236,10 +2237,10 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     return (
                       <div
                         key={m.id}
-                        className={`group px-2.5 py-2 rounded-xl border flex items-start justify-between gap-2 transition-colors ${
+                        className={`group px-3 py-2.5 rounded-xl border flex items-start justify-between gap-2 transition-all ${
                           isSelected
-                            ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
-                            : 'bg-[var(--bg-input)]/45 border-[var(--border-subtle)] hover:bg-[var(--bg-input)] hover:border-[var(--border-strong)]'
+                            ? 'border-[var(--accent)] bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]/20'
+                            : 'bg-[var(--bg-input)]/40 border-[var(--border-subtle)] hover:bg-[var(--bg-input)] hover:border-[var(--border-strong)]'
                         }`}
                       >
                         <button
@@ -2249,10 +2250,35 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               loadIntoBuilderImmediate(m.id, m.action, m.name, m.repeatConfig)
                             )
                           }
-                          className="min-w-0 flex-1 text-left cursor-pointer space-y-1"
+                          className="min-w-0 flex-1 text-left cursor-pointer space-y-1.5"
                         >
-                          <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                            {cardName}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                              {cardName}
+                            </div>
+                            <div
+                              className="flex items-center gap-[3px] shrink-0"
+                              aria-hidden="true"
+                              title={`${stepsForMacro.length} steps`}
+                            >
+                              {stepsForMacro.slice(0, 6).map((s, dotIdx) => (
+                                <span
+                                  key={s.id || dotIdx}
+                                  className={`h-1.5 rounded-full transition-colors ${
+                                    s.actionType === 'delay'
+                                      ? 'w-1 bg-[var(--text-muted)]/60'
+                                      : isSelected
+                                      ? 'w-1.5 bg-[var(--accent)]'
+                                      : 'w-1.5 bg-[var(--text-secondary)]/55 group-hover:bg-[var(--accent)]/80'
+                                  }`}
+                                />
+                              ))}
+                              {stepsForMacro.length > 6 && (
+                                <span className="text-[9px] font-mono text-[var(--text-muted)] leading-none pl-0.5">
+                                  +
+                                </span>
+                              )}
+                            </div>
                           </div>
 
                           <div className="min-w-0">
@@ -2265,7 +2291,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                             />
                           </div>
 
-                          <div className="flex items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-secondary)] font-mono tabular-nums flex-wrap">
+                          <div className="flex items-center gap-x-2.5 gap-y-0.5 text-[10px] text-[var(--text-secondary)] font-mono tabular-nums flex-wrap">
                             <span>
                               {stepsForMacro.length}{' '}
                               {stepsForMacro.length === 1 ? 'step' : 'steps'} · ~{formatDurationCompact(estimatedRunMs)}
@@ -2617,9 +2643,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
         )}
       </aside>
 
-      {/* Main Studio Canvas: Logi Options+ Smart Actions Workbench */}
-      <main className="flex-1 lg:overflow-y-auto min-w-0 flex flex-col justify-between">
-        <div className="max-w-3xl w-full mx-auto px-4 pt-4 pb-6 sm:px-7 sm:pt-5 space-y-4">
+      {/* Main Studio Canvas: Flagship Sequence Studio Workbench */}
+      <main className="flex-1 lg:overflow-y-auto min-w-0 flex flex-col justify-between studio-stage-backdrop">
+        <div className="max-w-3xl w-full mx-auto px-4 pt-5 pb-8 sm:px-7 sm:pt-6 space-y-5">
           {/* Unsaved Draft Confirmation Bar */}
           {pendingNavigation && (
             <div
@@ -2691,9 +2717,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               </div>
             )}
 
-            <div className="space-y-2.5">
-              <div className="flex flex-col gap-2.5">
-                <div className="w-full min-w-0">
+            <div className="space-y-3">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="flex-1 min-w-0">
                   <input
                     id="macro-sequence-name"
                     type="text"
@@ -2709,7 +2735,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         ? 'Untitled Macro'
                         : smartNameSuggestion || 'Untitled Macro'
                     }
-                    className="w-full bg-transparent text-lg sm:text-xl font-bold text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]/70 border-b border-transparent hover:border-[var(--border-strong)] focus:border-[var(--accent)] focus:outline-none py-0.5 transition-colors"
+                    className="w-full bg-transparent text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]/60 border-b border-transparent hover:border-[var(--border-strong)] focus:border-[var(--accent)] focus:outline-none py-0.5 transition-colors"
                   />
                   {showSmartRenameHint && (
                     <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
@@ -2737,7 +2763,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       onClick={handleUndoSteps}
                       title="Undo step edit (Cmd/Ctrl+Z)"
                       aria-label="Undo step edit"
-                      className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                      className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-colors"
                     >
                       <Undo2 className="w-3.5 h-3.5" />
                     </button>
@@ -2747,7 +2773,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       onClick={handleRedoSteps}
                       title="Redo step edit (Shift+Cmd/Ctrl+Z)"
                       aria-label="Redo step edit"
-                      className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                      className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-colors"
                     >
                       <Redo2 className="w-3.5 h-3.5" />
                     </button>
@@ -2801,7 +2827,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         title={
                           'Review the timeline or preview safely before sending real actions'
                         }
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-strong)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap shrink-0"
                       >
                         <Play className="w-3.5 h-3.5 text-[var(--accent)]" />
                         <span>Preview & test</span>
@@ -2811,17 +2837,17 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 </div>
               </div>
 
-              {/* Flex-wrap Metadata Strip (Step Count, Duration, Size warning near limit & Collapsed Bindings) */}
+              {/* Clean Zero-Pill Metadata Strip (Step Count, Duration, Size warning near limit & Collapsed Bindings) */}
               <div
                 aria-label="Macro metadata"
-                className="w-full min-w-0 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--text-secondary)] tabular-nums"
+                className="w-full min-w-0 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs text-[var(--text-secondary)] tabular-nums"
               >
-                <span className="px-2 py-0.5 rounded-md bg-[var(--bg-input)] font-mono whitespace-nowrap shrink-0">
+                <span className="font-mono whitespace-nowrap shrink-0 text-[var(--text-primary)] font-medium">
                   {macroSteps.length} {macroSteps.length === 1 ? 'step' : 'steps'}
                 </span>
 
                 <span
-                  className="px-2 py-0.5 rounded-md bg-[var(--bg-input)] font-mono whitespace-nowrap shrink-0"
+                  className="font-mono whitespace-nowrap shrink-0"
                   title={`Estimated run time: ${formatDurationCompact(
                     timingSummary.totalDelayMs
                   )} explicit wait + ${
@@ -2834,7 +2860,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 {(memoryOverflow || draftValidation.byteLength >= 384) && (
                   <span
                     title="Approaching onboard slot storage limit (512 B max per key)"
-                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--bg-input)] font-mono whitespace-nowrap shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 font-mono whitespace-nowrap shrink-0 ${
                       memoryOverflow
                         ? 'text-[#D97706] font-semibold'
                         : 'text-[var(--accent)] font-medium'
@@ -2870,19 +2896,19 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 )}
 
                 {needsLiveRunner && (
-                  <span className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] text-[var(--accent)] font-medium whitespace-nowrap shrink-0">
+                  <span className="text-[var(--accent)] font-medium whitespace-nowrap shrink-0">
                     USB Assisted
                   </span>
                 )}
 
                 {!isTvEnabled && actionContainsTvSteps(builtAction, builtRepeatConfig) && (
-                  <span className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] text-[var(--accent)] font-medium whitespace-nowrap shrink-0">
+                  <span className="text-[var(--accent)] font-medium whitespace-nowrap shrink-0">
                     TV off
                   </span>
                 )}
 
                 {activeMacroBoundSlots.length > 0 && (
-                  <>
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {(showAllBoundSlots
                       ? activeMacroBoundSlots
                       : activeMacroBoundSlots.slice(0, 3)
@@ -2893,14 +2919,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           type="button"
                           onClick={() => onJumpToControl(b.profileId, b.slot)}
                           title={`Jump to ${b.profileName} · ${SLOT_LABELS[b.slot].short}`}
-                          className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] font-medium text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0"
+                          className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] text-[11px] font-medium text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0"
                         >
                           {b.profileName} · {SLOT_LABELS[b.slot].short}
                         </button>
                       ) : (
                         <span
                           key={`${b.profileId}-${b.slot}`}
-                          className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] text-[var(--accent)] font-medium whitespace-nowrap shrink-0"
+                          className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] text-[11px] text-[var(--accent)] font-medium whitespace-nowrap shrink-0"
                         >
                           {b.profileName} · {SLOT_LABELS[b.slot].short}
                         </span>
@@ -2914,14 +2940,14 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                           .slice(3)
                           .map(b => `${b.profileName} · ${SLOT_LABELS[b.slot].short}`)
                           .join(', ')}
-                        className="px-2 py-0.5 rounded-md bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 transition-colors"
+                        className="px-2 py-0.5 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 transition-colors"
                       >
                         {showAllBoundSlots
                           ? 'Show fewer'
                           : `+${activeMacroBoundSlots.length - 3} more`}
                       </button>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             </div>
@@ -3353,19 +3379,41 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
             )}
           </header>
 
+          {/* Visual Sequence Timeline & Sculpted Execution Ribbon */}
+          {macroSteps.length > 0 && (
+            <MacroTimelineStrip
+              steps={macroSteps}
+              estimatedRunMs={timingSummary.estimatedRunMs}
+              totalDelayMs={timingSummary.totalDelayMs}
+              expandedStepId={expandedStepId}
+              activeStepIndex={activeRepeatJob?.activeStepIndex}
+              activeStepPhase={activeRepeatJob?.activeStepPhase}
+              isRunning={isJobRunning}
+              issueStepIds={issueStepIds}
+              onSelectStep={stepId => {
+                setExpandedStepId(stepId);
+                if (typeof document !== 'undefined') {
+                  document
+                    .getElementById(`macro-step-node-${stepId}`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+              }}
+            />
+          )}
+
           {/* Connected Smart Actions Step Flow Timeline */}
-          <section className="space-y-2.5" aria-label="Macro steps">
+          <section className="space-y-3" aria-label="Macro steps">
             <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <Layers className="w-3.5 h-3.5 text-[var(--accent)]" />
                 <span className="font-semibold text-[var(--text-primary)]">
                   Action Flow
                 </span>
                 <span
                   title="Onboard macro sequence step budget"
-                  className={`px-2 py-0.5 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] font-mono text-[10px] tabular-nums whitespace-nowrap ${
+                  className={`font-mono text-[11px] tabular-nums whitespace-nowrap ${
                     macroSteps.length >= 16
-                      ? 'text-[#D97706] border-[#D97706]/50 font-semibold'
+                      ? 'text-[#D97706] font-semibold'
                       : macroSteps.length >= 12
                       ? 'text-[var(--accent)]'
                       : 'text-[var(--text-muted)]'
@@ -3373,70 +3421,46 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 >
                   {macroSteps.length} / 16 steps
                 </span>
-                <span
-                  title="Compiled NVS action payload size (512 B max per hardware slot)"
-                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] font-mono text-[10px] tabular-nums whitespace-nowrap ${
-                    memoryOverflow
-                      ? 'text-[#D97706] border-[#D97706]/50 font-semibold'
-                      : draftValidation.byteLength >= 384
-                      ? 'text-[var(--accent)]'
-                      : 'text-[var(--text-muted)]'
-                  }`}
-                >
-                  <span>
-                    {draftValidation.byteLength} / {draftValidation.maxBytes} B NVS
-                  </span>
+                {(memoryOverflow || draftValidation.byteLength >= 384) && (
                   <span
-                    aria-hidden="true"
-                    className="w-8 h-1 rounded-full bg-[var(--bg-input)] overflow-hidden inline-flex"
+                    title="Compiled NVS action payload size (512 B max per hardware slot)"
+                    className={`inline-flex items-center gap-1.5 font-mono text-[11px] tabular-nums whitespace-nowrap ${
+                      memoryOverflow
+                        ? 'text-[#D97706] font-semibold'
+                        : 'text-[var(--accent)]'
+                    }`}
                   >
-                    <span
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          Math.max(
-                            4,
-                            Math.round(
-                              (draftValidation.byteLength /
-                                Math.max(1, draftValidation.maxBytes)) *
-                                100
-                            )
-                          )
-                        )}%`
-                      }}
-                      className={`h-full rounded-full transition-all ${
-                        memoryOverflow
-                          ? 'bg-[#D97706]'
-                          : draftValidation.byteLength >= 384
-                          ? 'bg-[var(--accent)]'
-                          : 'bg-[var(--text-secondary)]/70'
-                      }`}
-                    />
+                    <span>
+                      {draftValidation.byteLength} / {draftValidation.maxBytes} B
+                    </span>
                   </span>
-                </span>
+                )}
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
                 {macroSteps.length > 1 && (
-                  <div className="flex items-center gap-1 text-[11px]">
+                  <div className="flex items-center gap-1.5 text-[11px]">
                     <Gauge className="w-3 h-3 text-[var(--text-muted)]" />
-                    <span className="text-[var(--text-muted)] mr-0.5">Pacing:</span>
-                    {(
-                      [
-                        { label: 'Fast 100ms', ms: 100 },
-                        { label: 'Balanced 200ms', ms: 200 },
-                        { label: 'App/Web 500ms', ms: 500 }
-                      ] as const
-                    ).map(p => (
-                      <button
-                        key={p.ms}
-                        type="button"
-                        onClick={() => applyBatchPacing(p.ms)}
-                        className="px-2 py-0.5 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] font-mono text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer tabular-nums"
-                      >
-                        {p.label}
-                      </button>
-                    ))}
+                    <span className="text-[var(--text-muted)]">Pacing</span>
+                    <div className="inline-flex items-center rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-0.5">
+                      {(
+                        [
+                          { label: '100ms', ms: 100, title: 'Fast 100ms between steps' },
+                          { label: '200ms', ms: 200, title: 'Balanced 200ms between steps' },
+                          { label: '500ms', ms: 500, title: 'App/Web 500ms between steps' }
+                        ] as const
+                      ).map(p => (
+                        <button
+                          key={p.ms}
+                          type="button"
+                          title={p.title}
+                          onClick={() => applyBatchPacing(p.ms)}
+                          className="px-2 py-0.5 rounded-md hover:bg-[var(--bg-elevated)] font-mono text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer tabular-nums transition-colors"
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -3444,9 +3468,9 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setExpandedStepId(null)}
-                    className="px-2 py-0.5 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                    className="px-2 py-1 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    Collapse step
+                    Collapse
                   </button>
                 )}
 
@@ -3459,48 +3483,95 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       setExpandedStepId(first.id);
                     }}
                     title="Reset sequence to a single step"
-                    className="px-2 py-0.5 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[#D97706] text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                    className="px-2 py-1 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[#D97706] text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    Reset steps
+                    Reset
                   </button>
                 )}
               </div>
             </div>
 
             {macroSteps.length === 0 ? (
-              <div className="py-6 px-5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-center space-y-3">
+              <div className="p-5 sm:p-6 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-[var(--text-primary)]">
                     Start a new macro
                   </p>
-                  <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
-                    Record live keystrokes, generate a multi-step flow, or pick your first step below.
+                  <p className="text-xs text-[var(--text-secondary)] max-w-lg leading-relaxed">
+                    Capture live keystrokes, generate a multi-step flow, or assemble actions step by step below.
                   </p>
                 </div>
-                <div className="flex items-center justify-center gap-2 flex-wrap">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => handleToggleSequenceRecorder(false)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+                    className="group text-left p-3.5 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)]/60 hover:border-[var(--accent)] transition-all cursor-pointer flex items-start gap-3"
                   >
-                    <Radio className="w-3.5 h-3.5" />
-                    <span>Record keystrokes</span>
+                    <div className="w-8 h-8 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] flex items-center justify-center shrink-0">
+                      <Radio className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-[var(--text-primary)]">
+                        Record keystrokes
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
+                        Press shortcuts or type text live with smart merging
+                      </p>
+                    </div>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => setSmartComposerOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                    className="group text-left p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-all cursor-pointer flex items-start gap-3"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
-                    <span>Smart Flow</span>
+                    <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-[var(--accent)] flex items-center justify-center shrink-0">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-[var(--text-primary)]">
+                        Smart Flow
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
+                        Generate login forms or multi-line terminal commands
+                      </p>
+                    </div>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => appendStep('shortcut')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+                    className="group text-left p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-all cursor-pointer flex items-start gap-3"
                   >
-                    <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
-                    <span>Shortcut step</span>
+                    <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-[var(--text-primary)] flex items-center justify-center shrink-0">
+                      <Command className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-[var(--text-primary)]">
+                        Shortcut step
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
+                        Start manually with a key combo, text, or wait step
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLibraryTab('templates')}
+                    className="group text-left p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-all cursor-pointer flex items-start gap-3"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-[var(--text-primary)] flex items-center justify-center shrink-0">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-[var(--text-primary)]">
+                        Browse recipes
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
+                        Load ready-made work, dev, or streaming templates
+                      </p>
+                    </div>
                   </button>
                 </div>
               </div>
@@ -3621,15 +3692,15 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       )}
 
                       {!isExpanded ? (
-                        /* COLLAPSED STEP CARD WITH COLORED PREFIX TAG */
+                        /* COLLAPSED STEP CARD WITH SCULPTED STEP NODE BADGE */
                         <div
                           onClick={() => setExpandedStepId(step.id)}
-                          className={`group px-3 py-2 rounded-xl bg-[var(--bg-panel)] border flex items-center justify-between gap-3 transition-all cursor-pointer ${
+                          className={`group px-3.5 py-2.5 rounded-xl bg-[var(--bg-panel)] border flex items-center justify-between gap-3 transition-all cursor-pointer ${
                             isStepActive
-                              ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.12)] shadow-sm'
+                              ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.12)] ring-1 ring-[var(--accent)]/35'
                               : hasStepIssue
                               ? 'border-[#D97706] bg-[var(--accent-soft)]'
-                              : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                              : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-elevated)]/40'
                           } ${isDragged ? 'opacity-45 border-dashed' : ''}`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -3645,7 +3716,13 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                               <GripVertical className="w-4 h-4" />
                             </div>
 
-                            <span className="font-mono text-xs text-[var(--text-muted)] tabular-nums w-5 shrink-0">
+                            <span
+                              className={`w-6 h-6 rounded-md border flex items-center justify-center font-mono text-[11px] tabular-nums shrink-0 ${
+                                isStepActive
+                                  ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] font-bold'
+                                  : 'border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-secondary)]'
+                              }`}
+                            >
                               {String(idx + 1).padStart(2, '0')}
                             </span>
 
@@ -4653,10 +4730,10 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               </div>
             )}
 
-            {/* "+ Add Step" Action Palette */}
-            <div className="pt-1 flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] font-medium text-[var(--text-muted)] mr-1">
-                Add step:
+            {/* "+ Add Step" Studio Palette Dock */}
+            <div className="p-2.5 rounded-xl bg-[var(--bg-panel)]/90 border border-[var(--border-subtle)] flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--text-muted)] px-1 mr-0.5">
+                Add step
               </span>
               {visibleStepTypes.map(type => {
                 const meta = STEP_TYPE_META[type];
@@ -4666,7 +4743,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     key={type}
                     type="button"
                     onClick={() => appendStep(type)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer whitespace-nowrap shrink-0"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--accent)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Plus className="w-3 h-3 text-[var(--accent)]" />
                     <Icon className="w-3.5 h-3.5" />

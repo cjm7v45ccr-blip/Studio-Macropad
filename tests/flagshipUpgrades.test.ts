@@ -23,6 +23,7 @@ import { HARDWARE_SLOTS } from '../src/data/firmwareCatalog';
 import { extractProfileSlots } from '../src/hooks/useStudioState';
 import { LiveTelemetryInspector } from '../src/components/LiveTelemetryInspector';
 import { MiniPadPreview } from '../src/components/MiniPadPreview';
+import { MacroTimelineStrip } from '../src/components/MacroTimelineStrip';
 import { StudioSettings } from '../src/types/studio';
 
 test('applyMotionOrientationAndDeadzone respects inversion, swapXY, and deadzone', () => {
@@ -205,4 +206,45 @@ test('MiniPadPreview renders 3x3 key matrix, Mode key, OLED label, and dual rota
   assert.match(html, /K2/);
   assert.match(html, /Play \/ Pause/);
 });
+
+test('MacroTimelineStrip renders sculpted step flow ribbon and proportional timing bar', () => {
+  const emptyHtml = renderToStaticMarkup(
+    React.createElement(MacroTimelineStrip, {
+      steps: [],
+      estimatedRunMs: 0,
+      totalDelayMs: 0,
+      expandedStepId: null,
+      isRunning: false,
+      issueStepIds: new Set<string>(),
+      onSelectStep: () => {}
+    })
+  );
+  assert.equal(emptyHtml, '');
+
+  const html = renderToStaticMarkup(
+    React.createElement(MacroTimelineStrip, {
+      steps: [
+        { id: 's1', label: 'Spotlight', actionType: 'shortcut', value: 'cmd:space', delayMs: 250, repeatCount: 1 },
+        { id: 's2', label: 'Terminal', actionType: 'text', value: 'Terminal', delayMs: 150, repeatCount: 1 },
+        { id: 's3', label: 'Enter', actionType: 'key', value: 'enter', delayMs: 0, repeatCount: 1 }
+      ],
+      estimatedRunMs: 550,
+      totalDelayMs: 400,
+      expandedStepId: 's2',
+      isRunning: true,
+      activeStepIndex: 1,
+      activeStepPhase: 'action',
+      issueStepIds: new Set<string>(),
+      onSelectStep: () => {}
+    })
+  );
+
+  assert.match(html, /Sequence Timeline/);
+  assert.match(html, /Visual step flow ribbon/);
+  assert.match(html, /Proportional step duration bar/);
+  assert.match(html, /Running Step 02/);
+  assert.match(html, /250 ms/);
+  assert.match(html, /~550 ms/);
+});
+
 

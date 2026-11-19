@@ -122,6 +122,18 @@ a:focus-visible,
     );
 }
 
+/* Precision diagonal hatching for explicit macro wait segments in timeline */
+.macro-wait-hatch {
+  background-color: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0px,
+    transparent 3px,
+    color-mix(in srgb, var(--bp-muted) 28%, transparent) 3px,
+    color-mix(in srgb, var(--bp-muted) 28%, transparent) 4.5px
+  );
+}
+
 /* Hardware Chassis & Tactile Keycaps — strictly BertoPad Graphite (#14161B), Panel (#1E2128), Bone (#ECEAE4), Amber (--accent) */
 .chassis-shell {
   background:
