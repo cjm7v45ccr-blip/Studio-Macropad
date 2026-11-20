@@ -42,6 +42,10 @@ import {
 import { KeycapIcon } from '../data/iconRegistry';
 import { ParsedActionBadge } from './ActionTagBadge';
 import {
+  setActiveDraggedAction,
+  writeActionDragData
+} from '../utils/dragPayload';
+import {
   Command,
   Volume2,
   Tv,
@@ -60,7 +64,8 @@ import {
   Sliders,
   Zap,
   Plus,
-  Monitor
+  Monitor,
+  GripVertical
 } from 'lucide-react';
 
 interface ActionPickerControlProps {
@@ -846,20 +851,31 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                             customMacros
                           );
                           const meta = renderMacroSummaryMeta(m);
+                          const nextBinding = firmwareActionToBinding(m.action, m.repeatConfig);
                           return (
                             <button
                               key={m.id}
                               type="button"
-                              title={`${m.name} — ${m.action}`}
-                              onClick={() =>
-                                onChange(firmwareActionToBinding(m.action, m.repeatConfig))
+                              draggable
+                              onDragStart={e =>
+                                writeActionDragData(e.dataTransfer, {
+                                  label: m.name,
+                                  binding: nextBinding
+                                })
                               }
-                              className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
+                              onDragEnd={() => setActiveDraggedAction(null)}
+                              title={`${m.name} — Drag onto any key or knob, or click to assign`}
+                              onClick={() => onChange(nextBinding)}
+                              className={`group w-full flex items-center gap-2 px-1.5 py-2 rounded-md text-left transition-colors cursor-grab active:cursor-grabbing ${
                                 selected
                                   ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
                                   : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                               }`}
                             >
+                              <GripVertical
+                                aria-hidden="true"
+                                className="w-3 h-3 text-[var(--text-muted)]/35 group-hover:text-[var(--text-secondary)] shrink-0 transition-colors"
+                              />
                               <KeycapIcon
                                 icon={desc.icon}
                                 className={`w-3.5 h-3.5 shrink-0 ${
@@ -902,21 +918,32 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                         {searchShortcutMatches.map(spec => {
                           const selected =
                             binding.value === spec.action && !binding.repeatConfig;
+                          const nextBinding = firmwareActionToBinding(spec.action);
                           return (
                             <button
                               key={spec.id}
                               type="button"
-                              title={`${spec.label} (${spec.shortcutHint}) — ${spec.action}`}
-                              onClick={() =>
-                                onChange(firmwareActionToBinding(spec.action))
+                              draggable
+                              onDragStart={e =>
+                                writeActionDragData(e.dataTransfer, {
+                                  label: spec.label,
+                                  binding: nextBinding
+                                })
                               }
-                              className={`w-full flex items-center justify-between gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
+                              onDragEnd={() => setActiveDraggedAction(null)}
+                              title={`${spec.label} (${spec.shortcutHint}) — Drag onto any key or knob, or click to assign`}
+                              onClick={() => onChange(nextBinding)}
+                              className={`group w-full flex items-center justify-between gap-2 px-1.5 py-2 rounded-md text-left transition-colors cursor-grab active:cursor-grabbing ${
                                 selected
                                   ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
                                   : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                               }`}
                             >
                               <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <GripVertical
+                                  aria-hidden="true"
+                                  className="w-3 h-3 text-[var(--text-muted)]/35 group-hover:text-[var(--text-secondary)] shrink-0 transition-colors"
+                                />
                                 <KeycapIcon
                                   icon={spec.icon}
                                   className={`w-3.5 h-3.5 shrink-0 ${
@@ -950,23 +977,34 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                           const selected =
                             binding.value === spec.action && !binding.repeatConfig;
                           const parsedSpec = parseSingleActionKeyValue(spec.action);
+                          const nextBinding: ActionBinding = {
+                            type: spec.category,
+                            value: spec.action
+                          };
                           return (
                             <button
                               key={spec.action}
                               type="button"
-                              title={`${spec.label} — ${spec.action}`}
-                              onClick={() =>
-                                onChange({
-                                  type: spec.category,
-                                  value: spec.action
+                              draggable
+                              onDragStart={e =>
+                                writeActionDragData(e.dataTransfer, {
+                                  label: spec.label,
+                                  binding: nextBinding
                                 })
                               }
-                              className={`w-full flex items-center gap-2 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
+                              onDragEnd={() => setActiveDraggedAction(null)}
+                              title={`${spec.label} — Drag onto any key or knob, or click to assign`}
+                              onClick={() => onChange(nextBinding)}
+                              className={`group w-full flex items-center gap-2 px-1.5 py-2 rounded-md text-left transition-colors cursor-grab active:cursor-grabbing ${
                                 selected
                                   ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
                                   : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                               }`}
                             >
+                              <GripVertical
+                                aria-hidden="true"
+                                className="w-3 h-3 text-[var(--text-muted)]/35 group-hover:text-[var(--text-secondary)] shrink-0 transition-colors"
+                              />
                               <KeycapIcon
                                 icon={spec.icon}
                                 className={`w-3.5 h-3.5 shrink-0 ${
@@ -1044,20 +1082,31 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                       customMacros
                     );
                     const meta = renderMacroSummaryMeta(m);
+                    const nextBinding = firmwareActionToBinding(m.action, m.repeatConfig);
                     return (
                       <button
                         key={m.id}
                         type="button"
-                        title={`${m.name} — ${m.action}`}
-                        onClick={() =>
-                          onChange(firmwareActionToBinding(m.action, m.repeatConfig))
+                        draggable
+                        onDragStart={e =>
+                          writeActionDragData(e.dataTransfer, {
+                            label: m.name,
+                            binding: nextBinding
+                          })
                         }
-                        className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
+                        onDragEnd={() => setActiveDraggedAction(null)}
+                        title={`${m.name} — Drag onto any key or knob, or click to assign`}
+                        onClick={() => onChange(nextBinding)}
+                        className={`group w-full flex items-center gap-2 px-1.5 py-2 rounded-md text-left transition-colors cursor-grab active:cursor-grabbing ${
                           selected
                             ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
                             : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                         }`}
                       >
+                        <GripVertical
+                          aria-hidden="true"
+                          className="w-3 h-3 text-[var(--text-muted)]/35 group-hover:text-[var(--text-secondary)] shrink-0 transition-colors"
+                        />
                         <KeycapIcon
                           icon={desc.icon}
                           className={`w-3.5 h-3.5 shrink-0 ${
@@ -1134,21 +1183,32 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 {osMappedShortcuts.map(spec => {
                   const selected =
                     binding.value === spec.action && !binding.repeatConfig;
+                  const nextBinding = firmwareActionToBinding(spec.action);
                   return (
                     <button
                       key={spec.id}
                       type="button"
-                      title={`${spec.label} (${spec.shortcutHint}) — ${spec.action}`}
-                      onClick={() =>
-                        onChange(firmwareActionToBinding(spec.action))
+                      draggable
+                      onDragStart={e =>
+                        writeActionDragData(e.dataTransfer, {
+                          label: spec.label,
+                          binding: nextBinding
+                        })
                       }
-                      className={`w-full flex items-center justify-between gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
+                      onDragEnd={() => setActiveDraggedAction(null)}
+                      title={`${spec.label} (${spec.shortcutHint}) — Drag onto any key or knob, or click to assign`}
+                      onClick={() => onChange(nextBinding)}
+                      className={`group w-full flex items-center justify-between gap-2 px-1.5 py-2 rounded-md text-left transition-colors cursor-grab active:cursor-grabbing ${
                         selected
                           ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
                           : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <GripVertical
+                          aria-hidden="true"
+                          className="w-3 h-3 text-[var(--text-muted)]/35 group-hover:text-[var(--text-secondary)] shrink-0 transition-colors"
+                        />
                         <KeycapIcon
                           icon={spec.icon}
                           className={`w-3.5 h-3.5 shrink-0 ${
@@ -1180,24 +1240,35 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 {displayControls.map(spec => {
                   const selected =
                     binding.value === spec.action && !binding.repeatConfig;
+                  const nextBinding: ActionBinding = {
+                    type: spec.category,
+                    value: spec.action
+                  };
                   return (
                     <button
                       key={spec.id}
                       type="button"
-                      title={`${spec.label} (${spec.shortcutHint}) — ${spec.action}`}
-                      onClick={() =>
-                        onChange({
-                          type: spec.category,
-                          value: spec.action
+                      draggable
+                      onDragStart={e =>
+                        writeActionDragData(e.dataTransfer, {
+                          label: spec.label,
+                          binding: nextBinding
                         })
                       }
-                      className={`w-full flex items-center justify-between gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
+                      onDragEnd={() => setActiveDraggedAction(null)}
+                      title={`${spec.label} (${spec.shortcutHint}) — Drag onto any key or knob, or click to assign`}
+                      onClick={() => onChange(nextBinding)}
+                      className={`group w-full flex items-center justify-between gap-2 px-1.5 py-2 rounded-md text-left transition-colors cursor-grab active:cursor-grabbing ${
                         selected
                           ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
                           : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <GripVertical
+                          aria-hidden="true"
+                          className="w-3 h-3 text-[var(--text-muted)]/35 group-hover:text-[var(--text-secondary)] shrink-0 transition-colors"
+                        />
                         <KeycapIcon
                           icon={spec.icon}
                           className={`w-3.5 h-3.5 shrink-0 ${
@@ -1227,23 +1298,34 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                     const selected =
                       binding.value === spec.action && !binding.repeatConfig;
                     const parsedSpec = parseSingleActionKeyValue(spec.action);
+                    const nextBinding: ActionBinding = {
+                      type: spec.category,
+                      value: spec.action
+                    };
                     return (
                       <button
                         key={spec.action}
                         type="button"
-                        title={`${spec.label} — ${spec.action}`}
-                        onClick={() =>
-                          onChange({
-                            type: spec.category,
-                            value: spec.action
+                        draggable
+                        onDragStart={e =>
+                          writeActionDragData(e.dataTransfer, {
+                            label: spec.label,
+                            binding: nextBinding
                           })
                         }
-                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
+                        onDragEnd={() => setActiveDraggedAction(null)}
+                        title={`${spec.label} — Drag onto any key or knob, or click to assign`}
+                        onClick={() => onChange(nextBinding)}
+                        className={`group w-full flex items-center gap-2 px-1.5 py-2 rounded-md text-left transition-colors cursor-grab active:cursor-grabbing ${
                           selected
                             ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
                             : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                         }`}
                       >
+                        <GripVertical
+                          aria-hidden="true"
+                          className="w-3 h-3 text-[var(--text-muted)]/35 group-hover:text-[var(--text-secondary)] shrink-0 transition-colors"
+                        />
                         <KeycapIcon
                           icon={spec.icon}
                           className={`w-3.5 h-3.5 shrink-0 ${

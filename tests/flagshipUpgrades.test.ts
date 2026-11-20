@@ -4,7 +4,10 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   DEFAULT_GYRO_CALIBRATION,
-  applyMotionOrientationAndDeadzone
+  applyMotionOrientationAndDeadzone,
+  buildFlatZeroCalibration,
+  computeRawAnglesFromAccel,
+  resolve3DChassisPose
 } from '../src/utils/motionCalibration';
 import {
   OLED_HEIGHT,
@@ -45,6 +48,75 @@ test('applyMotionOrientationAndDeadzone respects inversion, swapXY, and deadzone
   assert.equal(rotated.pitchDelta, 20); // roll -20 swapped to pitch, then negated -> +20
   assert.equal(rotated.rollDelta, -10); // pitch 10 swapped to roll, then negated -> -10
   assert.equal(rotated.yawDelta, 4);
+});
+
+test('resolve3DChassisPose renders true flat 0 deg when live gyro is online and preserves offline preview tilt', () => {
+  // Live gyro flat at 0°/0° must stay truly flat even when pointer hover is active
+  const flatOnline = resolve3DChassisPose({
+    isOnline: true,
+    pitch: 0,
+    roll: 0,
+    shakeZOffset: 0,
+    pointerActive: true,
+    pointerPitch: 16,
+    pointerRoll: -11
+  });
+  assert.deepEqual(flatOnline, { pitch: 0, roll: 0, zOffset: 0 });
+
+  // Live gyro tilted must map 1:1 without hardcoded +12/-4 offsets
+  const tiltedOnline = resolve3DChassisPose({
+    isOnline: true,
+    pitch: -1.0,
+    roll: 0.3,
+    shakeZOffset: 5,
+    pointerActive: false,
+    pointerPitch: 15,
+    pointerRoll: -9
+  });
+  assert.deepEqual(tiltedOnline, { pitch: -1.0, roll: 0.3, zOffset: 5 });
+
+  // Offline 3D preview retains showcase isometric tilt and pointer parallax
+  const offlineRest = resolve3DChassisPose({
+    isOnline: false,
+    pitch: 0,
+    roll: 0,
+    shakeZOffset: 0,
+    pointerActive: false,
+    pointerPitch: 15,
+    pointerRoll: -9
+  });
+  assert.deepEqual(offlineRest, { pitch: 15, roll: -9, zOffset: 0 });
+
+  const offlineHover = resolve3DChassisPose({
+    isOnline: false,
+    pitch: 0,
+    roll: 0,
+    shakeZOffset: 0,
+    pointerActive: true,
+    pointerPitch: 13.5,
+    pointerRoll: -6.5
+  });
+  assert.deepEqual(offlineHover, { pitch: 13.5, roll: -6.5, zOffset: 0 });
+});
+
+test('buildFlatZeroCalibration zeroes raw accelerometer mounting bias while preserving orientation settings', () => {
+  const { rawPitch, rawRoll, rawYaw } = computeRawAnglesFromAccel(38, -22, 998);
+  const flatProfile = buildFlatZeroCalibration(rawPitch, rawRoll, rawYaw, {
+    invertPitch: true,
+    deadzoneDeg: 0.6,
+    pitchScale: 1.15,
+    rollScale: 0.95
+  });
+
+  assert.equal(flatProfile.isCalibrated, true);
+  assert.equal(flatProfile.invertPitch, true);
+  assert.equal(flatProfile.deadzoneDeg, 0.6);
+  assert.equal(flatProfile.pitchScale, 1.15);
+  assert.equal(flatProfile.rollScale, 0.95);
+
+  const zeroed = applyMotionOrientationAndDeadzone(rawPitch, rawRoll, rawYaw, flatProfile);
+  assert.equal(zeroed.pitchDelta, 0);
+  assert.equal(zeroed.rollDelta, 0);
 });
 
 test('SSD1306 pixel buffer helpers map page-addressed bits and export valid bitmaps.h', () => {

@@ -12,7 +12,11 @@ import { MotionSlotId, GyroCalibrationProfile } from '../types/studio';
 import { gestureTypeToMotionSlot, SLOT_LABELS } from '../data/firmwareCatalog';
 import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
-import { DEFAULT_GYRO_CALIBRATION } from '../utils/motionCalibration';
+import {
+  DEFAULT_GYRO_CALIBRATION,
+  buildFlatZeroCalibration,
+  computeRawAnglesFromAccel
+} from '../utils/motionCalibration';
 
 export interface MotionTelemetryState {
   present: boolean;
@@ -232,6 +236,24 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
     setCalibrationStatus(null);
     try {
       const res = await usbHardware.calibrateMotion();
+      if (res.ok) {
+        try {
+          const sample = await usbHardware.readMotion();
+          if (sample?.ok) {
+            const ax = typeof sample.ax === 'number' ? sample.ax : 0;
+            const ay = typeof sample.ay === 'number' ? sample.ay : 0;
+            const az = typeof sample.az === 'number' ? sample.az : 1000;
+            const { rawPitch, rawRoll, rawYaw } = computeRawAnglesFromAccel(ax, ay, az);
+            const nextCalib = buildFlatZeroCalibration(rawPitch, rawRoll, rawYaw, profile);
+            setProfile(nextCalib);
+            localStorage.setItem('bertopad_gyro_calib', JSON.stringify(nextCalib));
+            onUpdateGyroCalibration?.(nextCalib);
+            window.dispatchEvent(
+              new CustomEvent('bertopad_gyro_calib_updated', { detail: nextCalib })
+            );
+          }
+        } catch {}
+      }
       const msg =
         res.message ||
         (res.ok

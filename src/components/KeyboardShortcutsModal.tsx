@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Command } from 'lucide-react';
 
 interface KeyboardShortcutsModalProps {
@@ -32,10 +33,15 @@ const SHORTCUT_GROUPS: {
   {
     category: 'Direct Pad Manipulation',
     items: [
+      {
+        keys: ['Drag Action'],
+        description: 'Drag a macro or action from the Inspector onto any key or knob (CCW / Press / CW)'
+      },
       { keys: ['Drag Key'], description: 'Swap two keycaps (Tap, Hold & Legend) on the pad' },
       { keys: ['Alt', 'Drag Key'], description: 'Copy a keycap binding & legend onto another key' },
+      { keys: ['Shift', 'Click'], description: 'Multi-select keys for bulk actions or macro combining' },
       { keys: ['Drag Knob'], description: 'Scrub Knob 1 or Knob 2 continuously with velocity' },
-      { keys: ['Right-Click'], description: 'Open quick menu (Test, Copy/Paste, Macro Studio, Reset)' }
+      { keys: ['Right-Click'], description: 'Open quick menu on any key or knob (Press / CCW / CW)' }
     ]
   },
   {
@@ -79,70 +85,63 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  const modalContent = (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="shortcuts-hud-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-sm animate-panel-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-[#080A0D]/80 backdrop-blur-md animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl bg-[var(--bg-panel)] border border-[var(--border-strong)] p-5 sm:p-6 shadow-2xl space-y-5"
+        className="w-full max-w-xl max-h-[90dvh] flex flex-col rounded-2xl studio-popover overflow-hidden animate-popover-in"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)] text-[var(--accent)] flex items-center justify-center shrink-0">
-              <Command className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 id="shortcuts-hud-title" className="text-sm font-bold text-[var(--text-primary)]">
-                Keyboard Shortcuts &amp; Studio Controls
+        {/* Minimal Hairline Header */}
+        <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Command className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+            <div className="min-w-0">
+              <h2 id="shortcuts-hud-title" className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                Keyboard Shortcuts &amp; Controls
               </h2>
-              <p className="text-[11px] text-[var(--text-muted)]">
-                Control the virtual pad and studio seamlessly from your keyboard
-              </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close shortcuts"
-            className="p-1.5 rounded-xl hover:bg-[var(--bg-input)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Shortcut Groups */}
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {SHORTCUT_GROUPS.map(group => (
-            <div key={group.category} className="space-y-1.5">
-              <h3 className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider px-1">
+            <div key={group.category} className="space-y-1">
+              <h3 className="font-mono text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider pb-1">
                 {group.category}
               </h3>
-              <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] divide-y divide-[var(--border-subtle)] overflow-hidden">
+              <div className="divide-y divide-[var(--border-subtle)]/60 border-t border-[var(--border-subtle)]">
                 {group.items.map(item => (
                   <div
                     key={item.description}
-                    className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-xs"
+                    className="flex items-center justify-between gap-3 py-2 text-xs"
                   >
-                    <span className="text-[var(--text-primary)] font-medium">
+                    <span className="text-[var(--text-secondary)]">
                       {item.description}
                     </span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <div className="flex items-center gap-1">
-                        {item.keys.map(k => (
-                          <kbd
-                            key={k}
-                            className="min-w-[22px] px-2 py-1 text-center rounded-lg bg-[var(--bg-panel)] border border-[var(--border-strong)] font-mono text-[11px] font-semibold text-[var(--text-primary)] shadow-2xs"
-                          >
-                            {k}
-                          </kbd>
-                        ))}
-                      </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {item.keys.map(k => (
+                        <kbd
+                          key={k}
+                          className="min-w-[22px] px-1.5 py-0.5 text-center rounded-md studio-kbd font-mono text-[10px] font-medium text-[var(--text-primary)]"
+                        >
+                          {k}
+                        </kbd>
+                      ))}
                     </div>
                   </div>
                 ))}
@@ -152,10 +151,14 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         </div>
 
         {/* Footer tip */}
-        <div className="pt-2 text-center text-[11px] text-[var(--text-muted)]">
-          Tip: Press <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-input)] font-mono text-[10px]">?</kbd> anytime to open this HUD · Adjust switch feel from <span className="text-[var(--text-secondary)] font-medium">Sound</span> in the sidebar
+        <div className="px-5 py-3 border-t border-[var(--border-subtle)] text-center text-[11px] text-[var(--text-muted)] shrink-0">
+          Press <kbd className="px-1.5 py-0.5 rounded studio-kbd font-mono text-[10px] text-[var(--text-secondary)]">?</kbd> anytime to toggle this reference
         </div>
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };

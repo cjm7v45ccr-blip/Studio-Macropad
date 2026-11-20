@@ -3,7 +3,8 @@ import { GyroCalibrationProfile } from '../types/studio';
 import { usbHardware } from '../services/usbHardwareService';
 import {
   DEFAULT_GYRO_CALIBRATION,
-  applyMotionOrientationAndDeadzone
+  applyMotionOrientationAndDeadzone,
+  computeRawAnglesFromAccel
 } from '../utils/motionCalibration';
 
 export interface MotionSensorOptions {
@@ -119,6 +120,9 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
 
   useEffect(() => {
     const handleUpdate = (e: any) => {
+      smoothedPitchRef.current = defaultPitchBaseline;
+      smoothedRollRef.current = defaultRollBaseline;
+      smoothedYawRef.current = 0;
       if (e.detail) {
         setCalibProfile(e.detail);
       } else {
@@ -130,7 +134,7 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
     };
     window.addEventListener('bertopad_gyro_calib_updated', handleUpdate);
     return () => window.removeEventListener('bertopad_gyro_calib_updated', handleUpdate);
-  }, []);
+  }, [defaultPitchBaseline, defaultRollBaseline]);
 
   // Subscribe to hardware shake gestures
   useEffect(() => {
@@ -205,10 +209,7 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
           // Convert raw accelerometer milli-g components to angular tilt in degrees
           // Normalized pitch = forward/backward (up/down tilt via -ax for natural direction)
           // Normalized roll = left/right tilt (via ay)
-          const radToDeg = 180 / Math.PI;
-          const rawPitch = -Math.atan2(ax, Math.sqrt(ay * ay + az * az)) * radToDeg;
-          const rawRoll = Math.atan2(ay, az) * radToDeg;
-          const rawYaw = Math.atan2(ax, ay) * radToDeg;
+          const { rawPitch, rawRoll, rawYaw } = computeRawAnglesFromAccel(ax, ay, az);
 
           let targetPitch = defaultPitchBaseline;
           let targetRoll = defaultRollBaseline;

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ActionBinding,
   BleHostSlot,
@@ -50,10 +51,20 @@ import {
   resolveAnchorActionKey,
   toggleMultiSelectKey
 } from '../utils/keyMultiSelect';
+import {
+  hasDraggedAction,
+  readActionDragData,
+  setActiveDraggedAction
+} from '../utils/dragPayload';
 import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
 import { useMotionSensor } from '../hooks/useMotionSensor';
-import { computeGyroCalibration } from '../utils/motionCalibration';
+import {
+  buildFlatZeroCalibration,
+  computeGyroCalibration,
+  computeRawAnglesFromAccel,
+  resolve3DChassisPose
+} from '../utils/motionCalibration';
 import {
   AlertTriangle,
   AlertCircle,
@@ -213,6 +224,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
   const shiftHeldRef = useRef(false);
   const [draggedKey, setDraggedKey] = useState<KeyId | null>(null);
   const [dragOverKey, setDragOverKey] = useState<KeyId | null>(null);
+  const [dragOverSlot, setDragOverSlot] = useState<HardwareSlotId | null>(null);
   const [dragCopyMode, setDragCopyMode] = useState(false);
   const [copiedClipboard, setCopiedClipboard] = useState<{
     label: string;
@@ -228,7 +240,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     binding: ActionBinding;
     keyId?: KeyId;
     encoderIndex?: EncoderIndex;
+    encoderAction?: 'press' | 'ccw' | 'cw' | 'push_ccw' | 'push_cw';
     multiKeys?: ActionKeyId[];
+  } | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState<{
+    left: number;
+    top: number;
   } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const knobScrubRef = useRef<{
@@ -285,7 +302,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setContextMenu(null);
     };
-    const handleScroll = () => setContextMenu(null);
+    const handleScroll = (e: Event) => {
+      if (contextMenuRef.current && contextMenuRef.current.contains(e.target as Node)) {
+        return;
+      }
+      setContextMenu(null);
+    };
     window.addEventListener('mousedown', handleOutside);
     window.addEventListener('keydown', handleEsc);
     window.addEventListener('scroll', handleScroll, true);
@@ -295,6 +317,40 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       window.removeEventListener('scroll', handleScroll, true);
     };
   }, [contextMenu]);
+
+  // Measure actual rendered context menu height/width and flip upward or clamp inside viewport
+  useLayoutEffect(() => {
+    if (!contextMenu) {
+      setContextMenuPos(null);
+      return;
+    }
+    const margin = 12;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const el = contextMenuRef.current;
+    const menuW = el ? el.offsetWidth : 256;
+    const menuH = el ? el.offsetHeight : 320;
+
+    const left = Math.max(margin, Math.min(contextMenu.x, vw - menuW - margin));
+    const fitsBelow = contextMenu.y + menuH + margin <= vh;
+    const top = fitsBelow
+      ? Math.max(margin, contextMenu.y)
+      : Math.max(margin, Math.min(contextMenu.y - menuH, vh - menuH - margin));
+
+    setContextMenuPos({ left, top });
+  }, [contextMenu]);
+
+  useEffect(() => {
+    const clearDragState = () => {
+      setDraggedKey(null);
+      setDragOverKey(null);
+      setDragOverSlot(null);
+      setDragCopyMode(false);
+      setActiveDraggedAction(null);
+    };
+    window.addEventListener('dragend', clearDragState);
+    return () => window.removeEventListener('dragend', clearDragState);
+  }, []);
 
   useEffect(() => {
     if (multiSelectedKeys.length === 0 || contextMenu) return;
@@ -344,7 +400,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       return;
     }
 
-    current3dRotRef.current = { pitch: 15, roll: -9, yaw: 0, zOffset: 0 };
+    const initialPose = resolve3DChassisPose({
+      isOnline: motionTargetRef.current.isOnline,
+      pitch: motionTargetRef.current.pitch,
+      roll: motionTargetRef.current.roll,
+      shakeZOffset: motionTargetRef.current.shakeZOffset,
+      pointerActive: pointerTiltRef.current.active,
+      pointerPitch: pointerTiltRef.current.pitch,
+      pointerRoll: pointerTiltRef.current.roll
+    });
+    current3dRotRef.current = {
+      pitch: initialPose.pitch,
+      roll: initialPose.roll,
+      yaw: 0,
+      zOffset: initialPose.zOffset
+    };
 
     const reducedMotion =
       typeof window !== 'undefined' &&
@@ -356,21 +426,19 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
       const target = motionTargetRef.current;
       const current = current3dRotRef.current;
       const pointer = pointerTiltRef.current;
-      const liveGyroActive =
-        target.isOnline &&
-        (Math.abs(target.pitch) >= 0.4 || Math.abs(target.roll) >= 0.4 || target.shakeActive);
+      const desiredPose = resolve3DChassisPose({
+        isOnline: target.isOnline,
+        pitch: target.pitch,
+        roll: target.roll,
+        shakeZOffset: target.shakeZOffset,
+        pointerActive: pointer.active,
+        pointerPitch: pointer.pitch,
+        pointerRoll: pointer.roll
+      });
 
-      const desiredPitch = liveGyroActive
-        ? target.pitch + 12
-        : pointer.active
-        ? pointer.pitch
-        : 15;
-      const desiredRoll = liveGyroActive
-        ? target.roll - 4
-        : pointer.active
-        ? pointer.roll
-        : -9;
-      const desiredZ = liveGyroActive ? target.shakeZOffset : 0;
+      const desiredPitch = desiredPose.pitch;
+      const desiredRoll = desiredPose.roll;
+      const desiredZ = desiredPose.zOffset;
 
       const factor = reducedMotion ? 1 : target.shakeActive ? 0.32 : 0.14;
       current.pitch += (desiredPitch - current.pitch) * factor;
@@ -1484,6 +1552,75 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
     );
 
     const ringAccent = encCfg.color || '#F2A33A';
+    const isCcwDropTarget = dragOverSlot === ccwId;
+    const isDialDropTarget = dragOverSlot === dialId;
+    const isCwDropTarget = dragOverSlot === cwId;
+    const knobDropLabel = isCcwDropTarget
+      ? `Drop → Knob ${encoderIndex} CCW`
+      : isDialDropTarget
+      ? `Drop → Knob ${encoderIndex} Press`
+      : isCwDropTarget
+      ? `Drop → Knob ${encoderIndex} CW`
+      : null;
+
+    const handleKnobSlotDragOver = (
+      e: React.DragEvent,
+      targetSlot: HardwareSlotId
+    ) => {
+      if (viewMode !== 'edit' || !onPasteSlotBinding || !hasDraggedAction(e.dataTransfer)) {
+        return;
+      }
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      if (dragOverSlot !== targetSlot) setDragOverSlot(targetSlot);
+    };
+
+    const handleKnobSlotDragLeave = (targetSlot: HardwareSlotId) => {
+      if (dragOverSlot === targetSlot) setDragOverSlot(null);
+    };
+
+    const handleKnobSlotDrop = (
+      e: React.DragEvent,
+      targetSlot: HardwareSlotId,
+      targetControlId: ControlId
+    ) => {
+      if (viewMode !== 'edit' || !onPasteSlotBinding) return;
+      const payload = readActionDragData(e.dataTransfer);
+      if (!payload) return;
+      e.preventDefault();
+      setDragOverSlot(null);
+      setActiveDraggedAction(null);
+      soundEngine.playKeyClick();
+      onPasteSlotBinding(targetSlot, { ...payload.binding });
+      onSelectControl(targetControlId);
+      triggerSlotFlash(targetSlot);
+    };
+
+    const openKnobContextMenu = (
+      e: React.MouseEvent,
+      opts: {
+        title: string;
+        subtitle: string;
+        slot: HardwareSlotId;
+        controlId: ControlId;
+        binding: ActionBinding;
+        encoderAction: 'press' | 'ccw' | 'cw' | 'push_ccw' | 'push_cw';
+      }
+    ) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        title: opts.title,
+        subtitle: opts.subtitle || 'Unassigned',
+        slot: opts.slot,
+        controlId: opts.controlId,
+        binding: opts.binding,
+        encoderIndex,
+        encoderAction: opts.encoderAction
+      });
+    };
 
     return (
       <div
@@ -1494,7 +1631,12 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           className="relative flex items-center justify-center gap-1.5"
           style={view3D ? { transformStyle: 'preserve-3d', pointerEvents: 'auto' } : undefined}
         >
-          {accel > 1 && (
+          {knobDropLabel && (
+            <span className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 z-40 px-2 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[9px] font-bold uppercase tracking-wider shadow-md whitespace-nowrap">
+              {knobDropLabel}
+            </span>
+          )}
+          {accel > 1 && !knobDropLabel && (
             <span
               title={`Knob ${encoderIndex} velocity acceleration (${accel}× step)`}
               className="absolute -top-2.5 right-6 z-10 px-1.5 py-0.5 rounded-md bg-[#1E2128] border border-[#F2A33A] font-mono text-[9px] font-bold text-[#F2A33A] tabular-nums pointer-events-none"
@@ -1507,7 +1649,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <button
             type="button"
             aria-label={`Knob ${encoderIndex} Turn Left: ${ccwInfo.fullLabel}`}
+            onContextMenu={e =>
+              openKnobContextMenu(e, {
+                title: `Knob ${encoderIndex} Turn Left`,
+                subtitle: ccwInfo.shortLabel || 'Unassigned',
+                slot: ccwId,
+                controlId: ccwId,
+                binding: encCfg.ccw,
+                encoderAction: 'ccw'
+              })
+            }
+            onDragOver={e => handleKnobSlotDragOver(e, ccwId)}
+            onDragLeave={() => handleKnobSlotDragLeave(ccwId)}
+            onDrop={e => handleKnobSlotDrop(e, ccwId, ccwId)}
             onPointerDown={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
               e.stopPropagation();
               try {
                 (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
@@ -1515,6 +1671,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               handlePointerDown(`enc_${encoderIndex}_ccw`, e);
             }}
             onPointerUp={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
               e.stopPropagation();
               try {
                 if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
@@ -1532,7 +1689,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             }}
             title={`Knob ${encoderIndex} Turn Left (${ccwInfo.fullLabel}) — click to ${
               viewMode === 'edit' ? 'configure' : 'trigger'
-            }`}
+            }, drop action to assign, right-click for menu`}
             style={
               view3D
                 ? {
@@ -1544,7 +1701,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 : undefined
             }
             className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
-              isCcwFlashed
+              isCcwDropTarget
+                ? 'bg-[var(--accent)]/30 ring-2 ring-[var(--accent)] text-[#ECEAE4] scale-115 shadow-[0_0_18px_rgba(var(--accent-rgb),0.5)]'
+                : isCcwFlashed
                 ? 'bg-[#F2A33A]/25 ring-2 ring-[#F2A33A] text-[#ECEAE4] scale-110'
                 : isCcwSelected
                 ? 'bg-[rgba(var(--accent-rgb),0.28)] ring-2 ring-[var(--accent)] text-[#ECEAE4] shadow-[0_0_16px_rgba(var(--accent-rgb),0.45)]'
@@ -1562,21 +1721,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <button
             type="button"
             aria-label={`Knob ${encoderIndex} Press: ${dialInfo.fullLabel}`}
-            title={`Knob ${encoderIndex} (${dialInfo.fullLabel}) — click to press, drag or scroll to turn, right-click for actions`}
+            title={`Knob ${encoderIndex} (${dialInfo.fullLabel}) — click to press, drag or scroll to turn, drop action to assign Press, right-click for menu`}
             onWheel={e => handleEncoderWheel(encoderIndex, e)}
-            onContextMenu={e => {
-              e.preventDefault();
-              setContextMenu({
-                x: Math.min(e.clientX, window.innerWidth - 236),
-                y: Math.min(e.clientY, window.innerHeight - 280),
+            onDragOver={e => handleKnobSlotDragOver(e, dialId)}
+            onDragLeave={() => handleKnobSlotDragLeave(dialId)}
+            onDrop={e => handleKnobSlotDrop(e, dialId, dialId)}
+            onContextMenu={e =>
+              openKnobContextMenu(e, {
                 title: `Knob ${encoderIndex} Press`,
                 subtitle: dialInfo.shortLabel || 'Unassigned',
                 slot: dialId,
                 controlId: dialId,
                 binding: encCfg.dial,
-                encoderIndex
-              });
-            }}
+                encoderAction: 'press'
+              })
+            }
             onMouseDown={() => setPressed(true)}
             onMouseUp={() => setPressed(false)}
             onMouseLeave={() => {
@@ -1659,14 +1818,18 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               }
             }}
             style={{
-              borderColor: isDialFlashed
+              borderColor: isDialDropTarget
+                ? 'var(--accent)'
+                : isDialFlashed
                 ? '#F2A33A'
                 : isDialSelected
                 ? 'var(--accent)'
                 : dialConflict
                 ? '#F2A33A'
                 : 'rgba(236, 234, 228, 0.14)',
-              boxShadow: isDialFlashed
+              boxShadow: isDialDropTarget
+                ? '0 0 0 4px rgba(242, 163, 58, 0.45), 0 0 28px rgba(242, 163, 58, 0.38)'
+                : isDialFlashed
                 ? '0 0 0 4px rgba(242, 163, 58, 0.4), 0 0 26px rgba(242, 163, 58, 0.35)'
                 : view3D
                 ? '0 10px 0 #0B0D11, 0 18px 28px rgba(0,0,0,0.68), inset 0 1.5px 2px rgba(236,234,228,0.16)'
@@ -1682,13 +1845,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 : {})
             }}
             className={`relative w-20 h-20 sm:w-24 sm:h-24 xl:w-26 xl:h-26 rounded-full encoder-ring border-2 flex items-center justify-center transition-all duration-150 cursor-pointer select-none ${
-              isDialSelected && !isDialFlashed
+              isDialSelected && !isDialFlashed && !isDialDropTarget
                 ? 'encoder-ring-selected'
-                : !isDialFlashed
+                : !isDialFlashed && !isDialDropTarget
                 ? 'shadow-[0_10px_22px_rgba(0,0,0,0.52),inset_0_1px_1px_rgba(236,234,228,0.09)]'
                 : ''
-            } ${isPressed || isDialFlashed ? 'scale-95' : 'hover:scale-[1.02]'} ${
-              isDialUnassigned && !isDialSelected && !isDialFlashed
+            } ${isPressed || isDialFlashed ? 'scale-95' : isDialDropTarget ? 'scale-[1.04]' : 'hover:scale-[1.02]'} ${
+              isDialUnassigned && !isDialSelected && !isDialFlashed && !isDialDropTarget
                 ? 'opacity-55 hover:opacity-85'
                 : ''
             }`}
@@ -1744,7 +1907,21 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           <button
             type="button"
             aria-label={`Knob ${encoderIndex} Turn Right: ${cwInfo.fullLabel}`}
+            onContextMenu={e =>
+              openKnobContextMenu(e, {
+                title: `Knob ${encoderIndex} Turn Right`,
+                subtitle: cwInfo.shortLabel || 'Unassigned',
+                slot: cwId,
+                controlId: cwId,
+                binding: encCfg.cw,
+                encoderAction: 'cw'
+              })
+            }
+            onDragOver={e => handleKnobSlotDragOver(e, cwId)}
+            onDragLeave={() => handleKnobSlotDragLeave(cwId)}
+            onDrop={e => handleKnobSlotDrop(e, cwId, cwId)}
             onPointerDown={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
               e.stopPropagation();
               try {
                 (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
@@ -1752,6 +1929,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               handlePointerDown(`enc_${encoderIndex}_cw`, e);
             }}
             onPointerUp={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
               e.stopPropagation();
               try {
                 if ((e.currentTarget as HTMLButtonElement).hasPointerCapture(e.pointerId)) {
@@ -1769,7 +1947,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             }}
             title={`Knob ${encoderIndex} Turn Right (${cwInfo.fullLabel}) — click to ${
               viewMode === 'edit' ? 'configure' : 'trigger'
-            }`}
+            }, drop action to assign, right-click for menu`}
             style={
               view3D
                 ? {
@@ -1781,7 +1959,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 : undefined
             }
             className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 ${
-              isCwFlashed
+              isCwDropTarget
+                ? 'bg-[var(--accent)]/30 ring-2 ring-[var(--accent)] text-[#ECEAE4] scale-115 shadow-[0_0_18px_rgba(var(--accent-rgb),0.5)]'
+                : isCwFlashed
                 ? 'bg-[#F2A33A]/25 ring-2 ring-[#F2A33A] text-[#ECEAE4] scale-110'
                 : isCwSelected
                 ? 'bg-[rgba(var(--accent-rgb),0.28)] ring-2 ring-[var(--accent)] text-[#ECEAE4] shadow-[0_0_16px_rgba(var(--accent-rgb),0.45)]'
@@ -1802,15 +1982,32 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         >
           <button
             type="button"
-            onPointerDown={e => handlePointerDown(`enc_sub_${encoderIndex}_ccw`, e)}
-            onPointerUp={e =>
-              handlePointerUp(`enc_sub_${encoderIndex}_ccw`, e, () => triggerEncoderSpin(encoderIndex, 'ccw'))
+            onContextMenu={e =>
+              openKnobContextMenu(e, {
+                title: `Knob ${encoderIndex} Turn Left`,
+                subtitle: ccwInfo.shortLabel || 'Unassigned',
+                slot: ccwId,
+                controlId: ccwId,
+                binding: encCfg.ccw,
+                encoderAction: 'ccw'
+              })
             }
+            onDragOver={e => handleKnobSlotDragOver(e, ccwId)}
+            onDragLeave={() => handleKnobSlotDragLeave(ccwId)}
+            onDrop={e => handleKnobSlotDrop(e, ccwId, ccwId)}
+            onPointerDown={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
+              handlePointerDown(`enc_sub_${encoderIndex}_ccw`, e);
+            }}
+            onPointerUp={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
+              handlePointerUp(`enc_sub_${encoderIndex}_ccw`, e, () => triggerEncoderSpin(encoderIndex, 'ccw'));
+            }}
             onPointerCancel={handlePointerCancel}
             onClick={e => handleClick(`enc_sub_${encoderIndex}_ccw`, e, () => triggerEncoderSpin(encoderIndex, 'ccw'))}
             title={`Knob ${encoderIndex} Turn Left: ${ccwInfo.fullLabel}`}
             className={`inline-flex items-center gap-0.5 hover:text-[#ECEAE4] transition-colors cursor-pointer whitespace-nowrap ${
-              isCcwSelected ? 'text-[#F2A33A] font-semibold' : ''
+              isCcwSelected || isCcwDropTarget ? 'text-[#F2A33A] font-semibold' : ''
             }`}
           >
             <RotateCcw className="w-2.5 h-2.5 shrink-0" />
@@ -1821,15 +2018,32 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </span>
           <button
             type="button"
-            onPointerDown={e => handlePointerDown(`enc_sub_${encoderIndex}_press`, e)}
-            onPointerUp={e =>
-              handlePointerUp(`enc_sub_${encoderIndex}_press`, e, () => activateDialPush(encoderIndex))
+            onContextMenu={e =>
+              openKnobContextMenu(e, {
+                title: `Knob ${encoderIndex} Press`,
+                subtitle: dialInfo.shortLabel || 'Unassigned',
+                slot: dialId,
+                controlId: dialId,
+                binding: encCfg.dial,
+                encoderAction: 'press'
+              })
             }
+            onDragOver={e => handleKnobSlotDragOver(e, dialId)}
+            onDragLeave={() => handleKnobSlotDragLeave(dialId)}
+            onDrop={e => handleKnobSlotDrop(e, dialId, dialId)}
+            onPointerDown={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
+              handlePointerDown(`enc_sub_${encoderIndex}_press`, e);
+            }}
+            onPointerUp={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
+              handlePointerUp(`enc_sub_${encoderIndex}_press`, e, () => activateDialPush(encoderIndex));
+            }}
             onPointerCancel={handlePointerCancel}
             onClick={e => handleClick(`enc_sub_${encoderIndex}_press`, e, () => activateDialPush(encoderIndex))}
             title={`Knob ${encoderIndex} Press: ${dialInfo.fullLabel}`}
             className={`hover:text-[#ECEAE4] transition-colors cursor-pointer whitespace-nowrap ${
-              isDialSelected ? 'text-[#F2A33A] font-semibold' : ''
+              isDialSelected || isDialDropTarget ? 'text-[#F2A33A] font-semibold' : ''
             }`}
           >
             {dialInfo.shortLabel}
@@ -1839,15 +2053,32 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </span>
           <button
             type="button"
-            onPointerDown={e => handlePointerDown(`enc_sub_${encoderIndex}_cw`, e)}
-            onPointerUp={e =>
-              handlePointerUp(`enc_sub_${encoderIndex}_cw`, e, () => triggerEncoderSpin(encoderIndex, 'cw'))
+            onContextMenu={e =>
+              openKnobContextMenu(e, {
+                title: `Knob ${encoderIndex} Turn Right`,
+                subtitle: cwInfo.shortLabel || 'Unassigned',
+                slot: cwId,
+                controlId: cwId,
+                binding: encCfg.cw,
+                encoderAction: 'cw'
+              })
             }
+            onDragOver={e => handleKnobSlotDragOver(e, cwId)}
+            onDragLeave={() => handleKnobSlotDragLeave(cwId)}
+            onDrop={e => handleKnobSlotDrop(e, cwId, cwId)}
+            onPointerDown={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
+              handlePointerDown(`enc_sub_${encoderIndex}_cw`, e);
+            }}
+            onPointerUp={e => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
+              handlePointerUp(`enc_sub_${encoderIndex}_cw`, e, () => triggerEncoderSpin(encoderIndex, 'cw'));
+            }}
             onPointerCancel={handlePointerCancel}
             onClick={e => handleClick(`enc_sub_${encoderIndex}_cw`, e, () => triggerEncoderSpin(encoderIndex, 'cw'))}
             title={`Knob ${encoderIndex} Turn Right: ${cwInfo.fullLabel}`}
             className={`inline-flex items-center gap-0.5 hover:text-[#ECEAE4] transition-colors cursor-pointer whitespace-nowrap ${
-              isCwSelected ? 'text-[#F2A33A] font-semibold' : ''
+              isCwSelected || isCwDropTarget ? 'text-[#F2A33A] font-semibold' : ''
             }`}
           >
             <span>{cwInfo.shortLabel}</span>
@@ -1863,12 +2094,26 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <span className="font-mono text-[9px] text-[#A3A6AD]/75 shrink-0">Push+turn:</span>
             <button
               type="button"
-              onPointerDown={e => handlePointerDown(`enc${encoderIndex}_push_ccw`, e)}
-              onPointerUp={e =>
+              onContextMenu={e =>
+                openKnobContextMenu(e, {
+                  title: `Knob ${encoderIndex} Push+Left`,
+                  subtitle: pushCcwBind.value ? pushCcwInfo.shortLabel : 'Unassigned',
+                  slot: pushCcwId,
+                  controlId: pushCcwId,
+                  binding: pushCcwBind,
+                  encoderAction: 'push_ccw'
+                })
+              }
+              onPointerDown={e => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                handlePointerDown(`enc${encoderIndex}_push_ccw`, e);
+              }}
+              onPointerUp={e => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
                 handlePointerUp(`enc${encoderIndex}_push_ccw`, e, () =>
                   triggerEncoderHoldSpin(encoderIndex, 'ccw')
-                )
-              }
+                );
+              }}
               onPointerCancel={handlePointerCancel}
               onClick={e =>
                 handleClick(`enc${encoderIndex}_push_ccw`, e, () =>
@@ -1892,12 +2137,26 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             </span>
             <button
               type="button"
-              onPointerDown={e => handlePointerDown(`enc${encoderIndex}_push_cw`, e)}
-              onPointerUp={e =>
+              onContextMenu={e =>
+                openKnobContextMenu(e, {
+                  title: `Knob ${encoderIndex} Push+Right`,
+                  subtitle: pushCwBind.value ? pushCwInfo.shortLabel : 'Unassigned',
+                  slot: pushCwId,
+                  controlId: pushCwId,
+                  binding: pushCwBind,
+                  encoderAction: 'push_cw'
+                })
+              }
+              onPointerDown={e => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                handlePointerDown(`enc${encoderIndex}_push_cw`, e);
+              }}
+              onPointerUp={e => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
                 handlePointerUp(`enc${encoderIndex}_push_cw`, e, () =>
                   triggerEncoderHoldSpin(encoderIndex, 'cw')
-                )
-              }
+                );
+              }}
               onPointerCancel={handlePointerCancel}
               onClick={e =>
                 handleClick(`enc${encoderIndex}_push_cw`, e, () =>
@@ -1990,34 +2249,63 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             e.dataTransfer.setData('text/plain', kid);
           }}
           onDragOver={e => {
-            if (!draggedKey || cfg.isModeSwitch || draggedKey === kid) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move';
-            if (dragOverKey !== kid) setDragOverKey(kid);
-            if (dragCopyMode !== e.altKey) setDragCopyMode(e.altKey);
+            if (cfg.isModeSwitch || kid === 'k9' || !isProgrammableKeyId(kid)) return;
+            if (draggedKey && draggedKey !== kid) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move';
+              if (dragOverKey !== kid) setDragOverKey(kid);
+              if (dragCopyMode !== e.altKey) setDragCopyMode(e.altKey);
+              return;
+            }
+            if (viewMode === 'edit' && onPasteSlotBinding && hasDraggedAction(e.dataTransfer)) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+              if (dragOverKey !== kid) setDragOverKey(kid);
+              const tapSlot = KEY_TO_SLOT[kid];
+              if (dragOverSlot !== tapSlot) setDragOverSlot(tapSlot);
+            }
           }}
           onDragLeave={() => {
             if (dragOverKey === kid) setDragOverKey(null);
+            if (isProgrammableKeyId(kid) && dragOverSlot === KEY_TO_SLOT[kid]) {
+              setDragOverSlot(null);
+            }
           }}
           onDrop={e => {
-            if (!draggedKey || cfg.isModeSwitch || draggedKey === kid) return;
-            e.preventDefault();
-            soundEngine.playKeyClick();
-            const src = draggedKey;
-            const copyIntent = e.altKey;
-            setDraggedKey(null);
-            setDragOverKey(null);
-            setDragCopyMode(false);
-            if (copyIntent && onCopyKey) {
-              onCopyKey(src, kid);
-            } else {
-              onSwapKeys?.(src, kid);
+            if (cfg.isModeSwitch || kid === 'k9' || !isProgrammableKeyId(kid)) return;
+            if (draggedKey && draggedKey !== kid) {
+              e.preventDefault();
+              soundEngine.playKeyClick();
+              const src = draggedKey;
+              const copyIntent = e.altKey;
+              setDraggedKey(null);
+              setDragOverKey(null);
+              setDragCopyMode(false);
+              if (copyIntent && onCopyKey) {
+                onCopyKey(src, kid);
+              } else {
+                onSwapKeys?.(src, kid);
+              }
+              onSelectControl(kid);
+              return;
             }
-            onSelectControl(kid);
+            const payload = readActionDragData(e.dataTransfer);
+            if (payload && viewMode === 'edit' && onPasteSlotBinding) {
+              e.preventDefault();
+              const tapSlot = KEY_TO_SLOT[kid];
+              setDragOverKey(null);
+              setDragOverSlot(null);
+              setActiveDraggedAction(null);
+              soundEngine.playKeyClick();
+              onPasteSlotBinding(tapSlot, { ...payload.binding });
+              onSelectControl(kid);
+              triggerSlotFlash(tapSlot);
+            }
           }}
           onDragEnd={() => {
             setDraggedKey(null);
             setDragOverKey(null);
+            setDragOverSlot(null);
             setDragCopyMode(false);
           }}
           onContextMenu={e => {
@@ -2035,8 +2323,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
               activeMultiKeys.length > 1 &&
               activeMultiKeys.includes(kid);
             setContextMenu({
-              x: Math.min(Math.max(12, e.clientX), window.innerWidth - 268),
-              y: Math.min(Math.max(12, e.clientY), window.innerHeight - (useMulti ? 410 : 320)),
+              x: e.clientX,
+              y: e.clientY,
               title: useMulti ? `${activeMultiKeys.length} Keys Selected` : `Key ${index + 1}`,
               subtitle: useMulti
                 ? formatMultiKeySummary(activeMultiKeys)
@@ -2154,7 +2442,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         >
           {dragOverKey === kid && (
             <span className="pointer-events-none absolute -top-2.5 left-1/2 -translate-x-1/2 z-30 px-1.5 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-mono text-[9px] font-bold uppercase tracking-wider shadow-md whitespace-nowrap">
-              {dragCopyMode ? 'Copy' : 'Swap'}
+              {dragOverSlot && !draggedKey ? `Drop → K${index + 1}` : dragCopyMode ? 'Copy' : 'Swap'}
             </span>
           )}
           {isMultiSelected && multiSelectedKeys.length > 1 && dragOverKey !== kid && (
@@ -2451,8 +2739,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 const firstKey = multiSelectedKeys[0];
                 const rect = e.currentTarget.getBoundingClientRect();
                 setContextMenu({
-                  x: Math.min(Math.max(12, rect.left), window.innerWidth - 268),
-                  y: Math.min(Math.max(12, rect.bottom + 6), window.innerHeight - 410),
+                  x: rect.left,
+                  y: rect.bottom + 6,
                   title: `${multiSelectedKeys.length} Keys Selected`,
                   subtitle: formatMultiKeySummary(multiSelectedKeys),
                   slot: KEY_TO_SLOT[firstKey],
@@ -2622,22 +2910,98 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
             <div className="flex items-center gap-2 shrink-0">
               {calibStep === 'flat' && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    flatPitchRef.current = motionSensor.rawPitch;
-                    flatRollRef.current = motionSensor.rawRoll;
-                    flatYawRef.current = motionSensor.rawYaw;
-                    if (connection.connected) {
-                      await motionSensor.calibrateFlatZero().catch(() => {});
-                    }
-                    soundEngine.playKeyClick();
-                    setCalibStep('left');
-                  }}
-                  className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer"
-                >
-                  Set Flat Zero →
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (connection.connected) {
+                        await motionSensor.calibrateFlatZero().catch(() => {});
+                      }
+                      let nextFlatPitch = motionSensor.rawPitch;
+                      let nextFlatRoll = motionSensor.rawRoll;
+                      let nextFlatYaw = motionSensor.rawYaw;
+                      if (connection.connected) {
+                        try {
+                          const sample = await usbHardware.readMotion();
+                          if (sample?.ok) {
+                            const angles = computeRawAnglesFromAccel(
+                              typeof sample.ax === 'number' ? sample.ax : 0,
+                              typeof sample.ay === 'number' ? sample.ay : 0,
+                              typeof sample.az === 'number' ? sample.az : 1000
+                            );
+                            nextFlatPitch = angles.rawPitch;
+                            nextFlatRoll = angles.rawRoll;
+                            nextFlatYaw = angles.rawYaw;
+                          }
+                        } catch {}
+                      }
+                      flatPitchRef.current = nextFlatPitch;
+                      flatRollRef.current = nextFlatRoll;
+                      flatYawRef.current = nextFlatYaw;
+                      const flatCalib = buildFlatZeroCalibration(
+                        nextFlatPitch,
+                        nextFlatRoll,
+                        nextFlatYaw,
+                        motionSensor.calibrationProfile
+                      );
+                      localStorage.setItem('bertopad_gyro_calib', JSON.stringify(flatCalib));
+                      window.dispatchEvent(
+                        new CustomEvent('bertopad_gyro_calib_updated', { detail: flatCalib })
+                      );
+                      soundEngine.playSuccessChime();
+                      setCalibrating3D(false);
+                      setCalibStep(null);
+                      triggerOledToast('FLAT ZERO SAVED', '0.0° LEVEL SET');
+                    }}
+                    className="px-3 py-1.5 rounded-lg studio-btn text-xs font-medium text-[var(--text-primary)] cursor-pointer"
+                  >
+                    Flat Zero &amp; Done
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (connection.connected) {
+                        await motionSensor.calibrateFlatZero().catch(() => {});
+                      }
+                      let nextFlatPitch = motionSensor.rawPitch;
+                      let nextFlatRoll = motionSensor.rawRoll;
+                      let nextFlatYaw = motionSensor.rawYaw;
+                      if (connection.connected) {
+                        try {
+                          const sample = await usbHardware.readMotion();
+                          if (sample?.ok) {
+                            const angles = computeRawAnglesFromAccel(
+                              typeof sample.ax === 'number' ? sample.ax : 0,
+                              typeof sample.ay === 'number' ? sample.ay : 0,
+                              typeof sample.az === 'number' ? sample.az : 1000
+                            );
+                            nextFlatPitch = angles.rawPitch;
+                            nextFlatRoll = angles.rawRoll;
+                            nextFlatYaw = angles.rawYaw;
+                          }
+                        } catch {}
+                      }
+                      flatPitchRef.current = nextFlatPitch;
+                      flatRollRef.current = nextFlatRoll;
+                      flatYawRef.current = nextFlatYaw;
+                      const flatCalib = buildFlatZeroCalibration(
+                        nextFlatPitch,
+                        nextFlatRoll,
+                        nextFlatYaw,
+                        motionSensor.calibrationProfile
+                      );
+                      localStorage.setItem('bertopad_gyro_calib', JSON.stringify(flatCalib));
+                      window.dispatchEvent(
+                        new CustomEvent('bertopad_gyro_calib_updated', { detail: flatCalib })
+                      );
+                      soundEngine.playKeyClick();
+                      setCalibStep('left');
+                    }}
+                    className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer"
+                  >
+                    Set Flat Zero →
+                  </button>
+                </>
               )}
 
               {calibStep === 'left' && (
@@ -2694,7 +3058,8 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                       leftTiltSampleRef.current ?? motionSensor.rawRoll - 30,
                       rightTiltSampleRef.current ?? motionSensor.rawRoll + 30,
                       backwardTiltSampleRef.current ?? motionSensor.rawPitch - 25,
-                      forwardTiltSampleRef.current ?? motionSensor.rawPitch + 25
+                      forwardTiltSampleRef.current ?? motionSensor.rawPitch + 25,
+                      motionSensor.calibrationProfile
                     );
 
                     localStorage.setItem('bertopad_gyro_calib', JSON.stringify(newCalib));
@@ -3189,13 +3554,24 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             ? resolveAnchorActionKey(selectedControl)
             : null;
 
-        return (
+        const resolvedLeft = contextMenuPos
+          ? contextMenuPos.left
+          : Math.max(12, Math.min(contextMenu.x, window.innerWidth - 268));
+        const resolvedTop = contextMenuPos
+          ? contextMenuPos.top
+          : Math.max(12, Math.min(contextMenu.y, window.innerHeight - 360));
+
+        const menuNode = (
           <div
             ref={contextMenuRef}
             role="menu"
             aria-label={`Quick actions for ${contextMenu.title}`}
-            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
-            className="studio-popover fixed z-[80] w-64 rounded-2xl p-1.5 text-xs animate-popover-in"
+            style={{
+              left: `${resolvedLeft}px`,
+              top: `${resolvedTop}px`,
+              visibility: contextMenuPos ? 'visible' : 'hidden'
+            }}
+            className="studio-popover fixed z-[80] w-64 max-h-[calc(100dvh-24px)] overflow-y-auto rounded-2xl p-1.5 text-xs animate-popover-in"
           >
             <div className="px-2.5 py-1.5 border-b border-[var(--border-subtle)] mb-1">
               <div className="font-semibold text-[var(--text-primary)] truncate flex items-center gap-1.5">
@@ -3395,9 +3771,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                         multiSlots.forEach(s => onResetSlotToDefault(s));
                       }
                     }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[#E4E4E7] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left disabled:opacity-35 disabled:cursor-not-allowed"
                   >
-                    <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                    <RotateCcw className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
                     <span>Reset {multiKeys.length} keys to default</span>
                   </button>
                 )}
@@ -3415,9 +3791,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                         multiSlots.forEach(s => onClearSlot(s));
                       }
                     }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[#E4E4E7] hover:text-red-400 hover:bg-red-500/12 transition-colors cursor-pointer text-left disabled:opacity-35 disabled:cursor-not-allowed"
                   >
-                    <XCircle className="w-3.5 h-3.5 shrink-0" />
+                    <XCircle className="w-3.5 h-3.5 text-red-400/80 shrink-0" />
                     <span>Clear {multiKeys.length} keys</span>
                   </button>
                 )}
@@ -3441,9 +3817,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                           : null
                       );
                     }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[#E4E4E7] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
                   >
-                    <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+                    <CheckSquare className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
                     <span>Select all 8 keys</span>
                   </button>
                 )}
@@ -3455,9 +3831,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     setContextMenu(null);
                     setMultiSelectedKeys([]);
                   }}
-                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[#E4E4E7] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
                 >
-                  <X className="w-3.5 h-3.5 shrink-0" />
+                  <X className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
                   <span>Deselect all</span>
                 </button>
               </>
@@ -3472,7 +3848,17 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                     if (target.keyId) {
                       activateKeyControl(target.keyId);
                     } else if (target.encoderIndex) {
-                      activateDialPush(target.encoderIndex);
+                      if (target.encoderAction === 'ccw') {
+                        triggerEncoderSpin(target.encoderIndex, 'ccw');
+                      } else if (target.encoderAction === 'cw') {
+                        triggerEncoderSpin(target.encoderIndex, 'cw');
+                      } else if (target.encoderAction === 'push_ccw') {
+                        triggerEncoderHoldSpin(target.encoderIndex, 'ccw');
+                      } else if (target.encoderAction === 'push_cw') {
+                        triggerEncoderHoldSpin(target.encoderIndex, 'cw');
+                      } else {
+                        activateDialPush(target.encoderIndex);
+                      }
                     }
                   }}
                   className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
@@ -3616,9 +4002,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                               : null
                           );
                         }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[#E4E4E7] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
                       >
-                        <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+                        <CheckSquare className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
                         <span>Select all 8 keys</span>
                       </button>
                     </>
@@ -3638,9 +4024,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                       onResetSlotToDefault(target.slot);
                       onSelectControl(target.controlId);
                     }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[#E4E4E7] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left disabled:opacity-35 disabled:cursor-not-allowed"
                   >
-                    <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                    <RotateCcw className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
                     <span>Reset to default</span>
                   </button>
                 )}
@@ -3655,9 +4041,9 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                       onClearSlot(target.slot);
                       onSelectControl(target.controlId);
                     }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer text-left"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[#E4E4E7] hover:text-red-400 hover:bg-red-500/12 transition-colors cursor-pointer text-left disabled:opacity-35 disabled:cursor-not-allowed"
                   >
-                    <XCircle className="w-3.5 h-3.5 shrink-0" />
+                    <XCircle className="w-3.5 h-3.5 text-red-400/80 shrink-0" />
                     <span>Clear control</span>
                   </button>
                 )}
@@ -3665,6 +4051,10 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             )}
           </div>
         );
+
+        return typeof document !== 'undefined'
+          ? createPortal(menuNode, document.body)
+          : menuNode;
       })()}
     </div>
   );

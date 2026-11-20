@@ -44,6 +44,59 @@ export function applyMotionOrientationAndDeadzone(
   return { pitchDelta, rollDelta, yawDelta };
 }
 
+export function computeRawAnglesFromAccel(
+  ax: number,
+  ay: number,
+  az: number
+): { rawPitch: number; rawRoll: number; rawYaw: number } {
+  const radToDeg = 180 / Math.PI;
+  const rawPitch = -Math.atan2(ax, Math.sqrt(ay * ay + az * az)) * radToDeg;
+  const rawRoll = Math.atan2(ay, az) * radToDeg;
+  const rawYaw = Math.atan2(ax, ay) * radToDeg;
+  return { rawPitch, rawRoll, rawYaw };
+}
+
+export function buildFlatZeroCalibration(
+  flatPitch: number,
+  flatRoll: number,
+  flatYaw: number,
+  existing?: Partial<GyroCalibrationProfile>
+): GyroCalibrationProfile {
+  return {
+    ...DEFAULT_GYRO_CALIBRATION,
+    ...existing,
+    isCalibrated: true,
+    pitchOffset: Number(flatPitch.toFixed(2)),
+    rollOffset: Number(flatRoll.toFixed(2)),
+    yawOffset: Number(flatYaw.toFixed(2)),
+    calibratedAt: new Date().toISOString()
+  };
+}
+
+export function resolve3DChassisPose(params: {
+  isOnline: boolean;
+  pitch: number;
+  roll: number;
+  shakeZOffset: number;
+  pointerActive: boolean;
+  pointerPitch: number;
+  pointerRoll: number;
+}): { pitch: number; roll: number; zOffset: number } {
+  if (params.isOnline) {
+    return {
+      pitch: params.pitch,
+      roll: params.roll,
+      zOffset: params.shakeZOffset
+    };
+  }
+
+  return {
+    pitch: params.pointerActive ? params.pointerPitch : 15,
+    roll: params.pointerActive ? params.pointerRoll : -9,
+    zOffset: 0
+  };
+}
+
 export function computeGyroCalibration(
   flatPitch: number,
   flatRoll: number,
@@ -77,4 +130,5 @@ export function computeGyroCalibration(
     calibratedAt: new Date().toISOString()
   };
 }
+
 
