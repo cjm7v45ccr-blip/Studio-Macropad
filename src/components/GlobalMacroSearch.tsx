@@ -1150,8 +1150,29 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                                 )}
                               </div>
 
-                              <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums min-w-0 overflow-hidden">
-                                <span className="truncate">
+                              {isHighlighted &&
+                              entry.stepPreviewTokens &&
+                              entry.stepPreviewTokens.length > 0 ? (
+                                <div className="mt-0.5 space-y-0.5 min-w-0">
+                                  <div className="text-[11px] text-[var(--text-muted)] tabular-nums truncate">
+                                    {entry.metaParts.join(' · ')}
+                                  </div>
+                                  <div className="font-mono text-[10px] text-[var(--text-secondary)] truncate">
+                                    {entry.stepPreviewTokens.join(' → ')}
+                                    {entry.totalStepCount &&
+                                    entry.totalStepCount > entry.stepPreviewTokens.length
+                                      ? ` +${entry.totalStepCount - entry.stepPreviewTokens.length}`
+                                      : ''}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  className={`text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums min-w-0 ${
+                                    isHighlighted
+                                      ? 'line-clamp-2 whitespace-normal leading-snug'
+                                      : 'truncate'
+                                  }`}
+                                >
                                   {entry.metaParts.join(' · ')}
                                   {entry.stepPreviewTokens && entry.stepPreviewTokens.length > 0
                                     ? ` · ${entry.stepPreviewTokens.join(' → ')}${
@@ -1161,8 +1182,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                                           : ''
                                       }`
                                     : ''}
-                                </span>
-                              </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 

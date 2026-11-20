@@ -686,7 +686,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         </div>
 
         {/* Step Body */}
-        <div className="px-5 py-4 sm:px-6 sm:py-5 pb-6 overflow-y-auto space-y-4 flex-1">
+        <div className="px-5 pt-4 pb-6 sm:px-6 sm:pt-5 sm:pb-7 overflow-y-auto space-y-4 flex-1">
           {/* Connection Prompt Banner if unplugged */}
           {!connection.connected && (
             <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -720,7 +720,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
           {/* STEP 01: DEVICES & OS */}
           {step === 0 && (
-            <div className="space-y-3.5">
+            <div className="space-y-3.5 pb-4">
               <div className="space-y-0.5">
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                   01. Choose your primary starter layout
