@@ -1,20 +1,24 @@
 {
   "schema": "studio-pad-public-firmware",
+  "generatedAt": "2026-11-20T05:28:34.795Z",
   "latestRelease": {
     "version": "4.13.0",
-    "name": "BertoPad Firmware v4.13.0 (Flagship Edition)",
-    "publishedAt": "2026-11-20T00:00:00Z",
-    "body": "Flagship v4.13.0: Full Studio Web App integration, instant Web Serial macro cancellation (/api/macro/cancel), direct Wi-Fi OTA update engine (/api/ota/start), display brightness controls (MEDIA:BRIGHT_UP/DOWN), full extended keyboard key library, dual rotary encoder acceleration, and watchdog protection.",
+    "rawTag": "v4.13.0",
+    "title": "Firmware v4.13.0",
+    "notes": "",
+    "publishedAt": "2026-11-20T05:28:28.381Z",
+    "htmlUrl": "/firmware-v4.13.0.ino.bin",
+    "source": "release",
+    "repoSlug": "public",
     "assets": [
       {
-        "name": "StudioMacroPad_v4.13.0.ino",
-        "downloadUrl": "/firmware-source/StudioMacroPad_v4.13.0.ino",
-        "sizeBytes": 160496
-      },
-      {
-        "name": "firmware-v4.12.1.ino.bin",
-        "downloadUrl": "/firmware-v4.12.1.ino.bin",
+        "name": "firmware-v4.13.0.ino.bin",
+        "sizeBytes": 1369840,
+        "downloadUrl": "/firmware-v4.13.0.ino.bin",
+        "corsSafeUrl": "/firmware-v4.13.0.ino.bin",
+        "sha256": "bdf813cd89b4b96193e9b264213a226e8c47a152f26aa1f565aff8dfc1ed7615",
         "isBinary": true,
+        "embeddedVersion": "v4.13.0",
         "supportsV45Engine": true
       }
     ]
@@ -22,46 +26,45 @@
   "recentReleases": [
     {
       "version": "4.13.0",
-      "name": "BertoPad Firmware v4.13.0 (Flagship Edition)",
-      "publishedAt": "2026-11-20T00:00:00Z",
-      "body": "Flagship v4.13.0: Full Studio Web App integration, instant Web Serial macro cancellation (/api/macro/cancel), direct Wi-Fi OTA update engine (/api/ota/start), display brightness controls (MEDIA:BRIGHT_UP/DOWN), full extended keyboard key library, dual rotary encoder acceleration, and watchdog protection.",
+      "rawTag": "v4.13.0",
+      "title": "Firmware v4.13.0",
+      "notes": "",
+      "publishedAt": "2026-11-20T05:28:28.381Z",
+      "htmlUrl": "/firmware-v4.13.0.ino.bin",
+      "source": "release",
+      "repoSlug": "public",
       "assets": [
         {
-          "name": "StudioMacroPad_v4.13.0.ino",
-          "downloadUrl": "/firmware-source/StudioMacroPad_v4.13.0.ino",
-          "sizeBytes": 160496
+          "name": "firmware-v4.13.0.ino.bin",
+          "sizeBytes": 1369840,
+          "downloadUrl": "/firmware-v4.13.0.ino.bin",
+          "corsSafeUrl": "/firmware-v4.13.0.ino.bin",
+          "sha256": "bdf813cd89b4b96193e9b264213a226e8c47a152f26aa1f565aff8dfc1ed7615",
+          "isBinary": true,
+          "embeddedVersion": "v4.13.0",
+          "supportsV45Engine": true
         }
       ]
     },
     {
       "version": "4.12.1",
-      "name": "BertoPad Firmware v4.12.1",
-      "publishedAt": "2026-11-15T14:00:00Z",
-      "body": "BertoPad v4.12.1 with dual-encoder push+turn parity, NimBLE multi-host isolation, Dual Status LED telemetry, and MPU-6050 orientation tuning.",
+      "rawTag": "v4.12.1",
+      "title": "Firmware v4.12.1",
+      "notes": "",
+      "publishedAt": "2026-11-20T05:16:45.681Z",
+      "htmlUrl": "/firmware-v4.12.1.ino.bin",
+      "source": "release",
+      "repoSlug": "public",
       "assets": [
         {
           "name": "firmware-v4.12.1.ino.bin",
+          "sizeBytes": 1342016,
           "downloadUrl": "/firmware-v4.12.1.ino.bin",
+          "corsSafeUrl": "/firmware-v4.12.1.ino.bin",
+          "sha256": "c06eb58d9df202ab5d85ed3cbfae661e83d8bd2ed5cc19ac38ad67c1e659582e",
           "isBinary": true,
+          "embeddedVersion": "v4.12.0",
           "supportsV45Engine": true
-        },
-        {
-          "name": "StudioMacroPad_v4.11.0.ino",
-          "downloadUrl": "/firmware-source/StudioMacroPad_v4.11.0.ino",
-          "sizeBytes": 133859
-        }
-      ]
-    },
-    {
-      "version": "4.11.0",
-      "name": "BertoPad Firmware v4.11.0",
-      "publishedAt": "2026-11-07T14:00:00Z",
-      "body": "NimBLE v4.11.0 with seamless non-rebooting host switching, single 'BertoPad' identifier, strict security enforcement, and updated token authentication for Wi-Fi and setup routes.",
-      "assets": [
-        {
-          "name": "StudioMacroPad_v4.11.0.ino",
-          "downloadUrl": "/firmware-source/StudioMacroPad_v4.11.0.ino",
-          "sizeBytes": 133859
         }
       ]
     }

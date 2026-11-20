@@ -1573,6 +1573,19 @@ bool dispatchApp(const char* appId, int nameSpace, const char* message) {
   return xQueueSend(vizioQueue, &cmd, 0) == pdTRUE;
 }
 
+#ifndef KEY_PRINT_SCREEN
+#define KEY_PRINT_SCREEN 0xCE
+#endif
+#ifndef KEY_SCROLL_LOCK
+#define KEY_SCROLL_LOCK 0xCF
+#endif
+#ifndef KEY_PAUSE
+#define KEY_PAUSE 0xD0
+#endif
+#ifndef KEY_NUM_LOCK
+#define KEY_NUM_LOCK 0xDB
+#endif
+
 void pressModifier(const String& mod) {
   if (mod == "ctrl") bleKeyboard.press(KEY_LEFT_CTRL);
   else if (mod == "shift") bleKeyboard.press(KEY_LEFT_SHIFT);
