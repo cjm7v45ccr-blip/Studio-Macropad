@@ -619,32 +619,78 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
         timing.estimatedRunMs
       )}`;
     } else {
-      baseText = describeFirmwareAction(macro.action, macro.repeatConfig).fullLabel;
+      const fullLabel = describeFirmwareAction(macro.action, macro.repeatConfig).fullLabel;
+      const normName = macro.name.trim().toLowerCase();
+      const normLabel = fullLabel.trim().toLowerCase();
+      baseText =
+        normLabel === normName || normName.includes(normLabel) || normLabel.includes(normName)
+          ? ''
+          : fullLabel;
     }
+    if (!baseText && !hasTvOff) return null;
     if (!hasTvOff) return baseText;
     return (
       <>
-        <span>{baseText}</span>
+        {baseText && <span>{baseText}</span>}
         <span className="text-[var(--accent)] font-sans font-medium">
-          {' '}
-          · TV off
+          {baseText ? ' · TV off' : 'TV off'}
         </span>
       </>
     );
   };
 
   return (
-    <div className="space-y-3">
-      <div className="text-[11px] text-[var(--text-secondary)] flex items-center justify-between gap-2">
-        <span className="font-semibold">Current action</span>
-        <span>{connection.connected ? (connection.transport === 'demo' ? 'Changes save to demo' : 'Changes auto-save to device') : 'Editing an offline draft'}</span>
-      </div>
-      {/* Assigned action stays visible above common assignments. */}
+    <div className="space-y-4">
+      {/* Assigned action — flat hairline-separated header block */}
       <div
         title={binding.value ? `Raw action: ${binding.value}` : 'Unassigned'}
-        className="px-3.5 py-3 rounded-2xl studio-panel flex flex-wrap items-center justify-between gap-2.5"
+        className="pb-3.5 border-b border-[var(--border-subtle)] space-y-2.5"
       >
-        <div className="min-w-0 w-full">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+            Assigned
+          </span>
+          <div className="flex items-center gap-1 shrink-0">
+            {onOpenMacroBuilder && (
+              <button
+                type="button"
+                onClick={onOpenMacroBuilder}
+                title="Open multi-step sequence builder"
+                className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Sliders className="w-3 h-3" />
+                <span>Sequence</span>
+              </button>
+            )}
+
+            {activeRepeatJob && onStopRepeat ? (
+              <button
+                type="button"
+                onClick={onStopRepeat}
+                className="flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--accent-soft)] text-[11px] font-semibold text-[var(--accent)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Square className="w-3 h-3 fill-current" />
+                <span>Stop</span>
+              </button>
+            ) : (
+              onTestBinding &&
+              binding.value &&
+              isValidFirmwareAction(binding.value) && (
+                <button
+                  type="button"
+                  onClick={() => onTestBinding(binding)}
+                  title="Review a dry-run timeline or test action"
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Play className="w-3 h-3" />
+                  <span>Preview & test</span>
+                </button>
+              )
+            )}
+          </div>
+        </div>
+
+        <div className="min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
             {binding.value ? (
               <ParsedActionBadge
@@ -682,63 +728,22 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             );
           })()}
         </div>
-
-        <div className="flex items-center gap-1.5 shrink-0">
-          {onOpenMacroBuilder && (
-            <button
-              type="button"
-              onClick={onOpenMacroBuilder}
-              title="Open multi-step sequence builder for this control"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg studio-btn hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Sliders className="w-3 h-3 text-[var(--accent)]" />
-              <span>Sequence</span>
-            </button>
-          )}
-
-          {activeRepeatJob && onStopRepeat ? (
-            <button
-              type="button"
-              onClick={onStopRepeat}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--accent-soft)] hover:opacity-90 border border-[var(--accent)] text-[11px] font-semibold text-[var(--accent)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Square className="w-3 h-3 fill-current" />
-              <span>Stop</span>
-            </button>
-          ) : (
-            onTestBinding &&
-            binding.value &&
-            isValidFirmwareAction(binding.value) && (
-              <button
-                type="button"
-                onClick={() => onTestBinding(binding)}
-                title={
-                  'Review a safe dry-run timeline before optionally running real actions'
-                }
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg studio-btn hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
-              >
-                <Play className="w-3 h-3 text-[var(--accent)]" />
-                <span>Preview & test</span>
-              </button>
-            )
-          )}
-        </div>
       </div>
 
-      {/* Top Search Box */}
+      {/* Minimal Flat Search Input */}
       <div className="relative">
-        <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
         <input
           type="text"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           placeholder={
             isTvEnabled
-              ? 'Search shortcuts, macros, media, or TV actions…'
-              : 'Search shortcuts, macros, or media actions…'
+              ? 'Filter actions, shortcuts, macros…'
+              : 'Filter actions, shortcuts, macros…'
           }
           aria-label="Search actions"
-          className="w-full pl-8 pr-8 py-2 rounded-xl studio-well focus:border-[var(--accent)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-colors"
+          className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-[var(--bg-hover)] border border-transparent focus:border-[var(--border-strong)] focus:bg-[var(--bg-input)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-colors"
         />
         {searchQuery && (
           <button
@@ -752,12 +757,12 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
         )}
       </div>
 
-      {/* Two-Pane Picker: Narrow Category List on Left, Actions on Right */}
-      <div className="flex items-start gap-2.5">
+      {/* Two-Pane Flat Picker: Hairline-Separated Category List + Borderless Action Rows */}
+      <div className="flex items-start gap-3">
         {/* Left Category Rail */}
         <nav
           aria-label="Action categories"
-          className="w-[116px] sm:w-[124px] shrink-0 flex flex-col gap-0.5 p-1 rounded-xl studio-well"
+          className="w-[112px] sm:w-[118px] shrink-0 flex flex-col gap-0.5 pr-2.5 border-r border-[var(--border-subtle)]"
         >
           {ACTION_TABS.filter(t => isTvEnabled || (t.id !== 'tv' && t.id !== 'tv_app')).filter(t => moreCategoriesOpen || ['my_macros', 'os_shortcuts', 'media', 'shortcut', 'text'].includes(t.id) || t.id === effectiveTab).map(tab => {
             const Icon = tab.icon;
@@ -770,22 +775,22 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                   setSearchQuery('');
                   setActiveTab(tab.id);
                 }}
-                className={`w-full flex items-center justify-between gap-1.5 px-2.5 py-2 rounded-lg text-[11px] transition-all cursor-pointer text-left whitespace-nowrap ${
+                className={`w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-md text-[11px] transition-colors cursor-pointer text-left whitespace-nowrap ${
                   active
-                    ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]/50 font-medium'
+                    ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] font-normal'
                 }`}
               >
                 <span className="flex items-center gap-1.5 min-w-0 truncate">
                   <Icon
                     className={`w-3.5 h-3.5 shrink-0 ${
-                      active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
+                      active ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
                     }`}
                   />
                   <span className="truncate">{tab.label}</span>
                 </span>
                 {tab.id === 'my_macros' && customMacros.length > 0 && (
-                  <span className="text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">
+                  <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">
                     {customMacros.length}
                   </span>
                 )}
@@ -797,9 +802,9 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             type="button"
             aria-expanded={moreCategoriesOpen}
             onClick={() => setMoreCategoriesOpen(open => !open)}
-            className="px-2.5 py-2 text-left text-[11px] font-medium text-[var(--accent)] rounded-lg hover:bg-[var(--bg-elevated)] cursor-pointer"
+            className="px-2 py-1.5 text-left text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-md hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            {moreCategoriesOpen ? 'Fewer categories' : 'More categories…'}
+            {moreCategoriesOpen ? 'Less…' : 'More…'}
           </button>
         </nav>
 
@@ -817,11 +822,11 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               ) : (
                 <>
                   {matchingCustomMacros.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="text-[11px] font-medium text-[var(--text-muted)] px-0.5">
+                    <div className="space-y-1">
+                      <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)] px-1.5">
                         My Macros · {matchingCustomMacros.length}
                       </div>
-                      <div className="space-y-1">
+                      <div className="divide-y divide-[var(--border-subtle)]">
                         {matchingCustomMacros.map(m => {
                           const macroSig = getMacroCanonicalSignature(
                             m.action,
@@ -834,6 +839,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                             m.repeatConfig,
                             customMacros
                           );
+                          const meta = renderMacroSummaryMeta(m);
                           return (
                             <button
                               key={m.id}
@@ -842,32 +848,37 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                               onClick={() =>
                                 onChange(firmwareActionToBinding(m.action, m.repeatConfig))
                               }
-                              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                              className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
                                 selected
-                                  ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
-                                  : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                                  : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                               }`}
                             >
                               <KeycapIcon
                                 icon={desc.icon}
-                                className={`w-4 h-4 shrink-0 ${
+                                className={`w-3.5 h-3.5 shrink-0 ${
                                   selected
-                                    ? 'text-[var(--accent)]'
-                                    : 'text-[var(--text-secondary)]'
+                                    ? 'text-[var(--text-primary)]'
+                                    : 'text-[var(--text-muted)]'
                                 }`}
                               />
                               <div className="min-w-0 flex-1">
-                                <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                                <div className="text-xs font-medium text-[var(--text-primary)] truncate">
                                   {m.name}
                                 </div>
-                                <div
-                                  className={`text-[11px] text-[var(--text-muted)] truncate ${
-                                    showAdvancedIds ? 'font-mono text-[10px]' : ''
-                                  }`}
-                                >
-                                  {renderMacroSummaryMeta(m)}
-                                </div>
+                                {meta && (
+                                  <div
+                                    className={`text-[11px] text-[var(--text-muted)] truncate ${
+                                      showAdvancedIds ? 'font-mono text-[10px]' : ''
+                                    }`}
+                                  >
+                                    {meta}
+                                  </div>
+                                )}
                               </div>
+                              {selected && (
+                                <Check className="w-3.5 h-3.5 text-[var(--text-primary)] shrink-0" />
+                              )}
                             </button>
                           );
                         })}
@@ -876,12 +887,12 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                   )}
 
                   {searchShortcutMatches.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="text-[11px] font-medium text-[var(--text-muted)] px-0.5">
+                    <div className="space-y-1">
+                      <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)] px-1.5">
                         Shortcuts ({hostOsFullLabel(activeHostOs)}) ·{' '}
                         {searchShortcutMatches.length}
                       </div>
-                      <div className="grid grid-cols-1 gap-1.5">
+                      <div className="divide-y divide-[var(--border-subtle)]">
                         {searchShortcutMatches.map(spec => {
                           const selected =
                             binding.value === spec.action && !binding.repeatConfig;
@@ -893,10 +904,10 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                               onClick={() =>
                                 onChange(firmwareActionToBinding(spec.action))
                               }
-                              className={`flex items-center justify-between gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                              className={`w-full flex items-center justify-between gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
                                 selected
-                                  ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
-                                  : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                                  : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                               }`}
                             >
                               <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -904,8 +915,8 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                                   icon={spec.icon}
                                   className={`w-3.5 h-3.5 shrink-0 ${
                                     selected
-                                      ? 'text-[var(--accent)]'
-                                      : 'text-[var(--text-secondary)]'
+                                      ? 'text-[var(--text-primary)]'
+                                      : 'text-[var(--text-muted)]'
                                   }`}
                                 />
                                 <span className="text-xs font-medium text-[var(--text-primary)] leading-snug">
@@ -923,12 +934,12 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                   )}
 
                   {searchOtherStaticMatches.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="text-[11px] font-medium text-[var(--text-muted)] px-0.5">
+                    <div className="space-y-1">
+                      <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)] px-1.5">
                         {isTvEnabled ? 'System, Media & TV' : 'System & Media'} ·{' '}
                         {searchOtherStaticMatches.length}
                       </div>
-                      <div className="grid grid-cols-1 gap-1.5">
+                      <div className="divide-y divide-[var(--border-subtle)]">
                         {searchOtherStaticMatches.map(spec => {
                           const selected =
                             binding.value === spec.action && !binding.repeatConfig;
@@ -944,18 +955,18 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                                   value: spec.action
                                 })
                               }
-                              className={`flex items-center gap-2 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                              className={`w-full flex items-center gap-2 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
                                 selected
-                                  ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
-                                  : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                                  : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                               }`}
                             >
                               <KeycapIcon
                                 icon={spec.icon}
                                 className={`w-3.5 h-3.5 shrink-0 ${
                                   selected
-                                    ? 'text-[var(--accent)]'
-                                    : 'text-[var(--text-secondary)]'
+                                    ? 'text-[var(--text-primary)]'
+                                    : 'text-[var(--text-muted)]'
                                 }`}
                               />
                               <div className="min-w-0 flex-1">
@@ -968,6 +979,9 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                                   </div>
                                 )}
                               </div>
+                              {selected && (
+                                <Check className="w-3.5 h-3.5 text-[var(--text-primary)] shrink-0" />
+                              )}
                             </button>
                           );
                         })}
@@ -979,34 +993,33 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             </div>
           ) : effectiveTab === 'my_macros' ? (
             /* Single Macro Library Category */
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2 px-0.5">
-                <span className="text-[11px] font-medium text-[var(--text-muted)]">
-                  Saved in Macro Library
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 px-1.5">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                  Saved Macros
                 </span>
                 {onOpenMacroBuilder && (
                   <button
                     type="button"
                     onClick={onOpenMacroBuilder}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--accent)] hover:underline cursor-pointer whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Plus className="w-3 h-3" />
-                    <span>Open Builder</span>
+                    <span>Builder</span>
                   </button>
                 )}
               </div>
 
               {customMacros.length === 0 ? (
-                <div className="p-5 rounded-xl bg-[var(--bg-input)] text-center space-y-2.5">
-                  <p className="text-xs text-[var(--text-secondary)]">
-                    No saved macros yet. Build multi-step sequences with waits, shortcuts, and typed text in the Macro Builder.
+                <div className="py-6 px-3 text-center space-y-2.5">
+                  <p className="text-xs text-[var(--text-muted)]">
+                    No saved macros yet.
                   </p>
                   {onOpenMacroBuilder && (
                     <button
                       type="button"
                       onClick={onOpenMacroBuilder}
-                      style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)' }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md studio-btn text-xs font-medium text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Create Macro</span>
@@ -1014,7 +1027,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="space-y-1.5">
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {customMacros.map(m => {
                     const macroSig = getMacroCanonicalSignature(m.action, m.repeatConfig);
                     const selected =
@@ -1024,6 +1037,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                       m.repeatConfig,
                       customMacros
                     );
+                    const meta = renderMacroSummaryMeta(m);
                     return (
                       <button
                         key={m.id}
@@ -1032,34 +1046,36 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                         onClick={() =>
                           onChange(firmwareActionToBinding(m.action, m.repeatConfig))
                         }
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                        className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
                           selected
-                            ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
-                            : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                            : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                         }`}
                       >
                         <KeycapIcon
                           icon={desc.icon}
-                          className={`w-4 h-4 shrink-0 ${
+                          className={`w-3.5 h-3.5 shrink-0 ${
                             selected
-                              ? 'text-[var(--accent)]'
-                              : 'text-[var(--text-secondary)]'
+                              ? 'text-[var(--text-primary)]'
+                              : 'text-[var(--text-muted)]'
                           }`}
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                          <div className="text-xs font-medium text-[var(--text-primary)] truncate">
                             {m.name}
                           </div>
-                          <div
-                            className={`text-[11px] text-[var(--text-muted)] truncate ${
-                              showAdvancedIds ? 'font-mono text-[10px]' : ''
-                            }`}
-                          >
-                            {renderMacroSummaryMeta(m)}
-                          </div>
+                          {meta && (
+                            <div
+                              className={`text-[11px] text-[var(--text-muted)] truncate ${
+                                showAdvancedIds ? 'font-mono text-[10px]' : ''
+                              }`}
+                            >
+                              {meta}
+                            </div>
+                          )}
                         </div>
                         {selected && (
-                          <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                          <Check className="w-3.5 h-3.5 text-[var(--text-primary)] shrink-0" />
                         )}
                       </button>
                     );
@@ -1069,18 +1085,16 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             </div>
           ) : effectiveTab === 'os_shortcuts' ? (
             /* Per-Device OS Mapped Shortcuts */
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2 px-0.5">
-                <span className="text-[11px] text-[var(--text-muted)] truncate">
-                  {isBleHostProfile(activeProfileId)
-                    ? `Mapped for ${hostOsFullLabel(activeHostOs)}`
-                    : `Shortcuts (${hostOsFullLabel(activeHostOs)})`}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 px-1.5">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)] truncate">
+                  {hostOsFullLabel(activeHostOs)}
                 </span>
                 {isBleHostProfile(activeProfileId) && onChangeHostOs && (
                   <div
                     role="group"
                     aria-label="Device operating system"
-                    className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[var(--bg-input)] shrink-0"
+                    className="flex items-center gap-0.5 shrink-0"
                   >
                     {(
                       [
@@ -1096,9 +1110,9 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                           type="button"
                           onClick={() => onChangeHostOs(opt.id)}
                           title={`Set this device to ${hostOsFullLabel(opt.id)}`}
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
                             isActiveOs
-                              ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
+                              ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
                               : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                           }`}
                         >
@@ -1110,7 +1124,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-1.5">
+              <div className="divide-y divide-[var(--border-subtle)]">
                 {osMappedShortcuts.map(spec => {
                   const selected =
                     binding.value === spec.action && !binding.repeatConfig;
@@ -1122,10 +1136,10 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                       onClick={() =>
                         onChange(firmwareActionToBinding(spec.action))
                       }
-                      className={`flex items-center justify-between gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                      className={`w-full flex items-center justify-between gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
                         selected
-                          ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
-                          : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                          : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1133,8 +1147,8 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                           icon={spec.icon}
                           className={`w-3.5 h-3.5 shrink-0 ${
                             selected
-                              ? 'text-[var(--accent)]'
-                              : 'text-[var(--text-secondary)]'
+                              ? 'text-[var(--text-primary)]'
+                              : 'text-[var(--text-muted)]'
                           }`}
                         />
                         <span className="text-xs font-medium text-[var(--text-primary)] leading-snug">
@@ -1150,15 +1164,13 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
               </div>
             </div>
           ) : effectiveTab === 'display' ? (
-            /* Display & OS Controls (Brightness, Zoom, CAD zoom for KiCad/Onshape) */
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2 px-0.5">
-                <span className="text-[11px] text-[var(--text-muted)] truncate">
-                  Display, Brightness & Zoom (incl. KiCad & Onshape CAD zoom)
-                </span>
+            /* Display & OS Controls */
+            <div className="space-y-1.5">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)] px-1.5">
+                Brightness & Zoom
               </div>
 
-              <div className="grid grid-cols-1 gap-1.5">
+              <div className="divide-y divide-[var(--border-subtle)]">
                 {displayControls.map(spec => {
                   const selected =
                     binding.value === spec.action && !binding.repeatConfig;
@@ -1173,10 +1185,10 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                           value: spec.action
                         })
                       }
-                      className={`flex items-center justify-between gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                      className={`w-full flex items-center justify-between gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
                         selected
-                          ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
-                          : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                          : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1184,8 +1196,8 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                           icon={spec.icon}
                           className={`w-3.5 h-3.5 shrink-0 ${
                             selected
-                              ? 'text-[var(--accent)]'
-                              : 'text-[var(--text-secondary)]'
+                              ? 'text-[var(--text-primary)]'
+                              : 'text-[var(--text-muted)]'
                           }`}
                         />
                         <span className="text-xs font-medium text-[var(--text-primary)] leading-snug">
@@ -1202,9 +1214,9 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             </div>
           ) : (
             /* Static Categories + Custom Inline Builders */
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               {activeCategoryItems.length > 0 && (
-                <div className="grid grid-cols-1 gap-1.5">
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {activeCategoryItems.map(spec => {
                     const selected =
                       binding.value === spec.action && !binding.repeatConfig;
@@ -1220,18 +1232,18 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                             value: spec.action
                           })
                         }
-                        className={`flex items-center gap-2 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-md text-left transition-colors cursor-pointer ${
                           selected
-                            ? 'bg-[rgba(var(--accent-rgb),0.14)] ring-1 ring-[var(--accent)] text-[var(--text-primary)]'
-                            : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                            : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                         }`}
                       >
                         <KeycapIcon
                           icon={spec.icon}
                           className={`w-3.5 h-3.5 shrink-0 ${
                             selected
-                              ? 'text-[var(--accent)]'
-                              : 'text-[var(--text-secondary)]'
+                              ? 'text-[var(--text-primary)]'
+                              : 'text-[var(--text-muted)]'
                           }`}
                         />
                         <div className="min-w-0 flex-1">
@@ -1244,6 +1256,9 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                             </div>
                           )}
                         </div>
+                        {selected && (
+                          <Check className="w-3.5 h-3.5 text-[var(--text-primary)] shrink-0" />
+                        )}
                       </button>
                     );
                   })}

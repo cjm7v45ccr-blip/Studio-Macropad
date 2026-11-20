@@ -195,22 +195,22 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const SYNC_CONFIG = {
     saved: {
-      icon: <Check size={14} className="shrink-0" />,
+      icon: <Check size={13} className="shrink-0" />,
       text: 'Saved',
-      cls: 'text-emerald-600 dark:text-emerald-400'
+      cls: 'text-[var(--text-muted)]'
     },
     saving: {
-      icon: <Loader2 size={14} className="shrink-0 animate-spin" />,
+      icon: <Loader2 size={13} className="shrink-0 animate-spin" />,
       text: 'Saving…',
       cls: 'text-[var(--text-muted)]'
     },
     unsaved: {
-      icon: <Circle size={10} fill="currentColor" className="shrink-0" />,
+      icon: <Circle size={8} fill="currentColor" className="shrink-0" />,
       text: 'Unsaved',
-      cls: 'text-[var(--accent)]'
+      cls: 'text-[var(--text-primary)]'
     },
     offline: {
-      icon: <Circle size={10} className="shrink-0" />,
+      icon: <Circle size={8} className="shrink-0" />,
       text: 'Offline',
       cls: 'text-[var(--text-muted)]'
     }
@@ -225,9 +225,9 @@ export const TopBar: React.FC<TopBarProps> = ({
     : 'offline';
 
   const DOT_COLOR = {
-    offline: 'bg-zinc-400 dark:bg-zinc-500',
+    offline: 'bg-zinc-500',
     connecting: 'bg-[var(--accent)] animate-pulse',
-    connected: 'bg-emerald-500 dark:bg-emerald-400'
+    connected: 'bg-[var(--accent)]'
   };
 
   const connLabel = connection.connected
@@ -242,27 +242,26 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between gap-2.5 border-b border-[var(--border-subtle)] studio-chrome px-4 select-none shrink-0">
       {/* Left: Brand + Device Tabs + Options Menu */}
-      <div className="flex items-center gap-2.5 min-w-0">
-        <div className="flex items-center gap-2.5 pr-1 shrink-0">
-          <div className="h-8 w-8 rounded-xl studio-well p-1 flex items-center justify-center shrink-0">
-            <img
-              src={resolvedTheme === 'light' ? '/logo-mark-light.svg' : '/logo-mark-dark.svg'}
-              alt="BertoPad"
-              referrerPolicy="no-referrer"
-              className="h-full w-full object-contain"
-            />
-          </div>
-          <span className="hidden text-[15px] font-bold tracking-tight lg:inline whitespace-nowrap shrink-0">
-            <span className="text-[var(--text-primary)]">Berto</span>
-            <span className="text-[var(--accent)]">Pad</span>
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2 pr-1 shrink-0">
+          <img
+            src={resolvedTheme === 'light' ? '/logo-mark-light.svg' : '/logo-mark-dark.svg'}
+            alt="BertoPad"
+            referrerPolicy="no-referrer"
+            className="h-5 w-5 object-contain shrink-0"
+          />
+          <span className="hidden text-[14px] font-semibold tracking-tight text-[var(--text-primary)] lg:inline whitespace-nowrap shrink-0">
+            BertoPad
           </span>
         </div>
+
+        <span className="hidden sm:block h-4 w-px bg-[var(--border-subtle)] shrink-0" aria-hidden="true" />
 
         {/* Device Tabs */}
         <div
           role="tablist"
           aria-label="Devices"
-          className="flex items-center gap-0.5 rounded-xl studio-well p-1 overflow-x-auto min-w-0"
+          className="flex items-center gap-0.5 overflow-x-auto min-w-0"
         >
           {profiles.map(prof => {
             const isTvDisabled = prof.id === 'TV' && !isTvEnabled;
@@ -281,23 +280,23 @@ export const TopBar: React.FC<TopBarProps> = ({
                 type="button"
                 onClick={() => onSelectProfile(prof.id)}
                 title={`${prof.name}${isLive ? ' — Active on hardware' : ''}`}
-                className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 sm:px-3 text-xs font-medium transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   selected
-                    ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] font-normal'
                 }`}
               >
                 <Icon
-                  size={15}
+                  size={14}
                   className={`shrink-0 ${
-                    selected ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
+                    selected ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
                   }`}
                 />
                 <span className="max-w-[7rem] sm:max-w-[9rem] truncate">{prof.name}</span>
                 {isLive && (
                   <span
                     aria-label="Live on hardware"
-                    className="h-1.5 w-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 shrink-0"
+                    className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] shrink-0"
                   />
                 )}
               </button>
@@ -370,12 +369,12 @@ export const TopBar: React.FC<TopBarProps> = ({
                       }}
                       className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
                         activeHostOs === osOpt
-                          ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)]'
+                          ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                       }`}
                     >
                       <span>{hostOsFullLabel(osOpt)}</span>
-                      {activeHostOs === osOpt && <Check size={14} className="text-[var(--accent)]" />}
+                      {activeHostOs === osOpt && <Check size={14} className="text-[var(--text-primary)]" />}
                     </button>
                   ))}
                 </>
@@ -522,9 +521,9 @@ export const TopBar: React.FC<TopBarProps> = ({
                     setConnPopoverOpen(false);
                   }}
                   title="Pull latest config & status from BertoPad"
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
                 >
-                  <RefreshCw size={11} className="text-[var(--accent)]" />
+                  <RefreshCw size={11} className="text-[var(--text-secondary)]" />
                   <span>Read Pad</span>
                 </button>
                 <button

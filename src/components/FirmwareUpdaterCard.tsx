@@ -969,21 +969,21 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
   return (
     <div
       id="firmware-updater-card"
-      className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4"
+      className="space-y-4"
     >
       {/* Header + Auto-Check + Check for Updates */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="space-y-0.5">
-          <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
             <RefreshCw
-              className={`w-4 h-4 text-[var(--accent)] ${
+              className={`w-4 h-4 text-[var(--text-secondary)] ${
                 firmwareUpdate.status === 'checking' ? 'animate-spin' : ''
               }`}
             />
             <span>BertoPad Firmware</span>
           </div>
-          <p className="text-xs text-[var(--text-muted)]">
-            Updates over USB or Wi-Fi while preserving saved profiles, Bluetooth hosts, and SmartCast pairing.
+          <p className="font-mono text-[11px] text-[var(--text-muted)]">
+            USB Serial · Wi-Fi OTA · profiles preserved
           </p>
         </div>
 
@@ -996,13 +996,13 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
                 autoCheckFirmwareUpdates: !settings.autoCheckFirmwareUpdates
               })
             }
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="studio-btn flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
           >
             <span>Auto-Notify</span>
             <span
               className={`font-mono text-[11px] font-semibold ${
                 settings.autoCheckFirmwareUpdates
-                  ? 'text-[var(--accent)]'
+                  ? 'text-[var(--text-primary)]'
                   : 'text-[var(--text-muted)]'
               }`}
             >
@@ -1014,12 +1014,12 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
             type="button"
             disabled={firmwareUpdate.status === 'checking' || isUploadingFirmware}
             onClick={handleManualFirmwareCheck}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="studio-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
           >
             {firmwareUpdate.status === 'checking' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--text-secondary)]" />
             ) : (
-              <RefreshCw className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <RefreshCw className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
             )}
             <span>
               {firmwareUpdate.status === 'checking' ? 'Checking…' : 'Check for Updates'}
@@ -1048,11 +1048,11 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
               </span>
             </span>
           ) : isFirmwareCurrent ? (
-            <span className="inline-flex items-center gap-2 text-[var(--accent)] font-semibold">
-              <Check className="w-4 h-4 shrink-0" />
+            <span className="inline-flex items-center gap-2 text-[var(--text-primary)] font-medium">
+              <Check className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
               <span>Up to date</span>
               {knownInstalledVersion && (
-                <span className="font-mono text-[11px] font-normal text-[var(--text-secondary)]">
+                <span className="font-mono text-[11px] font-normal text-[var(--text-muted)]">
                   · {knownInstalledVersion.startsWith('v') ? knownInstalledVersion : `v${knownInstalledVersion}`}
                 </span>
               )}
@@ -1060,7 +1060,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
           ) : (
             <span className="text-[var(--text-secondary)]">
               {latestRelease
-                ? `Latest release v${latestRelease.version} · Connect BertoPad via USB to verify installed version`
+                ? `Latest release v${latestRelease.version} · Connect BertoPad via USB to verify`
                 : 'Connect your BertoPad via USB to check installed firmware'}
             </span>
           )}
@@ -1078,7 +1078,7 @@ export const FirmwareUpdaterCard: React.FC<FirmwareSharedProps> = ({
               type="button"
               onClick={() => setReinstallExpanded(v => !v)}
               aria-expanded={reinstallExpanded}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
             >
               {reinstallExpanded ? (
                 <ChevronDown className="w-3.5 h-3.5" />

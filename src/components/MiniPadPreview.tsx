@@ -68,18 +68,21 @@ export const MiniPadPreview: React.FC<MiniPadPreviewProps> = ({
 
   return (
     <div
-      className={`rounded-xl bg-[#14161B] border ${
-        active
-          ? 'border-[var(--accent)] ring-1 ring-[rgba(var(--accent-rgb),0.35)]'
-          : 'border-[#ECEAE4]/12'
-      } ${compact ? 'p-2' : 'p-2.5'} select-none shadow-inner`}
+      className={`rounded-lg bg-[#0F1116] ${
+        active ? 'ring-1 ring-[var(--border-strong)]' : ''
+      } ${compact ? 'p-2' : 'p-2.5'} select-none`}
     >
       {/* Mini OLED Strip */}
-      <div className="mb-2 px-2 py-1 rounded-md bg-[#050608] border border-[#ECEAE4]/12 flex items-center justify-between gap-2">
-        <span className="font-mono text-[9px] font-semibold tracking-wider uppercase text-[#ECEAE4] truncate">
+      <div className="mb-1.5 px-2 py-0.5 rounded bg-[#06070A] flex items-center justify-between gap-2">
+        <span className="font-mono text-[9px] font-medium tracking-wider uppercase text-[#E4E4E7] truncate">
           {title || 'BERTOPAD'}
         </span>
-        <span className="w-4 h-1 rounded-full bg-[#ECEAE4]/25 shrink-0" aria-hidden="true" />
+        <span
+          className={`w-3 h-0.5 rounded-full shrink-0 ${
+            active ? 'bg-[var(--accent)]' : 'bg-white/20'
+          }`}
+          aria-hidden="true"
+        />
       </div>
 
       {/* 3x3 Key Matrix + Dual Encoders */}
@@ -93,9 +96,9 @@ export const MiniPadPreview: React.FC<MiniPadPreviewProps> = ({
                   title="Mode Key: Switch Host / TV"
                   className={`${
                     compact ? 'h-6' : 'h-7'
-                  } rounded-[6px] bg-[#1E2128] border border-[#F2A33A]/35 flex items-center justify-center`}
+                  } rounded bg-[#181B22] flex items-center justify-center`}
                 >
-                  <span className="font-mono text-[7px] font-bold tracking-wider text-[#F2A33A]">
+                  <span className="font-mono text-[7px] font-semibold tracking-wider text-[var(--accent)]">
                     MODE
                   </span>
                 </div>
@@ -114,17 +117,15 @@ export const MiniPadPreview: React.FC<MiniPadPreviewProps> = ({
                 title={`${SLOT_LABELS[slot].short}: ${isMapped ? desc.fullLabel : 'Unassigned'}`}
                 className={`${
                   compact ? 'h-6' : 'h-7'
-                } rounded-[6px] bg-[#1E2128] border flex items-center justify-center transition-colors ${
-                  isMapped
-                    ? 'border-[#ECEAE4]/14 text-[#ECEAE4]'
-                    : 'border-[#ECEAE4]/5 text-[#A3A6AD]/35 opacity-45'
+                } rounded bg-[#181B22] flex items-center justify-center ${
+                  isMapped ? 'text-[#E4E4E7]' : 'text-[#71717A]/40 opacity-50'
                 }`}
               >
                 {isMapped ? (
                   <KeycapIcon
                     icon={app.icon}
                     className={compact ? 'w-3 h-3' : 'w-3.5 h-3.5'}
-                    style={{ color: app.labelColor || '#ECEAE4' }}
+                    style={{ color: app.labelColor || '#E4E4E7' }}
                   />
                 ) : (
                   <span className="font-mono text-[8px] tabular-nums">{idx + 1}</span>
@@ -135,7 +136,7 @@ export const MiniPadPreview: React.FC<MiniPadPreviewProps> = ({
         </div>
 
         {/* Dual Mini Rotary Encoders */}
-        <div className="flex flex-col items-center justify-center gap-1.5 pl-2 border-l border-[#ECEAE4]/10 shrink-0">
+        <div className="flex flex-col items-center justify-center gap-1.5 pl-2 border-l border-white/[0.06] shrink-0">
           {[
             { num: 1, mapped: k1Mapped, tip: k1Tooltip },
             { num: 2, mapped: k2Mapped, tip: k2Tooltip }
@@ -145,19 +146,17 @@ export const MiniPadPreview: React.FC<MiniPadPreviewProps> = ({
               title={`Knob ${knob.num}: ${knob.tip || 'Unassigned'}`}
               className={`${
                 compact ? 'w-6 h-6' : 'w-7 h-7'
-              } rounded-full bg-[#1E2128] border flex items-center justify-center relative ${
-                knob.mapped
-                  ? 'border-[#F2A33A]/60 text-[#ECEAE4]'
-                  : 'border-[#ECEAE4]/10 text-[#A3A6AD]/40 opacity-50'
+              } rounded-full bg-[#181B22] flex items-center justify-center relative ${
+                knob.mapped ? 'text-[#E4E4E7]' : 'text-[#71717A]/40 opacity-50'
               }`}
             >
               <span
                 aria-hidden="true"
                 className={`w-0.5 h-1.5 rounded-full absolute top-0.5 ${
-                  knob.mapped ? 'bg-[#F2A33A]' : 'bg-[#A3A6AD]/40'
+                  knob.mapped ? 'bg-[var(--accent)]' : 'bg-white/20'
                 }`}
               />
-              <span className="font-mono text-[7px] font-semibold tabular-nums mt-1">
+              <span className="font-mono text-[7px] font-medium tabular-nums mt-1">
                 K{knob.num}
               </span>
             </div>

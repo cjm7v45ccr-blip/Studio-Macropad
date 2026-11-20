@@ -93,22 +93,22 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               type="button"
               onClick={() => onSelectSection(item.id)}
               title={item.tooltip}
-              className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl text-[10px] transition-all duration-150 cursor-pointer whitespace-nowrap ${
+              className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg text-[10px] transition-colors cursor-pointer whitespace-nowrap ${
                 active
-                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
+                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-semibold'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
               <span className="relative">
                 <Icon
-                  className={`w-4 h-4 shrink-0 transition-transform duration-150 ${
-                    active ? 'text-[var(--accent)] scale-105' : ''
+                  className={`w-4 h-4 shrink-0 ${
+                    active ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
                   }`}
                 />
                 {showDot && (
                   <span
                     aria-label="Firmware update available"
-                    className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[var(--accent)]"
+                    className="absolute -top-0.5 -right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
                   />
                 )}
               </span>
@@ -136,22 +136,22 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               type="button"
               onClick={() => onSelectSection(item.id)}
               title={showDot ? `${item.tooltip} (Firmware update available)` : item.tooltip}
-              className={`relative w-full py-2.5 px-1 rounded-xl flex flex-col items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer whitespace-nowrap ${
+              className={`relative w-full py-2.5 px-1 rounded-lg flex flex-col items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                 active
-                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]/50 font-medium'
+                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] font-normal'
               }`}
             >
               <span className="relative flex items-center justify-center">
                 <Icon
-                  className={`w-[17px] h-[17px] shrink-0 transition-transform duration-150 ${
-                    active ? 'text-[var(--accent)] scale-105' : ''
+                  className={`w-[17px] h-[17px] shrink-0 ${
+                    active ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
                   }`}
                 />
                 {showDot && (
                   <span
                     aria-label="Firmware update available"
-                    className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-[var(--accent)] ring-2 ring-[var(--bg-panel)]"
+                    className="absolute -top-0.5 -right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
                   />
                 )}
               </span>
@@ -208,7 +208,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             }
           >
             {soundEnabled ? (
-              <Volume2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
+              <Volume2 className="w-4 h-4 text-[var(--text-primary)] shrink-0" />
             ) : (
               <VolumeX className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
             )}
@@ -219,7 +219,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <div
               role="dialog"
               aria-label="Switch sound preferences"
-              className="absolute left-full bottom-0 ml-3 w-56 rounded-2xl studio-popover p-3 space-y-2.5 z-50 animate-popover-in"
+              className="absolute left-full bottom-0 ml-3 w-56 rounded-xl studio-popover p-3 space-y-2.5 z-50 animate-popover-in"
             >
               <div className="flex items-center justify-between gap-2 pb-2 border-b border-[var(--border-subtle)]">
                 <span className="text-xs font-semibold text-[var(--text-primary)]">
@@ -228,10 +228,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <button
                   type="button"
                   onClick={onToggleSound}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
                     soundEnabled
-                      ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
-                      : 'bg-[var(--bg-input)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                      ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)]'
+                      : 'bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   {soundEnabled ? 'On' : 'Muted'}
@@ -239,10 +239,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </div>
 
               <div className="space-y-1">
-                <div className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
+                <div className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-wider px-1">
                   Acoustic Profile
                 </div>
-                <div className="space-y-1">
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {SOUND_PROFILES.map(opt => {
                     const active = soundProfile === opt.id;
                     return (
@@ -253,13 +253,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           onChangeSoundProfile?.(opt.id);
                           if (!soundEnabled) onToggleSound();
                         }}
-                        className={`w-full px-2.5 py-1.5 rounded-xl text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                        className={`w-full px-2 py-2 rounded-md text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
                           active
-                            ? 'bg-[var(--accent-soft)] border border-[rgba(var(--accent-rgb),0.4)] text-[var(--text-primary)]'
-                            : 'bg-[var(--bg-input)]/70 border border-transparent hover:border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                            : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                         }`}
                       >
-                        <span className="text-xs font-semibold">{opt.label}</span>
+                        <span className="text-xs">{opt.label}</span>
                         <span className="text-[10px] text-[var(--text-muted)]">{opt.desc}</span>
                       </button>
                     );

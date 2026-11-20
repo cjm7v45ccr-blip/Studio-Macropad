@@ -2306,58 +2306,55 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
 
   return (
     <div className="flex-1 @container flex flex-col items-center p-4 sm:p-6 lg:overflow-y-auto relative min-w-0 studio-stage-backdrop">
-      {/* Top Canvas Toolbar (Machined Floating Studio Instrument Controls) */}
-      <div className="w-full max-w-2xl flex items-center justify-between gap-2 flex-wrap shrink-0">
-        <div className="flex items-center gap-0.5 p-1 rounded-xl studio-well">
+      {/* Top Canvas Toolbar — Single Slim Floating Row */}
+      <div className="w-full max-w-2xl flex items-center justify-between gap-2 flex-nowrap overflow-x-auto pb-0.5 shrink-0">
+        <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[var(--bg-panel)]/90 border border-[var(--border-subtle)] shrink-0">
           <button
             type="button"
             onClick={() => onChangeViewMode('edit')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer whitespace-nowrap ${
               viewMode === 'edit'
-                ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
-            <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent)]" />
+            <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
             <span>Configure</span>
           </button>
           <button
             type="button"
             onClick={() => onChangeViewMode('test')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer whitespace-nowrap ${
               viewMode === 'test'
-                ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
-            <Play className="w-3.5 h-3.5 text-[var(--accent)]" />
-            <span>Test controls</span>
+            <Play className="w-3.5 h-3.5 shrink-0" />
+            <span>Test</span>
           </button>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={() => setView3D(v => !v)}
             title={
               motionSensor.isOnline
                 ? `GY-521 Motion Active · Pitch: ${motionSensor.pitch.toFixed(0)}° · Roll: ${motionSensor.roll.toFixed(0)}° · Yaw: ${motionSensor.yaw.toFixed(0)}°`
-                : 'Toggle high-fidelity 3D tactile view with real-time GY-521 motion tracking'
+                : 'Toggle 3D tactile view with live GY-521 gyro'
             }
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               view3D
-                ? 'studio-cta font-semibold'
-                : 'studio-btn text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] border border-[var(--border-strong)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>
-              {view3D
-                ? motionSensor.isOnline
-                  ? '3D Live Gyro'
-                  : '3D Tactile'
-                : '3D View'}
-            </span>
+            <Layers className="w-3.5 h-3.5 shrink-0" />
+            <span>{view3D ? (motionSensor.isOnline ? '3D Gyro' : '3D') : '3D'}</span>
+            {view3D && motionSensor.isOnline && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] shrink-0" aria-hidden="true" />
+            )}
           </button>
 
           {view3D && (
@@ -2368,22 +2365,52 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                 setCalibStep('flat');
               }}
               title="Calibrate Left/Right Tilt and Zero Point for 3D View"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl studio-btn text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
-              <Compass className="w-3.5 h-3.5 text-[var(--accent)]" />
-              <span>Calibrate Gyro</span>
+              <Compass className="w-3.5 h-3.5 shrink-0" />
+              <span>Calibrate</span>
             </button>
           )}
+
+          <span className="h-3.5 w-px bg-[var(--border-subtle)] mx-0.5 shrink-0" aria-hidden="true" />
+
+          <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[var(--bg-panel)]/90 border border-[var(--border-subtle)] shrink-0">
+            <button
+              type="button"
+              onClick={() => onChangeEncoderPlacement('grid')}
+              title="Side Knobs layout"
+              className={`px-2 py-1 rounded-md text-xs transition-colors cursor-pointer whitespace-nowrap ${
+                encoderPlacement === 'grid'
+                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              Side
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeEncoderPlacement('top')}
+              title="Top Dials layout"
+              className={`px-2 py-1 rounded-md text-xs transition-colors cursor-pointer whitespace-nowrap ${
+                encoderPlacement === 'top'
+                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              Top
+            </button>
+          </div>
 
           {onOpenCheatSheet && (
             <button
               type="button"
               onClick={onOpenCheatSheet}
-              title="Open printable 4-profile Desk Reference Cheat Sheet"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl studio-btn text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+              title="Desk Reference Cheat Sheet"
+              aria-label="Cheat Sheet"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
-              <BookOpen className="w-3.5 h-3.5 text-[var(--accent)]" />
-              <span>Cheat Sheet</span>
+              <BookOpen className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Sheet</span>
             </button>
           )}
 
@@ -2391,39 +2418,13 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             <button
               type="button"
               onClick={onOpenShortcuts || onOpenCheatSheet}
-              title="Open Keyboard Shortcuts & Studio Controls HUD (?)"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl studio-btn text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+              title="Keyboard Shortcuts (?)"
+              aria-label="Keyboard Shortcuts"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer shrink-0"
             >
-              <Command className="w-3.5 h-3.5 text-[var(--accent)]" />
-              <span>Shortcuts</span>
-              <kbd className="hidden sm:inline font-mono text-[9px] px-1.5 py-0.5 rounded studio-kbd text-[var(--text-muted)]">?</kbd>
+              ?
             </button>
           )}
-
-          <div className="flex items-center gap-0.5 p-1 rounded-xl studio-well">
-            <button
-              type="button"
-              onClick={() => onChangeEncoderPlacement('grid')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
-                encoderPlacement === 'grid'
-                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-              }`}
-            >
-              Side Knobs
-            </button>
-            <button
-              type="button"
-              onClick={() => onChangeEncoderPlacement('top')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
-                encoderPlacement === 'top'
-                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-              }`}
-            >
-              Top Dials
-            </button>
-          </div>
         </div>
       </div>
 
@@ -3012,43 +3013,38 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
         )}
       </div>
 
-      {/* Motion Gestures Strip (shown strictly when capabilities includes "motion") */}
+      {/* Subtle Borderless 3-Chip Motion Gestures Strip */}
       {hasMotion && (
-        <div className="w-full max-w-2xl rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-3 space-y-2 shrink-0">
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-1.5 font-semibold text-[var(--text-primary)]">
-              <Compass className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-              <span>Motion Gestures</span>
-              {connection.telemetry?.motion && !connection.telemetry.motion.enabled && (
-                <span className="font-mono text-[11px] font-normal text-[var(--text-muted)]">
-                  · Off in Settings
-                </span>
-              )}
-            </div>
-            <span className="text-[11px] text-[var(--text-muted)]">
-              {viewMode === 'edit' ? 'Select a gesture to bind' : 'Click or move pad to test'}
-            </span>
-          </div>
+        <div
+          aria-label="Motion gestures"
+          className="w-full max-w-2xl flex items-center justify-center flex-wrap gap-x-1 gap-y-1 pt-1 shrink-0"
+        >
+          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)] mr-1.5 select-none">
+            Motion{connection.telemetry?.motion && !connection.telemetry.motion.enabled ? ' · Off' : ''}
+          </span>
+          {(
+            [
+              { slot: 'g_shake' as MotionSlotId, label: 'Shake', Icon: Compass },
+              { slot: 'g_down' as MotionSlotId, label: 'Face Down', Icon: ArrowDown },
+              { slot: 'g_up' as MotionSlotId, label: 'Face Up', Icon: ArrowUp }
+            ]
+          ).map(({ slot, label, Icon }, idx) => {
+            const binding = layer.motion?.[slot] ?? { type: 'none' as const, value: '' };
+            const isFlashed = flashedSlots.has(slot);
+            const isSelected = viewMode === 'edit' && selectedControl === slot;
+            const summary = binding.value
+              ? describeFirmwareAction(binding.value, binding.repeatConfig, customMacros)
+                  .shortLabel
+              : 'Unassigned';
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            {(
-              [
-                { slot: 'g_shake' as MotionSlotId, label: 'Shake', Icon: Compass },
-                { slot: 'g_down' as MotionSlotId, label: 'Face Down', Icon: ArrowDown },
-                { slot: 'g_up' as MotionSlotId, label: 'Face Up', Icon: ArrowUp }
-              ]
-            ).map(({ slot, label, Icon }) => {
-              const binding = layer.motion?.[slot] ?? { type: 'none' as const, value: '' };
-              const isFlashed = flashedSlots.has(slot);
-              const isSelected = viewMode === 'edit' && selectedControl === slot;
-              const summary = binding.value
-                ? describeFirmwareAction(binding.value, binding.repeatConfig, customMacros)
-                    .shortLabel
-                : 'Unassigned';
-
-              return (
+            return (
+              <React.Fragment key={slot}>
+                {idx > 0 && (
+                  <span className="text-[var(--text-muted)]/40 text-xs select-none" aria-hidden="true">
+                    ·
+                  </span>
+                )}
                 <button
-                  key={slot}
                   type="button"
                   onClick={() => {
                     if (viewMode === 'edit') {
@@ -3077,41 +3073,26 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
                       );
                     }
                   }}
-                  className={`px-3 py-2 rounded-lg border text-left transition-all cursor-pointer flex items-center justify-between gap-2 min-w-0 ${
+                  title={`${label}: ${summary}`}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer max-w-[200px] ${
                     isFlashed
-                      ? 'bg-[var(--accent-soft)] border-[var(--accent)] ring-1 ring-[var(--accent)]'
+                      ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-medium'
                       : isSelected
-                      ? 'bg-[var(--accent-soft)] border-[var(--accent)]'
-                      : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                      ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                   }`}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Icon
-                      className={`w-3.5 h-3.5 shrink-0 ${
-                        isFlashed || isSelected
-                          ? 'text-[var(--accent)]'
-                          : 'text-[var(--text-muted)]'
-                      }`}
-                    />
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                        {label}
-                      </div>
-                      <div
-                        className={`text-[11px] truncate ${
-                          binding.value
-                            ? 'text-[var(--text-secondary)]'
-                            : 'text-[var(--text-muted)]'
-                        }`}
-                      >
-                        {summary}
-                      </div>
-                    </div>
-                  </div>
+                  <Icon className="w-3 h-3 shrink-0 opacity-75" />
+                  <span className="shrink-0">{label}</span>
+                  {binding.value && (
+                    <span className="font-mono text-[10px] text-[var(--text-muted)] truncate">
+                      {summary}
+                    </span>
+                  )}
                 </button>
-              );
-            })}
-          </div>
+              </React.Fragment>
+            );
+          })}
         </div>
       )}
       {/* Bottom: Conflict Alert (Edit Mode) or Fallback Feed when embedded standalone */}

@@ -124,9 +124,9 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
 
   if (!isBle) {
     return (
-      <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs text-[var(--text-muted)] space-y-1">
+      <div className="pt-5 border-t border-[var(--border-subtle)] text-xs text-[var(--text-muted)] space-y-1">
         <div className="font-semibold text-[var(--text-secondary)]">Bluetooth Multi-Host Manager</div>
-        <p>Switch to Device 1, 2, or 3 to manage Bluetooth pairings and pairing mode for that virtual host.</p>
+        <p>Select Device 1, 2, or 3 to manage Bluetooth pairings.</p>
       </div>
     );
   }
@@ -147,19 +147,17 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
     : (rawHosts?.[hostSlotNum] ?? bleMgr?.pairedCount ?? 0);
 
   return (
-    <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
+    <div className="pt-5 border-t border-[var(--border-subtle)] space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-[var(--accent-soft)] border border-[rgba(var(--accent-rgb),0.3)] flex items-center justify-center text-[var(--accent)] shrink-0">
-            <Bluetooth className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="text-xs font-bold text-[var(--text-primary)] truncate">
-              Bluetooth Pairing &amp; Security ({activeProf.name} · Host {hostSlotNum})
+        <div className="flex items-center gap-2 min-w-0">
+          <Bluetooth className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+          <div className="min-w-0 flex items-center gap-2 flex-wrap">
+            <h3 className="text-xs font-semibold text-[var(--text-primary)] truncate">
+              Pairing &amp; Security ({activeProf.name})
             </h3>
-            <p className="text-[11px] text-[var(--text-muted)] truncate">
-              Firmware v{FIRMWARE_VERSION} multi-host isolation &amp; seamless switching
-            </p>
+            <span className="font-mono text-[11px] text-[var(--text-muted)]">
+              Host {hostSlotNum} · v{FIRMWARE_VERSION}
+            </span>
           </div>
         </div>
 
@@ -171,7 +169,7 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
           )}
 
           <div
-            className={`inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold tabular-nums ${
+            className={`inline-flex items-center gap-1.5 font-mono text-[11px] font-medium tabular-nums ${
               bleMgr?.pairing
                 ? 'text-[var(--accent)] animate-pulse'
                 : telemetry?.bleConnected
@@ -181,9 +179,7 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
           >
             <span
               className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                bleMgr?.pairing
-                  ? 'bg-[var(--accent)]'
-                  : telemetry?.bleConnected
+                bleMgr?.pairing || telemetry?.bleConnected
                   ? 'bg-[var(--accent)]'
                   : 'bg-[var(--text-muted)]'
               }`}
@@ -193,45 +189,45 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-        <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between">
-          <span className="text-[11px] text-[var(--text-muted)]">Paired Hosts (Host {hostSlotNum})</span>
-          <span className="font-mono text-sm font-bold text-[var(--text-primary)] mt-1 tabular-nums">
+      <div className="divide-y divide-[var(--border-subtle)] border-y border-[var(--border-subtle)] text-xs">
+        <div className="py-2.5 flex items-center justify-between gap-4">
+          <span className="text-[var(--text-muted)]">Paired Hosts (Host {hostSlotNum})</span>
+          <span className="font-mono font-semibold text-[var(--text-primary)] tabular-nums">
             {pairedCount} {pairedCount === 1 ? 'Host' : 'Hosts'} registered
           </span>
         </div>
 
-        <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between">
-          <span className="text-[11px] text-[var(--text-muted)]">Strict Security</span>
-          <div className="flex items-center justify-between mt-1">
-            <span className="font-semibold text-[var(--text-primary)]">
+        <div className="py-2.5 flex items-center justify-between gap-4">
+          <span className="text-[var(--text-muted)]">Strict Security</span>
+          <div className="flex items-center gap-3">
+            <span className="font-medium text-[var(--text-primary)]">
               {bleMgr?.strict !== false ? 'Strict (Known only)' : 'Open (Permissive)'}
             </span>
             <button
               type="button"
               disabled={!connection.connected || busy}
               onClick={() => handleToggleStrict(bleMgr?.strict === false)}
-              className="text-[11px] text-[var(--accent)] font-semibold hover:underline cursor-pointer disabled:opacity-40 whitespace-nowrap"
+              className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium underline underline-offset-2 cursor-pointer disabled:opacity-40 whitespace-nowrap"
             >
               Toggle
             </button>
           </div>
         </div>
 
-        <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col justify-between">
-          <span className="text-[11px] text-[var(--text-muted)]">Virtual MAC Address</span>
-          <span className="font-mono text-xs font-semibold text-[var(--text-secondary)] mt-1 tabular-nums">
+        <div className="py-2.5 flex items-center justify-between gap-4">
+          <span className="text-[var(--text-muted)]">Virtual MAC Address</span>
+          <span className="font-mono text-[var(--text-secondary)] tabular-nums">
             24:6F:28:XX:XX:0{hostSlotNum}
           </span>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap pt-1">
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           type="button"
           disabled={!connection.connected || busy}
           onClick={handlePair}
-          className="flex-1 min-w-[130px] flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer whitespace-nowrap"
+          className="studio-cta flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer whitespace-nowrap"
         >
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Radio className="w-3.5 h-3.5" />}
           <span>Pair New Host (120s)</span>
@@ -242,9 +238,9 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
             type="button"
             disabled={!connection.connected || busy}
             onClick={handleConnect}
-            className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap"
+            className="studio-btn flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
           >
-            <Bluetooth className="w-3.5 h-3.5 text-[var(--accent)]" />
+            <Bluetooth className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
             <span>Resume Bluetooth</span>
           </button>
         ) : (
@@ -252,9 +248,9 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
             type="button"
             disabled={!connection.connected || busy}
             onClick={handleDisconnect}
-            className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap"
+            className="studio-btn flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
           >
-            <PowerOff className="w-3.5 h-3.5 text-[var(--accent)]" />
+            <PowerOff className="w-3.5 h-3.5 text-[var(--text-muted)]" />
             <span>Disconnect Host</span>
           </button>
         )}
@@ -263,9 +259,9 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
           type="button"
           disabled={!connection.connected || busy}
           onClick={() => setForgetModalOpen(true)}
-          className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap"
+          className="studio-btn flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
         >
-          <UserX className="w-3.5 h-3.5 text-[var(--accent)]" />
+          <UserX className="w-3.5 h-3.5 text-[var(--text-muted)]" />
           <span>Forget Profile Pairing</span>
         </button>
       </div>
@@ -273,38 +269,36 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
       {/* Forget Confirmation Modal */}
       {forgetModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="forget-ble-modal-title"
           onClick={() => setForgetModalOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl p-5 space-y-4"
+            className="w-full max-w-md rounded-xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl p-5 space-y-4"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-[var(--accent-soft)] border border-[rgba(var(--accent-rgb),0.3)] flex items-center justify-center text-[var(--accent)] shrink-0 mt-0.5">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <h4
                   id="forget-ble-modal-title"
-                  className="text-sm font-bold text-[var(--text-primary)]"
+                  className="text-sm font-semibold text-[var(--text-primary)]"
                 >
                   Forget pairings for {activeProf.name} (Host {hostSlotNum})?
                 </h4>
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  This removes all paired hosts assigned to this virtual profile slot. The pad will generate a new Bluetooth MAC address for this slot.
+                  Removes paired hosts for this profile slot and generates a new Bluetooth MAC address.
                 </p>
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2 text-xs text-[var(--text-muted)]">
-              <p className="font-semibold text-[var(--text-primary)]">Important reminder:</p>
+            <div className="py-2.5 border-y border-[var(--border-subtle)] space-y-1.5 text-xs text-[var(--text-muted)]">
+              <p className="font-medium text-[var(--text-secondary)]">Reminder:</p>
               <ul className="list-disc list-inside space-y-1">
-                <li>You must also remove the old &ldquo;BertoPad {hostSlotNum}&rdquo; entry from your computer&apos;s Bluetooth settings.</li>
-                <li>Other device profiles (Host 1–3) and their pairings remain untouched.</li>
+                <li>Remove the old &ldquo;BertoPad {hostSlotNum}&rdquo; entry from your computer&apos;s Bluetooth settings.</li>
+                <li>Other device profiles (Host 1–3) remain untouched.</li>
               </ul>
             </div>
 
@@ -318,18 +312,18 @@ export const BleManagementCard: React.FC<BleManagementCardProps> = ({
               <span>Also reset key and knob bindings for this profile to default</span>
             </label>
 
-            <div className="flex items-center justify-end gap-2.5 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setForgetModalOpen(false)}
-                className="py-2 px-3.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                className="studio-btn py-1.5 px-3 rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleForgetConfirm}
-                className="py-2 px-4 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 text-xs font-semibold transition-opacity cursor-pointer"
+                className="studio-cta py-1.5 px-3.5 rounded-lg text-xs font-semibold cursor-pointer"
               >
                 Yes, Forget Pairings
               </button>

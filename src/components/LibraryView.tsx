@@ -429,39 +429,32 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     const fullTooltip = buildFullBindingTooltip(resolveAction, resolveRepeat);
 
     return (
-      <div className="space-y-1.5 pt-0.5 text-[11px]" title={fullTooltip}>
-        <div className="grid grid-cols-2 gap-1.5">
-          {picked.map(slot => {
-            const raw = resolveAction(slot);
-            const desc = describeFirmwareAction(raw, resolveRepeat?.(slot), customMacros);
-            return (
-              <div
-                key={slot}
-                title={`${SLOT_LABELS[slot].full}: ${desc.fullLabel}`}
-                className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] flex flex-col gap-0.5 min-w-0"
-              >
-                <span className="text-[10px] font-mono text-[var(--text-muted)] truncate">
-                  {SLOT_LABELS[slot].short}
-                </span>
-                <ParsedActionBadge
-                  action={raw}
-                  repeatConfig={resolveRepeat?.(slot)}
-                  showRawId={showAdvancedIds}
-                  customMacros={customMacros}
-                  maxSteps={2}
-                  className="min-w-0 w-full"
-                />
-              </div>
-            );
-          })}
-        </div>
+      <div className="divide-y divide-[var(--border-subtle)] text-[11px]" title={fullTooltip}>
+        {picked.map(slot => {
+          const raw = resolveAction(slot);
+          const desc = describeFirmwareAction(raw, resolveRepeat?.(slot), customMacros);
+          return (
+            <div
+              key={slot}
+              title={`${SLOT_LABELS[slot].full}: ${desc.fullLabel}`}
+              className="py-1.5 flex items-center justify-between gap-3 min-w-0"
+            >
+              <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0">
+                {SLOT_LABELS[slot].short}
+              </span>
+              <span className="text-[11px] text-[var(--text-secondary)] truncate text-right">
+                {showAdvancedIds ? raw : desc.shortLabel}
+              </span>
+            </div>
+          );
+        })}
         {remainingCount > 0 && (
-          <p
+          <div
             title={fullTooltip}
-            className="text-[11px] text-[var(--text-muted)] px-0.5 cursor-help"
+            className="pt-1.5 font-mono text-[10px] text-[var(--text-muted)] cursor-help tabular-nums"
           >
-            +{remainingCount} more controls · hover to inspect all {totalMapped}
-          </p>
+            +{remainingCount} more · {totalMapped} mapped
+          </div>
         )}
       </div>
     );
@@ -504,16 +497,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-workspace-section studio-stage-backdrop">
-      <div className="max-w-5xl mx-auto space-y-8">
-        {/* Clean Header + Overflow Menu for Rare Backup / Restore / Reset Actions */}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)]">
+    <div className="flex-1 overflow-y-auto p-5 sm:p-7 lg:p-9 animate-workspace-section bg-[var(--bg-canvas)]">
+      <div className="max-w-5xl mx-auto space-y-10">
+        {/* Minimal Header + Backups Menu */}
+        <div className="flex flex-wrap items-baseline justify-between gap-4 pb-6 border-b border-[var(--border-subtle)]">
+          <div className="space-y-1">
+            <h1 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">
               Profiles &amp; Presets
             </h1>
-            <p className="text-xs text-[var(--text-muted)] mt-1 tabular-nums">
-              Apply {controlCount}-control layouts across Devices 1–3 and Smart TV, save snapshots, or clone profiles.
+            <p className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+              4 memory layers · {controlCount} controls · BLE &amp; TV
             </p>
           </div>
 
@@ -522,10 +515,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <button
                 type="button"
                 onClick={onOpenMacros}
-                className="studio-btn flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
+                className="studio-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0 tabular-nums"
               >
-                <Sliders className="w-3.5 h-3.5 text-[var(--accent)]" />
-                <span>My Macros ({customMacros.length})</span>
+                <Sliders className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                <span>Macros ({customMacros.length})</span>
               </button>
             )}
 
@@ -537,7 +530,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 aria-haspopup="menu"
                 aria-label="Backup, restore, and reset options"
                 title="Backup, restore & reset"
-                className={`studio-btn flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer whitespace-nowrap shrink-0 ${
+                className={`studio-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap shrink-0 ${
                   overflowMenuOpen
                     ? '!border-[var(--border-strong)] text-[var(--text-primary)]'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -550,7 +543,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               {overflowMenuOpen && (
                 <div
                   role="menu"
-                  className="studio-popover absolute right-0 top-full mt-2 w-60 rounded-2xl p-1.5 z-30 space-y-0.5 animate-popover-in"
+                  className="studio-popover absolute right-0 top-full mt-2 w-60 rounded-xl p-1.5 z-30 space-y-0.5 animate-popover-in"
                 >
                   <button
                     type="button"
@@ -559,9 +552,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       setOverflowMenuOpen(false);
                       onExportBackupFile();
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[var(--bg-input)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer text-left"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer text-left"
                   >
-                    <Download className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    <Download className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
                     <span>Download backup (.json)</span>
                   </button>
 
@@ -572,9 +565,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       setOverflowMenuOpen(false);
                       importBackupRef.current?.click();
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[var(--bg-input)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer text-left"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-primary)] transition-colors cursor-pointer text-left"
                   >
-                    <Upload className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    <Upload className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
                     <span>Restore backup (.json)…</span>
                   </button>
 
@@ -641,15 +634,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
         {/* Live 4-Profile Onboard Hardware Overview */}
         <section className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                Onboard Device Profiles
-              </h2>
-              <p className="text-xs text-[var(--text-muted)]">
-                Inspect all 4 hardware memory layers at a glance — click any profile to open it on the pad.
-              </p>
-            </div>
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)]">
+              Onboard Profiles
+            </h2>
+            <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+              4 layers
+            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -665,15 +656,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   key={prof.id}
                   type="button"
                   onClick={() => onOpenDeviceProfile?.(prof.id)}
-                  className={`studio-panel studio-panel-interactive group text-left p-3.5 rounded-2xl cursor-pointer space-y-2.5 ${
-                    isCurrent
-                      ? '!border-[var(--accent)] ring-1 ring-[rgba(var(--accent-rgb),0.28)]'
-                      : ''
+                  className={`studio-panel studio-panel-interactive group text-left p-3.5 rounded-xl cursor-pointer space-y-2.5 ${
+                    isCurrent ? '!border-[var(--border-strong)]' : ''
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 min-w-0">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <Icon className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                      <Icon className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
                       <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
                         {prof.name}
                       </span>
@@ -693,11 +682,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   />
 
                   <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
-                    <span className={isCurrent ? 'text-[var(--accent)] font-semibold' : ''}>
-                      {isCurrent ? 'Active on studio' : isBle ? 'BLE Host' : 'Smart TV'}
+                    <span className="inline-flex items-center gap-1.5">
+                      {isCurrent && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" aria-hidden="true" />
+                      )}
+                      <span className={isCurrent ? 'text-[var(--text-primary)] font-medium' : ''}>
+                        {isCurrent ? 'Active' : isBle ? 'BLE Host' : 'Smart TV'}
+                      </span>
                     </span>
                     <span className="group-hover:text-[var(--text-primary)] transition-colors">
-                      Edit →
+                      Open →
                     </span>
                   </div>
                 </button>
@@ -707,16 +701,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </section>
 
         {/* Search & Mode Filter Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-[var(--border-subtle)]">
           <div className="relative flex-1 min-w-0">
-            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Filter presets or bound actions…"
+              placeholder="Filter presets or actions…"
               aria-label="Filter presets"
-              className="studio-well w-full pl-9 pr-8 py-2 rounded-xl text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+              className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-[var(--bg-hover)] border border-transparent focus:border-[var(--border-strong)] focus:bg-[var(--bg-input)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-colors"
             />
             {searchQuery && (
               <button
@@ -733,7 +727,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <div
             role="group"
             aria-label="Filter presets by target mode"
-            className="studio-well flex items-center gap-1 p-1 rounded-xl shrink-0 self-start sm:self-auto"
+            className="flex items-center gap-0.5 shrink-0 self-start sm:self-auto"
           >
             {(
               [
@@ -748,10 +742,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setModeFilter(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     active
-                      ? 'studio-pill-active text-[var(--text-primary)]'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                      ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                   }`}
                 >
                   {tab.label}
@@ -763,15 +757,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
         {/* Section 1: My Saved Snapshots */}
         <section className="space-y-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
-                Saved Snapshots ({filteredUserPresets.length})
-              </h2>
-              <p className="text-xs text-[var(--text-muted)] tabular-nums">
-                Save any profile&apos;s {controlCount} controls so you can switch or reapply layouts anytime.
-              </p>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)] tabular-nums">
+              Saved Snapshots ({filteredUserPresets.length})
+            </h2>
 
             <div className="flex flex-col items-end gap-1.5">
               <div className="flex items-center gap-2 flex-wrap">
@@ -901,11 +890,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-[var(--border-subtle)]">
                       <button
                         type="button"
                         onClick={() => openMyPresetPreview(snap, defaultTarget)}
-                        className="studio-cta flex-1 py-2 px-3 rounded-xl text-xs font-semibold cursor-pointer whitespace-nowrap"
+                        className="flex-1 py-1.5 px-3 rounded-lg bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 text-xs font-medium transition-opacity cursor-pointer whitespace-nowrap"
                       >
                         Apply to {formatProfileLabel(defaultTarget)}
                       </button>
@@ -914,7 +903,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           key={altId}
                           type="button"
                           onClick={() => openMyPresetPreview(snap, altId)}
-                          className="studio-btn py-2 px-2.5 rounded-xl text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                          className="studio-btn py-1.5 px-2.5 rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                           title={`Apply "${snap.name}" to ${formatProfileLabel(altId)}`}
                         >
                           {STUDIO_SHORT_LABEL(formatProfileLabel(altId))}
@@ -925,7 +914,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         onClick={() =>
                           onApplyHardwareBackup(snap.backup, snap.repeatConfigs)
                         }
-                        className="studio-btn py-2 px-2.5 rounded-xl text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                        className="studio-btn py-1.5 px-2.5 rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                         title="Restore all 4 profiles from this full snapshot"
                       >
                         Restore All
@@ -939,18 +928,18 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </section>
 
         {/* Section 2: Built-In Starter Presets */}
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
+        <section className="space-y-4 pt-6 border-t border-[var(--border-subtle)]">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)] tabular-nums">
               Starter Presets ({filteredCuratedPresets.length})
             </h2>
-            <p className="text-xs text-[var(--text-muted)] tabular-nums">
-              Preview all {controlCount} control changes before applying a layout to Device 1, Device 2, Device 3, or Smart TV.
-            </p>
+            <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+              Diff preview before apply
+            </span>
           </div>
 
           {filteredCuratedPresets.length === 0 ? (
-            <div className="studio-panel p-5 rounded-2xl text-xs text-[var(--text-muted)] text-center">
+            <div className="py-8 text-xs text-[var(--text-muted)] text-center">
               No starter presets match &ldquo;{searchQuery}&rdquo;.
             </div>
           ) : (
@@ -971,27 +960,23 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 return (
                   <div
                     key={preset.id}
-                    className="studio-panel studio-panel-interactive p-4 rounded-2xl flex flex-col justify-between gap-4"
+                    className="studio-panel studio-panel-interactive p-4 rounded-xl flex flex-col justify-between gap-4"
                   >
-                    <div className="space-y-2.5">
+                    <div className="space-y-3">
                       <div className="min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <h3 className="text-sm font-semibold text-[var(--text-primary)] leading-snug">
                             {preset.title}
                           </h3>
-                          <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-muted)] shrink-0 pt-0.5">
-                            <ModeIcon className="w-3.5 h-3.5 text-[var(--accent)]" />
-                            <span>{blePreset ? 'BLE Host' : 'Smart TV'}</span>
+                          <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[var(--text-muted)] shrink-0 pt-0.5">
+                            <ModeIcon className="w-3 h-3" />
+                            <span>{blePreset ? 'BLE' : 'TV'}</span>
                           </span>
                         </div>
-                        <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                        <p className="text-[11px] text-[var(--text-muted)] mt-0.5" title={preset.description}>
                           {preset.subtitle}
                         </p>
                       </div>
-
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        {preset.description}
-                      </p>
 
                       <MiniPadPreview
                         title={preset.title}
@@ -1003,11 +988,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       {renderProfileHighlights(slot => preset.bindings[slot] || '')}
                     </div>
 
-                    <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                    <div className="flex items-center gap-1.5 pt-2 border-t border-[var(--border-subtle)] flex-wrap">
                       <button
                         type="button"
                         onClick={() => openCuratedPresetPreview(preset, primaryTarget)}
-                        className="studio-cta flex-1 py-2 px-2.5 rounded-xl text-xs font-semibold cursor-pointer whitespace-nowrap truncate"
+                        className="flex-1 py-1.5 px-2.5 rounded-lg bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 text-xs font-medium transition-opacity cursor-pointer whitespace-nowrap truncate"
                         title={`Preview & apply to ${formatProfileLabel(primaryTarget)}`}
                       >
                         Apply to {formatProfileLabel(primaryTarget)}
@@ -1017,7 +1002,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           key={altId}
                           type="button"
                           onClick={() => openCuratedPresetPreview(preset, altId)}
-                          className="studio-btn py-2 px-2.5 rounded-xl text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                          className="studio-btn py-1.5 px-2 rounded-lg text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                           title={`Preview & apply to ${formatProfileLabel(altId)}`}
                         >
                           {STUDIO_SHORT_LABEL(formatProfileLabel(altId))}
@@ -1032,15 +1017,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </section>
 
         {/* Section 3: Clone Bindings Between Profiles */}
-        <section className="studio-panel p-4 sm:p-5 rounded-2xl flex flex-col justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
-              <Copy className="w-4 h-4 text-[var(--accent)]" />
-              <span>Clone Bindings Between Profiles</span>
+        <section className="pt-8 border-t border-[var(--border-subtle)] space-y-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-[var(--text-muted)]">
+              <Copy className="w-3.5 h-3.5" />
+              <span>Clone Profile</span>
             </div>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed tabular-nums">
-              Copy all {controlCount} button and dual rotary dial assignments from one profile onto another with a diff preview before writing.
-            </p>
+            <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+              {controlCount} controls
+            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-end gap-2.5">

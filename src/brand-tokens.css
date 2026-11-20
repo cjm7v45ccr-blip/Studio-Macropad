@@ -1,25 +1,25 @@
 :root {
   /* BertoPad flagship hardware palette */
-  --bp-graphite: #0D0F13;
-  --bp-panel:    #161920;
-  --bp-bone:     #F2F0EA;
-  --bp-muted:    #9FA4B0;
+  --bp-graphite: #0B0D11;
+  --bp-panel:    #12141A;
+  --bp-bone:     #F5F5F7;
+  --bp-muted:    #A1A1AA;
   --bp-amber:    #F5A638;   /* signature anodized amber on dark */
   --bp-amber-deep: #D97706; /* rich amber on light */
 
   /* app theme (dark default) */
   --bg: var(--bp-graphite);
   --surface: var(--bp-panel);
-  --text: var(--bp-bone);
+  --text: #FFFFFF;
   --text-muted: var(--bp-muted);
   --accent: var(--bp-amber);
   --font-ui: 'Manrope', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 [data-theme="light"] {
-  --bg: #F3F0EA;
+  --bg: #F5F4F1;
   --surface: #FFFFFF;
-  --text: #121418;
-  --text-muted: #585D68;
+  --text: #111318;
+  --text-muted: #5C606B;
   --accent: var(--bp-amber-deep);
 }

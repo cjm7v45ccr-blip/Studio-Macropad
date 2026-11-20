@@ -142,95 +142,84 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
     const activeHostDisplay = activeHostProf?.name || `Device ${activeBleHost}`;
 
     return (
-      <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 studio-chrome border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
-        <div className="sticky top-0 z-20 studio-chrome px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl studio-well flex items-center justify-center">
-              <Layers className="w-4 h-4 text-[var(--accent)]" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">
-                Mode Key
-              </h2>
-              <p className="text-xs text-[var(--text-muted)]">
-                {isTvEnabled
-                  ? 'Mode Toggle · Multi-Host BLE · Setup'
-                  : 'Multi-Host BLE · Setup · TV off'}
-              </p>
-            </div>
+      <aside className="w-full lg:w-[430px] xl:w-[450px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
+        <div className="sticky top-0 z-20 bg-[var(--bg-panel)] px-5 py-4 border-b border-[var(--border-subtle)] flex items-center gap-2.5">
+          <Layers className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">
+              Mode Key
+            </h2>
+            <p className="font-mono text-[11px] text-[var(--text-muted)]">
+              {isTvEnabled ? 'Multi-host BLE · TV · Setup' : 'Multi-host BLE · Setup'}
+            </p>
           </div>
         </div>
 
-        <div key={selectionKey} className="p-5 space-y-4 animate-panel-in">
-          <div className="p-4 rounded-2xl studio-panel space-y-2.5">
-            <div className="text-xs font-semibold text-[var(--text-primary)]">
+        <div key={selectionKey} className="px-5 py-4 divide-y divide-[var(--border-subtle)] animate-panel-in">
+          <div className="pb-5 space-y-2.5">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
               Hardware Gestures
             </div>
-            <ul className="space-y-2 text-xs text-[var(--text-secondary)] pt-0.5">
-              <li className="flex items-start gap-2.5">
-                <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-[var(--bg-elevated)] text-[var(--text-primary)] shrink-0 whitespace-nowrap">
+            <div className="divide-y divide-[var(--border-subtle)] text-xs text-[var(--text-secondary)]">
+              <div className="py-2 flex items-baseline justify-between gap-3">
+                <span className="font-mono text-[11px] text-[var(--text-primary)] shrink-0">
                   Short Press
                 </span>
-                <span>
-                  {isTvEnabled ? (
-                    <>
-                      Switches between <strong>{activeHostDisplay}</strong> and{' '}
-                      <strong>TV</strong>.
-                    </>
-                  ) : (
-                    <>
-                      Flashes <strong>{activeHostDisplay}</strong> on the OLED screen (TV mode is off).
-                    </>
-                  )}
+                <span className="text-right text-[var(--text-secondary)]">
+                  {isTvEnabled ? `Toggle ${activeHostDisplay} / TV` : `Show ${activeHostDisplay} on OLED`}
                 </span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-[var(--bg-elevated)] text-[var(--accent)] shrink-0 whitespace-nowrap">
+              </div>
+              <div className="py-2 flex items-baseline justify-between gap-3">
+                <span className="font-mono text-[11px] text-[var(--text-primary)] shrink-0">
                   Hold + Dial
                 </span>
-                <span>
-                  Cycles between <strong>Device 1–3</strong>, each with its own layout and Bluetooth MAC.
+                <span className="text-right text-[var(--text-secondary)]">
+                  Cycle BLE hosts 1–3
                 </span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-[var(--bg-elevated)] text-[var(--text-primary)] shrink-0 whitespace-nowrap">
-                  Hold 3 Sec
+              </div>
+              <div className="py-2 flex items-baseline justify-between gap-3">
+                <span className="font-mono text-[11px] text-[var(--text-primary)] shrink-0">
+                  Hold 3s
                 </span>
-                <span>Opens or exits Setup Mode on the OLED screen.</span>
-              </li>
-            </ul>
+                <span className="text-right text-[var(--text-secondary)]">
+                  Toggle OLED Setup Mode
+                </span>
+              </div>
+            </div>
           </div>
 
           {isTvEnabled && (
-            <button
-              type="button"
-              onClick={onToggleProfileMode}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl studio-cta text-xs font-semibold cursor-pointer whitespace-nowrap"
-            >
-              <ArrowLeftRight className="w-4 h-4 shrink-0" />
-              <span>
-                Switch to {activeProfileId === 'TV' ? activeHostDisplay : 'TV'} Profile
-              </span>
-            </button>
+            <div className="py-4">
+              <button
+                type="button"
+                onClick={onToggleProfileMode}
+                className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg studio-cta text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  Switch to {activeProfileId === 'TV' ? activeHostDisplay : 'TV'} Profile
+                </span>
+              </button>
+            </div>
           )}
 
-          <div className="p-4 rounded-2xl studio-panel space-y-3">
+          <div className="pt-5 space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-                <Bluetooth className="w-4 h-4 text-[var(--accent)] shrink-0" />
+              <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                <Bluetooth className="w-3.5 h-3.5 shrink-0" />
                 <span>Bluetooth Host</span>
               </div>
               <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
                 {connection.connected
                   ? connection.telemetry?.bleDeviceName || `BertoPad ${activeBleHost}`
-                  : 'Select host'}
+                  : '3 hosts'}
               </span>
             </div>
 
             <div
               role="group"
               aria-label="Select Bluetooth host"
-              className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[var(--bg-panel)]"
+              className="grid grid-cols-3 gap-1"
             >
               {([1, 2, 3] as const).map(slot => {
                 const hostProfId = bleSlotToProfileId(slot);
@@ -249,16 +238,19 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                         onSelectProfile(hostProfId);
                       }
                     }}
-                    className={`py-2 px-2 rounded-lg text-center transition-colors cursor-pointer whitespace-nowrap min-w-0 ${
+                    className={`py-2 px-2 rounded-lg text-left transition-colors cursor-pointer whitespace-nowrap min-w-0 ${
                       isCurrent
-                        ? 'bg-[rgba(var(--accent-rgb),0.16)] ring-1 ring-[var(--accent)] text-[var(--text-primary)] font-semibold'
-                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                        ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
                     }`}
                   >
-                    <div className="font-mono text-[10px] text-[var(--accent)] tabular-nums">
-                      H{slot}
+                    <div className="flex items-center gap-1.5 font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                      <span>H{slot}</span>
+                      {isCurrent && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" aria-hidden="true" />
+                      )}
                     </div>
-                    <div className="text-[11px] mt-0.5 truncate">
+                    <div className="text-xs mt-0.5 truncate">
                       {hostProf?.name || `Device ${slot}`}
                     </div>
                   </button>
@@ -341,30 +333,27 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
   };
 
   return (
-    <aside className="w-full lg:w-[440px] xl:w-[460px] shrink-0 studio-chrome border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
-      {/* Sticky Single-Scroll Header */}
-      <div className="sticky top-0 z-20 studio-chrome px-4 sm:px-5 py-3.5 border-b border-[var(--border-subtle)] space-y-2.5">
+    <aside className="w-full lg:w-[430px] xl:w-[450px] shrink-0 bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] lg:h-full lg:overflow-y-auto">
+      {/* Sticky Minimal Header */}
+      <div className="sticky top-0 z-20 bg-[var(--bg-panel)] px-5 pt-4 border-b border-[var(--border-subtle)] space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl studio-well flex items-center justify-center shrink-0">
-              <KeycapIcon
-                icon={keyConfig.appearance.icon}
-                className="w-4 h-4"
-                style={{ color: keyConfig.appearance.labelColor }}
-              />
-            </div>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <KeycapIcon
+              icon={keyConfig.appearance.icon}
+              className="w-4 h-4 shrink-0"
+              style={{ color: keyConfig.appearance.labelColor }}
+            />
             <div className="min-w-0">
               <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight truncate">
                 {keyConfig.appearance.label || slotMeta.full}
               </h2>
-              <p className="text-xs text-[var(--text-muted)] truncate tabular-nums">
-                {slotMeta.full} · {activeProfileName} · {effectiveTrigger === 'hold' ? 'Hold' : 'Tap'}
+              <p className="font-mono text-[11px] text-[var(--text-muted)] truncate tabular-nums">
+                {slotMeta.short} · {activeProfileName} · {effectiveTrigger === 'hold' ? 'Hold' : 'Tap'}
               </p>
             </div>
           </div>
 
-          {/* Compact Subtle Control Actions */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               disabled={isAlreadyUnassigned}
@@ -373,8 +362,8 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                   ? onClearSlot(slotId)
                   : handleActiveBindingChange({ type: 'none', value: '' })
               }
-              title="Clear this control so triggering it sends nothing"
-              className="flex items-center gap-1 py-1.5 px-2.5 rounded-lg studio-btn text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer whitespace-nowrap"
+              title="Clear this control"
+              className="flex items-center gap-1 py-1 px-2 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
             >
               <XCircle className="w-3 h-3 shrink-0" />
               <span>Clear</span>
@@ -385,7 +374,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
               disabled={isAlreadyFactoryDefault}
               onClick={() => onResetSlotToDefault(slotId)}
               title={`Reset to default: ${factoryDesc.fullLabel || 'Unassigned'}`}
-              className="flex items-center gap-1 py-1.5 px-2.5 rounded-lg studio-btn text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1 py-1 px-2 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer whitespace-nowrap"
             >
               <RotateCcw className="w-3 h-3 shrink-0" />
               <span>Default</span>
@@ -393,12 +382,12 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           </div>
         </div>
 
-        {/* Capability-gated Press vs Hold Trigger Row Selector */}
+        {/* Flat Press vs Hold Trigger Rows */}
         {hasKeyHold && (
           <div
             role="group"
             aria-label="Key trigger type"
-            className="p-1 rounded-xl studio-well space-y-1"
+            className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)] -mx-5 px-5"
           >
             <button
               type="button"
@@ -406,16 +395,16 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 onSelectTrigger?.('tap');
                 setInspectorSection('action');
               }}
-              className={`w-full px-3 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs transition-all cursor-pointer ${
+              className={`w-full -mx-2 px-2 py-2 flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer ${
                 effectiveTrigger === 'tap'
-                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold ring-1 ring-[var(--accent)]/60'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium rounded-md'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
               }`}
             >
               <span className="font-mono text-[11px] whitespace-nowrap shrink-0">
                 Press · {SLOT_LABELS[tapSlotId].short}
               </span>
-              <span className="truncate text-[11px] text-[var(--text-secondary)]">
+              <span className="truncate text-[11px] text-[var(--text-muted)]">
                 {tapDesc}
               </span>
             </button>
@@ -426,31 +415,31 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 onSelectTrigger?.('hold');
                 setInspectorSection('action');
               }}
-              className={`w-full px-3 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs transition-all cursor-pointer ${
+              className={`w-full -mx-2 px-2 py-2 flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer ${
                 effectiveTrigger === 'hold'
-                  ? 'studio-pill-active text-[var(--text-primary)] font-semibold ring-1 ring-[var(--accent)]/60'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium rounded-md'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
               }`}
             >
               <span className="font-mono text-[11px] whitespace-nowrap shrink-0">
-                Hold (Fixed 500ms)
+                Hold (500ms)
               </span>
-              <span className="truncate text-[11px] text-[var(--text-secondary)]">
+              <span className="truncate text-[11px] text-[var(--text-muted)]">
                 {holdDesc}
               </span>
             </button>
           </div>
         )}
 
-        {/* Section Switcher: Action vs Keycap Legend */}
-        <div className="grid grid-cols-2 gap-0.5 p-1 rounded-xl studio-well">
+        {/* Underline Section Tabs: Action vs Keycap Legend */}
+        <div className="flex items-center gap-5 border-t border-[var(--border-subtle)] -mx-5 px-5 pt-1">
           <button
             type="button"
             onClick={() => setInspectorSection('action')}
-            className={`py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
+            className={`py-2 text-xs transition-colors cursor-pointer whitespace-nowrap border-b-2 -mb-px ${
               inspectorSection === 'action'
-                ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                ? 'border-[var(--text-primary)] text-[var(--text-primary)] font-semibold'
+                : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
             {hasKeyHold && effectiveTrigger === 'hold' ? 'Hold Action' : 'Action'}
@@ -458,10 +447,10 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           <button
             type="button"
             onClick={() => setInspectorSection('appearance')}
-            className={`py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
+            className={`py-2 text-xs transition-colors cursor-pointer whitespace-nowrap border-b-2 -mb-px ${
               inspectorSection === 'appearance'
-                ? 'studio-pill-active text-[var(--text-primary)] font-semibold'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                ? 'border-[var(--text-primary)] text-[var(--text-primary)] font-semibold'
+                : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
           >
             Keycap Legend
@@ -617,16 +606,16 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 />
               </div>
 
-              <div className="flex items-center flex-wrap gap-1.5">
+              <div className="flex items-center flex-wrap gap-1 border-b border-[var(--border-subtle)] pb-2">
                 {categories.map(cat => (
                   <button
                     key={cat}
                     type="button"
                     onClick={() => setIconCategory(cat)}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                    className={`px-2 py-1 rounded-md text-[11px] whitespace-nowrap transition-colors cursor-pointer ${
                       iconCategory === cat
-                        ? 'bg-[rgba(var(--accent-rgb),0.16)] text-[var(--accent)] font-semibold'
-                        : 'bg-[var(--bg-input)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                        ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
                     }`}
                   >
                     {cat}
@@ -634,7 +623,7 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                 ))}
               </div>
 
-              <div className="grid grid-cols-6 gap-1.5 p-1.5 rounded-xl bg-[var(--bg-input)]">
+              <div className="grid grid-cols-6 gap-1">
                 {filteredIcons.map(entry => {
                   const IconComp = entry.component;
                   const active = keyConfig.appearance.icon === entry.id;
@@ -644,10 +633,10 @@ export const ButtonInspector: React.FC<ButtonInspectorProps> = ({
                       type="button"
                       title={entry.label}
                       onClick={() => onUpdateAppearance({ icon: entry.id })}
-                      className={`aspect-square rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                      className={`aspect-square rounded-md flex items-center justify-center transition-colors cursor-pointer ${
                         active
-                          ? 'bg-[rgba(var(--accent-rgb),0.18)] ring-1 ring-[var(--accent)] text-[var(--accent)]'
-                          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]'
+                          ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] ring-1 ring-[var(--border-strong)]'
+                          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
                       }`}
                     >
                       <IconComp className="w-4 h-4" />
