@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   DeviceConnectionInfo,
   OledComposerConfig
@@ -40,6 +41,13 @@ interface OledScreenComposerModalProps {
   onToast: (msg: string, variant?: ToastVariant) => void;
 }
 
+const OVERLAY_OPTIONS = [
+  { key: 'showHostBadge', label: 'Host Badge' },
+  { key: 'showBleStatus', label: 'BLE Icon' },
+  { key: 'showWifiStatus', label: 'Wi-Fi Icon' },
+  { key: 'showLayerHint', label: 'Layer Hint' }
+] as const;
+
 export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = ({
   isOpen,
   config,
@@ -59,6 +67,7 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
   const [dither, setDither] = useState<boolean>(true);
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
   const [pushing, setPushing] = useState(false);
+  const [hoverPixel, setHoverPixel] = useState<{ x: number; y: number } | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,8 +120,8 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const bg = draft.invertDisplay ? '#ECEAE4' : '#080A0E';
-    const fg = draft.invertDisplay ? '#080A0E' : '#ECEAE4';
+    const bg = draft.invertDisplay ? '#ECEAE4' : '#0C0F14';
+    const fg = draft.invertDisplay ? '#0C0F14' : '#ECEAE4';
 
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, OLED_WIDTH, OLED_HEIGHT);
@@ -129,18 +138,31 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
 
   if (!isOpen) return null;
 
-  const paintAtPointer = (clientX: number, clientY: number) => {
+  const getPixelCoords = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-    const x = Math.max(0, Math.min(OLED_WIDTH - 1, Math.floor(((clientX - rect.left) / rect.width) * OLED_WIDTH)));
-    const y = Math.max(0, Math.min(OLED_HEIGHT - 1, Math.floor(((clientY - rect.top) / rect.height) * OLED_HEIGHT)));
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const x = Math.max(
+      0,
+      Math.min(OLED_WIDTH - 1, Math.floor(((clientX - rect.left) / rect.width) * OLED_WIDTH))
+    );
+    const y = Math.max(
+      0,
+      Math.min(OLED_HEIGHT - 1, Math.floor(((clientY - rect.top) / rect.height) * OLED_HEIGHT))
+    );
+    return { x, y };
+  };
+
+  const paintAtPointer = (clientX: number, clientY: number) => {
+    const coords = getPixelCoords(clientX, clientY);
+    if (!coords) return;
+    setHoverPixel(coords);
     setLoadedImage(null);
     setDraft(prev => ({
       ...prev,
       enabled: true,
-      bitmapBytesHex: setSsd1306Pixel(prev.bitmapBytesHex, x, y, drawMode === 'draw')
+      bitmapBytesHex: setSsd1306Pixel(prev.bitmapBytesHex, coords.x, coords.y, drawMode === 'draw')
     }));
   };
 
@@ -220,31 +242,32 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
     onClose();
   };
 
-  return (
+  const modalContent = (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="oled-composer-title"
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080A0D]/92 backdrop-blur-xl animate-panel-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080A0D]/88 backdrop-blur-xl animate-in fade-in duration-150"
     >
       <div
         onClick={e => e.stopPropagation()}
-        className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl"
+        className="w-full max-w-2xl max-h-[90dvh] flex flex-col rounded-2xl studio-popover overflow-hidden animate-popover-in"
       >
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-[var(--bg-panel)]/95 backdrop-blur-md px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
+        {/* Minimal Hairline Header */}
+        <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)] flex items-center justify-center shrink-0">
-              <Monitor className="w-4 h-4 text-[var(--accent)]" />
-            </div>
-            <div className="min-w-0">
-              <h2 id="oled-composer-title" className="text-sm font-bold text-[var(--text-primary)] truncate">
-                128×64 SSD1306 OLED Screen Composer
+            <Monitor className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+            <div className="min-w-0 flex items-baseline gap-2.5 flex-wrap">
+              <h2
+                id="oled-composer-title"
+                className="text-sm font-semibold text-[var(--text-primary)] truncate"
+              >
+                128×64 OLED Composer
               </h2>
-              <p className="text-xs text-[var(--text-muted)] truncate">
-                Design custom monochrome pixel art, configure status overlays, or export <span className="font-mono">bitmaps.h</span>
-              </p>
+              <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                SSD1306 · 1-bit · bitmaps.h
+              </span>
             </div>
           </div>
 
@@ -252,41 +275,48 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
             type="button"
             onClick={onClose}
             aria-label="Close OLED Screen Composer"
-            className="w-8 h-8 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer shrink-0"
+            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
-          {/* Interactive Pixel Matrix + Tool Palette */}
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {/* Toolbar + Pixel Matrix */}
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setDrawMode('draw')}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
-                    drawMode === 'draw'
-                      ? 'bg-[var(--accent)] text-[var(--accent-contrast)] border-[var(--accent)]'
-                      : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
-                  }`}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div
+                  role="group"
+                  aria-label="Drawing tool"
+                  className="inline-flex items-center p-0.5 rounded-lg bg-[var(--bg-input)]"
                 >
-                  <PenLine className="w-3.5 h-3.5" />
-                  <span>Draw</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDrawMode('erase')}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
-                    drawMode === 'erase'
-                      ? 'bg-[var(--accent)] text-[var(--accent-contrast)] border-[var(--accent)]'
-                      : 'bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
-                  }`}
-                >
-                  <Eraser className="w-3.5 h-3.5" />
-                  <span>Erase</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setDrawMode('draw')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                      drawMode === 'draw'
+                        ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    <PenLine className="w-3.5 h-3.5" />
+                    <span>Draw</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDrawMode('erase')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                      drawMode === 'erase'
+                        ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    <Eraser className="w-3.5 h-3.5" />
+                    <span>Erase</span>
+                  </button>
+                </div>
 
                 <input
                   ref={fileInputRef}
@@ -304,17 +334,17 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] cursor-pointer"
+                  className="studio-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-[var(--text-primary)] cursor-pointer"
                 >
-                  <ImagePlus className="w-3.5 h-3.5 text-[var(--accent)]" />
-                  <span>Import Image</span>
+                  <ImagePlus className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                  <span>Import</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleDrawSampleLogo}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] cursor-pointer"
+                  className="studio-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-[var(--text-primary)] cursor-pointer"
                 >
-                  <LayoutTemplate className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <LayoutTemplate className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                   <span>Sample Badge</span>
                 </button>
               </div>
@@ -329,7 +359,7 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
                       bitmapBytesHex: invertSsd1306Hex(prev.bitmapBytesHex)
                     }));
                   }}
-                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] cursor-pointer"
+                  className="px-2 py-1.5 rounded-lg text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
                 >
                   Invert Pixels
                 </button>
@@ -339,7 +369,7 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
                     setLoadedImage(null);
                     setDraft(prev => ({ ...prev, bitmapBytesHex: blankSsd1306Hex() }));
                   }}
-                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] cursor-pointer"
+                  className="px-2 py-1.5 rounded-lg text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
                 >
                   Clear
                 </button>
@@ -347,9 +377,9 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
             </div>
 
             {loadedImage && (
-              <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap text-xs">
+              <div className="py-2.5 border-y border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap text-xs">
                 <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-                  <span className="text-[var(--text-secondary)] whitespace-nowrap font-mono tabular-nums">
+                  <span className="text-[var(--text-secondary)] whitespace-nowrap font-mono tabular-nums text-[11px]">
                     Threshold {threshold}
                   </span>
                   <input
@@ -361,7 +391,7 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
                     className="flex-1 accent-[var(--accent)] cursor-pointer"
                   />
                 </div>
-                <label className="flex items-center gap-2 text-[var(--text-primary)] cursor-pointer select-none">
+                <label className="flex items-center gap-2 text-[var(--text-primary)] text-[11px] cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={dither}
@@ -373,9 +403,9 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
               </div>
             )}
 
-            {/* Live 128x64 Pixel Canvas */}
-            <div className="p-4 rounded-2xl bg-[#111318] border border-[var(--border-strong)] flex flex-col items-center gap-2">
-              <div className="relative w-full max-w-[512px] aspect-[2/1] rounded-lg overflow-hidden border border-[#ECEAE4]/25">
+            {/* Live 128x64 Pixel Matrix Bezel with High-Legibility Grid */}
+            <div className="p-3.5 rounded-xl bg-[#090B0F] border border-[var(--border-subtle)] flex flex-col items-center gap-2">
+              <div className="relative w-full aspect-[2/1] rounded-md overflow-hidden border border-[#ECEAE4]/20">
                 <canvas
                   ref={canvasRef}
                   width={OLED_WIDTH}
@@ -386,7 +416,12 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
                     paintAtPointer(e.clientX, e.clientY);
                   }}
                   onPointerMove={e => {
+                    const coords = getPixelCoords(e.clientX, e.clientY);
+                    if (coords) setHoverPixel(coords);
                     if (drawingRef.current) paintAtPointer(e.clientX, e.clientY);
+                  }}
+                  onPointerLeave={() => {
+                    setHoverPixel(null);
                   }}
                   onPointerUp={() => {
                     drawingRef.current = false;
@@ -396,91 +431,170 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
                   }}
                   className="block w-full h-full cursor-crosshair touch-none [image-rendering:pixelated]"
                 />
+                {/* Crisp 1px pixel matrix + 8px SSD1306 page grid */}
                 <div
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-0"
                   style={{
                     backgroundImage: draft.invertDisplay
-                      ? 'linear-gradient(to right, rgba(8,10,14,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(8,10,14,0.06) 1px, transparent 1px), linear-gradient(to right, rgba(8,10,14,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(8,10,14,0.12) 1px, transparent 1px)'
-                      : 'linear-gradient(to right, rgba(236,234,228,0.045) 1px, transparent 1px), linear-gradient(to bottom, rgba(236,234,228,0.045) 1px, transparent 1px), linear-gradient(to right, rgba(236,234,228,0.095) 1px, transparent 1px), linear-gradient(to bottom, rgba(236,234,228,0.095) 1px, transparent 1px)',
+                      ? 'linear-gradient(to right, rgba(12,15,20,0.09) 1px, transparent 1px), linear-gradient(to bottom, rgba(12,15,20,0.09) 1px, transparent 1px), linear-gradient(to right, rgba(12,15,20,0.19) 1px, transparent 1px), linear-gradient(to bottom, rgba(12,15,20,0.19) 1px, transparent 1px)'
+                      : 'linear-gradient(to right, rgba(236,234,228,0.095) 1px, transparent 1px), linear-gradient(to bottom, rgba(236,234,228,0.095) 1px, transparent 1px), linear-gradient(to right, rgba(236,234,228,0.20) 1px, transparent 1px), linear-gradient(to bottom, rgba(236,234,228,0.20) 1px, transparent 1px)',
                     backgroundSize:
                       'calc(100% / 128) calc(100% / 64), calc(100% / 128) calc(100% / 64), calc(100% / 16) calc(100% / 8), calc(100% / 16) calc(100% / 8)'
                   }}
                 />
               </div>
-              <div className="flex items-center justify-between w-full max-w-[512px] font-mono text-[10px] text-[#A3A6AD] tabular-nums">
-                <span>128 × 64 px · 1-bit SSD1306 Page Buffer (1,024 B)</span>
-                <span>Click or drag to {drawMode}</span>
+              <div className="flex items-center justify-between w-full font-mono text-[10px] text-[var(--text-muted)] tabular-nums">
+                <span>128 × 64 px · 8×8 page grid · 1,024 B</span>
+                <span>
+                  {hoverPixel
+                    ? `X ${String(hoverPixel.x).padStart(3, '0')} · Y ${String(hoverPixel.y).padStart(2, '0')}`
+                    : `Click or drag to ${drawMode}`}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Overlay & Preview Settings */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2">
-              <label
-                htmlFor="oled-custom-title"
-                className="block text-xs font-semibold text-[var(--text-primary)]"
+          {/* Unified Flat Hairline Settings Section */}
+          <div className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
+            {/* Row 1: Header Title + Invert OLED */}
+            <div className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <label
+                  htmlFor="oled-custom-title"
+                  className="text-xs font-medium text-[var(--text-secondary)] whitespace-nowrap shrink-0"
+                >
+                  Header Title
+                </label>
+                <input
+                  id="oled-custom-title"
+                  type="text"
+                  maxLength={24}
+                  value={draft.customName}
+                  onChange={e => setDraft(prev => ({ ...prev, customName: e.target.value }))}
+                  placeholder={`Default (${activeProfileName})`}
+                  className="w-full max-w-[230px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--border-strong)]"
+                />
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(draft.invertDisplay)}
+                onClick={() =>
+                  setDraft(prev => ({ ...prev, invertDisplay: !prev.invertDisplay }))
+                }
+                className="flex items-center gap-2.5 text-xs text-[var(--text-primary)] cursor-pointer select-none shrink-0"
               >
-                Custom OLED Header Title
-              </label>
-              <input
-                id="oled-custom-title"
-                type="text"
-                maxLength={24}
-                value={draft.customName}
-                onChange={e => setDraft(prev => ({ ...prev, customName: e.target.value }))}
-                placeholder={`Defaults to "${activeProfileName}"`}
-                className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-              />
+                <span className="text-[var(--text-secondary)]">Invert OLED</span>
+                <span
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    draft.invertDisplay ? 'bg-[var(--text-primary)]' : 'bg-[var(--bg-input)] border border-[var(--border-subtle)]'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full transition-transform ${
+                      draft.invertDisplay
+                        ? 'translate-x-5 bg-[#0C0F14]'
+                        : 'translate-x-0.5 bg-[var(--text-muted)]'
+                    }`}
+                  />
+                </span>
+              </button>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] grid grid-cols-2 gap-2 text-xs">
-              {(
-                [
-                  { key: 'enabled', label: 'Enable Overlay', requiresOverlay: false },
-                  { key: 'invertDisplay', label: 'Invert OLED', requiresOverlay: false },
-                  { key: 'showHostBadge', label: 'Host Badge', requiresOverlay: true },
-                  { key: 'showBleStatus', label: 'BLE Icon', requiresOverlay: true },
-                  { key: 'showWifiStatus', label: 'Wi-Fi Icon', requiresOverlay: true },
-                  { key: 'showLayerHint', label: 'Layer Hint', requiresOverlay: true }
-                ] as const
-              ).map(opt => {
-                const isSubDimmed = opt.requiresOverlay && !draft.enabled;
-                return (
-                  <label
-                    key={opt.key}
-                    className={`flex items-center gap-2 select-none transition-opacity ${
-                      isSubDimmed
-                        ? 'opacity-40 text-[var(--text-muted)] cursor-not-allowed'
-                        : 'text-[var(--text-primary)] cursor-pointer'
+            {/* Row 2: Status Overlay Master Toggle + Monochrome Sub-Options */}
+            <div className="pt-3.5 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-[var(--text-primary)]">
+                    Status Overlay
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)]">
+                    {draft.enabled
+                      ? 'Selected indicators render over the bitmap on hardware'
+                      : 'Enable overlay to configure hardware status indicators'}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(draft.enabled)}
+                  aria-label="Enable Overlay"
+                  onClick={() => setDraft(prev => ({ ...prev, enabled: !prev.enabled }))}
+                  className="flex items-center gap-2 text-xs cursor-pointer select-none shrink-0"
+                >
+                  <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                    {draft.enabled ? 'On' : 'Off'}
+                  </span>
+                  <span
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      draft.enabled ? 'bg-[var(--accent)]' : 'bg-[var(--bg-input)] border border-[var(--border-subtle)]'
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      disabled={isSubDimmed}
-                      checked={Boolean(draft[opt.key])}
-                      onChange={e =>
-                        setDraft(prev => ({ ...prev, [opt.key]: e.target.checked }))
-                      }
-                      className="accent-[var(--accent)] disabled:cursor-not-allowed"
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full transition-transform ${
+                        draft.enabled
+                          ? 'translate-x-5 bg-[#0C0F14]'
+                          : 'translate-x-0.5 bg-[var(--text-muted)]'
+                      }`}
                     />
-                    <span>{opt.label}</span>
-                  </label>
-                );
-              })}
+                  </span>
+                </button>
+              </div>
+
+              <div
+                aria-disabled={!draft.enabled}
+                className={`grid grid-cols-2 sm:grid-cols-4 gap-2 transition-opacity ${
+                  draft.enabled ? 'opacity-100' : 'opacity-35 pointer-events-none select-none'
+                }`}
+              >
+                {OVERLAY_OPTIONS.map(opt => {
+                  const isChecked = Boolean(draft[opt.key]);
+                  const showActive = draft.enabled && isChecked;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      disabled={!draft.enabled}
+                      role="checkbox"
+                      aria-checked={isChecked}
+                      onClick={() =>
+                        setDraft(prev => ({ ...prev, [opt.key]: !prev[opt.key] }))
+                      }
+                      className={`px-2.5 py-2 rounded-lg flex items-center gap-2 text-xs transition-colors cursor-pointer disabled:cursor-not-allowed ${
+                        showActive
+                          ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                          : 'bg-[var(--bg-input)]/50 text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                      }`}
+                    >
+                      <span
+                        className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center shrink-0 transition-colors ${
+                          showActive
+                            ? 'bg-[var(--text-primary)] border-[var(--text-primary)] text-[#0C0F14]'
+                            : 'border-[var(--border-strong)] bg-transparent text-transparent'
+                        }`}
+                      >
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                      </span>
+                      <span className="truncate">{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="sticky bottom-0 z-10 bg-[var(--bg-panel)]/95 backdrop-blur-md px-5 py-3.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap">
+        {/* Clean Hairline Footer */}
+        <div className="px-5 py-3.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap shrink-0">
           <button
             type="button"
             onClick={handleDownloadBitmapsHeader}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
+            className="studio-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] cursor-pointer whitespace-nowrap"
           >
-            <Download className="w-3.5 h-3.5 text-[var(--accent)]" />
+            <Download className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
             <span>Export bitmaps.h</span>
           </button>
 
@@ -490,12 +604,12 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
                 type="button"
                 disabled={pushing}
                 onClick={handlePushToPad}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap"
+                className="studio-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] disabled:opacity-45 cursor-pointer whitespace-nowrap"
               >
                 {pushing ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Send className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <Send className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                 )}
                 <span>Push to BertoPad</span>
               </button>
@@ -503,7 +617,7 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
             <button
               type="button"
               onClick={handleSaveAndClose}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap"
+              className="studio-cta flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
             >
               <Check className="w-3.5 h-3.5" />
               <span>Save &amp; Preview</span>
@@ -513,4 +627,8 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };

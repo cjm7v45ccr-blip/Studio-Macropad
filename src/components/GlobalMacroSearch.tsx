@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ActionBinding,
   ControlId,
@@ -889,387 +890,391 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         </span>
       </button>
 
-      {/* Flagship Global Command Palette Modal */}
-      {isOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="global-macro-search-title"
-          className="fixed inset-0 z-50 flex items-start justify-center pt-10 sm:pt-16 px-3 sm:px-4 pb-4 bg-black/65 backdrop-blur-md animate-in fade-in duration-150"
-          onClick={closeCommandPalette}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            className="w-full max-w-2xl max-h-[calc(100dvh-5rem)] rounded-2xl studio-popover flex flex-col overflow-hidden animate-popover-in"
-          >
-            {/* Dedicated Command Palette Search Input Header */}
-            <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)]/70 shrink-0">
-              <Search className="w-4 h-4 text-[var(--accent)] shrink-0" />
-              <h2 id="global-macro-search-title" className="sr-only">
-                Global Macro &amp; Action Command Palette
-              </h2>
-              <input
-                ref={modalInputRef}
-                type="text"
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                onKeyDown={handleModalInputKeyDown}
-                role="combobox"
-                aria-expanded={isOpen}
-                aria-controls="global-macro-search-listbox"
-                aria-autocomplete="list"
-                aria-label="Search saved macros, starter recipes, shortcuts, and hardware controls"
-                placeholder="Search macros, recipes, shortcuts, pad keys, or type a name to create…"
-                className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm font-medium text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none select-text"
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery('');
-                    modalInputRef.current?.focus();
-                  }}
-                  aria-label="Clear search query"
-                  className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer shrink-0"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={handleCreateNewMacro}
-                title="Create a new multi-step macro in Macro Studio"
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[11px] font-semibold text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+      {/* Global Command Palette Modal */}
+      {isOpen &&
+        (() => {
+          const modalNode = (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="global-macro-search-title"
+              className="fixed inset-0 z-50 flex items-start justify-center pt-10 sm:pt-16 px-3 sm:px-4 pb-4 bg-[#080A0D]/75 backdrop-blur-md animate-in fade-in duration-150"
+              onClick={closeCommandPalette}
+            >
+              <div
+                onClick={e => e.stopPropagation()}
+                className="w-full max-w-2xl max-h-[calc(100dvh-5rem)] rounded-2xl studio-popover flex flex-col overflow-hidden animate-popover-in"
               >
-                <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
-                <span>New Macro</span>
-              </button>
+                {/* Minimal Search Input Header */}
+                <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-[var(--border-subtle)] shrink-0">
+                  <Search className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+                  <h2 id="global-macro-search-title" className="sr-only">
+                    Global Macro &amp; Action Command Palette
+                  </h2>
+                  <input
+                    ref={modalInputRef}
+                    type="text"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    onKeyDown={handleModalInputKeyDown}
+                    role="combobox"
+                    aria-expanded={isOpen}
+                    aria-controls="global-macro-search-listbox"
+                    aria-autocomplete="list"
+                    aria-label="Search saved macros, starter recipes, shortcuts, and hardware controls"
+                    placeholder="Search macros, recipes, shortcuts, or pad controls…"
+                    className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm font-medium text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none select-text"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuery('');
+                        modalInputRef.current?.focus();
+                      }}
+                      aria-label="Clear search query"
+                      className="p-1 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
 
-              <button
-                type="button"
-                onClick={closeCommandPalette}
-                aria-label="Close command palette"
-                title="Close (Esc)"
-                className="px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] font-mono text-[10px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0"
-              >
-                ESC
-              </button>
-            </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateNewMacro}
+                    title="Create a new multi-step macro in Macro Studio"
+                    className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                    <span>New Macro</span>
+                  </button>
 
-            {/* Filter Tabs + Quick Target Slot Assignment Bar */}
-            <div className="px-4 py-2.5 border-b border-[var(--border-subtle)] bg-[var(--bg-panel)] space-y-2.5 shrink-0">
-              <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
-                <div
-                  role="tablist"
-                  aria-label="Filter command palette categories"
-                  className="flex items-center gap-0.5 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]"
-                >
-                  {filterTabs.map(tab => {
-                    const selected = activeTab === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={selected}
-                        onClick={() => {
-                          setActiveTab(tab.id);
-                          modalInputRef.current?.focus();
-                        }}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                          selected
-                            ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
-                            : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                        }`}
-                      >
-                        <span>{tab.label}</span>
-                        <span className="font-mono text-[10px] opacity-75 tabular-nums">
-                          {tab.count}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  <button
+                    type="button"
+                    onClick={closeCommandPalette}
+                    aria-label="Close command palette"
+                    title="Close (Esc)"
+                    className="px-1.5 py-0.5 rounded-md studio-kbd font-mono text-[10px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0"
+                  >
+                    ESC
+                  </button>
                 </div>
 
-                <span className="hidden md:inline text-[10px] font-mono text-[var(--text-muted)] whitespace-nowrap shrink-0">
-                  Press <strong className="text-[var(--text-secondary)]">Tab</strong> to cycle tabs
-                </span>
-              </div>
-
-              {/* Target Slot Selector */}
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
-                  <Layers className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                  <span className="font-medium">Quick-assign target:</span>
-                </div>
-
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <div className="inline-flex items-center p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                    {profiles.filter(p => p.id !== 'TV' || isTvEnabled).map(prof => {
-                      const active = assignProfile === prof.id;
-                      const ProfIcon = isBleHostProfile(prof.id) ? Bluetooth : Tv;
+                {/* Flat Underline Filter Tabs */}
+                <div className="px-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-2 overflow-x-auto no-scrollbar shrink-0">
+                  <div
+                    role="tablist"
+                    aria-label="Filter command palette categories"
+                    className="flex items-center gap-4"
+                  >
+                    {filterTabs.map(tab => {
+                      const selected = activeTab === tab.id;
                       return (
                         <button
-                          key={prof.id}
+                          key={tab.id}
                           type="button"
+                          role="tab"
+                          aria-selected={selected}
                           onClick={() => {
-                            setAssignProfile(prof.id);
+                            setActiveTab(tab.id);
                             modalInputRef.current?.focus();
                           }}
-                          title={prof.name}
-                          className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                            active
-                              ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold shadow-2xs'
-                              : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                          className={`flex items-center gap-1.5 py-2.5 text-[11px] font-medium border-b-2 -mb-px transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                            selected
+                              ? 'border-[var(--text-primary)] text-[var(--text-primary)]'
+                              : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                           }`}
                         >
-                          <ProfIcon className="w-3 h-3" />
-                          <span className="max-w-[5.5rem] truncate">{prof.name}</span>
+                          <span>{tab.label}</span>
+                          <span className="font-mono text-[10px] opacity-65 tabular-nums">
+                            {tab.count}
+                          </span>
                         </button>
                       );
                     })}
                   </div>
 
-                  <select
-                    aria-label="Target control slot for macro assignment"
-                    value={assignSlot}
-                    onChange={e => {
-                      setAssignSlot(e.target.value as HardwareSlotId);
-                      modalInputRef.current?.focus();
-                    }}
-                    className="px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
-                  >
-                    {visibleSlots.map(slot => (
-                      <option key={slot} value={slot}>
-                        {SLOT_LABELS[slot].short}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="hidden md:inline text-[10px] font-mono text-[var(--text-muted)] whitespace-nowrap shrink-0">
+                    Tab to cycle
+                  </span>
+                </div>
 
-                  <span className="text-[var(--text-muted)] text-[11px] hidden sm:inline truncate max-w-[160px]">
-                    ({currentTargetSlotSummary})
+                {/* Slim Borderless Target Slot Strip */}
+                <div className="px-4 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-canvas)]/45 flex flex-wrap items-center justify-between gap-2 text-[11px] shrink-0">
+                  <div className="flex items-center gap-1.5 text-[var(--text-muted)]">
+                    <Layers className="w-3.5 h-3.5 shrink-0" />
+                    <span>Assign to</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="inline-flex items-center gap-0.5">
+                      {profiles
+                        .filter(p => p.id !== 'TV' || isTvEnabled)
+                        .map(prof => {
+                          const active = assignProfile === prof.id;
+                          const ProfIcon = isBleHostProfile(prof.id) ? Bluetooth : Tv;
+                          return (
+                            <button
+                              key={prof.id}
+                              type="button"
+                              onClick={() => {
+                                setAssignProfile(prof.id);
+                                modalInputRef.current?.focus();
+                              }}
+                              title={prof.name}
+                              className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                                active
+                                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                              }`}
+                            >
+                              <ProfIcon className="w-3 h-3" />
+                              <span className="max-w-[5.5rem] truncate">{prof.name}</span>
+                            </button>
+                          );
+                        })}
+                    </div>
+
+                    <span aria-hidden="true" className="text-[var(--border-strong)]">
+                      /
+                    </span>
+
+                    <select
+                      aria-label="Target control slot for macro assignment"
+                      value={assignSlot}
+                      onChange={e => {
+                        setAssignSlot(e.target.value as HardwareSlotId);
+                        modalInputRef.current?.focus();
+                      }}
+                      className="px-1.5 py-0.5 rounded-md bg-transparent hover:bg-[var(--bg-hover)] text-[11px] font-mono font-medium text-[var(--text-primary)] focus:outline-none cursor-pointer"
+                    >
+                      {visibleSlots.map(slot => (
+                        <option
+                          key={slot}
+                          value={slot}
+                          className="bg-[var(--bg-panel)] text-[var(--text-primary)]"
+                        >
+                          {SLOT_LABELS[slot].short}
+                        </option>
+                      ))}
+                    </select>
+
+                    <span className="text-[var(--text-muted)] text-[11px] hidden sm:inline truncate max-w-[150px]">
+                      · {currentTargetSlotSummary}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Spacious Flat Search Results List */}
+                <div
+                  id="global-macro-search-listbox"
+                  role="listbox"
+                  aria-label="Macro and action search results"
+                  className="flex-1 overflow-y-auto divide-y divide-[var(--border-subtle)]/45"
+                >
+                  {filteredEntries.length === 0 ? (
+                    <div className="px-6 py-10 text-center space-y-2.5">
+                      <div className="text-xs font-semibold text-[var(--text-primary)]">
+                        No actions or macros match “{query}”
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto leading-relaxed">
+                        Try a shortcut (Copy, Spotlight, F13), streaming app, pad slot, or build a custom sequence.
+                      </p>
+                      <div className="pt-2 flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={handleCreateNewMacro}
+                          className="studio-cta inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>
+                            {query.trim()
+                              ? `Build “${query.trim().slice(0, 28)}” in Macro Studio`
+                              : 'Create New Sequence'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    filteredEntries.map((entry, idx) => {
+                      const isHighlighted = idx === highlightedIndex;
+                      const canCustomize =
+                        entry.kind === 'custom' ||
+                        entry.kind === 'catalog' ||
+                        entry.kind === 'sequence_template' ||
+                        (entry.kind === 'assigned' && Boolean(entry.action));
+
+                      return (
+                        <div
+                          key={entry.id}
+                          ref={el => {
+                            itemRefs.current[idx] = el;
+                          }}
+                          role="option"
+                          aria-selected={isHighlighted}
+                          title={entry.action ? `${entry.title} — ${entry.action}` : entry.title}
+                          onMouseEnter={() => setHighlightedIndex(idx)}
+                          onClick={() => handlePrimaryAction(entry)}
+                          className={`group px-4 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                            isHighlighted ? 'bg-[var(--bg-selected)]' : 'hover:bg-[var(--bg-hover)]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <KeycapIcon
+                              icon={entry.icon}
+                              className={`w-4 h-4 shrink-0 ${
+                                isHighlighted
+                                  ? 'text-[var(--accent)]'
+                                  : 'text-[var(--text-muted)]'
+                              }`}
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-xs font-medium text-[var(--text-primary)] truncate">
+                                  {entry.title}
+                                </span>
+                                {entry.boundSlotsSummary && (
+                                  <span className="font-mono text-[10px] text-[var(--accent)] shrink-0">
+                                    {entry.boundSlotsSummary}
+                                  </span>
+                                )}
+                                {showAdvancedIds && entry.action && (
+                                  <ParsedActionBadge
+                                    action={entry.action}
+                                    repeatConfig={entry.binding?.repeatConfig}
+                                    showRawId
+                                    maxSteps={2}
+                                    className="shrink-0"
+                                  />
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] mt-0.5 tabular-nums min-w-0 overflow-hidden">
+                                <span className="truncate">
+                                  {entry.metaParts.join(' · ')}
+                                  {entry.stepPreviewTokens && entry.stepPreviewTokens.length > 0
+                                    ? ` · ${entry.stepPreviewTokens.join(' → ')}${
+                                        entry.totalStepCount &&
+                                        entry.totalStepCount > entry.stepPreviewTokens.length
+                                          ? ` +${entry.totalStepCount - entry.stepPreviewTokens.length}`
+                                          : ''
+                                      }`
+                                    : ''}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Ultra-Compact Unboxed Hover/Active Row Controls */}
+                          <div
+                            className={`items-center gap-1 shrink-0 ${
+                              isHighlighted
+                                ? 'flex'
+                                : 'hidden group-hover:flex group-focus-within:flex'
+                            }`}
+                            onClick={e => e.stopPropagation()}
+                          >
+                            {entry.binding && entry.action && (
+                              <button
+                                type="button"
+                                onClick={() => onTestBinding(entry.binding!)}
+                                title={`Preview & test "${entry.title}" (Opt+Enter)`}
+                                aria-label={`Test ${entry.title}`}
+                                className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+                              >
+                                <Play className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {canCustomize && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenInBuilder(entry)}
+                                title={
+                                  entry.customMacroId
+                                    ? 'Edit in Macro Studio (Shift+Enter)'
+                                    : 'Customize in Macro Studio (Shift+Enter)'
+                                }
+                                aria-label={`Edit ${entry.title} in Macro Studio`}
+                                className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+                              >
+                                <Sliders className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handlePrimaryAction(entry)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
+                            >
+                              {entry.kind === 'assigned' ? (
+                                <>
+                                  <span>View</span>
+                                  <ArrowUpRight className="w-3 h-3" />
+                                </>
+                              ) : entry.kind === 'preset' ? (
+                                <>
+                                  <span>Apply</span>
+                                  <CornerDownLeft className="w-3 h-3" />
+                                </>
+                              ) : (
+                                <>
+                                  <span>Assign</span>
+                                  <CornerDownLeft className="w-3 h-3" />
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Minimal Keyboard Navigation Footer */}
+                <div className="px-4 py-2.5 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)] shrink-0">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span>
+                      <strong className="font-mono text-[var(--text-secondary)]">↑↓</strong>{' '}
+                      Navigate
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      <strong className="font-mono text-[var(--text-secondary)]">↵</strong>{' '}
+                      Assign / Jump
+                    </span>
+                    <span className="hidden sm:inline" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="hidden sm:inline">
+                      <strong className="font-mono text-[var(--text-secondary)]">⇧↵</strong>{' '}
+                      Edit
+                    </span>
+                    <span className="hidden md:inline" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="hidden md:inline">
+                      <strong className="font-mono text-[var(--text-secondary)]">⌥↵</strong>{' '}
+                      Test
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      <strong className="font-mono text-[var(--text-secondary)]">Esc</strong>{' '}
+                      Close
+                    </span>
+                  </div>
+                  <span className="font-mono text-[10px] tabular-nums">
+                    {tabCounts.all} {tabCounts.all === 1 ? 'item' : 'items'}
                   </span>
                 </div>
               </div>
             </div>
-
-            {/* Search Results List */}
-            <div
-              id="global-macro-search-listbox"
-              role="listbox"
-              aria-label="Macro and action search results"
-              className="flex-1 overflow-y-auto divide-y divide-[var(--border-subtle)]/60"
-            >
-              {filteredEntries.length === 0 ? (
-                <div className="px-6 py-10 text-center space-y-2.5">
-                  <div className="text-xs font-semibold text-[var(--text-primary)]">
-                    No actions or macros match “{query}”
-                  </div>
-                  <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto leading-relaxed">
-                    Search by shortcut (Copy, Close Tab, Spotlight, F13), streaming app (Netflix, YouTube), pad slot (Key 5, Knob), or build a custom multi-step sequence.
-                  </p>
-                  <div className="pt-2 flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleCreateNewMacro}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer whitespace-nowrap"
-                    >
-                      <Zap className="w-3.5 h-3.5" />
-                      <span>
-                        {query.trim()
-                          ? `Build “${query.trim().slice(0, 28)}” in Macro Studio`
-                          : 'Create New Sequence in Macro Studio'}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                filteredEntries.map((entry, idx) => {
-                  const isHighlighted = idx === highlightedIndex;
-                  const canCustomize =
-                    entry.kind === 'custom' ||
-                    entry.kind === 'catalog' ||
-                    entry.kind === 'sequence_template' ||
-                    (entry.kind === 'assigned' && Boolean(entry.action));
-
-                  return (
-                    <div
-                      key={entry.id}
-                      ref={el => {
-                        itemRefs.current[idx] = el;
-                      }}
-                      role="option"
-                      aria-selected={isHighlighted}
-                      title={entry.action ? `${entry.title} — ${entry.action}` : entry.title}
-                      onMouseEnter={() => setHighlightedIndex(idx)}
-                      onClick={() => handlePrimaryAction(entry)}
-                      className={`group px-4 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
-                        isHighlighted ? 'bg-[var(--bg-selected)]' : 'hover:bg-[var(--bg-hover)]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-8 h-8 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
-                          <KeycapIcon
-                            icon={entry.icon}
-                            className={`w-4 h-4 ${
-                              isHighlighted
-                                ? 'text-[var(--accent)]'
-                                : 'text-[var(--text-secondary)]'
-                            }`}
-                          />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                              {entry.title}
-                            </span>
-                            {entry.boundSlotsSummary && (
-                              <span className="font-mono text-[10px] font-medium text-[var(--accent)] shrink-0">
-                                · {entry.boundSlotsSummary}
-                              </span>
-                            )}
-                            {showAdvancedIds && entry.action && (
-                              <ParsedActionBadge
-                                action={entry.action}
-                                repeatConfig={entry.binding?.repeatConfig}
-                                showRawId
-                                maxSteps={2}
-                                className="shrink-0"
-                              />
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] truncate mt-0.5 tabular-nums">
-                            {entry.metaParts.map((part, pIdx) => (
-                              <React.Fragment key={pIdx}>
-                                {pIdx > 0 && <span aria-hidden="true">·</span>}
-                                <span className="truncate">{part}</span>
-                              </React.Fragment>
-                            ))}
-                            {entry.stepPreviewTokens && entry.stepPreviewTokens.length > 0 && (
-                              <>
-                                <span aria-hidden="true">·</span>
-                                <span className="font-mono text-[10px] text-[var(--text-secondary)] truncate">
-                                  {entry.stepPreviewTokens.join(' → ')}
-                                  {entry.totalStepCount &&
-                                  entry.totalStepCount > entry.stepPreviewTokens.length
-                                    ? ` +${entry.totalStepCount - entry.stepPreviewTokens.length}`
-                                    : ''}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div
-                        className={`items-center gap-1.5 shrink-0 ${
-                          isHighlighted
-                            ? 'flex'
-                            : 'hidden group-hover:flex group-focus-within:flex'
-                        }`}
-                        onClick={e => e.stopPropagation()}
-                      >
-                        {entry.binding && entry.action && (
-                          <button
-                            type="button"
-                            onClick={() => onTestBinding(entry.binding!)}
-                            title={`Preview & test "${entry.title}" (Alt + Enter)`}
-                            className="p-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                          >
-                            <Play className="w-3 h-3" />
-                          </button>
-                        )}
-
-                        {canCustomize && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenInBuilder(entry)}
-                            title="Open in Macro Studio (Shift + Enter)"
-                            className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
-                          >
-                            <Sliders className="w-3 h-3" />
-                            <span>{entry.customMacroId ? 'Edit' : 'Customize'}</span>
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => handlePrimaryAction(entry)}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                            isHighlighted
-                              ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-xs'
-                              : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)]'
-                          }`}
-                        >
-                          {entry.kind === 'assigned' ? (
-                            <>
-                              <span>View Key</span>
-                              <ArrowUpRight className="w-3 h-3" />
-                            </>
-                          ) : entry.kind === 'preset' ? (
-                            <>
-                              <span>
-                                Apply{' '}
-                                {entry.presetMode
-                                  ? profiles.find(p => p.id === entry.presetMode)?.name ||
-                                    (entry.presetMode === 'TV' ? 'TV' : 'Device')
-                                  : ''}
-                              </span>
-                              <CornerDownLeft className="w-3 h-3" />
-                            </>
-                          ) : (
-                            <span>Assign · {SLOT_LABELS[assignSlot].short}</span>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Clean Keyboard Navigation Footer */}
-            <div className="px-4 py-2.5 border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)] shrink-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span>
-                  <strong className="font-mono text-[var(--text-secondary)]">↑↓</strong>{' '}
-                  Navigate
-                </span>
-                <span aria-hidden="true">·</span>
-                <span>
-                  <strong className="font-mono text-[var(--text-secondary)]">Enter</strong>{' '}
-                  Assign / Jump
-                </span>
-                <span className="hidden sm:inline" aria-hidden="true">
-                  ·
-                </span>
-                <span className="hidden sm:inline">
-                  <strong className="font-mono text-[var(--text-secondary)]">Shift+Enter</strong>{' '}
-                  Edit in Builder
-                </span>
-                <span className="hidden md:inline" aria-hidden="true">
-                  ·
-                </span>
-                <span className="hidden md:inline">
-                  <strong className="font-mono text-[var(--text-secondary)]">Opt+Enter</strong>{' '}
-                  Test
-                </span>
-                <span aria-hidden="true">·</span>
-                <span>
-                  <strong className="font-mono text-[var(--text-secondary)]">Esc</strong>{' '}
-                  Close
-                </span>
-              </div>
-              <span className="font-mono text-[10px] tabular-nums">
-                {tabCounts.all} {tabCounts.all === 1 ? 'item' : 'items'}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+          );
+          return typeof document !== 'undefined'
+            ? createPortal(modalNode, document.body)
+            : modalNode;
+        })()}
     </div>
   );
 };
