@@ -9,10 +9,13 @@ import {
   HardwareProfileId,
   HardwareSlotId,
   HardwareTelemetry,
+  LedIndicatorSettings,
+  OledComposerConfig,
   bleSlotToProfileId,
   defaultProfileAlias,
   normalizeHardwareProfileId
 } from '../types/studio';
+import { FIRMWARE_VERSION } from '../utils/version';
 import {
   FACTORY_DEFAULT_SLOTS,
   HARDWARE_SLOTS,
@@ -20,6 +23,7 @@ import {
   MAX_SERIAL_SINGLE_SLOT_ACTION_BYTES,
   MOTION_SLOTS,
   STANDALONE_TICK_MS,
+  describeFirmwareAction,
   isFirmwareAtLeast,
   isHoldSlot,
   isMotionSlot,
@@ -40,6 +44,14 @@ import {
   resolveDeviceFirmwareInfo,
   writeFlashedLedger
 } from './firmwareLedger';
+
+export const DEFAULT_LED_SETTINGS: LedIndicatorSettings = {
+  blueMode: 'status',
+  blueBrightness: 85,
+  whiteMode: 'status',
+  whiteBrightness: 70,
+  blinkSpeedMs: 650
+};
 
 export interface FirmwareStatusPacket {
   ok?: boolean;
@@ -104,6 +116,7 @@ export interface FirmwareStatusPacket {
     sensitivity?: number;
     who?: number;
   };
+  led?: LedIndicatorSettings;
   capabilities?: string[];
   tv?: {
     configured: boolean;
@@ -224,6 +237,8 @@ interface VirtualDemoPadState {
   motionWake: boolean;
   motionSensitivity: number;
   motionWho: number;
+  led: LedIndicatorSettings;
+  oledBitmapHex?: string;
   bootStartedAt: number;
   abnormalResets: number;
   lastAbnormalReset: string;
@@ -778,9 +793,9 @@ class PadLinkService {
       let initialH2 = { ...FACTORY_DEFAULT_SLOTS.HOST2 };
       let initialH3 = { ...FACTORY_DEFAULT_SLOTS.HOST3 };
       let initialTv = { ...FACTORY_DEFAULT_SLOTS.TV };
-      let h1Name = 'Host 1';
-      let h2Name = 'Host 2';
-      let h3Name = 'Host 3';
+      let h1Name = 'Device 1';
+      let h2Name = 'Device 2';
+      let h3Name = 'Device 3';
       let tvName = 'TV';
       let mode: 'MAC' | 'TV' = 'MAC';
       let bleSlot: BleHostSlot = 1;
@@ -806,9 +821,12 @@ class PadLinkService {
               mode = 'MAC';
               bleSlot = 1;
             }
-            h1Name = p.h1_name || p.mac_name || 'Host 1';
-            h2Name = p.h2_name || 'Host 2';
-            h3Name = p.h3_name || 'Host 3';
+            const rawH1 = p.h1_name || p.mac_name;
+            const rawH2 = p.h2_name;
+            const rawH3 = p.h3_name;
+            h1Name = !rawH1 || rawH1 === 'Host 1' ? 'Device 1' : rawH1;
+            h2Name = !rawH2 || rawH2 === 'Host 2' ? 'Device 2' : rawH2;
+            h3Name = !rawH3 || rawH3 === 'Host 3' ? 'Device 3' : rawH3;
             tvName = p.tv_name || 'TV';
             const migrateEnc2 = (rawObj?: Record<string, any>) => {
               if (!rawObj || typeof rawObj !== 'object') return {};
@@ -839,7 +857,7 @@ class PadLinkService {
 
       this.demoPad = {
         rev,
-        firmware: '4.10.1',
+        firmware: FIRMWARE_VERSION,
         setupMode: Boolean(opts?.setupMode),
         mode,
         h1Name,
@@ -877,6 +895,8 @@ class PadLinkService {
         motionWake: true,
         motionSensitivity: 3,
         motionWho: 0x68,
+        led: { ...DEFAULT_LED_SETTINGS },
+        oledBitmapHex: '',
         bootStartedAt: Date.now(),
         abnormalResets: 0,
         lastAbnormalReset: ''
@@ -1050,12 +1070,14 @@ class PadLinkService {
       slot === 'push_cw' ||
       slot === 'push_ccw' ||
       slot === 'e2_cw' ||
-      slot === 'e2_ccw'
+      slot === 'e2_ccw' ||
+      slot === 'push_cw2' ||
+      slot === 'push_ccw2'
     ) {
       const turnEvt: HardwareEventPacket = {
         event: 'turn',
         slot,
-        dir: slot.endsWith('_cw') ? 'cw' : 'ccw',
+        dir: slot === 'enc_cw' || slot === 'push_cw' || slot === 'e2_cw' || slot === 'push_cw2' ? 'cw' : 'ccw',
         action
       };
       this.logSerial('rx', JSON.stringify(turnEvt));
@@ -1092,7 +1114,7 @@ class PadLinkService {
     const activeHostProf = bleSlotToProfileId(d.bleSlot);
     const activeHostSlots = this.getDemoProfileSlots(d, activeHostProf);
     const activeProf: HardwareProfileId = d.mode === 'TV' ? 'TV' : activeHostProf;
-    const fw = d.firmware || '4.10.1';
+    const fw = d.firmware || FIRMWARE_VERSION;
     const is45Plus = isFirmwareAtLeast(fw, 4, 5, 0);
     const is48Plus = isFirmwareAtLeast(fw, 4, 8, 0);
     const is49Plus = isFirmwareAtLeast(fw, 4, 9, 0);
@@ -1214,6 +1236,7 @@ class PadLinkService {
             }
           }
         : {}),
+      led: { ...d.led },
       capabilities,
       tv: {
         configured: d.tvConfigured,
@@ -1609,7 +1632,10 @@ class PadLinkService {
         if (!d.wifiConnected) return reply({ ok: false, message: 'Pad Wi-Fi is disconnected.' });
         if (!d.tvPaired) return reply({ ok: false, message: 'Vizio TV is not paired.' });
       }
-      return reply({ ok: true, message: `Demo pad fired ${act.replace(/\n/g, '\\n')}` });
+      return reply({
+        ok: true,
+        message: `Demo pad: ${describeFirmwareAction(act).shortLabel}`
+      });
     }
 
     if (path === '/api/wifi') {
@@ -1826,6 +1852,41 @@ class PadLinkService {
       d.encoderAccel = Boolean(obj.accel);
       this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
       return reply({ ok: true, accel: d.encoderAccel });
+    }
+
+    if (path === '/api/led/set') {
+      d.led = {
+        blueMode: obj.blue_mode || obj.blueMode || d.led.blueMode,
+        blueBrightness:
+          typeof obj.blue_brightness === 'number'
+            ? Math.max(0, Math.min(100, Math.round(obj.blue_brightness)))
+            : d.led.blueBrightness,
+        whiteMode: obj.white_mode || obj.whiteMode || d.led.whiteMode,
+        whiteBrightness:
+          typeof obj.white_brightness === 'number'
+            ? Math.max(0, Math.min(100, Math.round(obj.white_brightness)))
+            : d.led.whiteBrightness,
+        blinkSpeedMs:
+          typeof obj.blink_ms === 'number'
+            ? Math.max(150, Math.min(2000, Math.round(obj.blink_ms)))
+            : d.led.blinkSpeedMs
+      };
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      return reply({ ok: true, led: d.led, message: 'Status LEDs updated on MacroPad.' });
+    }
+
+    if (path === '/api/oled/bitmap') {
+      const hex = String(obj.bitmap_hex || '');
+      d.oledBitmapHex = hex;
+      if (obj.invert !== undefined) {
+        d.displayContrast = obj.invert ? 255 : d.displayContrast;
+      }
+      this.applyTelemetryFromStatus(this.buildDemoStatusPacket(), 'DEMO:3200');
+      return reply({
+        ok: true,
+        bytes: Math.floor(hex.length / 2),
+        message: 'OLED 128×64 frame buffer updated.'
+      });
     }
 
     if (path === '/api/diagnostics/clear') {
@@ -2191,17 +2252,17 @@ class PadLinkService {
             items: [
               {
                 id: 'HOST1',
-                name: exp.h1_name || 'Host 1',
+                name: !exp.h1_name || exp.h1_name === 'Host 1' ? 'Device 1' : exp.h1_name,
                 controls: extractPrefix('h1', FACTORY_DEFAULT_SLOTS.HOST1)
               },
               {
                 id: 'HOST2',
-                name: exp.h2_name || 'Host 2',
+                name: !exp.h2_name || exp.h2_name === 'Host 2' ? 'Device 2' : exp.h2_name,
                 controls: extractPrefix('h2', FACTORY_DEFAULT_SLOTS.HOST2)
               },
               {
                 id: 'HOST3',
-                name: exp.h3_name || 'Host 3',
+                name: !exp.h3_name || exp.h3_name === 'Host 3' ? 'Device 3' : exp.h3_name,
                 controls: extractPrefix('h3', FACTORY_DEFAULT_SLOTS.HOST3)
               },
               {
@@ -2613,6 +2674,7 @@ class PadLinkService {
       tvHost: pkt.tv?.host ?? pkt.tv_ip ?? '',
       tvPort: Number(pkt.tv?.port ?? pkt.tv_port ?? 7345),
       tvEnabled,
+      led: pkt.led ?? this.connectionInfo.telemetry?.led,
       capabilities,
       connectionType: pkt.device?.connection_type || (this.demoModeActive ? 'DEMO' : 'USB')
     };
@@ -2816,8 +2878,17 @@ class PadLinkService {
     }
     const wireAction = this.adaptActionForConnectedFirmware(action);
     const caps = this.connectionInfo.telemetry?.capabilities || [];
-    const isPushTurnSlot = slot === 'push_cw' || slot === 'push_ccw';
-    const isEncoder2Slot = slot === 'dial2' || slot === 'e2_cw' || slot === 'e2_ccw';
+    const isPushTurnSlot =
+      slot === 'push_cw' ||
+      slot === 'push_ccw' ||
+      slot === 'push_cw2' ||
+      slot === 'push_ccw2';
+    const isEncoder2Slot =
+      slot === 'dial2' ||
+      slot === 'e2_cw' ||
+      slot === 'e2_ccw' ||
+      slot === 'push_cw2' ||
+      slot === 'push_ccw2';
     const isKeyHoldSlot = isHoldSlot(slot);
     const isMotionGestureSlot = isMotionSlot(slot);
     const unsupportedOptionalSlot =
@@ -2890,7 +2961,13 @@ class PadLinkService {
         ? {
             dial2: this.adaptActionForConnectedFirmware(slots.dial2),
             e2_cw: this.adaptActionForConnectedFirmware(slots.e2_cw),
-            e2_ccw: this.adaptActionForConnectedFirmware(slots.e2_ccw)
+            e2_ccw: this.adaptActionForConnectedFirmware(slots.e2_ccw),
+            ...(includePushTurn
+              ? {
+                  push_cw2: this.adaptActionForConnectedFirmware(slots.push_cw2),
+                  push_ccw2: this.adaptActionForConnectedFirmware(slots.push_ccw2)
+                }
+              : {})
           }
         : {}),
       ...(includeKeyHold
@@ -4355,6 +4432,103 @@ class PadLinkService {
       throw new Error(res?.message || 'Could not update TV mode on MacroPad.');
     }
     return res;
+  }
+
+  public async setLedSettings(
+    led: LedIndicatorSettings
+  ): Promise<{ ok: boolean; led?: LedIndicatorSettings; message: string }> {
+    if (this.connectionInfo.telemetry) {
+      this.connectionInfo = {
+        ...this.connectionInfo,
+        telemetry: {
+          ...this.connectionInfo.telemetry,
+          led
+        }
+      };
+      this.emitConnection();
+    }
+    if (!this.connectionInfo.connected) {
+      return { ok: true, led, message: 'LED preference saved locally.' };
+    }
+    try {
+      const res = await this.call({
+        path: '/api/led/set',
+        blue_mode: led.blueMode,
+        blue_brightness: led.blueBrightness,
+        white_mode: led.whiteMode,
+        white_brightness: led.whiteBrightness,
+        blink_ms: led.blinkSpeedMs
+      });
+      if (!res?.ok) {
+        return {
+          ok: true,
+          led,
+          message: res?.message || 'Saved LED preference locally (firmware endpoint unavailable).'
+        };
+      }
+      return { ok: true, led: res.led || led, message: res.message || 'Status LEDs updated.' };
+    } catch {
+      return {
+        ok: true,
+        led,
+        message: 'Saved LED preference locally (not exposed on this firmware).'
+      };
+    }
+  }
+
+  public async pushOledComposer(
+    config: Partial<OledComposerConfig>
+  ): Promise<{ ok: boolean; message: string }> {
+    if (!this.connectionInfo.connected) {
+      return { ok: true, message: 'OLED composition saved locally.' };
+    }
+    try {
+      const res = await this.call({
+        path: '/api/oled/bitmap',
+        bitmap_hex: config.bitmapBytesHex || '',
+        custom_name: config.customName || '',
+        invert: Boolean(config.invertDisplay),
+        show_host: config.showHostBadge !== false,
+        show_ble: config.showBleStatus !== false,
+        show_wifi: config.showWifiStatus !== false,
+        show_layer: config.showLayerHint !== false
+      });
+      if (!res?.ok) {
+        return { ok: false, message: res?.message || 'OLED endpoint unavailable on firmware.' };
+      }
+      return { ok: true, message: res.message || 'OLED screen frame pushed.' };
+    } catch {
+      return { ok: false, message: 'OLED composer endpoint not supported by current firmware.' };
+    }
+  }
+
+  public async sendRawCommand(
+    rawInput: string
+  ): Promise<{ ok: boolean; request: Record<string, any>; response: any }> {
+    if (!this.connectionInfo.connected) {
+      throw new Error('Connect MacroPad via USB or start Demo Mode first.');
+    }
+    const trimmed = rawInput.trim();
+    if (!trimmed) {
+      throw new Error('Enter a JSON command or /api/... path.');
+    }
+    let payload: Record<string, any>;
+    if (trimmed.startsWith('{')) {
+      payload = JSON.parse(trimmed);
+      if (!payload || typeof payload !== 'object' || !payload.path) {
+        throw new Error('JSON object must include a "path" field (e.g. {"path":"/api/status"}).');
+      }
+    } else if (trimmed.startsWith('/')) {
+      payload = { path: trimmed };
+    } else {
+      throw new Error('Command must be valid JSON (e.g. {"path":"/api/status"}) or a /api/... path.');
+    }
+    const response = await this.call(payload, 4000);
+    return {
+      ok: response?.ok !== false,
+      request: payload,
+      response
+    };
   }
 
   public async disconnect(markManual = true) {

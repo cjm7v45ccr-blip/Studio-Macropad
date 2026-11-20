@@ -94,6 +94,7 @@ interface WorkspaceSnapshot {
   profiles: StudioProfile[];
   activeProfileId: HardwareProfileId;
   customMacros: CustomMacroItem[];
+  appearanceOverrides?: Record<string, KeyAppearance>;
 }
 
 interface PersistedUiPrefs {
@@ -101,6 +102,7 @@ interface PersistedUiPrefs {
   userPresets: UserPreset[];
   customMacros: CustomMacroItem[];
   appearanceOverrides: Record<string, KeyAppearance>;
+  rawIdsDefaultHiddenMigrated?: boolean;
 }
 
 const DEFAULT_HOST_OS_MAP: HostOsMap = {
@@ -157,6 +159,18 @@ function migrateStoredSlotRecord(rawObj?: Record<string, any>): Partial<Record<H
   return out;
 }
 
+function normalizeHostAlias(
+  rawName: string | undefined | null,
+  id: HardwareProfileId
+): string {
+  const trimmed = (rawName || '').trim();
+  if (!trimmed) return defaultProfileAlias(id);
+  if (id === 'HOST1' && trimmed === 'Host 1') return 'Device 1';
+  if (id === 'HOST2' && trimmed === 'Host 2') return 'Device 2';
+  if (id === 'HOST3' && trimmed === 'Host 3') return 'Device 3';
+  return trimmed;
+}
+
 function readStoredPadRecord(deviceId: string): StoredPadRecord | null {
   try {
     const raw = localStorage.getItem(`pad:${deviceId}`);
@@ -166,10 +180,10 @@ function readStoredPadRecord(deviceId: string): StoredPadRecord | null {
     const rawProfiles = parsed.profiles as SerializedPadProfiles;
     const normalizedProfiles: SerializedPadProfiles = {
       active: normalizeHardwareProfileId(rawProfiles.active, 1),
-      h1_name: rawProfiles.h1_name || rawProfiles.mac_name || 'Host 1',
-      h2_name: rawProfiles.h2_name || 'Host 2',
-      h3_name: rawProfiles.h3_name || 'Host 3',
-      tv_name: rawProfiles.tv_name || 'TV',
+      h1_name: normalizeHostAlias(rawProfiles.h1_name || rawProfiles.mac_name, 'HOST1'),
+      h2_name: normalizeHostAlias(rawProfiles.h2_name, 'HOST2'),
+      h3_name: normalizeHostAlias(rawProfiles.h3_name, 'HOST3'),
+      tv_name: normalizeHostAlias(rawProfiles.tv_name, 'TV'),
       h1: {
         ...FACTORY_DEFAULT_SLOTS.HOST1,
         ...migrateStoredSlotRecord(rawProfiles.mac),
@@ -235,6 +249,8 @@ export function extractProfileSlots(profile: StudioProfile): Record<HardwareSlot
     dial2: bindingToFirmwareAction(layer.encoder2.dial),
     e2_cw: bindingToFirmwareAction(layer.encoder2.cw),
     e2_ccw: bindingToFirmwareAction(layer.encoder2.ccw),
+    push_cw2: bindingToFirmwareAction(layer.encoder2.pushCw ?? emptyBind),
+    push_ccw2: bindingToFirmwareAction(layer.encoder2.pushCcw ?? emptyBind),
     b1h: bindingToFirmwareAction(layer.keys.k1.triggers.hold ?? emptyBind),
     b2h: bindingToFirmwareAction(layer.keys.k2.triggers.hold ?? emptyBind),
     b3h: bindingToFirmwareAction(layer.keys.k3.triggers.hold ?? emptyBind),
@@ -287,6 +303,12 @@ export function extractRepeatMapFromProfiles(
     if (layer.encoder2.ccw.repeatConfig) {
       map[`${prof.id}:e2_ccw`] = layer.encoder2.ccw.repeatConfig;
     }
+    if (layer.encoder2.pushCw?.repeatConfig) {
+      map[`${prof.id}:push_cw2`] = layer.encoder2.pushCw.repeatConfig;
+    }
+    if (layer.encoder2.pushCcw?.repeatConfig) {
+      map[`${prof.id}:push_ccw2`] = layer.encoder2.pushCcw.repeatConfig;
+    }
     MOTION_SLOTS.forEach(mSlot => {
       const mRc = layer.motion?.[mSlot]?.repeatConfig;
       if (mRc) map[`${prof.id}:${mSlot}`] = mRc;
@@ -322,6 +344,8 @@ export function getBindingForProfileSlot(
   if (slot === 'dial2') return layer.encoder2.dial;
   if (slot === 'e2_cw') return layer.encoder2.cw;
   if (slot === 'e2_ccw') return layer.encoder2.ccw;
+  if (slot === 'push_cw2') return layer.encoder2.pushCw;
+  if (slot === 'push_ccw2') return layer.encoder2.pushCcw;
   return undefined;
 }
 
@@ -331,13 +355,13 @@ export function snapshotToSerializedProfiles(
 ): SerializedPadProfiles {
   const h1Prof =
     profiles.find(p => p.id === 'HOST1') ||
-    buildHardwareProfile('HOST1', 'Host 1', FACTORY_DEFAULT_SLOTS.HOST1);
+    buildHardwareProfile('HOST1', 'Device 1', FACTORY_DEFAULT_SLOTS.HOST1);
   const h2Prof =
     profiles.find(p => p.id === 'HOST2') ||
-    buildHardwareProfile('HOST2', 'Host 2', FACTORY_DEFAULT_SLOTS.HOST2);
+    buildHardwareProfile('HOST2', 'Device 2', FACTORY_DEFAULT_SLOTS.HOST2);
   const h3Prof =
     profiles.find(p => p.id === 'HOST3') ||
-    buildHardwareProfile('HOST3', 'Host 3', FACTORY_DEFAULT_SLOTS.HOST3);
+    buildHardwareProfile('HOST3', 'Device 3', FACTORY_DEFAULT_SLOTS.HOST3);
   const tvProf =
     profiles.find(p => p.id === 'TV') ||
     buildHardwareProfile('TV', 'TV', FACTORY_DEFAULT_SLOTS.TV);
@@ -409,6 +433,14 @@ export function statusPacketToSerializedProfiles(
         (item?.controls as any)?.enc2_ccw ??
         (useMacFallback ? (pkt as any).mac_e2_ccw : undefined) ??
         defaults.e2_ccw,
+      push_cw2:
+        item?.controls?.push_cw2 ??
+        (useMacFallback ? (pkt as any).mac_push_cw2 : undefined) ??
+        defaults.push_cw2,
+      push_ccw2:
+        item?.controls?.push_ccw2 ??
+        (useMacFallback ? (pkt as any).mac_push_ccw2 : undefined) ??
+        defaults.push_ccw2,
       b1h: item?.controls?.b1h ?? (useMacFallback ? (pkt as any).mac_b1h : undefined) ?? defaults.b1h,
       b2h: item?.controls?.b2h ?? (useMacFallback ? (pkt as any).mac_b2h : undefined) ?? defaults.b2h,
       b3h: item?.controls?.b3h ?? (useMacFallback ? (pkt as any).mac_b3h : undefined) ?? defaults.b3h,
@@ -434,12 +466,18 @@ export function statusPacketToSerializedProfiles(
 
   return {
     active: normalizeHardwareProfileId(pkt.profiles?.active, activeHost),
-    h1_name:
-      h1Item?.name || (activeHost === 1 && macItem?.name ? macItem.name : 'Host 1'),
-    h2_name:
-      h2Item?.name || (activeHost === 2 && macItem?.name ? macItem.name : 'Host 2'),
-    h3_name:
-      h3Item?.name || (activeHost === 3 && macItem?.name ? macItem.name : 'Host 3'),
+    h1_name: normalizeHostAlias(
+      h1Item?.name || (activeHost === 1 && macItem?.name ? macItem.name : undefined),
+      'HOST1'
+    ),
+    h2_name: normalizeHostAlias(
+      h2Item?.name || (activeHost === 2 && macItem?.name ? macItem.name : undefined),
+      'HOST2'
+    ),
+    h3_name: normalizeHostAlias(
+      h3Item?.name || (activeHost === 3 && macItem?.name ? macItem.name : undefined),
+      'HOST3'
+    ),
     tv_name: tvItem?.name || 'TV',
     h1: buildHostSlots(1, h1Item, FACTORY_DEFAULT_SLOTS.HOST1),
     h2: buildHostSlots(2, h2Item, FACTORY_DEFAULT_SLOTS.HOST2),
@@ -475,6 +513,14 @@ export function statusPacketToSerializedProfiles(
         (tvItem?.controls as any)?.enc2_ccw ??
         (pkt as any).tv_e2_ccw ??
         FACTORY_DEFAULT_SLOTS.TV.e2_ccw,
+      push_cw2:
+        tvItem?.controls?.push_cw2 ??
+        (pkt as any).tv_push_cw2 ??
+        FACTORY_DEFAULT_SLOTS.TV.push_cw2,
+      push_ccw2:
+        tvItem?.controls?.push_ccw2 ??
+        (pkt as any).tv_push_ccw2 ??
+        FACTORY_DEFAULT_SLOTS.TV.push_ccw2,
       b1h: tvItem?.controls?.b1h ?? (pkt as any).tv_b1h ?? FACTORY_DEFAULT_SLOTS.TV.b1h,
       b2h: tvItem?.controls?.b2h ?? (pkt as any).tv_b2h ?? FACTORY_DEFAULT_SLOTS.TV.b2h,
       b3h: tvItem?.controls?.b3h ?? (pkt as any).tv_b3h ?? FACTORY_DEFAULT_SLOTS.TV.b3h,
@@ -506,10 +552,10 @@ function getSerializedProfileName(
   serialized: SerializedPadProfiles,
   id: HardwareProfileId
 ): string {
-  if (id === 'TV') return serialized.tv_name || 'TV';
-  if (id === 'HOST2') return serialized.h2_name || 'Host 2';
-  if (id === 'HOST3') return serialized.h3_name || 'Host 3';
-  return serialized.h1_name || 'Host 1';
+  if (id === 'TV') return normalizeHostAlias(serialized.tv_name, 'TV');
+  if (id === 'HOST2') return normalizeHostAlias(serialized.h2_name, 'HOST2');
+  if (id === 'HOST3') return normalizeHostAlias(serialized.h3_name, 'HOST3');
+  return normalizeHostAlias(serialized.h1_name, 'HOST1');
 }
 
 function serializedProfilesToStudioProfiles(
@@ -610,13 +656,13 @@ export function buildBackupFromProfiles(
 ): HardwareBackupPayload {
   const h1Prof =
     profiles.find(p => p.id === 'HOST1') ||
-    buildHardwareProfile('HOST1', 'Host 1', FACTORY_DEFAULT_SLOTS.HOST1);
+    buildHardwareProfile('HOST1', 'Device 1', FACTORY_DEFAULT_SLOTS.HOST1);
   const h2Prof =
     profiles.find(p => p.id === 'HOST2') ||
-    buildHardwareProfile('HOST2', 'Host 2', FACTORY_DEFAULT_SLOTS.HOST2);
+    buildHardwareProfile('HOST2', 'Device 2', FACTORY_DEFAULT_SLOTS.HOST2);
   const h3Prof =
     profiles.find(p => p.id === 'HOST3') ||
-    buildHardwareProfile('HOST3', 'Host 3', FACTORY_DEFAULT_SLOTS.HOST3);
+    buildHardwareProfile('HOST3', 'Device 3', FACTORY_DEFAULT_SLOTS.HOST3);
   const tvProf =
     profiles.find(p => p.id === 'TV') ||
     buildHardwareProfile('TV', 'TV', FACTORY_DEFAULT_SLOTS.TV);
@@ -798,6 +844,7 @@ export function useStudioState(
         const rawSettings = parsed.settings || {};
         const migratedFromLegacyRepo =
           rawSettings.firmwareRepo !== PUBLIC_FIRMWARE_SOURCE_SLUG;
+        const hasMigratedRawIdsDefault = Boolean(parsed.rawIdsDefaultHiddenMigrated);
         const hadStoredHostOsMap = Boolean(
           rawSettings.hostOsMap && typeof rawSettings.hostOsMap === 'object'
         );
@@ -810,7 +857,9 @@ export function useStudioState(
               ...DEFAULT_HOST_OS_MAP,
               ...(rawSettings.hostOsMap || {})
             },
-            showAdvancedIds: Boolean(rawSettings.showAdvancedIds ?? false),
+            showAdvancedIds: hasMigratedRawIdsDefault
+              ? Boolean(rawSettings.showAdvancedIds ?? false)
+              : false,
             firmwareRepo: PUBLIC_FIRMWARE_SOURCE_SLUG,
             autoCheckFirmwareUpdates: migratedFromLegacyRepo
               ? true
@@ -849,7 +898,7 @@ export function useStudioState(
             deviceId: lastId,
             rev: rec.rev,
             dirty: rec.dirty,
-            hasStoredPad: true,
+            hasStoredPad: lastId !== 'demo-pad',
             tvEnabled: bootTvEnabled,
             inferredHostOsMap: !initialUiPrefs.hadStoredHostOsMap
               ? {
@@ -945,7 +994,8 @@ export function useStudioState(
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot>({
     profiles: bootPadData.profiles,
     activeProfileId: bootPadData.activeProfileId,
-    customMacros: bootPadData.customMacros
+    customMacros: bootPadData.customMacros,
+    appearanceOverrides: initialUiPrefs.appearanceOverrides
   });
 
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(bootPadData.deviceId);
@@ -1041,15 +1091,21 @@ export function useStudioState(
         settings,
         userPresets,
         customMacros: snapshot.customMacros,
-        appearanceOverrides
+        appearanceOverrides,
+        rawIdsDefaultHiddenMigrated: true
       };
       localStorage.setItem(UI_PREFS_KEY, JSON.stringify(toStore));
     } catch {}
   }, [settings, userPresets, snapshot.customMacros, appearanceOverrides]);
 
+  const wasConnectedRef = useRef<boolean>(usbHardware.info.connected);
+
   useEffect(() => {
     const unsub = usbHardware.onConnectionChange(info => {
       setIsConnected(info.connected);
+      if (info.connected) {
+        wasConnectedRef.current = true;
+      }
       if (info.connected && info.telemetry) {
         const liveTv = info.telemetry.tvEnabled !== false;
         setLiveTvEnabled(liveTv);
@@ -1088,6 +1144,10 @@ export function useStudioState(
         );
       }
       if (!info.connected) {
+        if (wasConnectedRef.current) {
+          wasConnectedRef.current = false;
+          setIsSyncedWithHardware(false);
+        }
         setLiveTvEnabled(null);
         setSavingCount(0);
         setConflictPrompt(null);
@@ -1146,6 +1206,7 @@ export function useStudioState(
       setSnapshot({
         profiles: builtProfiles,
         activeProfileId: effectiveActive,
+        appearanceOverrides: { ...overridesRef.current },
         customMacros: mergeDiscoveredCustomMacros(
           mergedMacros,
           effectivePadProfiles,
@@ -1500,7 +1561,9 @@ export function useStudioState(
           rawSlot === 'dial' ||
           rawSlot === 'dial2' ||
           rawSlot === 'push_cw' ||
-          rawSlot === 'push_ccw'
+          rawSlot === 'push_ccw' ||
+          rawSlot === 'push_cw2' ||
+          rawSlot === 'push_ccw2'
         ) {
           hwSlot = rawSlot as HardwareSlotId;
         } else if (
@@ -1912,32 +1975,59 @@ export function useStudioState(
 
   const undo = useCallback(() => {
     if (past.length === 0) return;
-    const current = snapshotRef.current;
+    const current: WorkspaceSnapshot = {
+      ...snapshotRef.current,
+      appearanceOverrides: { ...overridesRef.current }
+    };
     const previous = past[past.length - 1];
+    const restoredOverrides = previous.appearanceOverrides ?? overridesRef.current;
     setPast(p => p.slice(0, -1));
     setFuture(f => [current, ...f]);
-    setSnapshot(previous);
-    pushBothProfilesSnapshot(current, previous, 'Undid last change');
+    setAppearanceOverrides(restoredOverrides);
+    overridesRef.current = restoredOverrides;
+    const restoredSnap: WorkspaceSnapshot = {
+      ...previous,
+      appearanceOverrides: restoredOverrides
+    };
+    snapshotRef.current = restoredSnap;
+    setSnapshot(restoredSnap);
+    pushBothProfilesSnapshot(current, restoredSnap, 'Undid last change');
   }, [past, pushBothProfilesSnapshot]);
 
   const redo = useCallback(() => {
     if (future.length === 0) return;
-    const current = snapshotRef.current;
+    const current: WorkspaceSnapshot = {
+      ...snapshotRef.current,
+      appearanceOverrides: { ...overridesRef.current }
+    };
     const [nextState, ...rest] = future;
+    const restoredOverrides = nextState.appearanceOverrides ?? overridesRef.current;
     setFuture(rest);
     setPast(p => [...p, current]);
-    setSnapshot(nextState);
-    pushBothProfilesSnapshot(current, nextState, 'Redid change');
+    setAppearanceOverrides(restoredOverrides);
+    overridesRef.current = restoredOverrides;
+    const restoredSnap: WorkspaceSnapshot = {
+      ...nextState,
+      appearanceOverrides: restoredOverrides
+    };
+    snapshotRef.current = restoredSnap;
+    setSnapshot(restoredSnap);
+    pushBothProfilesSnapshot(current, restoredSnap, 'Redid change');
   }, [future, pushBothProfilesSnapshot]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
+      } else if (!e.metaKey && e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -2227,10 +2317,26 @@ export function useStudioState(
           };
         }
 
-        if (slot === 'dial2' || slot === 'e2_cw' || slot === 'e2_ccw') {
+        if (
+          slot === 'dial2' ||
+          slot === 'e2_cw' ||
+          slot === 'e2_ccw' ||
+          slot === 'push_cw2' ||
+          slot === 'push_ccw2'
+        ) {
+          const enc2Prop: keyof EncoderControlConfig =
+            slot === 'dial2'
+              ? 'dial'
+              : slot === 'e2_cw'
+              ? 'cw'
+              : slot === 'e2_ccw'
+              ? 'ccw'
+              : slot === 'push_cw2'
+              ? 'pushCw'
+              : 'pushCcw';
           const nextEncoder2: EncoderControlConfig = {
             ...layer.encoder2,
-            [slot === 'dial2' ? 'dial' : slot === 'e2_cw' ? 'cw' : 'ccw']: normalizedBinding
+            [enc2Prop]: normalizedBinding
           };
           return {
             ...prof,
@@ -2431,12 +2537,210 @@ export function useStudioState(
     [assignSlotAction, onToast]
   );
 
+  const batchPasteSlotBinding = useCallback(
+    async (
+      profileId: HardwareProfileId,
+      slots: HardwareSlotId[],
+      binding: ActionBinding
+    ) => {
+      const uniqueSlots = Array.from(new Set(slots));
+      if (uniqueSlots.length === 0) return;
+
+      const isClearing = binding.type === 'none' && !binding.value;
+      const rawActionStr = isClearing ? '' : bindingToFirmwareAction(binding);
+      const actionStr = isClearing ? '' : canonicalizeFirmwareAction(rawActionStr);
+      if (!isClearing && (!actionStr || !isValidFirmwareAction(actionStr))) {
+        onToast('Rejected unsupported or incomplete firmware action', 'error');
+        return;
+      }
+
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const targetProf = prevSnap.profiles.find(p => p.id === profileId);
+      if (!targetProf) return;
+
+      const currentSlots = extractProfileSlots(targetProf);
+      const nextSlots: Record<HardwareSlotId, string> = { ...currentSlots };
+      const existingRepeats = extractRepeatMapFromProfiles(prevSnap.profiles);
+      const nextOverrides = { ...prevOverrides };
+
+      for (const s of uniqueSlots) {
+        nextSlots[s] = actionStr;
+        if (!isClearing && binding.repeatConfig) {
+          existingRepeats[`${profileId}:${s}`] = { ...binding.repeatConfig };
+        } else {
+          delete existingRepeats[`${profileId}:${s}`];
+        }
+        if (s in SLOT_TO_ACTION_KEY) {
+          const kid = SLOT_TO_ACTION_KEY[s as ButtonSlotId];
+          delete nextOverrides[`${profileId}:${kid}`];
+        }
+      }
+
+      const rebuiltBase = buildHardwareProfile(
+        profileId,
+        targetProf.name,
+        nextSlots,
+        targetProf,
+        existingRepeats,
+        prevSnap.customMacros
+      );
+
+      // Refresh appearance cleanly for updated button keys so labels/icons match the pasted action
+      const baseLayer = rebuiltBase.layers[0];
+      const nextKeys = { ...baseLayer.keys };
+      for (const s of uniqueSlots) {
+        if (s in SLOT_TO_ACTION_KEY) {
+          const kid = SLOT_TO_ACTION_KEY[s as ButtonSlotId];
+          const existingApp = targetProf.layers[0].keys[kid].appearance;
+          nextKeys[kid] = {
+            ...nextKeys[kid],
+            appearance: deriveAppearanceForAction(
+              actionStr,
+              {
+                ...existingApp,
+                customLabel: false,
+                customIcon: existingApp.icon.startsWith('data:image/')
+              },
+              !isClearing ? binding.repeatConfig : undefined,
+              prevSnap.customMacros
+            )
+          };
+        }
+      }
+
+      const rebuilt: StudioProfile = {
+        ...rebuiltBase,
+        layers: [{ ...baseLayer, keys: nextKeys }]
+      };
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: prevSnap.profiles.map(p => (p.id === profileId ? rebuilt : p)),
+        appearanceOverrides: nextOverrides
+      };
+
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+
+      const actionLabel = isClearing
+        ? 'Unassigned'
+        : describeFirmwareAction(actionStr, binding.repeatConfig, prevSnap.customMacros).shortLabel;
+      const msg = isClearing
+        ? `Cleared ${uniqueSlots.length} controls`
+        : `Applied "${actionLabel}" to ${uniqueSlots.length} controls`;
+
+      await runConnectedWrite(
+        prevSnap,
+        nextSnap,
+        () => usbHardware.saveFullProfile(profileId, nextSlots),
+        msg
+      );
+    },
+    [onToast, runConnectedWrite]
+  );
+
+  const batchResetSlotsToDefault = useCallback(
+    async (profileId: HardwareProfileId, slots: HardwareSlotId[]) => {
+      const uniqueSlots = Array.from(new Set(slots));
+      if (uniqueSlots.length === 0) return;
+
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const targetProf = prevSnap.profiles.find(p => p.id === profileId);
+      if (!targetProf) return;
+
+      const currentSlots = extractProfileSlots(targetProf);
+      const nextSlots: Record<HardwareSlotId, string> = { ...currentSlots };
+      const existingRepeats = extractRepeatMapFromProfiles(prevSnap.profiles);
+      const nextOverrides = { ...prevOverrides };
+
+      for (const s of uniqueSlots) {
+        nextSlots[s] = FACTORY_DEFAULT_SLOTS[profileId][s];
+        delete existingRepeats[`${profileId}:${s}`];
+        if (s in SLOT_TO_ACTION_KEY) {
+          const kid = SLOT_TO_ACTION_KEY[s as ButtonSlotId];
+          delete nextOverrides[`${profileId}:${kid}`];
+        }
+      }
+
+      const rebuiltBase = buildHardwareProfile(
+        profileId,
+        targetProf.name,
+        nextSlots,
+        targetProf,
+        existingRepeats,
+        prevSnap.customMacros
+      );
+
+      const baseLayer = rebuiltBase.layers[0];
+      const nextKeys = { ...baseLayer.keys };
+      for (const s of uniqueSlots) {
+        if (s in SLOT_TO_ACTION_KEY) {
+          const kid = SLOT_TO_ACTION_KEY[s as ButtonSlotId];
+          nextKeys[kid] = {
+            ...nextKeys[kid],
+            appearance: deriveAppearanceForAction(
+              nextSlots[s],
+              undefined,
+              undefined,
+              prevSnap.customMacros
+            )
+          };
+        }
+      }
+
+      const rebuilt: StudioProfile = {
+        ...rebuiltBase,
+        layers: [{ ...baseLayer, keys: nextKeys }]
+      };
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: prevSnap.profiles.map(p => (p.id === profileId ? rebuilt : p)),
+        appearanceOverrides: nextOverrides
+      };
+
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+
+      await runConnectedWrite(
+        prevSnap,
+        nextSnap,
+        () => usbHardware.saveFullProfile(profileId, nextSlots),
+        `Reset ${uniqueSlots.length} controls to default`
+      );
+    },
+    [runConnectedWrite]
+  );
+
+  const batchClearSlots = useCallback(
+    async (profileId: HardwareProfileId, slots: HardwareSlotId[]) => {
+      await batchPasteSlotBinding(profileId, slots, { type: 'none', value: '' });
+    },
+    [batchPasteSlotBinding]
+  );
+
   const resetBothProfilesToDefault = useCallback(async () => {
     const prevSnap = snapshotRef.current;
     const nextProfiles: StudioProfile[] = [
-      buildHardwareProfile('HOST1', 'Host 1', { ...FACTORY_DEFAULT_SLOTS.HOST1 }),
-      buildHardwareProfile('HOST2', 'Host 2', { ...FACTORY_DEFAULT_SLOTS.HOST2 }),
-      buildHardwareProfile('HOST3', 'Host 3', { ...FACTORY_DEFAULT_SLOTS.HOST3 }),
+      buildHardwareProfile('HOST1', 'Device 1', { ...FACTORY_DEFAULT_SLOTS.HOST1 }),
+      buildHardwareProfile('HOST2', 'Device 2', { ...FACTORY_DEFAULT_SLOTS.HOST2 }),
+      buildHardwareProfile('HOST3', 'Device 3', { ...FACTORY_DEFAULT_SLOTS.HOST3 }),
       buildHardwareProfile('TV', 'TV', { ...FACTORY_DEFAULT_SLOTS.TV })
     ];
     const activeHostSlot = usbHardware.info.telemetry?.bleActiveHost ?? 1;
@@ -2485,44 +2789,320 @@ export function useStudioState(
     [activeProfile.id, assignSlotAction]
   );
 
+  const swapKeys = useCallback(
+    async (sourceKey: KeyId, targetKey: KeyId) => {
+      if (sourceKey === 'k9' || targetKey === 'k9' || sourceKey === targetKey) return;
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const profileId = activeProfile.id;
+      const targetProf = prevSnap.profiles.find(p => p.id === profileId);
+      if (!targetProf) return;
+
+      const srcLayer = targetProf.layers[0];
+      const srcKeyCfg = srcLayer.keys[sourceKey];
+      const tgtKeyCfg = srcLayer.keys[targetKey];
+      if (!srcKeyCfg || !tgtKeyCfg) return;
+
+      const srcTapSlot = KEY_TO_SLOT[sourceKey];
+      const tgtTapSlot = KEY_TO_SLOT[targetKey];
+      const srcHoldSlot = KEY_TO_HOLD_SLOT[sourceKey];
+      const tgtHoldSlot = KEY_TO_HOLD_SLOT[targetKey];
+
+      const currentSlots = extractProfileSlots(targetProf);
+      const nextSlots: Record<HardwareSlotId, string> = {
+        ...currentSlots,
+        [srcTapSlot]: currentSlots[tgtTapSlot],
+        [tgtTapSlot]: currentSlots[srcTapSlot],
+        [srcHoldSlot]: currentSlots[tgtHoldSlot],
+        [tgtHoldSlot]: currentSlots[srcHoldSlot]
+      };
+
+      const nextOverrides = { ...prevOverrides };
+      const srcOvKey = `${profileId}:${sourceKey}`;
+      const tgtOvKey = `${profileId}:${targetKey}`;
+      const srcOv = prevOverrides[srcOvKey];
+      const tgtOv = prevOverrides[tgtOvKey];
+      if (tgtOv) nextOverrides[srcOvKey] = tgtOv;
+      else delete nextOverrides[srcOvKey];
+      if (srcOv) nextOverrides[tgtOvKey] = srcOv;
+      else delete nextOverrides[tgtOvKey];
+
+      const nextProfiles = prevSnap.profiles.map(prof => {
+        if (prof.id !== profileId) return prof;
+        const layer = prof.layers[0];
+        return {
+          ...prof,
+          layers: [
+            {
+              ...layer,
+              keys: {
+                ...layer.keys,
+                [sourceKey]: {
+                  ...layer.keys[sourceKey],
+                  triggers: {
+                    tap: { ...tgtKeyCfg.triggers.tap },
+                    hold: tgtKeyCfg.triggers.hold
+                      ? { ...tgtKeyCfg.triggers.hold }
+                      : undefined
+                  },
+                  appearance: { ...tgtKeyCfg.appearance }
+                },
+                [targetKey]: {
+                  ...layer.keys[targetKey],
+                  triggers: {
+                    tap: { ...srcKeyCfg.triggers.tap },
+                    hold: srcKeyCfg.triggers.hold
+                      ? { ...srcKeyCfg.triggers.hold }
+                      : undefined
+                  },
+                  appearance: { ...srcKeyCfg.appearance }
+                }
+              }
+            }
+          ] as [typeof layer]
+        };
+      });
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: nextProfiles,
+        appearanceOverrides: nextOverrides
+      };
+
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+
+      const srcNum = sourceKey.slice(1);
+      const tgtNum = targetKey.slice(1);
+      const msg = `Swapped Key ${srcNum} ↔ Key ${tgtNum}`;
+
+      if (usbHardware.info.connected) {
+        await runConnectedWrite(
+          prevSnap,
+          nextSnap,
+          () => usbHardware.saveFullProfile(profileId, nextSlots),
+          msg
+        );
+      } else {
+        saveOfflineDraft(nextSnap);
+        onToast(msg);
+      }
+    },
+    [activeProfile.id, onToast, runConnectedWrite, saveOfflineDraft]
+  );
+
+  const copyKey = useCallback(
+    async (sourceKey: KeyId, targetKey: KeyId) => {
+      if (sourceKey === 'k9' || targetKey === 'k9' || sourceKey === targetKey) return;
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const profileId = activeProfile.id;
+      const targetProf = prevSnap.profiles.find(p => p.id === profileId);
+      if (!targetProf) return;
+
+      const srcLayer = targetProf.layers[0];
+      const srcKeyCfg = srcLayer.keys[sourceKey];
+      if (!srcKeyCfg) return;
+
+      const srcTapSlot = KEY_TO_SLOT[sourceKey];
+      const tgtTapSlot = KEY_TO_SLOT[targetKey];
+      const srcHoldSlot = KEY_TO_HOLD_SLOT[sourceKey];
+      const tgtHoldSlot = KEY_TO_HOLD_SLOT[targetKey];
+
+      const currentSlots = extractProfileSlots(targetProf);
+      const nextSlots: Record<HardwareSlotId, string> = {
+        ...currentSlots,
+        [tgtTapSlot]: currentSlots[srcTapSlot],
+        [tgtHoldSlot]: currentSlots[srcHoldSlot]
+      };
+
+      const nextOverrides = { ...prevOverrides };
+      const srcOvKey = `${profileId}:${sourceKey}`;
+      const tgtOvKey = `${profileId}:${targetKey}`;
+      if (prevOverrides[srcOvKey]) {
+        nextOverrides[tgtOvKey] = { ...prevOverrides[srcOvKey] };
+      } else {
+        delete nextOverrides[tgtOvKey];
+      }
+
+      const nextProfiles = prevSnap.profiles.map(prof => {
+        if (prof.id !== profileId) return prof;
+        const layer = prof.layers[0];
+        return {
+          ...prof,
+          layers: [
+            {
+              ...layer,
+              keys: {
+                ...layer.keys,
+                [targetKey]: {
+                  ...layer.keys[targetKey],
+                  triggers: {
+                    tap: { ...srcKeyCfg.triggers.tap },
+                    hold: srcKeyCfg.triggers.hold
+                      ? { ...srcKeyCfg.triggers.hold }
+                      : undefined
+                  },
+                  appearance: { ...srcKeyCfg.appearance }
+                }
+              }
+            }
+          ] as [typeof layer]
+        };
+      });
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: nextProfiles,
+        appearanceOverrides: nextOverrides
+      };
+
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+
+      const srcNum = sourceKey.slice(1);
+      const tgtNum = targetKey.slice(1);
+      const msg = `Copied Key ${srcNum} → Key ${tgtNum}`;
+
+      if (usbHardware.info.connected) {
+        await runConnectedWrite(
+          prevSnap,
+          nextSnap,
+          () => usbHardware.saveFullProfile(profileId, nextSlots),
+          msg
+        );
+      } else {
+        saveOfflineDraft(nextSnap);
+        onToast(msg);
+      }
+    },
+    [activeProfile.id, onToast, runConnectedWrite, saveOfflineDraft]
+  );
+
   const updateKeyAppearance = useCallback(
     (kid: KeyId, patch: Partial<KeyAppearance>) => {
       if (kid === 'k9') return;
-      setSnapshot(prev => {
-        const nextProfiles = prev.profiles.map(prof => {
-          if (prof.id !== activeProfile.id) return prof;
-          const layer = prof.layers[0];
-          const prevApp = layer.keys[kid].appearance;
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      let nextOverrides = prevOverrides;
+      const nextProfiles = prevSnap.profiles.map(prof => {
+        if (prof.id !== activeProfile.id) return prof;
+        const layer = prof.layers[0];
+        const prevApp = layer.keys[kid].appearance;
+        const updated: KeyAppearance = {
+          ...prevApp,
+          ...patch,
+          customLabel: patch.label !== undefined ? true : prevApp.customLabel,
+          customIcon: patch.icon !== undefined ? true : prevApp.customIcon
+        };
+        nextOverrides = {
+          ...prevOverrides,
+          [`${prof.id}:${kid}`]: updated
+        };
+        return {
+          ...prof,
+          layers: [
+            {
+              ...layer,
+              keys: {
+                ...layer.keys,
+                [kid]: {
+                  ...layer.keys[kid],
+                  appearance: updated
+                }
+              }
+            }
+          ] as [typeof layer]
+        };
+      });
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: nextProfiles,
+        appearanceOverrides: nextOverrides
+      };
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+      if (!usbHardware.info.connected || conflictPrompt !== null) {
+        saveOfflineDraft(nextSnap);
+      }
+    },
+    [activeProfile.id, conflictPrompt, saveOfflineDraft]
+  );
+
+  const batchUpdateKeyAppearance = useCallback(
+    (kids: KeyId[], patch: Partial<KeyAppearance>) => {
+      const validKids = Array.from(new Set(kids)).filter(k => k !== 'k9');
+      if (validKids.length === 0) return;
+
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const nextOverrides = { ...prevOverrides };
+
+      const nextProfiles = prevSnap.profiles.map(prof => {
+        if (prof.id !== activeProfile.id) return prof;
+        const layer = prof.layers[0];
+        const nextKeys = { ...layer.keys };
+        for (const kid of validKids) {
+          const prevApp = nextKeys[kid].appearance;
           const updated: KeyAppearance = {
             ...prevApp,
             ...patch,
             customLabel: patch.label !== undefined ? true : prevApp.customLabel,
             customIcon: patch.icon !== undefined ? true : prevApp.customIcon
           };
-          setAppearanceOverrides(ov => ({
-            ...ov,
-            [`${prof.id}:${kid}`]: updated
-          }));
-          return {
-            ...prof,
-            layers: [
-              {
-                ...layer,
-                keys: {
-                  ...layer.keys,
-                  [kid]: {
-                    ...layer.keys[kid],
-                    appearance: updated
-                  }
-                }
-              }
-            ] as [typeof layer]
+          nextOverrides[`${prof.id}:${kid}`] = updated;
+          nextKeys[kid] = {
+            ...nextKeys[kid],
+            appearance: updated
           };
-        });
-        return { ...prev, profiles: nextProfiles };
+        }
+        return {
+          ...prof,
+          layers: [{ ...layer, keys: nextKeys }] as [typeof layer]
+        };
       });
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: nextProfiles,
+        appearanceOverrides: nextOverrides
+      };
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+      if (!usbHardware.info.connected || conflictPrompt !== null) {
+        saveOfflineDraft(nextSnap);
+      }
+      onToast(`Updated legend style on ${validKids.length} keys`);
     },
-    [activeProfile.id]
+    [activeProfile.id, conflictPrompt, onToast, saveOfflineDraft]
   );
 
   const resetKeyAppearance = useCallback(
@@ -2533,38 +3113,52 @@ export function useStudioState(
       const currentAct = bindingToFirmwareAction(tap);
       const freshApp = deriveAppearanceForAction(currentAct, undefined, tap.repeatConfig);
 
-      setAppearanceOverrides(ov => {
-        const copy = { ...ov };
-        delete copy[`${activeProfile.id}:${kid}`];
-        if (activeProfile.id === 'HOST1') delete copy[`MAC:${kid}`];
-        return copy;
-      });
+      const prevOverrides = { ...overridesRef.current };
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: prevOverrides
+      };
+      const nextOverrides = { ...prevOverrides };
+      delete nextOverrides[`${activeProfile.id}:${kid}`];
+      if (activeProfile.id === 'HOST1') delete nextOverrides[`MAC:${kid}`];
 
-      setSnapshot(prev => ({
-        ...prev,
-        profiles: prev.profiles.map(prof => {
-          if (prof.id !== activeProfile.id) return prof;
-          const layer = prof.layers[0];
-          return {
-            ...prof,
-            layers: [
-              {
-                ...layer,
-                keys: {
-                  ...layer.keys,
-                  [kid]: {
-                    ...layer.keys[kid],
-                    appearance: freshApp
-                  }
+      const nextProfiles = prevSnap.profiles.map(prof => {
+        if (prof.id !== activeProfile.id) return prof;
+        const layer = prof.layers[0];
+        return {
+          ...prof,
+          layers: [
+            {
+              ...layer,
+              keys: {
+                ...layer.keys,
+                [kid]: {
+                  ...layer.keys[kid],
+                  appearance: freshApp
                 }
               }
-            ] as [typeof layer]
-          };
-        })
-      }));
+            }
+          ] as [typeof layer]
+        };
+      });
+
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: nextProfiles,
+        appearanceOverrides: nextOverrides
+      };
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      setAppearanceOverrides(nextOverrides);
+      overridesRef.current = nextOverrides;
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+      if (!usbHardware.info.connected || conflictPrompt !== null) {
+        saveOfflineDraft(nextSnap);
+      }
       onToast(`Reset ${slot.toUpperCase()} keycap legend`);
     },
-    [activeLayer, activeProfile.id, onToast]
+    [activeLayer, activeProfile.id, conflictPrompt, onToast, saveOfflineDraft]
   );
 
   const updateEncoderSlot = useCallback(
@@ -2576,28 +3170,40 @@ export function useStudioState(
 
   const updateEncoderColor = useCallback(
     (color: string, encoderIndex: EncoderIndex = 1) => {
-      setSnapshot(prev => ({
-        ...prev,
-        profiles: prev.profiles.map(prof => {
-          if (prof.id !== activeProfile.id) return prof;
-          const layer = prof.layers[0];
-          const targetKey = encoderIndex === 2 ? 'encoder2' : 'encoder';
-          return {
-            ...prof,
-            layers: [
-              {
-                ...layer,
-                [targetKey]: {
-                  ...layer[targetKey],
-                  color
-                }
+      const prevSnap: WorkspaceSnapshot = {
+        ...snapshotRef.current,
+        appearanceOverrides: { ...overridesRef.current }
+      };
+      const nextProfiles = prevSnap.profiles.map(prof => {
+        if (prof.id !== activeProfile.id) return prof;
+        const layer = prof.layers[0];
+        const targetKey = encoderIndex === 2 ? 'encoder2' : 'encoder';
+        return {
+          ...prof,
+          layers: [
+            {
+              ...layer,
+              [targetKey]: {
+                ...layer[targetKey],
+                color
               }
-            ] as [typeof layer]
-          };
-        })
-      }));
+            }
+          ] as [typeof layer]
+        };
+      });
+      const nextSnap: WorkspaceSnapshot = {
+        ...prevSnap,
+        profiles: nextProfiles
+      };
+      setPast(h => [...h.slice(-34), prevSnap]);
+      setFuture([]);
+      snapshotRef.current = nextSnap;
+      setSnapshot(nextSnap);
+      if (!usbHardware.info.connected || conflictPrompt !== null) {
+        saveOfflineDraft(nextSnap);
+      }
     },
-    [activeProfile.id]
+    [activeProfile.id, conflictPrompt, saveOfflineDraft]
   );
 
   const pullFromUsbNow = useCallback(async () => {
@@ -2635,7 +3241,7 @@ export function useStudioState(
   const saveCustomMacro = useCallback(
     (
       item: CustomMacroItem,
-      options?: { forceNew?: boolean; silent?: boolean }
+      options?: { forceNew?: boolean; silent?: boolean; recordHistory?: boolean }
     ): { saved: CustomMacroItem | null; updatedSlotCount: number } => {
       const silent = Boolean(options?.silent);
       const steps =
@@ -2846,16 +3452,33 @@ export function useStudioState(
                   const hwSlot: HardwareSlotId =
                     pushKey === 'pushCw' ? 'push_cw' : 'push_ccw';
                   const bind = layer.encoder[pushKey];
-                  if (!bind) return;
-                  const bindSig = getMacroCanonicalSignature(
-                    bindingToFirmwareAction(bind),
-                    bind.repeatConfig
-                  );
-                  if (bindSig && bindSig === oldSig) {
-                    profChanged = true;
-                    updatedSlotCount += 1;
-                    slotsToPush.push({ profileId: prof.id, slot: hwSlot });
-                    nextEncoder[pushKey] = updatedBinding;
+                  if (bind) {
+                    const bindSig = getMacroCanonicalSignature(
+                      bindingToFirmwareAction(bind),
+                      bind.repeatConfig
+                    );
+                    if (bindSig && bindSig === oldSig) {
+                      profChanged = true;
+                      updatedSlotCount += 1;
+                      slotsToPush.push({ profileId: prof.id, slot: hwSlot });
+                      nextEncoder[pushKey] = updatedBinding;
+                    }
+                  }
+
+                  const hwSlot2: HardwareSlotId =
+                    pushKey === 'pushCw' ? 'push_cw2' : 'push_ccw2';
+                  const bind2 = layer.encoder2[pushKey];
+                  if (bind2) {
+                    const bindSig2 = getMacroCanonicalSignature(
+                      bindingToFirmwareAction(bind2),
+                      bind2.repeatConfig
+                    );
+                    if (bindSig2 && bindSig2 === oldSig) {
+                      profChanged = true;
+                      updatedSlotCount += 1;
+                      slotsToPush.push({ profileId: prof.id, slot: hwSlot2 });
+                      nextEncoder2[pushKey] = updatedBinding;
+                    }
                   }
                 });
 
@@ -2901,8 +3524,10 @@ export function useStudioState(
       setSnapshot(nextSnap);
 
       if (updatedSlotCount > 0) {
-        setPast(h => [...h.slice(-34), prevSnap]);
-        setFuture([]);
+        if (options?.recordHistory !== false) {
+          setPast(h => [...h.slice(-34), prevSnap]);
+          setFuture([]);
+        }
         runConnectedWrite(
           prevSnap,
           nextSnap,
@@ -3189,28 +3814,28 @@ export function useStudioState(
         profiles: [
           buildHardwareProfile(
             'HOST1',
-            backup.h1_name || backup.mac_name || prevH1?.name || 'Host 1',
+            normalizeHostAlias(backup.h1_name || backup.mac_name || prevH1?.name, 'HOST1'),
             h1Slots,
             prevH1,
             normalizedRepeats
           ),
           buildHardwareProfile(
             'HOST2',
-            backup.h2_name || prevH2?.name || 'Host 2',
+            normalizeHostAlias(backup.h2_name || prevH2?.name, 'HOST2'),
             h2Slots,
             prevH2,
             normalizedRepeats
           ),
           buildHardwareProfile(
             'HOST3',
-            backup.h3_name || prevH3?.name || 'Host 3',
+            normalizeHostAlias(backup.h3_name || prevH3?.name, 'HOST3'),
             h3Slots,
             prevH3,
             normalizedRepeats
           ),
           buildHardwareProfile(
             'TV',
-            backup.tv_name || prevTv?.name || 'TV',
+            normalizeHostAlias(backup.tv_name || prevTv?.name, 'TV'),
             tvSlots,
             prevTv,
             normalizedRepeats
@@ -3336,9 +3961,9 @@ export function useStudioState(
     } catch {}
 
     const factoryProfiles: StudioProfile[] = [
-      buildHardwareProfile('HOST1', 'Host 1', { ...FACTORY_DEFAULT_SLOTS.HOST1 }),
-      buildHardwareProfile('HOST2', 'Host 2', { ...FACTORY_DEFAULT_SLOTS.HOST2 }),
-      buildHardwareProfile('HOST3', 'Host 3', { ...FACTORY_DEFAULT_SLOTS.HOST3 }),
+      buildHardwareProfile('HOST1', 'Device 1', { ...FACTORY_DEFAULT_SLOTS.HOST1 }),
+      buildHardwareProfile('HOST2', 'Device 2', { ...FACTORY_DEFAULT_SLOTS.HOST2 }),
+      buildHardwareProfile('HOST3', 'Device 3', { ...FACTORY_DEFAULT_SLOTS.HOST3 }),
       buildHardwareProfile('TV', 'TV', { ...FACTORY_DEFAULT_SLOTS.TV })
     ];
 
@@ -3462,10 +4087,16 @@ export function useStudioState(
     assignProfileSlots,
     resetSlotToDefault,
     clearSlot,
+    batchPasteSlotBinding,
+    batchResetSlotsToDefault,
+    batchClearSlots,
     resetBothProfilesToDefault,
     updateKeyBinding,
     updateKeyHoldBinding,
+    swapKeys,
+    copyKey,
     updateKeyAppearance,
+    batchUpdateKeyAppearance,
     resetKeyAppearance,
     updateEncoderSlot,
     updateEncoderColor,

@@ -18,6 +18,8 @@ const EMPTY_HOLD_BINDINGS = {
   b6h: '',
   b7h: '',
   b8h: '',
+  push_cw2: '',
+  push_ccw2: '',
   g_shake: '',
   g_down: '',
   g_up: ''

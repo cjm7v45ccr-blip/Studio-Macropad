@@ -5,20 +5,18 @@ import {
   RefreshCw,
   SlidersHorizontal,
   ShieldAlert,
-  Check,
-  RotateCcw,
-  Sparkles,
-  ArrowLeft,
-  ArrowRight,
-  ArrowDown,
-  ArrowUp
+  RotateCcw
 } from 'lucide-react';
 import { ToastVariant } from '../hooks/useStudioState';
 import { MotionSlotId, GyroCalibrationProfile } from '../types/studio';
 import { gestureTypeToMotionSlot, SLOT_LABELS } from '../data/firmwareCatalog';
 import { usbHardware } from '../services/usbHardwareService';
 import { soundEngine } from '../services/soundEffects';
-import { computeGyroCalibration } from '../utils/motionCalibration';
+import {
+  DEFAULT_GYRO_CALIBRATION,
+  buildFlatZeroCalibration,
+  computeRawAnglesFromAccel
+} from '../utils/motionCalibration';
 
 export interface MotionTelemetryState {
   present: boolean;
@@ -59,7 +57,6 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
   const effectiveEnabled = motion?.enabled ?? true;
   const effectiveWake = motion?.wake ?? true;
   const effectiveSensitivity = Math.max(1, Math.min(5, Math.round(motion?.sensitivity ?? 3)));
-  const effectiveWho = motion?.who ?? 0x68;
 
   const [enabled, setEnabled] = useState<boolean>(effectiveEnabled);
   const [wake, setWake] = useState<boolean>(effectiveWake);
@@ -83,20 +80,12 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
 
   // 3D Directional Calibration States
   const [profile, setProfile] = useState<GyroCalibrationProfile>(() => {
-    if (gyroCalibration) return gyroCalibration;
+    if (gyroCalibration) return { ...DEFAULT_GYRO_CALIBRATION, ...gyroCalibration };
     try {
       const raw = localStorage.getItem('bertopad_gyro_calib');
-      if (raw) return JSON.parse(raw);
+      if (raw) return { ...DEFAULT_GYRO_CALIBRATION, ...JSON.parse(raw) };
     } catch {}
-    return {
-      isCalibrated: false,
-      pitchOffset: 0,
-      rollOffset: 0,
-      yawOffset: 0,
-      pitchScale: 1.0,
-      rollScale: 1.0,
-      yawScale: 1.0
-    };
+    return { ...DEFAULT_GYRO_CALIBRATION };
   });
 
   const committedSensitivityRef = useRef<number>(effectiveSensitivity);
@@ -104,7 +93,7 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
 
   useEffect(() => {
     if (gyroCalibration) {
-      setProfile(gyroCalibration);
+      setProfile({ ...DEFAULT_GYRO_CALIBRATION, ...gyroCalibration });
     }
   }, [gyroCalibration]);
 
@@ -247,6 +236,24 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
     setCalibrationStatus(null);
     try {
       const res = await usbHardware.calibrateMotion();
+      if (res.ok) {
+        try {
+          const sample = await usbHardware.readMotion();
+          if (sample?.ok) {
+            const ax = typeof sample.ax === 'number' ? sample.ax : 0;
+            const ay = typeof sample.ay === 'number' ? sample.ay : 0;
+            const az = typeof sample.az === 'number' ? sample.az : 1000;
+            const { rawPitch, rawRoll, rawYaw } = computeRawAnglesFromAccel(ax, ay, az);
+            const nextCalib = buildFlatZeroCalibration(rawPitch, rawRoll, rawYaw, profile);
+            setProfile(nextCalib);
+            localStorage.setItem('bertopad_gyro_calib', JSON.stringify(nextCalib));
+            onUpdateGyroCalibration?.(nextCalib);
+            window.dispatchEvent(
+              new CustomEvent('bertopad_gyro_calib_updated', { detail: nextCalib })
+            );
+          }
+        } catch {}
+      }
       const msg =
         res.message ||
         (res.ok
@@ -272,22 +279,16 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
   const bubbleOffsetY = Math.max(-34, Math.min(34, ((reading?.ay ?? 0) / 1000) * 34));
 
   return (
-    <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="space-y-1 min-w-0">
-          <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)] flex-wrap">
-            <Compass className="w-4 h-4 text-[var(--accent)] shrink-0" />
-            <span>Motion &amp; Orientation Sensor</span>
-            <span className="font-mono text-[11px] font-normal text-[var(--text-muted)] tabular-nums">
-              ·{' '}
-              {effectivePresent
-                ? `GY-521 · 0x${effectiveWho.toString(16).toUpperCase()}`
-                : 'Sensor offline'}
-            </span>
-          </div>
-          <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-            Configure shake and face-up / face-down tilt gestures, pick-up screen wake, sensitivity, and flat desk calibration.
-          </p>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <Compass className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+          <span className="text-sm font-semibold text-[var(--text-primary)]">
+            Motion &amp; Orientation Sensor
+          </span>
+          <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+            · {effectivePresent ? 'Connected' : 'Sensor offline'}
+          </span>
         </div>
 
         {effectivePresent && (
@@ -295,12 +296,12 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
             type="button"
             disabled={!connected}
             onClick={() => setTestActive(v => !v)}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
               !connected
-                ? 'opacity-45 cursor-not-allowed bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-muted)]'
+                ? 'opacity-45 cursor-not-allowed studio-btn text-[var(--text-muted)]'
                 : testActive
-                ? 'bg-[var(--accent)] text-[var(--accent-contrast)] border-[var(--accent)] cursor-pointer'
-                : 'bg-[var(--bg-input)] hover:border-[var(--border-strong)] text-[var(--text-primary)] border-[var(--border-subtle)] cursor-pointer'
+                ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] cursor-pointer'
+                : 'studio-btn text-[var(--text-primary)] cursor-pointer'
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
@@ -310,26 +311,26 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
       </div>
 
       {!effectivePresent ? (
-        <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-start gap-2.5 text-xs text-[var(--text-secondary)]">
+        <div className="py-3 border-y border-[var(--border-subtle)] flex items-start gap-2.5 text-xs text-[var(--text-secondary)]">
           <ShieldAlert className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
           <span>
-            No MPU-6050 / GY-521 sensor responded on I2C (SDA GPIO 21, SCL GPIO 22). Check wiring and refresh status to enable motion controls.
+            Motion sensor not detected. Check connection and refresh status to enable motion controls.
           </span>
         </div>
       ) : (
         <>
           {/* Enabled & Wake Switches */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-3">
+          <div className="divide-y divide-[var(--border-subtle)] border-y border-[var(--border-subtle)]">
+            <div className="py-3 flex items-center justify-between gap-4">
               <div className="space-y-0.5 min-w-0">
                 <div
                   id="motion-enabled-label"
-                  className="text-xs font-semibold text-[var(--text-primary)]"
+                  className="text-xs font-medium text-[var(--text-primary)]"
                 >
                   Motion gestures
                 </div>
-                <p className="text-[11px] text-[var(--text-muted)] leading-snug">
-                  Fire assigned actions on shake, face-down, and face-up tilts
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Shake, face-down, and face-up triggers
                 </p>
               </div>
               <button
@@ -339,36 +340,36 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                 aria-checked={enabled}
                 disabled={controlsDisabled || savingBusy}
                 onClick={handleToggleEnabled}
-                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                   controlsDisabled || savingBusy
                     ? 'opacity-40 cursor-not-allowed'
                     : 'cursor-pointer'
                 } ${
                   enabled
                     ? 'bg-[var(--accent)] border-transparent'
-                    : 'bg-[var(--bg-panel)] border-[var(--border-strong)]'
+                    : 'bg-[var(--bg-input)] border-[var(--border-strong)]'
                 }`}
               >
                 <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow-sm ring-0 transition duration-200 ease-in-out ${
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full shadow-sm ring-0 transition duration-200 ease-in-out ${
                     enabled
-                      ? 'translate-x-5 bg-[var(--accent-contrast)]'
+                      ? 'translate-x-4 bg-[var(--accent-contrast)]'
                       : 'translate-x-0 bg-[var(--text-secondary)]'
                   }`}
                 />
               </button>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-3">
+            <div className="py-3 flex items-center justify-between gap-4">
               <div className="space-y-0.5 min-w-0">
                 <div
                   id="motion-wake-label"
-                  className="text-xs font-semibold text-[var(--text-primary)]"
+                  className="text-xs font-medium text-[var(--text-primary)]"
                 >
                   Wake screen on pick-up
                 </div>
-                <p className="text-[11px] text-[var(--text-muted)] leading-snug">
-                  Wake dimmed or sleeping OLED when the pad is moved
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Wake sleeping OLED when pad moves
                 </p>
               </div>
               <button
@@ -378,20 +379,20 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                 aria-checked={wake}
                 disabled={controlsDisabled || savingBusy}
                 onClick={handleToggleWake}
-                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                   controlsDisabled || savingBusy
                     ? 'opacity-40 cursor-not-allowed'
                     : 'cursor-pointer'
                 } ${
                   wake
                     ? 'bg-[var(--accent)] border-transparent'
-                    : 'bg-[var(--bg-panel)] border-[var(--border-strong)]'
+                    : 'bg-[var(--bg-input)] border-[var(--border-strong)]'
                 }`}
               >
                 <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow-sm ring-0 transition duration-200 ease-in-out ${
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full shadow-sm ring-0 transition duration-200 ease-in-out ${
                     wake
-                      ? 'translate-x-5 bg-[var(--accent-contrast)]'
+                      ? 'translate-x-4 bg-[var(--accent-contrast)]'
                       : 'translate-x-0 bg-[var(--text-secondary)]'
                   }`}
                 />
@@ -400,16 +401,16 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
           </div>
 
           {/* Sensitivity Slider (1–5, commits on release to protect NVS flash) */}
-          <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2.5">
+          <div className="space-y-2.5">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <label
                 htmlFor="motion-sensitivity-range"
                 className="text-xs font-medium text-[var(--text-primary)] flex items-center gap-1.5"
               >
-                <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
                 <span>Gesture sensitivity</span>
               </label>
-              <span className="font-mono text-[11px] text-[var(--accent)] font-semibold tabular-nums">
+              <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
                 {sensitivity} / 5 · {SENSITIVITY_LABELS[sensitivity] || 'Balanced'}
               </span>
             </div>
@@ -441,10 +442,10 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                       type="button"
                       disabled={controlsDisabled}
                       onClick={() => commitSensitivityIfChanged(lvl)}
-                      className={`w-7 h-7 rounded-lg font-mono text-[11px] transition-colors cursor-pointer tabular-nums disabled:opacity-45 ${
+                      className={`w-7 h-7 rounded-md font-mono text-[11px] transition-colors cursor-pointer tabular-nums disabled:opacity-45 ${
                         active
-                          ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
-                          : 'bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold'
+                          : 'bg-transparent hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                       title={`Sensitivity ${lvl}: ${SENSITIVITY_LABELS[lvl]}`}
                     >
@@ -463,19 +464,14 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
           </div>
 
           {/* Sensor Calibration & 3D Normalization */}
-          <div className="pt-3 border-t border-[var(--border-subtle)] space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-              <div className="space-y-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <div className="text-xs font-semibold text-[var(--text-primary)]">
-                    Sensor Calibration &amp; 3D Normalization
-                  </div>
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--accent)] font-semibold">
-                    GY-521 · MPU6050
-                  </span>
+          <div className="pt-4 border-t border-[var(--border-subtle)] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <div className="text-xs font-semibold text-[var(--text-primary)]">
+                  Sensor Calibration &amp; 3D Normalization
                 </div>
-                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-                  Calibrate the physical flat resting reference and guide directional tilts (left, right, forward) to normalize rotation inputs for the 3D Tactile pad view.
+                <p className="font-mono text-[11px] text-[var(--text-muted)]">
+                  MPU-6050 flat desk reference · axis orientation
                 </p>
               </div>
 
@@ -485,7 +481,7 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                   disabled={controlsDisabled || calibrating}
                   onClick={handleCalibrate}
                   title="Zero the pad's hardware flat reference on NVS"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--border-strong)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
+                  className="studio-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-primary)] disabled:opacity-40 cursor-pointer whitespace-nowrap"
                 >
                   <RefreshCw
                     className={`w-3.5 h-3.5 shrink-0 ${calibrating ? 'animate-spin' : ''}`}
@@ -495,49 +491,49 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
               </div>
             </div>
 
-            {/* Current Active Normalization Metrics Card */}
-            <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-3 sm:gap-4 flex-wrap font-mono tabular-nums text-[11px]">
-                <div className="flex items-center gap-1">
-                  <span className="text-[var(--text-muted)]">Roll Scale:</span>
-                  <span className="font-bold text-[var(--accent)]">{profile.rollScale.toFixed(2)}×</span>
+            {/* Active Normalization Metrics Row */}
+            <div className="py-2.5 border-y border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-4 flex-wrap font-mono tabular-nums text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[var(--text-muted)]">Roll</span>
+                  <span className="font-semibold text-[var(--text-primary)]">{profile.rollScale.toFixed(2)}×</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-[var(--text-muted)]">Pitch Scale:</span>
-                  <span className="font-bold text-[var(--accent)]">{profile.pitchScale.toFixed(2)}×</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[var(--text-muted)]">Pitch</span>
+                  <span className="font-semibold text-[var(--text-primary)]">{profile.pitchScale.toFixed(2)}×</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-[var(--text-muted)]">Offsets:</span>
-                  <span className="text-[var(--text-primary)]">
-                    P: {profile.pitchOffset >= 0 ? '+' : ''}{profile.pitchOffset.toFixed(1)}° · R: {profile.rollOffset >= 0 ? '+' : ''}{profile.rollOffset.toFixed(1)}°
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[var(--text-muted)]">Offsets</span>
+                  <span className="text-[var(--text-secondary)]">
+                    P {profile.pitchOffset >= 0 ? '+' : ''}{profile.pitchOffset.toFixed(1)}° · R {profile.rollOffset >= 0 ? '+' : ''}{profile.rollOffset.toFixed(1)}°
                   </span>
                 </div>
                 {profile.calibratedAt && (
                   <span className="text-[10px] text-[var(--text-muted)]">
-                    · Calibrated {new Date(profile.calibratedAt).toLocaleDateString()}
+                    · {new Date(profile.calibratedAt).toLocaleDateString()}
                   </span>
                 )}
               </div>
 
-              {(profile.isCalibrated || profile.rollScale !== 1 || profile.pitchScale !== 1 || profile.pitchOffset !== 0 || profile.rollOffset !== 0) && (
+              {(profile.isCalibrated ||
+                profile.rollScale !== 1 ||
+                profile.pitchScale !== 1 ||
+                profile.pitchOffset !== 0 ||
+                profile.rollOffset !== 0 ||
+                profile.invertPitch ||
+                profile.invertRoll ||
+                profile.swapXY ||
+                (profile.deadzoneDeg ?? 0.4) !== 0.4) && (
                 <button
                   type="button"
                   onClick={() => {
-                    const neutral: GyroCalibrationProfile = {
-                      isCalibrated: false,
-                      pitchOffset: 0,
-                      rollOffset: 0,
-                      yawOffset: 0,
-                      pitchScale: 1.0,
-                      rollScale: 1.0,
-                      yawScale: 1.0
-                    };
+                    const neutral: GyroCalibrationProfile = { ...DEFAULT_GYRO_CALIBRATION };
                     setProfile(neutral);
                     localStorage.setItem('bertopad_gyro_calib', JSON.stringify(neutral));
                     onUpdateGyroCalibration?.(neutral);
                     window.dispatchEvent(new CustomEvent('bertopad_gyro_calib_updated', { detail: neutral }));
                     soundEngine.playDialTick();
-                    onToast('3D calibration reset to uncalibrated neutral.', 'success');
+                    onToast('3D calibration & orientation reset to defaults.', 'success');
                   }}
                   className="flex items-center gap-1 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
                 >
@@ -547,26 +543,117 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
               )}
             </div>
 
+            {/* MPU-6050 Axis Orientation & Tilt Deadzone */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-medium text-[var(--text-primary)]">
+                  Axis Orientation &amp; Tilt Deadzone
+                </span>
+                <span className="font-mono text-[11px] text-[var(--text-secondary)] tabular-nums">
+                  Deadzone {(profile.deadzoneDeg ?? 0.4).toFixed(1)}°
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                {(
+                  [
+                    { key: 'invertPitch', label: 'Invert Pitch' },
+                    { key: 'invertRoll', label: 'Invert Roll' },
+                    { key: 'swapXY', label: 'Swap X-Y Axes' }
+                  ] as const
+                ).map(item => {
+                  const active = Boolean(profile[item.key]);
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        const next: GyroCalibrationProfile = {
+                          ...profile,
+                          [item.key]: !active
+                        };
+                        setProfile(next);
+                        localStorage.setItem('bertopad_gyro_calib', JSON.stringify(next));
+                        onUpdateGyroCalibration?.(next);
+                        window.dispatchEvent(
+                          new CustomEvent('bertopad_gyro_calib_updated', { detail: next })
+                        );
+                        soundEngine.playKeyClick();
+                      }}
+                      className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                        active
+                          ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                          : 'bg-transparent hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      <span
+                        className={`font-mono text-[10px] uppercase ${
+                          active ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text-muted)]'
+                        }`}
+                      >
+                        {active ? 'ON' : 'OFF'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+                <label
+                  htmlFor="mpu-deadzone-slider"
+                  className="text-[11px] font-medium text-[var(--text-secondary)] whitespace-nowrap"
+                >
+                  Deadzone angle
+                </label>
+                <input
+                  id="mpu-deadzone-slider"
+                  type="range"
+                  min={0}
+                  max={3.0}
+                  step={0.1}
+                  value={profile.deadzoneDeg ?? 0.4}
+                  onChange={e => {
+                    const nextVal = Math.max(0, Math.min(3.0, Number(e.target.value)));
+                    const next: GyroCalibrationProfile = {
+                      ...profile,
+                      deadzoneDeg: Number(nextVal.toFixed(1))
+                    };
+                    setProfile(next);
+                    localStorage.setItem('bertopad_gyro_calib', JSON.stringify(next));
+                    onUpdateGyroCalibration?.(next);
+                    window.dispatchEvent(
+                      new CustomEvent('bertopad_gyro_calib_updated', { detail: next })
+                    );
+                  }}
+                  className="flex-1 min-w-[140px] accent-[var(--accent)] cursor-pointer"
+                />
+                <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums whitespace-nowrap">
+                  0.0° – 3.0°
+                </span>
+              </div>
+            </div>
+
             {calibrationStatus && (
               <div
                 role="status"
-                className={`text-xs font-mono px-3 py-2 rounded-xl bg-[var(--bg-input)] border ${
+                className={`text-xs font-mono px-3 py-2 rounded-lg border ${
                   calibrationStatus.ok
-                    ? 'border-[var(--accent)] text-[var(--text-primary)]'
-                    : 'border-[#D97706] text-[var(--text-primary)]'
+                    ? 'border-[var(--border-strong)] bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                    : 'border-[#D97706] bg-[var(--bg-input)] text-[var(--text-primary)]'
                 }`}
               >
                 {calibrationStatus.message}
               </div>
             )}
-
           </div>
 
           {/* Live Gesture Action Slots Flash Strip */}
-          <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2">
+          <div className="pt-4 border-t border-[var(--border-subtle)] space-y-2.5">
             <div className="flex items-center justify-between gap-2 text-[11px]">
               <span className="font-medium text-[var(--text-secondary)]">
-                Gesture slots (flashes on live event)
+                Gesture slots
               </span>
               <span className="font-mono text-[var(--text-muted)] tabular-nums">
                 {lastGestureSlot
@@ -575,15 +662,15 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
               {(['g_shake', 'g_down', 'g_up'] as const).map(slot => {
                 const isFlashing = flashedSlot === slot;
-                const meta =
+                const title =
                   slot === 'g_shake'
-                    ? { title: 'Shake', idLabel: 'g_shake' }
+                    ? 'Shake'
                     : slot === 'g_down'
-                    ? { title: 'Face Down', idLabel: 'g_down' }
-                    : { title: 'Face Up', idLabel: 'g_up' };
+                    ? 'Face Down'
+                    : 'Face Up';
 
                 return (
                   <button
@@ -591,22 +678,15 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                     type="button"
                     disabled={!onJumpToMotionSlot}
                     onClick={() => onJumpToMotionSlot?.(slot)}
-                    className={`px-3 py-2 rounded-xl border text-left flex items-center justify-between gap-2 transition-colors ${
+                    className={`px-3 py-2 rounded-lg text-left flex items-center justify-between gap-2 transition-colors ${
                       onJumpToMotionSlot ? 'cursor-pointer' : 'cursor-default'
                     } ${
                       isFlashing
-                        ? 'bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-contrast)]'
-                        : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-primary)]'
+                        ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
+                        : 'bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
                     }`}
                   >
-                    <span className="text-xs font-semibold truncate">{meta.title}</span>
-                    <span
-                      className={`font-mono text-[10px] tabular-nums shrink-0 ${
-                        isFlashing ? 'text-[var(--accent-contrast)]' : 'text-[var(--text-muted)]'
-                      }`}
-                    >
-                      {meta.idLabel}
-                    </span>
+                    <span className="text-xs font-medium truncate">{title}</span>
                   </button>
                 );
               })}
@@ -615,7 +695,7 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
 
           {/* Opt-in Live Sensor Test & Bubble Level (`GET /api/motion/read`) */}
           {testActive && (
-            <div className="pt-3 border-t border-[var(--border-subtle)] space-y-3">
+            <div className="pt-4 border-t border-[var(--border-subtle)] space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-xs font-semibold text-[var(--text-primary)]">
                   Live Sensor Readout &amp; Bubble Level
@@ -627,38 +707,38 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-stretch">
-                <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-xs space-y-1.5 tabular-nums flex flex-col justify-center">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center pt-1">
+                <div className="font-mono text-xs space-y-1.5 tabular-nums">
                   <div className="text-[11px] font-sans font-medium text-[var(--text-muted)]">
                     Acceleration (milli-g)
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between py-0.5 border-b border-[var(--border-subtle)]">
                     <span className="text-[var(--text-secondary)]">AX</span>
-                    <span className="font-bold text-[var(--text-primary)]">
+                    <span className="font-semibold text-[var(--text-primary)]">
                       {reading?.ax ?? 0} mg
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between py-0.5 border-b border-[var(--border-subtle)]">
                     <span className="text-[var(--text-secondary)]">AY</span>
-                    <span className="font-bold text-[var(--text-primary)]">
+                    <span className="font-semibold text-[var(--text-primary)]">
                       {reading?.ay ?? 0} mg
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between py-0.5">
                     <span className="text-[var(--text-secondary)]">AZ</span>
-                    <span className="font-bold text-[var(--text-primary)]">
+                    <span className="font-semibold text-[var(--text-primary)]">
                       {reading?.az ?? 1000} mg
                     </span>
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] font-mono text-xs space-y-1.5 tabular-nums flex flex-col justify-center">
+                <div className="font-mono text-xs space-y-1.5 tabular-nums">
                   <div className="text-[11px] font-sans font-medium text-[var(--text-muted)]">
-                    Orientation vs. calibrated flat
+                    Orientation
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between py-0.5 border-b border-[var(--border-subtle)]">
                     <span className="text-[var(--text-secondary)]">State</span>
-                    <span className="font-bold text-[var(--accent)]">
+                    <span className="font-semibold text-[var(--accent)]">
                       {reading?.face_up !== undefined
                         ? reading.face_up > 0.65
                           ? 'Face Up'
@@ -668,21 +748,21 @@ export const MotionSettings: React.FC<MotionSettingsProps> = ({
                         : '—'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between py-0.5 border-b border-[var(--border-subtle)]">
                     <span className="text-[var(--text-secondary)]">face_up</span>
-                    <span className="font-bold text-[var(--text-primary)]">
+                    <span className="font-semibold text-[var(--text-primary)]">
                       {reading?.face_up !== undefined ? reading.face_up.toFixed(2) : '1.00'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between py-0.5">
                     <span className="text-[var(--text-secondary)]">Die temp</span>
-                    <span className="font-bold text-[var(--text-primary)]">
+                    <span className="font-semibold text-[var(--text-primary)]">
                       {reading?.temp_c !== undefined ? `${reading.temp_c.toFixed(1)} °C` : '—'}
                     </span>
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col items-center justify-center gap-2">
+                <div className="flex flex-col items-center justify-center gap-1.5">
                   <span className="text-[11px] font-medium text-[var(--text-muted)]">
                     Bubble level
                   </span>

@@ -79,6 +79,8 @@ const EMPTY_HOLD_SLOTS = {
   b6h: '',
   b7h: '',
   b8h: '',
+  push_cw2: '',
+  push_ccw2: '',
   g_shake: '',
   g_down: '',
   g_up: ''
@@ -607,12 +609,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-[#080A0D]/88 backdrop-blur-xl overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby="setup-wizard-title"
     >
-      <div className="w-full max-w-2xl rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-strong)] shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]">
+      <div className="studio-popover w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col h-[min(740px,90dvh)] animate-popover-in">
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
@@ -684,10 +686,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         </div>
 
         {/* Step Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
+        <div className="px-5 pt-4 pb-6 sm:px-6 sm:pt-5 sm:pb-7 overflow-y-auto space-y-4 flex-1">
           {/* Connection Prompt Banner if unplugged */}
           {!connection.connected && (
-            <div className="p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-0.5 text-xs">
                 <div className="font-semibold text-[var(--text-primary)]">
                   No BertoPad connected over USB yet
@@ -700,14 +702,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 <button
                   type="button"
                   onClick={onStartDemoSetup}
-                  className="px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
+                  className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Demo Setup
                 </button>
                 <button
                   type="button"
                   onClick={onConnectUsbPad}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Usb className="w-3.5 h-3.5" />
                   <span>Connect USB</span>
@@ -718,8 +720,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
           {/* STEP 01: DEVICES & OS */}
           {step === 0 && (
-            <div className="space-y-5">
-              <div className="space-y-1">
+            <div className="space-y-3.5 pb-4">
+              <div className="space-y-0.5">
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                   01. Choose your primary starter layout
                 </h3>
@@ -728,7 +730,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {(
                   [
                     {
@@ -768,7 +770,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       key={card.id}
                       type="button"
                       onClick={() => handleSelectPrimaryOs(card.id)}
-                      className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer space-y-1.5 ${
+                      className={`p-3 rounded-xl border text-left transition-colors cursor-pointer space-y-1 ${
                         selected
                           ? 'bg-[var(--bg-elevated)] border-[var(--accent)] text-[var(--text-primary)]'
                           : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
@@ -790,7 +792,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       <div className="text-[11px] font-mono text-[var(--text-muted)]">
                         {card.meta}
                       </div>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                      <p className="text-[11px] text-[var(--text-secondary)] leading-snug">
                         {card.desc}
                       </p>
                     </button>
@@ -923,7 +925,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 </div>
 
                 {supportsWizardTvToggle && (
-                  <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-4">
+                  <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-4">
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-2">
                         <Tv className="w-4 h-4 text-[var(--accent)] shrink-0" />
@@ -937,8 +939,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                           · {wizardTvEnabled ? 'On' : 'Off'}
                         </span>
                       </div>
-                      <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                        Turn off if you only use Bluetooth hosts — setup will skip Wi-Fi and SmartCast TV pairing. You can turn TV mode back on anytime in Settings.
+                      <p className="text-[11px] text-[var(--text-muted)] leading-snug">
+                        Turn off if you only use Bluetooth hosts — setup will skip Wi-Fi and SmartCast TV pairing.
                       </p>
                     </div>
 
@@ -991,7 +993,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     />
                     <div>
                       <div className="text-xs font-semibold text-[var(--text-primary)]">
-                        Active Radio: BertoPad {activeBleSlot} ([H{activeBleSlot}])
+                        Active Radio: BertoPad {activeBleSlot}
                       </div>
                       <div className="text-[11px] font-mono text-[var(--text-muted)] tabular-nums">
                         {!connection.connected
@@ -1031,7 +1033,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2 font-mono text-[11px] tabular-nums">
-                          <span className="font-bold">[H{slot}]</span>
+                          <span className="font-bold">Host {slot}</span>
                           <span>{active ? 'Broadcasting' : 'Switch'}</span>
                         </div>
                         <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
@@ -1142,7 +1144,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     type="button"
                     disabled={!connection.connected || wifiBusy || !wifiSsid.trim()}
                     onClick={handleSaveWifi}
-                    className="px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+                    className={`px-4 py-2 rounded-lg text-xs disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
+                      connection.connected && telemetry?.wifiConnected
+                        ? 'studio-btn text-[var(--text-primary)] font-medium'
+                        : 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:opacity-90'
+                    }`}
                   >
                     {wifiBusy && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
                     <span>{wifiBusy ? 'Connecting…' : 'Connect Wi-Fi'}</span>
@@ -1217,25 +1223,41 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1">
-                  <input
-                    type="text"
-                    disabled={!connection.connected || tvBusy}
-                    value={tvIp}
-                    onChange={e => setTvIp(e.target.value)}
-                    placeholder="TV IP (e.g. 192.168.1.50)"
-                    aria-label="SmartCast TV IP"
-                    className="sm:col-span-2 px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
-                  />
-                  <input
-                    type="number"
-                    disabled={!connection.connected || tvBusy}
-                    value={tvPort}
-                    onChange={e => setTvPort(e.target.value)}
-                    placeholder="7345"
-                    aria-label="SmartCast TV Port"
-                    className="px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] tabular-nums disabled:opacity-50"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 items-end">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label
+                      htmlFor="wizard-tv-ip"
+                      className="block text-[11px] text-[var(--text-muted)]"
+                    >
+                      IP Address
+                    </label>
+                    <input
+                      id="wizard-tv-ip"
+                      type="text"
+                      disabled={!connection.connected || tvBusy}
+                      value={tvIp}
+                      onChange={e => setTvIp(e.target.value)}
+                      placeholder="192.168.1.50"
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="wizard-tv-port"
+                      className="block text-[11px] text-[var(--text-muted)]"
+                    >
+                      Port
+                    </label>
+                    <input
+                      id="wizard-tv-port"
+                      type="number"
+                      disabled={!connection.connected || tvBusy}
+                      value={tvPort}
+                      onChange={e => setTvPort(e.target.value)}
+                      placeholder="7345"
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] tabular-nums disabled:opacity-50"
+                    />
+                  </div>
                   <button
                     type="button"
                     disabled={!connection.connected || tvBusy || !tvIp.trim()}
@@ -1347,19 +1369,19 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
               {/* Clean Summary Grid */}
               <div className="rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] text-xs">
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 1 ([H1] BertoPad)</span>
+                  <span className="text-[var(--text-muted)]">Host 1 (BertoPad)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h1Name, 'HOST1')} · {presetLabel(h1Preset)}
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 2 ([H2] BertoPad)</span>
+                  <span className="text-[var(--text-muted)]">Host 2 (BertoPad)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h2Name, 'HOST2')} · {presetLabel(h2Preset)}
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Host 3 ([H3] BertoPad)</span>
+                  <span className="text-[var(--text-muted)]">Host 3 (BertoPad)</span>
                   <span className="font-mono text-[var(--text-primary)] tabular-nums text-right">
                     {sanitizeFirmwareAlias(h3Name, 'HOST3')} · {presetLabel(h3Preset)}
                   </span>

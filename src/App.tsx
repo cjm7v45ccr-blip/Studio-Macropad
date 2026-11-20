@@ -13,11 +13,11 @@ import {
   HardwareSlotId,
   HostOsType,
   KeyId,
+  LiveInputEvent,
   MotionSlotId,
   SidebarSection,
   bleSlotToProfileId,
-  isBleHostProfile,
-  profileShortTag
+  isBleHostProfile
 } from './types/studio';
 import {
   ToastVariant,
@@ -27,6 +27,7 @@ import {
 import { useFirmwareUpdateCheck } from './hooks/useFirmwareUpdateCheck';
 import { usbHardware } from './services/usbHardwareService';
 import { repeatMacroRunner } from './services/repeatMacroRunner';
+import { soundEngine, SoundProfile } from './services/soundEffects';
 import {
   SLOT_LABELS,
   actionToMacroSteps,
@@ -57,6 +58,8 @@ import { MacropadCanvas } from './components/MacropadCanvas';
 import { ButtonInspector } from './components/ButtonInspector';
 import { EncoderInspector } from './components/EncoderInspector';
 import { MotionInspector } from './components/MotionInspector';
+import { LiveTelemetryInspector } from './components/LiveTelemetryInspector';
+import { OledScreenComposerModal } from './components/OledScreenComposerModal';
 import { MacroEditorExternalTarget, MacroEditorView } from './components/MacroEditorView';
 import { GlobalMacroSearch } from './components/GlobalMacroSearch';
 import { LibraryView } from './components/LibraryView';
@@ -68,6 +71,7 @@ import { SyncConflictModal } from './components/SyncConflictModal';
 import { DiffConfirmModal, DiffPreviewRow } from './components/DiffConfirmModal';
 import { CheatSheetModal } from './components/CheatSheetModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { AboutModal } from './components/AboutModal';
 import { AlertCircle, CheckCircle2, Repeat, Square } from 'lucide-react';
 
 export default function App() {
@@ -164,6 +168,29 @@ export default function App() {
   } | null>(null);
   const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+  const [aboutModalOpen, setAboutModalOpen] = useState(false);
+  const [oledComposerOpen, setOledComposerOpen] = useState(false);
+  const [soundProfile, setSoundProfile] = useState<SoundProfile>(soundEngine.soundProfile);
+  const [testEvents, setTestEvents] = useState<LiveInputEvent[]>([]);
+  const [macroHistoryBridge, setMacroHistoryBridge] = useState<{
+    canUndo: boolean;
+    canRedo: boolean;
+    undo: () => void;
+    redo: () => void;
+  } | null>(null);
+
+  const handleChangeSoundProfile = useCallback((next: SoundProfile) => {
+    soundEngine.setProfile(next);
+    setSoundProfile(next);
+  }, []);
+
+  const handleAddTestEvent = useCallback((evt: LiveInputEvent) => {
+    setTestEvents(prev => [evt, ...prev].slice(0, 60));
+  }, []);
+
+  const handleClearTestEvents = useCallback(() => {
+    setTestEvents([]);
+  }, []);
 
   const [connection, setConnection] = useState<DeviceConnectionInfo>(usbHardware.info);
   const [activeRepeatJob, setActiveRepeatJob] = useState<ActiveRepeatJob | null>(
@@ -174,6 +201,8 @@ export default function App() {
     if (connection.connected) {
       setConnectOverlayOpen(false);
       setConnectModalOpen(false);
+    } else {
+      setTestEvents([]);
     }
   }, [connection.connected]);
 
@@ -256,6 +285,27 @@ export default function App() {
       showToast(wasPreview ? 'Stopped dry run — no actions sent' : 'Stopped macro sequence');
     }
   }, [connection.connected, showToast]);
+
+  useEffect(() => {
+    const handleGlobalShortcutsKey = (e: KeyboardEvent) => {
+      if (e.key !== '?' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      setShortcutsModalOpen(true);
+    };
+    window.addEventListener('keydown', handleGlobalShortcutsKey);
+    return () => window.removeEventListener('keydown', handleGlobalShortcutsKey);
+  }, []);
 
   useEffect(() => {
     if (!activeRepeatJob) return;
@@ -441,7 +491,7 @@ export default function App() {
 
       if (!connection.connected) {
         studio.selectProfile(targetProfId);
-        showToast(`Editing ${friendlyName} ([H${slot}]) — connect USB to switch hardware BLE slot`);
+        showToast(`Editing ${friendlyName} — connect USB to switch wireless host`);
         return;
       }
       try {
@@ -459,7 +509,9 @@ export default function App() {
     selectedControl === 'encoder2' ||
     selectedControl === 'dial2' ||
     selectedControl === 'e2_cw' ||
-    selectedControl === 'e2_ccw';
+    selectedControl === 'e2_ccw' ||
+    selectedControl === 'push_cw2' ||
+    selectedControl === 'push_ccw2';
 
   const isEncoderControlSelected =
     isEncoder2Selected ||
@@ -477,6 +529,10 @@ export default function App() {
       ? 'e2_cw'
       : selectedControl === 'e2_ccw'
       ? 'e2_ccw'
+      : selectedControl === 'push_cw2'
+      ? 'push_cw2'
+      : selectedControl === 'push_ccw2'
+      ? 'push_ccw2'
       : 'dial2'
     : selectedControl === 'enc_cw'
     ? 'enc_cw'
@@ -559,7 +615,9 @@ export default function App() {
         slot === 'push_ccw' ||
         slot === 'dial2' ||
         slot === 'e2_cw' ||
-        slot === 'e2_ccw'
+        slot === 'e2_ccw' ||
+        slot === 'push_cw2' ||
+        slot === 'push_ccw2'
       ) {
         setSelectedControl(slot);
       } else if (isMotionSlot(slot)) {
@@ -583,8 +641,8 @@ export default function App() {
     return {
       srcProf,
       tgtProf,
-      srcLabel: `${srcProf.name} (${profileShortTag(pendingCopyPair.source)})`,
-      tgtLabel: `${tgtProf.name} (${profileShortTag(pendingCopyPair.target)})`
+      srcLabel: srcProf.name,
+      tgtLabel: tgtProf.name
     };
   }, [pendingCopyPair, studio.profiles]);
 
@@ -594,7 +652,7 @@ export default function App() {
     const tgtSlots = extractProfileSlots(pendingCopyLabels.tgtProf);
     return visibleSlots.map(slot => ({
       id: `${pendingCopyPair.target}-${slot}`,
-      slotLabel: `${profileShortTag(pendingCopyPair.target)} · ${SLOT_LABELS[slot].short}`,
+      slotLabel: `${pendingCopyLabels.tgtLabel} · ${SLOT_LABELS[slot].short}`,
       beforeLabel: tgtSlots[slot]
         ? describeFirmwareAction(tgtSlots[slot]).shortLabel
         : 'Unassigned',
@@ -631,10 +689,30 @@ export default function App() {
         onRequestCopyProfile={(source, target) =>
           setPendingCopyPair({ source, target })
         }
-        canUndo={studio.canUndo}
-        canRedo={studio.canRedo}
-        onUndo={studio.undo}
-        onRedo={studio.redo}
+        canUndo={
+          activeSection === 'macros' && macroHistoryBridge?.canUndo
+            ? true
+            : studio.canUndo
+        }
+        canRedo={
+          activeSection === 'macros' && macroHistoryBridge?.canRedo
+            ? true
+            : studio.canRedo
+        }
+        onUndo={() => {
+          if (activeSection === 'macros' && macroHistoryBridge?.canUndo) {
+            macroHistoryBridge.undo();
+            return;
+          }
+          studio.undo();
+        }}
+        onRedo={() => {
+          if (activeSection === 'macros' && macroHistoryBridge?.canRedo) {
+            macroHistoryBridge.redo();
+            return;
+          }
+          studio.redo();
+        }}
         onSwitchBleHost={handleSwitchBleHost}
         onDisconnect={async () => {
           await usbHardware.disconnect(true);
@@ -692,6 +770,8 @@ export default function App() {
           onToggleSound={() =>
             studio.updateSettings({ soundEnabled: !studio.settings.soundEnabled })
           }
+          soundProfile={soundProfile}
+          onChangeSoundProfile={handleChangeSoundProfile}
           resolvedTheme={resolvedTheme}
           onToggleTheme={handleToggleTheme}
           macroCount={studio.customMacros.length}
@@ -699,7 +779,7 @@ export default function App() {
         />
 
         {activeSection === 'device' && (
-          <div ref={deviceWorkspaceRef} className="relative flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-w-0">
+          <div ref={deviceWorkspaceRef} className="relative flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-w-0 animate-workspace-section">
             <MacropadCanvas
               activeProfileId={studio.activeProfile.id}
               activeProfileName={studio.activeProfile.name}
@@ -713,6 +793,9 @@ export default function App() {
               connection={connection}
               tvEnabled={studio.tvEnabled}
               isSyncedWithHardware={studio.isSyncedWithHardware}
+              oledComposer={studio.settings.oledComposer}
+              onAddTestEvent={handleAddTestEvent}
+              onClearTestLog={handleClearTestEvents}
               onSelectControl={handleSelectCanvasControl}
               onChangeViewMode={setViewMode}
               onChangeEncoderPlacement={placement =>
@@ -728,13 +811,50 @@ export default function App() {
               onOpenSetupWizard={handleOpenSetupWizard}
               onOpenCheatSheet={() => setCheatSheetOpen(true)}
               onOpenShortcuts={() => setShortcutsModalOpen(true)}
+              onOpenOledComposer={() => setOledComposerOpen(true)}
+              onSwapKeys={studio.swapKeys}
+              onCopyKey={studio.copyKey}
+              onOpenMacroBuilderForSlot={handleOpenMacroBuilderForSlot}
+              onResetSlotToDefault={slot =>
+                studio.resetSlotToDefault(studio.activeProfile.id, slot)
+              }
+              onClearSlot={slot =>
+                studio.clearSlot(studio.activeProfile.id, slot)
+              }
+              onPasteSlotBinding={(slot, binding) => {
+                studio.assignSlotAction(studio.activeProfile.id, slot, binding);
+                showToast(`Pasted action onto ${SLOT_LABELS[slot].short}`);
+              }}
+              onBatchPasteSlotBinding={(slots, binding) =>
+                studio.batchPasteSlotBinding(studio.activeProfile.id, slots, binding)
+              }
+              onBatchResetSlotsToDefault={slots =>
+                studio.batchResetSlotsToDefault(studio.activeProfile.id, slots)
+              }
+              onBatchClearSlots={slots =>
+                studio.batchClearSlots(studio.activeProfile.id, slots)
+              }
+              onBatchUpdateKeyAppearance={studio.batchUpdateKeyAppearance}
             />
 
             <div ref={inspectorAnchorRef} className="lg:hidden shrink-0 flex items-center justify-between px-4 py-2 bg-[var(--bg-panel)] border-t border-[var(--border-subtle)] text-xs">
-              <span className="text-[var(--text-secondary)]">Selected control</span>
+              <span className="text-[var(--text-secondary)]">
+                {viewMode === 'test' ? 'Live telemetry' : 'Selected control'}
+              </span>
               <button type="button" onClick={() => deviceWorkspaceRef.current?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })} className="text-[var(--accent)] font-semibold px-2 py-1 cursor-pointer">Back to pad ↑</button>
             </div>
-            {isEncoderControlSelected ? (
+            {viewMode === 'test' ? (
+              <LiveTelemetryInspector
+                connection={connection}
+                activeProfileId={studio.activeProfile.id}
+                activeProfileName={studio.activeProfile.name}
+                testLog={testEvents}
+                gyroCalibration={studio.settings.gyroCalibration}
+                onClearLog={handleClearTestEvents}
+                onBackToEdit={() => setViewMode('edit')}
+                onSimulateHostSwitch={slot => handleSwitchBleHost(slot)}
+              />
+            ) : isEncoderControlSelected ? (
               <EncoderInspector
                 encoder={
                   selectedEncoderIndex === 2
@@ -745,21 +865,33 @@ export default function App() {
                 encoder1Color={studio.activeLayer.encoder.color}
                 encoder2Color={studio.activeLayer.encoder2.color}
                 onSelectEncoder={idx => {
+                  const isHoldCw =
+                    selectedEncoderSubControl === 'push_cw' ||
+                    selectedEncoderSubControl === 'push_cw2';
+                  const isHoldCcw =
+                    selectedEncoderSubControl === 'push_ccw' ||
+                    selectedEncoderSubControl === 'push_ccw2';
                   const isCw =
                     selectedEncoderSubControl === 'enc_cw' ||
-                    selectedEncoderSubControl === 'push_cw' ||
                     selectedEncoderSubControl === 'e2_cw';
                   const isCcw =
                     selectedEncoderSubControl === 'enc_ccw' ||
-                    selectedEncoderSubControl === 'push_ccw' ||
                     selectedEncoderSubControl === 'e2_ccw';
                   setSelectedControl(
                     idx === 2
-                      ? isCw
+                      ? isHoldCw
+                        ? 'push_cw2'
+                        : isHoldCcw
+                        ? 'push_ccw2'
+                        : isCw
                         ? 'e2_cw'
                         : isCcw
                         ? 'e2_ccw'
                         : 'dial2'
+                      : isHoldCw
+                      ? 'push_cw'
+                      : isHoldCcw
+                      ? 'push_ccw'
                       : isCw
                       ? 'enc_cw'
                       : isCcw
@@ -822,9 +954,11 @@ export default function App() {
                       : selectedEncoderSubControl === 'enc_cw' ||
                         selectedEncoderSubControl === 'e2_cw'
                       ? activeEnc.cw
-                      : selectedEncoderSubControl === 'push_cw'
+                      : selectedEncoderSubControl === 'push_cw' ||
+                        selectedEncoderSubControl === 'push_cw2'
                       ? activeEnc.pushCw ?? { type: 'none', value: '' }
-                      : selectedEncoderSubControl === 'push_ccw'
+                      : selectedEncoderSubControl === 'push_ccw' ||
+                        selectedEncoderSubControl === 'push_ccw2'
                       ? activeEnc.pushCcw ?? { type: 'none', value: '' }
                       : activeEnc.ccw;
                   handleOpenMacroBuilderForSlot(selectedEncoderSubControl, activeBind);
@@ -970,6 +1104,8 @@ export default function App() {
             hostOsMap={studio.settings.hostOsMap}
             tvEnabled={studio.tvEnabled}
             showAdvancedIds={studio.settings.showAdvancedIds}
+            syncStatus={studio.syncStatus}
+            onHistoryBridgeChange={setMacroHistoryBridge}
             onSaveMacro={studio.saveCustomMacro}
             onDeleteMacro={studio.deleteCustomMacro}
             onCleanUpDuplicateMacros={studio.cleanUpDuplicateMacros}
@@ -1003,6 +1139,10 @@ export default function App() {
             onSaveUserSnapshot={studio.saveUserSnapshot}
             onDeleteUserSnapshot={studio.deleteUserSnapshot}
             onOpenMacros={() => setActiveSection('macros')}
+            onOpenDeviceProfile={profileId => {
+              studio.selectProfile(profileId);
+              setActiveSection('device');
+            }}
             onApplyHardwareBackup={studio.applyHardwareBackup}
             onExportBackupFile={studio.exportHardwareBackupFile}
             onImportBackupFile={studio.importHardwareBackupFile}
@@ -1040,6 +1180,10 @@ export default function App() {
             onJumpToMotionSlot={slot =>
               handleJumpToSlotControl(studio.activeProfile.id, slot)
             }
+            onOpenOledComposer={() => setOledComposerOpen(true)}
+            onOpenAbout={() => setAboutModalOpen(true)}
+            soundProfile={soundProfile}
+            onSelectSoundProfile={handleChangeSoundProfile}
             onToast={showToast}
           />
         )}
@@ -1080,6 +1224,7 @@ export default function App() {
         onClose={() => setConnectOverlayOpen(false)}
         onConnectSuccess={() => showToast('Connected to BertoPad via USB')}
         onStartDemo={handleStartDemoMode}
+        onOpenSetupWizard={handleOpenSetupWizard}
         resolvedTheme={resolvedTheme}
       />
 
@@ -1114,10 +1259,8 @@ export default function App() {
             : ''
         }
         confirmLabel={
-          pendingCopyPair
-            ? `Copy ${profileShortTag(pendingCopyPair.source)} → ${profileShortTag(
-                pendingCopyPair.target
-              )}`
+          pendingCopyLabels
+            ? `Copy ${pendingCopyLabels.srcLabel} → ${pendingCopyLabels.tgtLabel}`
             : 'Copy'
         }
         rows={topBarCopyDiffRows}
@@ -1152,6 +1295,23 @@ export default function App() {
       <KeyboardShortcutsModal
         isOpen={shortcutsModalOpen}
         onClose={() => setShortcutsModalOpen(false)}
+      />
+
+      {/* About & Open-Source Licenses Modal */}
+      <AboutModal
+        isOpen={aboutModalOpen}
+        onClose={() => setAboutModalOpen(false)}
+      />
+
+      {/* 128x64 OLED Screen Composer Modal */}
+      <OledScreenComposerModal
+        isOpen={oledComposerOpen}
+        config={studio.settings.oledComposer}
+        activeProfileName={studio.activeProfile.name}
+        connection={connection}
+        onSaveConfig={next => studio.updateSettings({ oledComposer: next })}
+        onClose={() => setOledComposerOpen(false)}
+        onToast={showToast}
       />
 
       {pendingTest && (
@@ -1215,12 +1375,16 @@ export default function App() {
         </div>
       )}
 
-      {/* Toast Notification (Success / Error) */}
+      {/* Toast Notification (Success / Error) with Instant Undo for Reversible Edits */}
       {toast && (
         <div
           role="status"
           aria-live="polite"
-          className={`fixed bottom-16 sm:bottom-5 right-3 sm:right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border shadow-2xl text-xs font-medium max-w-[92vw] sm:max-w-md ${
+          className={`fixed ${
+            activeSection === 'macros'
+              ? 'bottom-24 sm:bottom-20'
+              : 'bottom-16 sm:bottom-5'
+          } right-3 sm:right-5 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] border shadow-2xl text-xs font-medium max-w-[92vw] sm:max-w-md animate-popover-in ${
             toast.variant === 'error'
               ? 'border-[var(--accent)] text-[var(--text-primary)]'
               : 'border-[var(--border-strong)] text-[var(--text-primary)]'
@@ -1232,6 +1396,20 @@ export default function App() {
             <CheckCircle2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
           )}
           <span className="leading-snug">{toast.message}</span>
+          {toast.variant === 'success' &&
+            studio.canUndo &&
+            /^(Swapped|Copied|Pasted|Cleared|Reset|Applied|Restored)/i.test(toast.message) && (
+              <button
+                type="button"
+                onClick={() => {
+                  studio.undo();
+                  setToast(null);
+                }}
+                className="ml-1 px-2 py-0.5 rounded-md bg-[var(--bg-input)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--accent)] transition-colors cursor-pointer shrink-0"
+              >
+                Undo
+              </button>
+            )}
         </div>
       )}
     </div>

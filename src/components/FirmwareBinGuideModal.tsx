@@ -1,5 +1,5 @@
-import React from 'react';
-import { Cpu, Download, FolderOpen, HelpCircle, X, CheckCircle2, ShieldCheck, ArrowRight, Upload } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Cpu, FolderOpen, X, ShieldCheck, Upload } from 'lucide-react';
 import { FIRMWARE_INO_FILENAME } from '../utils/version';
 
 interface FirmwareBinGuideModalProps {
@@ -11,12 +11,32 @@ export const FirmwareBinGuideModal: React.FC<FirmwareBinGuideModalProps> = ({
   isOpen,
   onClose
 }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="fw-bin-guide-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-xl bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
           <div className="flex items-center gap-3">
@@ -24,12 +44,18 @@ export const FirmwareBinGuideModal: React.FC<FirmwareBinGuideModalProps> = ({
               <Cpu className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[var(--text-primary)]">Adding & Naming Custom Firmware .bin Files</h2>
+              <h2
+                id="fw-bin-guide-title"
+                className="text-base font-bold text-[var(--text-primary)]"
+              >
+                Adding & Naming Custom Firmware .bin Files
+              </h2>
               <p className="text-xs text-[var(--text-muted)]">ESP32 BertoPad Firmware Guide</p>
             </div>
           </div>
           <button
             type="button"
+            aria-label="Close firmware binary guide"
             onClick={onClose}
             className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition-colors cursor-pointer"
           >

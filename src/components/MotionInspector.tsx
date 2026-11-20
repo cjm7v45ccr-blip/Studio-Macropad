@@ -9,8 +9,7 @@ import {
   HostOsType,
   KeyboardLayoutId,
   MotionControlConfig,
-  MotionSlotId,
-  profileShortTag
+  MotionSlotId
 } from '../types/studio';
 import {
   FACTORY_DEFAULT_SLOTS,
@@ -128,25 +127,17 @@ export const MotionInspector: React.FC<MotionInspectorProps> = ({
   const canResetDefault = currentActionStr !== defaultActionStr;
 
   return (
-    <aside className="w-full lg:w-[400px] xl:w-[430px] shrink-0 lg:h-full overflow-y-auto bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col">
-      {/* Header + 3 Motion Gesture Selector Cards */}
-      <div className="p-4 sm:p-5 border-b border-[var(--border-subtle)] space-y-3.5">
+    <aside className="w-full lg:w-[430px] xl:w-[450px] shrink-0 lg:h-full overflow-y-auto bg-[var(--bg-panel)] border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] flex flex-col">
+      {/* Header + Flat 3-Gesture Selector */}
+      <div className="px-5 py-4 border-b border-[var(--border-subtle)] space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-[11px] font-mono text-[var(--text-muted)] tabular-nums">
-              <span>{profileShortTag(activeProfileId)}</span>
-              <span aria-hidden="true">·</span>
-              <span className="truncate">{activeProfileName}</span>
-              {showAdvancedIds && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="text-[var(--accent)]">{selectedSlot}</span>
-                </>
-              )}
-            </div>
-            <h2 className="text-sm font-bold text-[var(--text-primary)] mt-0.5">
+            <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">
               {SLOT_LABELS[selectedSlot].short}
             </h2>
+            <p className="font-mono text-[11px] text-[var(--text-muted)] truncate tabular-nums">
+              {activeProfileName} · Motion
+            </p>
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
@@ -155,7 +146,7 @@ export const MotionInspector: React.FC<MotionInspectorProps> = ({
                 type="button"
                 onClick={() => onUpdateSlot(selectedSlot, initialBindingOnSelect)}
                 title="Revert unsaved edits on this motion trigger"
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-[var(--bg-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
               >
                 <Undo2 className="w-3 h-3" />
                 <span>Revert</span>
@@ -166,7 +157,7 @@ export const MotionInspector: React.FC<MotionInspectorProps> = ({
                 type="button"
                 onClick={() => onClearSlot(selectedSlot)}
                 title="Unassign this motion gesture"
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-[var(--bg-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
               >
                 <XCircle className="w-3 h-3" />
                 <span>Clear</span>
@@ -177,7 +168,7 @@ export const MotionInspector: React.FC<MotionInspectorProps> = ({
                 type="button"
                 onClick={() => onResetSlotToDefault(selectedSlot)}
                 title="Reset to factory default"
-                className="px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                className="px-2 py-1 rounded-md hover:bg-[var(--bg-hover)] text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
               >
                 Default
               </button>
@@ -185,7 +176,7 @@ export const MotionInspector: React.FC<MotionInspectorProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-3 gap-1">
           {MOTION_CARDS.map(card => {
             const Icon = card.icon;
             const active = selectedSlot === card.slot;
@@ -195,19 +186,19 @@ export const MotionInspector: React.FC<MotionInspectorProps> = ({
                 key={card.slot}
                 type="button"
                 onClick={() => onSelectSlot(card.slot)}
-                className={`p-2.5 rounded-xl border text-left flex flex-col justify-between gap-1.5 transition-colors cursor-pointer min-w-0 ${
+                className={`px-2 py-2 rounded-md text-left flex flex-col justify-between gap-1 transition-colors cursor-pointer min-w-0 ${
                   active
-                    ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
-                    : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                    ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <Icon
-                    className={`w-3.5 h-3.5 shrink-0 ${
-                      active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
+                    className={`w-3 h-3 shrink-0 ${
+                      active ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
                     }`}
                   />
-                  <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                  <span className="text-[11px] font-medium truncate">
                     {card.title}
                   </span>
                 </div>
@@ -232,16 +223,16 @@ export const MotionInspector: React.FC<MotionInspectorProps> = ({
         </div>
 
         {onOpenMotionSettings && (
-          <div className="flex items-center justify-between gap-2 pt-1 text-[11px] text-[var(--text-muted)]">
-            <span>
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)]">
+            <span className="font-mono tabular-nums">
               {connection.telemetry?.motion?.enabled === false
-                ? 'Motion gestures are currently turned off in Settings.'
+                ? 'Gestures off'
                 : `Sensitivity ${connection.telemetry?.motion?.sensitivity ?? 3}/5`}
             </span>
             <button
               type="button"
               onClick={onOpenMotionSettings}
-              className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline font-medium cursor-pointer shrink-0"
+              className="inline-flex items-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium cursor-pointer shrink-0"
             >
               <SlidersHorizontal className="w-3 h-3" />
               <span>Sensor settings</span>

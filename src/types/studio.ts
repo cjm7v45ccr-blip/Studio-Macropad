@@ -3,7 +3,7 @@ export type HoldSlotId = 'b1h' | 'b2h' | 'b3h' | 'b4h' | 'b5h' | 'b6h' | 'b7h' |
 export type MotionSlotId = 'g_shake' | 'g_down' | 'g_up';
 export type EncoderIndex = 1 | 2;
 export type Encoder1SubControlId = 'dial' | 'enc_cw' | 'enc_ccw' | 'push_cw' | 'push_ccw';
-export type Encoder2SubControlId = 'dial2' | 'e2_cw' | 'e2_ccw';
+export type Encoder2SubControlId = 'dial2' | 'e2_cw' | 'e2_ccw' | 'push_cw2' | 'push_ccw2';
 export type EncoderSubControlId = Encoder1SubControlId | Encoder2SubControlId;
 export type ControlId =
   | KeyId
@@ -103,6 +103,8 @@ export type HardwareSlotId =
   | 'dial2'
   | 'e2_cw'
   | 'e2_ccw'
+  | 'push_cw2'
+  | 'push_ccw2'
   | 'b1h'
   | 'b2h'
   | 'b3h'
@@ -447,6 +449,28 @@ export type KeyboardLayoutId =
 
 export type ThemeMode = 'system' | 'dark' | 'light';
 
+export type LedIndicatorMode = 'status' | 'solid' | 'pulse' | 'blink' | 'off';
+
+export interface LedIndicatorSettings {
+  blueMode: LedIndicatorMode;
+  blueBrightness: number; // 0-100
+  whiteMode: LedIndicatorMode;
+  whiteBrightness: number; // 0-100
+  blinkSpeedMs: number; // 150-2000
+}
+
+export interface OledComposerConfig {
+  enabled: boolean;
+  showHostBadge: boolean;
+  showBleStatus: boolean;
+  showWifiStatus: boolean;
+  showLayerHint: boolean;
+  invertDisplay: boolean;
+  customName: string;
+  /** 1024-byte (128x64 / 8) SSD1306 vertical-byte bitmap encoded as base64 or hex */
+  bitmapBytesHex: string;
+}
+
 export interface GyroCalibrationProfile {
   isCalibrated: boolean;
   pitchOffset: number;
@@ -455,6 +479,10 @@ export interface GyroCalibrationProfile {
   pitchScale: number;
   rollScale: number;
   yawScale: number;
+  invertPitch?: boolean;
+  invertRoll?: boolean;
+  swapXY?: boolean;
+  deadzoneDeg?: number;
   calibratedAt?: string;
 }
 
@@ -471,6 +499,8 @@ export interface StudioSettings {
   hostOsMap: HostOsMap;
   showAdvancedIds: boolean;
   gyroCalibration?: GyroCalibrationProfile;
+  ledSettings?: LedIndicatorSettings;
+  oledComposer?: OledComposerConfig;
 }
 
 export interface FirmwareReleaseAsset {
@@ -599,6 +629,7 @@ export interface HardwareTelemetry {
     sensitivity: number;
     who?: number;
   };
+  led?: LedIndicatorSettings;
   bleManager?: {
     pairing: boolean;
     secondsLeft: number;

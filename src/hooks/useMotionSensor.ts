@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GyroCalibrationProfile } from '../types/studio';
 import { usbHardware } from '../services/usbHardwareService';
+import {
+  DEFAULT_GYRO_CALIBRATION,
+  applyMotionOrientationAndDeadzone,
+  computeRawAnglesFromAccel
+} from '../utils/motionCalibration';
 
 export interface MotionSensorOptions {
   /** Whether live sensor polling and hardware event subscriptions are active. Default: true */
@@ -50,15 +55,7 @@ export interface MotionSensorState {
   calibrateFlatZero: () => Promise<{ ok: boolean; message: string }>;
 }
 
-const DEFAULT_CALIBRATION: GyroCalibrationProfile = {
-  isCalibrated: false,
-  pitchOffset: 0,
-  rollOffset: 0,
-  yawOffset: 0,
-  pitchScale: 1.0,
-  rollScale: 1.0,
-  yawScale: 1.0
-};
+const DEFAULT_CALIBRATION: GyroCalibrationProfile = DEFAULT_GYRO_CALIBRATION;
 
 export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensorState {
   const {
@@ -123,6 +120,9 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
 
   useEffect(() => {
     const handleUpdate = (e: any) => {
+      smoothedPitchRef.current = defaultPitchBaseline;
+      smoothedRollRef.current = defaultRollBaseline;
+      smoothedYawRef.current = 0;
       if (e.detail) {
         setCalibProfile(e.detail);
       } else {
@@ -134,7 +134,7 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
     };
     window.addEventListener('bertopad_gyro_calib_updated', handleUpdate);
     return () => window.removeEventListener('bertopad_gyro_calib_updated', handleUpdate);
-  }, []);
+  }, [defaultPitchBaseline, defaultRollBaseline]);
 
   // Subscribe to hardware shake gestures
   useEffect(() => {
@@ -209,35 +209,29 @@ export function useMotionSensor(options: MotionSensorOptions = {}): MotionSensor
           // Convert raw accelerometer milli-g components to angular tilt in degrees
           // Normalized pitch = forward/backward (up/down tilt via -ax for natural direction)
           // Normalized roll = left/right tilt (via ay)
-          const radToDeg = 180 / Math.PI;
-          const rawPitch = -Math.atan2(ax, Math.sqrt(ay * ay + az * az)) * radToDeg;
-          const rawRoll = Math.atan2(ay, az) * radToDeg;
-          const rawYaw = Math.atan2(ax, ay) * radToDeg;
+          const { rawPitch, rawRoll, rawYaw } = computeRawAnglesFromAccel(ax, ay, az);
 
           let targetPitch = defaultPitchBaseline;
           let targetRoll = defaultRollBaseline;
           let targetYaw = 0;
 
-          if (calibProfile.isCalibrated) {
-            // Apply user custom calibration scale & offsets measured during 5-step wizard
-            const effectiveRawPitch = (rawPitch - calibProfile.pitchOffset) * calibProfile.pitchScale;
-            const effectiveRawRoll = (rawRoll - calibProfile.rollOffset) * calibProfile.rollScale;
-            const effectiveRawYaw = (rawYaw - (calibProfile.yawOffset || 0)) * (calibProfile.yawScale || 1.0);
+          if (
+            calibProfile.isCalibrated ||
+            calibProfile.invertPitch ||
+            calibProfile.invertRoll ||
+            calibProfile.swapXY ||
+            (calibProfile.deadzoneDeg !== undefined && calibProfile.deadzoneDeg !== 0.4)
+          ) {
+            const { pitchDelta, rollDelta, yawDelta } = applyMotionOrientationAndDeadzone(
+              rawPitch,
+              rawRoll,
+              rawYaw,
+              calibProfile
+            );
 
-            targetPitch = Math.max(-50, Math.min(60, effectiveRawPitch + defaultPitchBaseline));
-            targetRoll = Math.max(-55, Math.min(55, effectiveRawRoll + defaultRollBaseline));
-            targetYaw = Math.max(-60, Math.min(60, effectiveRawYaw));
-
-            // Deadband threshold for rock-solid flat resting stability
-            if (Math.abs(effectiveRawPitch) < 0.4) {
-              targetPitch = defaultPitchBaseline;
-            }
-            if (Math.abs(effectiveRawRoll) < 0.4) {
-              targetRoll = defaultRollBaseline;
-            }
-            if (Math.abs(effectiveRawYaw) < 0.4) {
-              targetYaw = 0;
-            }
+            targetPitch = Math.max(-50, Math.min(60, pitchDelta + defaultPitchBaseline));
+            targetRoll = Math.max(-55, Math.min(55, rollDelta + defaultRollBaseline));
+            targetYaw = Math.max(-60, Math.min(60, yawDelta));
           } else {
             smoothedPitchRef.current = defaultPitchBaseline;
             smoothedRollRef.current = defaultRollBaseline;

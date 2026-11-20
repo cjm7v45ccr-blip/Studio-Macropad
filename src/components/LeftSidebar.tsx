@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SidebarSection } from '../types/studio';
-import { soundEngine, SoundProfile } from '../services/soundEffects';
+import { SoundProfile } from '../services/soundEffects';
 import {
   Grid3X3,
   Zap,
@@ -17,6 +17,8 @@ interface LeftSidebarProps {
   onSelectSection: (section: SidebarSection) => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
+  soundProfile?: SoundProfile;
+  onChangeSoundProfile?: (profile: SoundProfile) => void;
   resolvedTheme?: 'dark' | 'light';
   onToggleTheme?: () => void;
   macroCount: number;
@@ -36,24 +38,50 @@ const NAV_ITEMS: {
   { id: 'settings', label: 'Settings', tooltip: 'Device Settings & Firmware', icon: Sliders }
 ];
 
+const SOUND_PROFILES: { id: SoundProfile; label: string; desc: string }[] = [
+  { id: 'thock', label: 'Thock', desc: 'Deep linear resonance' },
+  { id: 'click', label: 'Click', desc: 'Crisp dual-stage snap' },
+  { id: 'tactile', label: 'Tactile', desc: 'Classic damped bump' }
+];
+
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   activeSection,
   onSelectSection,
   soundEnabled,
   onToggleSound,
+  soundProfile = 'thock',
+  onChangeSoundProfile,
   resolvedTheme = 'dark',
   onToggleTheme,
   hasFirmwareUpdate = false,
   variant = 'rail'
 }) => {
-  const [currentSoundProfile, setCurrentSoundProfile] = useState<SoundProfile>(
-    soundEngine.soundProfile
-  );
+  const [soundMenuOpen, setSoundMenuOpen] = useState(false);
+  const soundPopoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!soundMenuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (soundPopoverRef.current && !soundPopoverRef.current.contains(e.target as Node)) {
+        setSoundMenuOpen(false);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSoundMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [soundMenuOpen]);
+
   if (variant === 'bottom') {
     return (
       <nav
         aria-label="Primary mobile navigation"
-        className="sm:hidden shrink-0 bg-[var(--bg-panel)] border-t border-[var(--border-subtle)] px-2 py-1.5 grid grid-cols-4 gap-1 select-none z-20"
+        className="sm:hidden shrink-0 studio-chrome border-t border-[var(--border-subtle)] px-2 py-1.5 grid grid-cols-4 gap-1 select-none z-20"
       >
         {NAV_ITEMS.map(item => {
           const Icon = item.icon;
@@ -65,22 +93,22 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               type="button"
               onClick={() => onSelectSection(item.id)}
               title={item.tooltip}
-              className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl text-[10px] transition-colors cursor-pointer whitespace-nowrap ${
+              className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg text-[10px] transition-colors cursor-pointer whitespace-nowrap ${
                 active
-                  ? 'bg-[rgba(var(--accent-rgb),0.14)] text-[var(--text-primary)] font-semibold'
+                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-semibold'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
               <span className="relative">
                 <Icon
                   className={`w-4 h-4 shrink-0 ${
-                    active ? 'text-[var(--accent)]' : ''
+                    active ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
                   }`}
                 />
                 {showDot && (
                   <span
                     aria-label="Firmware update available"
-                    className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[var(--accent)]"
+                    className="absolute -top-0.5 -right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
                   />
                 )}
               </span>
@@ -93,7 +121,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   }
 
   return (
-    <aside className="hidden sm:flex w-[74px] shrink-0 bg-[var(--bg-panel)] border-r border-[var(--border-subtle)] flex-col items-center justify-between py-3 px-1.5 select-none z-30">
+    <aside className="hidden sm:flex w-[76px] shrink-0 studio-chrome border-r border-[var(--border-subtle)] flex-col items-center justify-between py-3.5 px-2 select-none z-30">
       <nav
         aria-label="Primary navigation"
         className="space-y-1.5 w-full flex flex-col items-center"
@@ -108,26 +136,26 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               type="button"
               onClick={() => onSelectSection(item.id)}
               title={showDot ? `${item.tooltip} (Firmware update available)` : item.tooltip}
-              className={`relative w-full py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${
+              className={`relative w-full py-2.5 px-1 rounded-lg flex flex-col items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                 active
-                  ? 'bg-[rgba(var(--accent-rgb),0.15)] text-[var(--text-primary)] font-semibold'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] font-medium'
+                  ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] font-normal'
               }`}
             >
               <span className="relative flex items-center justify-center">
                 <Icon
-                  className={`w-4 h-4 shrink-0 ${
-                    active ? 'text-[var(--accent)]' : ''
+                  className={`w-[17px] h-[17px] shrink-0 ${
+                    active ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
                   }`}
                 />
                 {showDot && (
                   <span
                     aria-label="Firmware update available"
-                    className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-[var(--accent)] ring-2 ring-[var(--bg-panel)]"
+                    className="absolute -top-0.5 -right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
                   />
                 )}
               </span>
-              <span className="text-[10px] leading-none">{item.label}</span>
+              <span className="text-[10px] tracking-[0.01em] leading-none">{item.label}</span>
             </button>
           );
         })}
@@ -156,38 +184,89 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </button>
         )}
 
-        <div className="w-full flex flex-col items-center gap-0.5">
+        <div ref={soundPopoverRef} className="relative w-full">
           <button
             type="button"
-            onClick={onToggleSound}
-            className="w-full py-1.5 px-1 rounded-xl hover:bg-[var(--bg-input)] flex flex-col items-center justify-center gap-0.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap"
-            title={soundEnabled ? 'Acoustic switch audio: On (click to mute)' : 'Acoustic switch audio: Muted'}
+            aria-expanded={soundMenuOpen}
+            aria-haspopup="dialog"
+            onClick={() => {
+              if (onChangeSoundProfile) {
+                setSoundMenuOpen(v => !v);
+              } else {
+                onToggleSound();
+              }
+            }}
+            className={`w-full py-2 px-1 rounded-xl hover:bg-[var(--bg-input)] flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${
+              soundMenuOpen
+                ? 'bg-[var(--bg-input)] text-[var(--text-primary)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+            title={
+              soundEnabled
+                ? `Switch sound: On (${soundProfile}) — click to adjust`
+                : 'Switch sound: Muted — click to unmute or change switch feel'
+            }
           >
             {soundEnabled ? (
-              <Volume2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
+              <Volume2 className="w-4 h-4 text-[var(--text-primary)] shrink-0" />
             ) : (
               <VolumeX className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
             )}
             <span className="text-[10px] leading-none">Sound</span>
           </button>
-          {soundEnabled && (
-            <button
-              type="button"
-              onClick={() => {
-                const next: SoundProfile =
-                  currentSoundProfile === 'thock'
-                    ? 'click'
-                    : currentSoundProfile === 'click'
-                    ? 'tactile'
-                    : 'thock';
-                soundEngine.setProfile(next);
-                setCurrentSoundProfile(next);
-              }}
-              title={`Acoustic switch: ${currentSoundProfile.toUpperCase()} (click to cycle Thock / Click / Tactile)`}
-              className="px-1.5 py-0.5 rounded-md hover:bg-[var(--bg-input)] text-[9px] font-mono font-semibold uppercase text-[var(--accent)] tracking-wider cursor-pointer"
+
+          {soundMenuOpen && (
+            <div
+              role="dialog"
+              aria-label="Switch sound preferences"
+              className="absolute left-full bottom-0 ml-3 w-56 rounded-xl studio-popover p-3 space-y-2.5 z-50 animate-popover-in"
             >
-              {currentSoundProfile}
-            </button>
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-[var(--border-subtle)]">
+                <span className="text-xs font-semibold text-[var(--text-primary)]">
+                  Switch Sound
+                </span>
+                <button
+                  type="button"
+                  onClick={onToggleSound}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                    soundEnabled
+                      ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)]'
+                      : 'bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {soundEnabled ? 'On' : 'Muted'}
+                </button>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-wider px-1">
+                  Acoustic Profile
+                </div>
+                <div className="divide-y divide-[var(--border-subtle)]">
+                  {SOUND_PROFILES.map(opt => {
+                    const active = soundProfile === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          onChangeSoundProfile?.(opt.id);
+                          if (!soundEnabled) onToggleSound();
+                        }}
+                        className={`w-full px-2 py-2 rounded-md text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                            : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        <span className="text-xs">{opt.label}</span>
+                        <span className="text-[10px] text-[var(--text-muted)]">{opt.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>

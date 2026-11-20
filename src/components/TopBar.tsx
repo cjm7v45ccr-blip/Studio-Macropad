@@ -10,10 +10,10 @@ import {
   SyncStatusPill,
   hostOsFullLabel,
   hostOsShortLabel,
-  isBleHostProfile,
-  profileShortTag
+  isBleHostProfile
 } from '../types/studio';
 import { validateFirmwareAlias } from '../data/firmwareCatalog';
+import { FIRMWARE_VERSION } from '../utils/version';
 import {
   Undo2,
   Redo2,
@@ -31,7 +31,9 @@ import {
   Wifi,
   Bluetooth,
   Cpu,
-  PowerOff
+  PowerOff,
+  RefreshCw,
+  HardDrive
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -72,6 +74,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   isSyncingUsb,
   onConnectUsbPad,
   onOpenConnectModal,
+  onPullFromUsb,
   profiles,
   activeProfile,
   hostOsMap,
@@ -115,15 +118,37 @@ export const TopBar: React.FC<TopBarProps> = ({
         setConnPopoverOpen(false);
       }
     };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+        setConnPopoverOpen(false);
+      }
+    };
     window.addEventListener('mousedown', handleOutside);
-    return () => window.removeEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleEscape);
+    };
   }, [menuOpen, connPopoverOpen]);
 
-  // Alt+1/2/3 shortcuts to switch profiles
+  // Alt+1/2/3/4 shortcuts to switch profiles (supports macOS Option key via e.code)
   useEffect(() => {
     const handleKeyShortcut = (e: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-        const num = parseInt(e.key, 10);
+        const digitMatch = /^Digit([1-9])$/.exec(e.code || '');
+        const num = digitMatch ? parseInt(digitMatch[1], 10) : parseInt(e.key, 10);
         if (num >= 1 && num <= profiles.length) {
           const target = profiles[num - 1];
           if (target && !(target.id === 'TV' && !isTvEnabled)) {
@@ -169,10 +194,26 @@ export const TopBar: React.FC<TopBarProps> = ({
     : 'offline';
 
   const SYNC_CONFIG = {
-    saved: { icon: <Check size={14} className="shrink-0" />, text: 'Saved', cls: 'text-emerald-400' },
-    saving: { icon: <Loader2 size={14} className="shrink-0 animate-spin" />, text: 'Saving…', cls: 'text-zinc-400' },
-    unsaved: { icon: <Circle size={10} fill="currentColor" className="shrink-0" />, text: 'Unsaved', cls: 'text-amber-400' },
-    offline: { icon: <Circle size={10} className="shrink-0" />, text: 'Offline', cls: 'text-zinc-500' }
+    saved: {
+      icon: <Check size={13} className="shrink-0" />,
+      text: 'Saved',
+      cls: 'text-[var(--text-muted)]'
+    },
+    saving: {
+      icon: <Loader2 size={13} className="shrink-0 animate-spin" />,
+      text: 'Saving…',
+      cls: 'text-[var(--text-muted)]'
+    },
+    unsaved: {
+      icon: <Circle size={8} fill="currentColor" className="shrink-0" />,
+      text: 'Unsaved',
+      cls: 'text-[var(--text-primary)]'
+    },
+    offline: {
+      icon: <Circle size={8} className="shrink-0" />,
+      text: 'Offline',
+      cls: 'text-[var(--text-muted)]'
+    }
   };
   const sInfo = SYNC_CONFIG[syncState];
 
@@ -182,11 +223,11 @@ export const TopBar: React.FC<TopBarProps> = ({
     : connection.connected
     ? 'connected'
     : 'offline';
-  
+
   const DOT_COLOR = {
     offline: 'bg-zinc-500',
-    connecting: 'bg-amber-400 animate-pulse',
-    connected: 'bg-emerald-400'
+    connecting: 'bg-[var(--accent)] animate-pulse',
+    connected: 'bg-[var(--accent)]'
   };
 
   const connLabel = connection.connected
@@ -195,27 +236,33 @@ export const TopBar: React.FC<TopBarProps> = ({
       : connection.deviceName || 'USB connected'
     : 'Connect pad';
 
-  const iconBtnStyle = "flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-30 transition cursor-pointer";
+  const iconBtnStyle =
+    'flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer';
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-panel)] px-4 select-none shrink-0 shadow-xs">
+    <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between gap-2.5 border-b border-[var(--border-subtle)] studio-chrome px-4 select-none shrink-0">
       {/* Left: Brand + Device Tabs + Options Menu */}
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center gap-3 min-w-0">
         <div className="flex items-center gap-2 pr-1 shrink-0">
           <img
             src={resolvedTheme === 'light' ? '/logo-mark-light.svg' : '/logo-mark-dark.svg'}
             alt="BertoPad"
             referrerPolicy="no-referrer"
-            className="h-7 w-7 rounded-lg object-contain shrink-0"
+            className="h-5 w-5 object-contain shrink-0"
           />
-          <span className="hidden text-[15px] font-bold tracking-tight lg:inline">
-            <span className="text-[var(--text-primary)]">Berto</span>
-            <span className="text-amber-400">Pad</span>
+          <span className="hidden text-[14px] font-semibold tracking-tight text-[var(--text-primary)] lg:inline whitespace-nowrap shrink-0">
+            BertoPad
           </span>
         </div>
 
+        <span className="hidden sm:block h-4 w-px bg-[var(--border-subtle)] shrink-0" aria-hidden="true" />
+
         {/* Device Tabs */}
-        <div role="tablist" aria-label="Devices" className="flex items-center gap-0.5 rounded-xl bg-white/5 p-1 overflow-x-auto min-w-0">
+        <div
+          role="tablist"
+          aria-label="Devices"
+          className="flex items-center gap-0.5 overflow-x-auto min-w-0"
+        >
           {profiles.map(prof => {
             const isTvDisabled = prof.id === 'TV' && !isTvEnabled;
             if (isTvDisabled) return null;
@@ -232,17 +279,25 @@ export const TopBar: React.FC<TopBarProps> = ({
                 aria-selected={selected}
                 type="button"
                 onClick={() => onSelectProfile(prof.id)}
-                title={`${prof.name} (${profileShortTag(prof.id)})${isLive ? ' — Active on hardware' : ''}`}
-                className={`flex h-8 items-center gap-2 rounded-lg px-2.5 sm:px-3 text-xs sm:text-sm font-medium transition cursor-pointer whitespace-nowrap shrink-0 ${
+                title={`${prof.name}${isLive ? ' — Active on hardware' : ''}`}
+                className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   selected
-                    ? 'bg-white/10 text-white font-semibold shadow-2xs'
-                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                    ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] font-normal'
                 }`}
               >
-                <Icon size={15} className={`shrink-0 ${selected ? 'text-amber-400' : 'text-zinc-500'}`} />
+                <Icon
+                  size={14}
+                  className={`shrink-0 ${
+                    selected ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
+                  }`}
+                />
                 <span className="max-w-[7rem] sm:max-w-[9rem] truncate">{prof.name}</span>
                 {isLive && (
-                  <span aria-label="Live on hardware" className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
+                  <span
+                    aria-label="Live on hardware"
+                    className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] shrink-0"
+                  />
                 )}
               </button>
             );
@@ -262,23 +317,26 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
 
           {menuOpen && (
-            <div className="absolute top-full left-0 mt-1.5 w-56 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-1.5 shadow-2xl z-50 animate-popover-in text-xs">
-              <div className="px-2.5 py-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-white/5 mb-1">
+            <div className="absolute top-full left-0 mt-2 w-56 rounded-2xl studio-popover p-1.5 z-50 animate-popover-in text-xs">
+              <div className="px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-muted)] border-b border-[var(--border-subtle)] mb-1 truncate">
                 {activeProfile.name}
               </div>
 
               <button
                 type="button"
                 onClick={startRename}
-                className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-zinc-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition cursor-pointer"
               >
-                <span className="flex items-center gap-2"><Pencil size={14} className="text-zinc-400" /> Rename profile</span>
-                <span className="font-mono text-[10px] text-zinc-500">{profileShortTag(activeProfile.id)}</span>
+                <span className="flex items-center gap-2">
+                  <Pencil size={14} className="text-[var(--text-muted)]" /> Rename profile
+                </span>
               </button>
 
-              <div className="my-1 border-t border-white/5" />
+              <div className="my-1 border-t border-[var(--border-subtle)]" />
 
-              <div className="px-2.5 py-1 text-[11px] font-medium text-zinc-400">Copy bindings to…</div>
+              <div className="px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]">
+                Copy bindings to…
+              </div>
               {profiles
                 .filter(p => p.id !== activeProfile.id && !(p.id === 'TV' && !isTvEnabled))
                 .map(target => (
@@ -289,17 +347,18 @@ export const TopBar: React.FC<TopBarProps> = ({
                       setMenuOpen(false);
                       onRequestCopyProfile(activeProfile.id, target.id);
                     }}
-                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] transition cursor-pointer"
                   >
                     <span className="truncate">{target.name}</span>
-                    <span className="font-mono text-[10px] text-zinc-500">{profileShortTag(target.id)}</span>
                   </button>
                 ))}
 
               {activeIsHost && (
                 <>
-                  <div className="my-1 border-t border-white/5" />
-                  <div className="px-2.5 py-1 text-[11px] font-medium text-zinc-400">Host OS</div>
+                  <div className="my-1 border-t border-[var(--border-subtle)]" />
+                  <div className="px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]">
+                    Host OS ({hostOsShortLabel(activeHostOs)})
+                  </div>
                   {(['mac', 'windows', 'linux'] as const).map(osOpt => (
                     <button
                       key={osOpt}
@@ -309,11 +368,13 @@ export const TopBar: React.FC<TopBarProps> = ({
                         setMenuOpen(false);
                       }}
                       className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
-                        activeHostOs === osOpt ? 'bg-amber-400/15 text-amber-300 font-semibold' : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                        activeHostOs === osOpt
+                          ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                       }`}
                     >
                       <span>{hostOsFullLabel(osOpt)}</span>
-                      {activeHostOs === osOpt && <Check size={14} className="text-amber-400" />}
+                      {activeHostOs === osOpt && <Check size={14} className="text-[var(--text-primary)]" />}
                     </button>
                   ))}
                 </>
@@ -322,54 +383,71 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
-        {/* Inline Rename Input Modal / Popover if active */}
+        {/* Inline Rename Input Popover if active */}
         {renaming && (
-          <div className="absolute left-4 top-16 z-50 flex items-center gap-1.5 rounded-xl bg-[var(--bg-elevated)] border border-amber-400/50 p-2 shadow-xl">
-            <input
-              type="text"
-              value={renameDraft}
-              onChange={e => {
-                setRenameDraft(e.target.value);
-                setRenameError(validateFirmwareAlias(e.target.value).error);
-              }}
-              onKeyDown={e => {
-                if (e.key === 'Enter') commitRename();
-                if (e.key === 'Escape') setRenaming(false);
-              }}
-              autoFocus
-              placeholder="Profile name (1-20 chars)"
-              className="w-40 px-2 py-1 rounded-lg bg-black/40 border border-white/10 text-xs text-white focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={commitRename}
-              className="p-1.5 rounded-lg bg-amber-400 text-black hover:bg-amber-300 cursor-pointer"
-            >
-              <Check size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setRenaming(false)}
-              className="p-1.5 rounded-lg bg-white/10 text-zinc-300 hover:text-white cursor-pointer"
-            >
-              <X size={14} />
-            </button>
+          <div className="absolute left-4 top-16 z-50 flex flex-col gap-1.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--accent)] p-2.5 shadow-2xl animate-popover-in">
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={renameDraft}
+                maxLength={20}
+                onChange={e => {
+                  setRenameDraft(e.target.value);
+                  setRenameError(validateFirmwareAlias(e.target.value).error);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') commitRename();
+                  if (e.key === 'Escape') {
+                    setRenaming(false);
+                    setRenameError(null);
+                  }
+                }}
+                autoFocus
+                placeholder="Profile name (1–20 chars)"
+                aria-label="Profile name"
+                className="w-44 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                type="button"
+                onClick={commitRename}
+                aria-label="Save profile name"
+                className="p-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 cursor-pointer"
+              >
+                <Check size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRenaming(false);
+                  setRenameError(null);
+                }}
+                aria-label="Cancel rename"
+                className="p-1.5 rounded-lg bg-[var(--bg-input)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            {renameError && (
+              <p className="text-[11px] text-[var(--accent)] max-w-[230px] leading-snug">
+                {renameError}
+              </p>
+            )}
           </div>
         )}
       </div>
 
-      {/* Center: Search / Global Action Search */}
+      {/* Center: Search / Global Action Command Palette (Cmd/Ctrl + K) */}
       {searchSlot ? (
-        <div className="mx-auto hidden md:flex items-center min-w-[200px] flex-1 max-w-md px-2">
+        <div className="mx-auto flex items-center min-w-0 md:min-w-[220px] md:flex-1 max-w-md px-1 md:px-2">
           {searchSlot}
         </div>
       ) : (
         <div className="mx-auto hidden md:flex items-center flex-1 max-w-md px-2">
-          <div className="flex h-9 w-full items-center gap-2 rounded-xl bg-white/5 px-3 text-sm text-zinc-400 hover:bg-white/10 transition cursor-pointer">
-            <Search size={16} className="text-zinc-500" />
-            <span>Search actions & macros</span>
-            <kbd className="ml-auto rounded bg-white/10 px-1.5 py-0.5 text-xs font-mono text-zinc-400">
-              {isMac ? '⌘K' : 'Ctrl K'}
+          <div className="flex h-9 w-full items-center gap-2 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] px-3 text-sm text-[var(--text-muted)] hover:border-[var(--border-strong)] transition cursor-pointer">
+            <Search size={16} className="text-[var(--text-muted)]" />
+            <span>Search actions &amp; macros</span>
+            <kbd className="ml-auto rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-muted)]">
+              {isMac ? 'Cmd+K' : 'Ctrl K'}
             </kbd>
           </div>
         </div>
@@ -377,7 +455,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right: Save Status Chip + Undo/Redo + Connection Pill / Popover */}
       <div className="flex items-center gap-1.5 shrink-0 ml-auto md:ml-0 relative" ref={connPopoverRef}>
-        <span className={`mr-1 hidden items-center gap-1.5 text-xs font-medium sm:flex ${sInfo.cls}`}>
+        <span className={`mr-1 hidden items-center gap-1.5 text-xs font-medium sm:flex whitespace-nowrap ${sInfo.cls}`}>
           {sInfo.icon}
           <span>{sInfo.text}</span>
         </span>
@@ -408,7 +486,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={onConnectUsbPad}
-            className="ml-2 flex h-9 items-center rounded-xl bg-amber-400 px-4 text-xs sm:text-sm font-semibold text-black hover:bg-amber-300 transition cursor-pointer whitespace-nowrap shadow-xs"
+            className="ml-2 flex h-9 items-center rounded-xl studio-cta px-4 text-xs sm:text-sm font-semibold cursor-pointer whitespace-nowrap shrink-0"
           >
             Connect pad
           </button>
@@ -418,7 +496,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             onClick={() => setConnPopoverOpen(prev => !prev)}
             title="Open connection details"
             aria-label="Connection details"
-            className="ml-2 flex h-9 items-center gap-2 rounded-xl bg-white/5 px-3 text-xs sm:text-sm text-zinc-200 hover:bg-white/10 transition cursor-pointer whitespace-nowrap border border-white/5"
+            className="ml-2 flex h-9 items-center gap-2 rounded-xl studio-btn px-3 text-xs sm:text-sm text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
           >
             <span className={`h-2 w-2 rounded-full ${DOT_COLOR[connState]}`} />
             <span className="font-medium truncate max-w-[120px]">{connLabel}</span>
@@ -427,51 +505,113 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Connection Details Popover */}
         {connPopoverOpen && (
-          <div className="absolute top-full right-0 mt-2 w-72 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-strong)] p-4 shadow-2xl z-50 animate-popover-in text-xs">
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${DOT_COLOR[connState]}`} />
-                <span className="font-semibold text-sm text-white">Connection Details</span>
+          <div className="absolute top-full right-0 mt-2.5 w-80 rounded-2xl studio-popover p-4 z-50 animate-popover-in text-xs">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--border-subtle)]">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${DOT_COLOR[connState]}`} />
+                <span className="font-semibold text-sm text-[var(--text-primary)] truncate">
+                  Connection Details
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setConnPopoverOpen(false)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 cursor-pointer"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="space-y-2.5 text-zinc-300">
-              <div className="flex items-center justify-between py-1 border-b border-white/5">
-                <span className="flex items-center gap-1.5 text-zinc-400"><Usb size={14} /> USB / Transport</span>
-                <span className="font-mono text-white font-medium">{connection.transport === 'demo' ? 'Demo Mode' : (connection.deviceName || 'WebSerial Connected')}</span>
-              </div>
-
-              <div className="flex items-center justify-between py-1 border-b border-white/5">
-                <span className="flex items-center gap-1.5 text-zinc-400"><Bluetooth size={14} /> Bluetooth (BLE)</span>
-                <span className="font-mono text-white font-medium">{connection.telemetry?.bleActiveHost ? `Host ${connection.telemetry.bleActiveHost} Active` : 'Ready (3 Hosts)'}</span>
-              </div>
-
-              <div className="flex items-center justify-between py-1 border-b border-white/5">
-                <span className="flex items-center gap-1.5 text-zinc-400"><Wifi size={14} /> Wi-Fi Status</span>
-                <span className="font-mono text-white font-medium">{connection.telemetry?.wifiConnected ? 'Connected' : 'Disconnected'}</span>
-              </div>
-
-              <div className="flex items-center justify-between py-1">
-                <span className="flex items-center gap-1.5 text-zinc-400"><Cpu size={14} /> Firmware Rev</span>
-                <span className="font-mono text-white font-medium">v{connection.firmwareVersion || '4.7.1'} (Rev {connection.rev ?? currentRev})</span>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onPullFromUsb();
+                    setConnPopoverOpen(false);
+                  }}
+                  title="Pull latest config & status from BertoPad"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                >
+                  <RefreshCw size={11} className="text-[var(--text-secondary)]" />
+                  <span>Read Pad</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConnPopoverOpen(false)}
+                  aria-label="Close connection details"
+                  className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)] cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+            <div className="space-y-2.5 text-[var(--text-secondary)]">
+              <div className="flex items-center justify-between gap-2 py-1 border-b border-[var(--border-subtle)]">
+                <span className="flex items-center gap-1.5 text-[var(--text-muted)] shrink-0">
+                  <Usb size={14} /> USB / Transport
+                </span>
+                <span className="font-mono text-[var(--text-primary)] font-medium truncate tabular-nums">
+                  {connection.transport === 'demo'
+                    ? 'Demo Simulator'
+                    : connection.deviceName || 'USB 115,200 bd'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 py-1 border-b border-[var(--border-subtle)]">
+                <span className="flex items-center gap-1.5 text-[var(--text-muted)] shrink-0">
+                  <Bluetooth size={14} /> Bluetooth (BLE)
+                </span>
+                <span className="font-mono text-[var(--text-primary)] font-medium truncate tabular-nums">
+                  {connection.telemetry?.bleActiveHost
+                    ? `Device ${connection.telemetry.bleActiveHost} · ${
+                        connection.telemetry.bleConnected ? 'Connected' : 'Advertising'
+                      }`
+                    : 'Ready (3 Hosts)'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 py-1 border-b border-[var(--border-subtle)]">
+                <span className="flex items-center gap-1.5 text-[var(--text-muted)] shrink-0">
+                  <Wifi size={14} /> Wi-Fi / TV Link
+                </span>
+                <span className="font-mono text-[var(--text-primary)] font-medium truncate tabular-nums">
+                  {connection.telemetry?.wifiConnected
+                    ? connection.telemetry.ip || connection.telemetry.ssid || 'Connected'
+                    : 'Disconnected'}
+                </span>
+              </div>
+
+              {typeof connection.telemetry?.freeHeap === 'number' &&
+                connection.telemetry.freeHeap > 0 && (
+                  <div className="flex items-center justify-between gap-2 py-1 border-b border-[var(--border-subtle)]">
+                    <span className="flex items-center gap-1.5 text-[var(--text-muted)] shrink-0">
+                      <HardDrive size={14} /> SRAM / NVS
+                    </span>
+                    <span className="font-mono text-[var(--text-primary)] font-medium tabular-nums">
+                      {(connection.telemetry.freeHeap / 1024).toFixed(0)} KB free
+                      {typeof connection.telemetry.nvsUsed === 'number' &&
+                      typeof connection.telemetry.nvsFree === 'number' &&
+                      connection.telemetry.nvsUsed + connection.telemetry.nvsFree > 0
+                        ? ` · ${Math.round(
+                            (connection.telemetry.nvsUsed /
+                              (connection.telemetry.nvsUsed + connection.telemetry.nvsFree)) *
+                              100
+                          )}% NVS`
+                        : ''}
+                    </span>
+                  </div>
+                )}
+
+              <div className="flex items-center justify-between gap-2 py-1">
+                <span className="flex items-center gap-1.5 text-[var(--text-muted)] shrink-0">
+                  <Cpu size={14} /> Firmware Rev
+                </span>
+                <span className="font-mono text-[var(--text-primary)] font-medium tabular-nums">
+                  v{(connection.firmwareVersion || FIRMWARE_VERSION).replace(/^[vV]+/, '')} (Rev {connection.rev ?? currentRev})
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={() => {
                   setConnPopoverOpen(false);
                   onOpenConnectModal();
                 }}
-                className="flex-1 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-200 font-medium transition cursor-pointer text-center"
+                className="flex-1 py-2 px-3 rounded-xl bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium transition cursor-pointer text-center whitespace-nowrap"
               >
                 Advanced settings
               </button>
@@ -482,7 +622,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     setConnPopoverOpen(false);
                     await onDisconnect();
                   }}
-                  className="flex items-center gap-1.5 py-2 px-3 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 font-medium transition cursor-pointer"
+                  className="flex items-center gap-1.5 py-2 px-3 rounded-xl bg-red-500/12 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-medium transition cursor-pointer whitespace-nowrap"
                 >
                   <PowerOff size={14} /> Disconnect
                 </button>

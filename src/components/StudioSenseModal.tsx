@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Wand2, X, Check, ArrowRight, Loader2, Cpu, ShieldCheck } from 'lucide-react';
+import { X, Check, ArrowRight, Loader2, Cpu, ShieldCheck } from 'lucide-react';
 import { CustomMacroItem, MacroStepConfig } from '../types/studio';
 import { ToastVariant } from '../hooks/useStudioState';
 
@@ -97,7 +97,7 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-[rgba(var(--accent-rgb),0.15)] text-[var(--accent)]">
-              <Sparkles className="w-5 h-5" />
+              <Cpu className="w-5 h-5" />
             </div>
             <div>
               <h2
@@ -198,7 +198,7 @@ export const StudioSenseModal: React.FC<StudioSenseModalProps> = ({
                         }}
                         className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer shrink-0"
                       >
-                        <Wand2 className="w-3.5 h-3.5" />
+                        <ArrowRight className="w-3.5 h-3.5" />
                         <span>Apply & Edit</span>
                       </button>
                     </div>
