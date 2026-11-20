@@ -22,11 +22,11 @@ import {
   Download,
   Eraser,
   ImagePlus,
+  LayoutTemplate,
   Loader2,
   Monitor,
   PenLine,
   Send,
-  Sparkles,
   X
 } from 'lucide-react';
 
@@ -314,7 +314,7 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
                   onClick={handleDrawSampleLogo}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <LayoutTemplate className="w-3.5 h-3.5 text-[var(--accent)]" />
                   <span>Sample Badge</span>
                 </button>
               </div>
@@ -375,26 +375,39 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
 
             {/* Live 128x64 Pixel Canvas */}
             <div className="p-4 rounded-2xl bg-[#111318] border border-[var(--border-strong)] flex flex-col items-center gap-2">
-              <canvas
-                ref={canvasRef}
-                width={OLED_WIDTH}
-                height={OLED_HEIGHT}
-                onPointerDown={e => {
-                  drawingRef.current = true;
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  paintAtPointer(e.clientX, e.clientY);
-                }}
-                onPointerMove={e => {
-                  if (drawingRef.current) paintAtPointer(e.clientX, e.clientY);
-                }}
-                onPointerUp={() => {
-                  drawingRef.current = false;
-                }}
-                onPointerCancel={() => {
-                  drawingRef.current = false;
-                }}
-                className="w-full max-w-[512px] aspect-[2/1] rounded-lg border border-[#ECEAE4]/25 cursor-crosshair touch-none [image-rendering:pixelated]"
-              />
+              <div className="relative w-full max-w-[512px] aspect-[2/1] rounded-lg overflow-hidden border border-[#ECEAE4]/25">
+                <canvas
+                  ref={canvasRef}
+                  width={OLED_WIDTH}
+                  height={OLED_HEIGHT}
+                  onPointerDown={e => {
+                    drawingRef.current = true;
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    paintAtPointer(e.clientX, e.clientY);
+                  }}
+                  onPointerMove={e => {
+                    if (drawingRef.current) paintAtPointer(e.clientX, e.clientY);
+                  }}
+                  onPointerUp={() => {
+                    drawingRef.current = false;
+                  }}
+                  onPointerCancel={() => {
+                    drawingRef.current = false;
+                  }}
+                  className="block w-full h-full cursor-crosshair touch-none [image-rendering:pixelated]"
+                />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    backgroundImage: draft.invertDisplay
+                      ? 'linear-gradient(to right, rgba(8,10,14,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(8,10,14,0.06) 1px, transparent 1px), linear-gradient(to right, rgba(8,10,14,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(8,10,14,0.12) 1px, transparent 1px)'
+                      : 'linear-gradient(to right, rgba(236,234,228,0.045) 1px, transparent 1px), linear-gradient(to bottom, rgba(236,234,228,0.045) 1px, transparent 1px), linear-gradient(to right, rgba(236,234,228,0.095) 1px, transparent 1px), linear-gradient(to bottom, rgba(236,234,228,0.095) 1px, transparent 1px)',
+                    backgroundSize:
+                      'calc(100% / 128) calc(100% / 64), calc(100% / 128) calc(100% / 64), calc(100% / 16) calc(100% / 8), calc(100% / 16) calc(100% / 8)'
+                  }}
+                />
+              </div>
               <div className="flex items-center justify-between w-full max-w-[512px] font-mono text-[10px] text-[#A3A6AD] tabular-nums">
                 <span>128 × 64 px · 1-bit SSD1306 Page Buffer (1,024 B)</span>
                 <span>Click or drag to {drawMode}</span>
@@ -425,29 +438,37 @@ export const OledScreenComposerModal: React.FC<OledScreenComposerModalProps> = (
             <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] grid grid-cols-2 gap-2 text-xs">
               {(
                 [
-                  { key: 'enabled', label: 'Enable Overlay' },
-                  { key: 'invertDisplay', label: 'Invert OLED' },
-                  { key: 'showHostBadge', label: 'Host Badge' },
-                  { key: 'showBleStatus', label: 'BLE Icon' },
-                  { key: 'showWifiStatus', label: 'Wi-Fi Icon' },
-                  { key: 'showLayerHint', label: 'Layer Hint' }
+                  { key: 'enabled', label: 'Enable Overlay', requiresOverlay: false },
+                  { key: 'invertDisplay', label: 'Invert OLED', requiresOverlay: false },
+                  { key: 'showHostBadge', label: 'Host Badge', requiresOverlay: true },
+                  { key: 'showBleStatus', label: 'BLE Icon', requiresOverlay: true },
+                  { key: 'showWifiStatus', label: 'Wi-Fi Icon', requiresOverlay: true },
+                  { key: 'showLayerHint', label: 'Layer Hint', requiresOverlay: true }
                 ] as const
-              ).map(opt => (
-                <label
-                  key={opt.key}
-                  className="flex items-center gap-2 text-[var(--text-primary)] cursor-pointer select-none"
-                >
-                  <input
-                    type="checkbox"
-                    checked={Boolean(draft[opt.key])}
-                    onChange={e =>
-                      setDraft(prev => ({ ...prev, [opt.key]: e.target.checked }))
-                    }
-                    className="accent-[var(--accent)]"
-                  />
-                  <span>{opt.label}</span>
-                </label>
-              ))}
+              ).map(opt => {
+                const isSubDimmed = opt.requiresOverlay && !draft.enabled;
+                return (
+                  <label
+                    key={opt.key}
+                    className={`flex items-center gap-2 select-none transition-opacity ${
+                      isSubDimmed
+                        ? 'opacity-40 text-[var(--text-muted)] cursor-not-allowed'
+                        : 'text-[var(--text-primary)] cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={isSubDimmed}
+                      checked={Boolean(draft[opt.key])}
+                      onChange={e =>
+                        setDraft(prev => ({ ...prev, [opt.key]: e.target.checked }))
+                      }
+                      className="accent-[var(--accent)] disabled:cursor-not-allowed"
+                    />
+                    <span>{opt.label}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
         </div>

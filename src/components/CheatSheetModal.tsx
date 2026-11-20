@@ -270,7 +270,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                           </div>
                         </button>
 
-                        {hasKeyHold && (
+                        {hasKeyHold && Boolean(holdAct) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -332,37 +332,45 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                     })}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    {KNOB_1_HOLD_SLOTS.map(({ slot, label, icon: KnobIcon }) => {
-                      const act = slots[slot];
-                      const bind = getBindingForProfileSlot(profiles, prof.id, slot);
-                      return (
-                        <button
-                          key={slot}
-                          type="button"
-                          onClick={() => {
-                            onJumpToControl(prof.id, slot);
-                            onClose();
-                          }}
-                          title={`Configure ${prof.name} · ${SLOT_LABELS[slot].full}`}
-                          className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
-                        >
-                          <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
-                            <KnobIcon className="w-3 h-3 shrink-0" />
-                            <span className="truncate">{label}</span>
-                          </div>
-                          <div className="min-w-0 overflow-hidden">
-                            <ParsedActionBadge
-                              action={act}
-                              repeatConfig={bind?.repeatConfig}
-                              labelMode={labelMode}
-                              maxSteps={1}
-                            />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {(() => {
+                    const assignedKnob1Hold = KNOB_1_HOLD_SLOTS.filter(({ slot }) =>
+                      Boolean(slots[slot])
+                    );
+                    if (assignedKnob1Hold.length === 0) return null;
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {assignedKnob1Hold.map(({ slot, label, icon: KnobIcon }) => {
+                          const act = slots[slot];
+                          const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => {
+                                onJumpToControl(prof.id, slot);
+                                onClose();
+                              }}
+                              title={`Configure ${prof.name} · ${SLOT_LABELS[slot].full}`}
+                              className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
+                            >
+                              <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
+                                <KnobIcon className="w-3 h-3 shrink-0" />
+                                <span className="truncate">{label}</span>
+                              </div>
+                              <div className="min-w-0 overflow-hidden">
+                                <ParsedActionBadge
+                                  action={act}
+                                  repeatConfig={bind?.repeatConfig}
+                                  labelMode={labelMode}
+                                  maxSteps={1}
+                                />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                     {KNOB_2_SLOTS.map(({ slot, label, icon: KnobIcon }) => {
@@ -396,70 +404,82 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({
                     })}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    {KNOB_2_HOLD_SLOTS.map(({ slot, label, icon: KnobIcon }) => {
-                      const act = slots[slot];
-                      const bind = getBindingForProfileSlot(profiles, prof.id, slot);
-                      return (
-                        <button
-                          key={slot}
-                          type="button"
-                          onClick={() => {
-                            onJumpToControl(prof.id, slot);
-                            onClose();
-                          }}
-                          title={`${prof.name} · ${SLOT_LABELS[slot].full}: ${describeFirmwareAction(act, bind?.repeatConfig).fullLabel}`}
-                          className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
-                        >
-                          <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
-                            <KnobIcon className="w-3 h-3 shrink-0" />
-                            <span className="truncate">{label}</span>
-                          </div>
-                          <div className="min-w-0 overflow-hidden">
-                            <ParsedActionBadge
-                              action={act}
-                              repeatConfig={bind?.repeatConfig}
-                              labelMode={labelMode}
-                              maxSteps={1}
-                            />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {(() => {
+                    const assignedKnob2Hold = KNOB_2_HOLD_SLOTS.filter(({ slot }) =>
+                      Boolean(slots[slot])
+                    );
+                    if (assignedKnob2Hold.length === 0) return null;
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {assignedKnob2Hold.map(({ slot, label, icon: KnobIcon }) => {
+                          const act = slots[slot];
+                          const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => {
+                                onJumpToControl(prof.id, slot);
+                                onClose();
+                              }}
+                              title={`${prof.name} · ${SLOT_LABELS[slot].full}: ${describeFirmwareAction(act, bind?.repeatConfig).fullLabel}`}
+                              className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
+                            >
+                              <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
+                                <KnobIcon className="w-3 h-3 shrink-0" />
+                                <span className="truncate">{label}</span>
+                              </div>
+                              <div className="min-w-0 overflow-hidden">
+                                <ParsedActionBadge
+                                  action={act}
+                                  repeatConfig={bind?.repeatConfig}
+                                  labelMode={labelMode}
+                                  maxSteps={1}
+                                />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
-                  {hasMotion && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 pt-1.5 border-t border-[var(--border-subtle)]">
-                      {MOTION_SLOTS.map(slot => {
-                        const act = slots[slot];
-                        const bind = getBindingForProfileSlot(profiles, prof.id, slot);
-                        return (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => {
-                              onJumpToControl(prof.id, slot);
-                              onClose();
-                            }}
-                            title={`Configure ${prof.name} · ${SLOT_LABELS[slot].full}`}
-                            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
-                          >
-                            <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
-                              <span className="truncate">{SLOT_LABELS[slot].short}</span>
-                            </div>
-                            <div className="min-w-0 overflow-hidden">
-                              <ParsedActionBadge
-                                action={act}
-                                repeatConfig={bind?.repeatConfig}
-                                labelMode={labelMode}
-                                maxSteps={1}
-                              />
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {hasMotion && (() => {
+                    const assignedMotion = MOTION_SLOTS.filter(slot => Boolean(slots[slot]));
+                    if (assignedMotion.length === 0) return null;
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 pt-1.5 border-t border-[var(--border-subtle)]">
+                        {assignedMotion.map(slot => {
+                          const act = slots[slot];
+                          const bind = getBindingForProfileSlot(profiles, prof.id, slot);
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => {
+                                onJumpToControl(prof.id, slot);
+                                onClose();
+                              }}
+                              title={`Configure ${prof.name} · ${SLOT_LABELS[slot].full}`}
+                              className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] flex flex-col gap-1 text-left transition-colors cursor-pointer min-w-0"
+                            >
+                              <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
+                                <span className="truncate">{SLOT_LABELS[slot].short}</span>
+                              </div>
+                              <div className="min-w-0 overflow-hidden">
+                                <ParsedActionBadge
+                                  action={act}
+                                  repeatConfig={bind?.repeatConfig}
+                                  labelMode={labelMode}
+                                  maxSteps={1}
+                                />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </section>
             );

@@ -56,7 +56,7 @@ import {
   HelpCircle,
   RefreshCw,
   Send,
-  Sparkles
+  Grid2x2
 } from 'lucide-react';
 import { FirmwareBinGuideModal } from './FirmwareBinGuideModal';
 import { MotionSettings } from './MotionSettings';
@@ -1477,7 +1477,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="pt-5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-4 flex-wrap">
                 <div className="space-y-0.5 min-w-0">
                   <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-                    <Sparkles className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
+                    <Grid2x2 className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
                     <span>128×64 OLED Screen Composer</span>
                     {settings.oledComposer?.enabled && (
                       <span className="font-mono text-[10px] font-semibold text-[var(--accent)]">
@@ -1693,24 +1693,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <input
-                  type="text"
-                  disabled={!connection.connected || tvBusy}
-                  value={tvIp}
-                  onChange={e => setTvIp(e.target.value)}
-                  placeholder="TV IP (e.g. 192.168.1.50)"
-                  aria-label="Vizio TV IP address"
-                  className="sm:col-span-2 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--border-strong)]"
-                />
-                <input
-                  type="number"
-                  disabled={!connection.connected || tvBusy}
-                  value={tvPort}
-                  onChange={e => setTvPort(e.target.value)}
-                  placeholder="Port (7345)"
-                  aria-label="Vizio TV Port"
-                  className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--border-strong)] tabular-nums"
-                />
+                <div className="sm:col-span-2 space-y-1">
+                  <label
+                    htmlFor="settings-tv-ip"
+                    className="block text-[11px] font-medium text-[var(--text-muted)]"
+                  >
+                    IP Address
+                  </label>
+                  <input
+                    id="settings-tv-ip"
+                    type="text"
+                    disabled={!connection.connected || tvBusy}
+                    value={tvIp}
+                    onChange={e => setTvIp(e.target.value)}
+                    placeholder="192.168.1.50"
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--border-strong)]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    htmlFor="settings-tv-port"
+                    className="block text-[11px] font-medium text-[var(--text-muted)]"
+                  >
+                    Port
+                  </label>
+                  <input
+                    id="settings-tv-port"
+                    type="number"
+                    disabled={!connection.connected || tvBusy}
+                    value={tvPort}
+                    onChange={e => setTvPort(e.target.value)}
+                    placeholder="7345"
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:border-[var(--border-strong)] tabular-nums"
+                  />
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -1718,7 +1734,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="button"
                   disabled={!connection.connected || tvBusy || !tvIp.trim()}
                   onClick={handleStartTvPairing}
-                  className="px-3.5 py-1.5 rounded-lg bg-[var(--text-primary)] text-[var(--bg-canvas)] text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer whitespace-nowrap"
+                  className={`px-3.5 py-1.5 rounded-lg text-xs disabled:opacity-40 cursor-pointer whitespace-nowrap transition-colors ${
+                    connection.connected && telemetry?.tvPaired
+                      ? 'studio-btn font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      : 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold hover:opacity-90'
+                  }`}
                 >
                   Start pairing
                 </button>
@@ -2498,14 +2518,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              <div className="h-44 overflow-y-auto rounded-lg bg-[#0D0F14] border border-[var(--border-subtle)] p-3 font-mono text-[11px] space-y-1 tabular-nums">
+              <div className="h-44 overflow-y-auto overflow-x-auto rounded-lg bg-[#0D0F14] border border-[var(--border-subtle)] p-3 font-mono text-[11px] space-y-1 tabular-nums">
                 {debugLogs.length === 0 ? (
                   <div className="text-[#A1A1AA] py-4 text-center">
                     No serial traffic logged yet. Connect the USB pad or start demo mode to inspect JSON lines.
                   </div>
                 ) : (
                   debugLogs.map(entry => (
-                    <div key={entry.id} className="flex items-start gap-2 leading-relaxed break-all">
+                    <div key={entry.id} className="flex items-start gap-2 leading-relaxed">
                       <span className="text-[#71717A] shrink-0">{entry.timestamp}</span>
                       <span
                         className={`uppercase font-bold shrink-0 ${
@@ -2520,7 +2540,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       >
                         {entry.direction}
                       </span>
-                      <span className="text-[#ECEAE4]">{entry.line}</span>
+                      <span className="text-[#ECEAE4] min-w-0 break-normal whitespace-pre-wrap">
+                        {entry.line.replace(/,(?=["{[\d\w-])/g, ',\u200B')}
+                      </span>
                     </div>
                   ))
                 )}

@@ -31,6 +31,7 @@ import {
   isSupportedFirmwareKey,
   isValidFirmwareAction,
   normalizeBrowserKeyToFirmware,
+  parseActionKeyValue,
   parseFirmwareShortcut,
   parseSingleActionKeyValue,
   parseTextConfigFromFirmwareAction,
@@ -57,7 +58,6 @@ import {
   AlertCircle,
   Bluetooth,
   Sliders,
-  Wand2,
   Zap,
   Plus,
   Monitor
@@ -706,11 +706,17 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
             )}
           </div>
           {binding.value && (() => {
+            const parsedBadgeLabel = parseActionKeyValue(
+              binding.value,
+              binding.repeatConfig
+            ).prettyLabel;
+            const normFull = currentInfo.fullLabel.trim().toLowerCase();
+            const normBadge = parsedBadgeLabel.trim().toLowerCase();
             const hasDistinctDetail =
               showAdvancedIds ||
               (!matchedSavedMacro &&
-                currentInfo.fullLabel.trim().toLowerCase() !==
-                  currentInfo.shortLabel.trim().toLowerCase());
+                normFull !== normBadge &&
+                normFull.replace(/\s+/g, '') !== normBadge.replace(/\s+/g, ''));
             const hasTvOffWarning =
               !isTvEnabled && actionContainsTvSteps(binding.value, binding.repeatConfig);
             if (!hasDistinctDetail && !hasTvOffWarning) return null;
@@ -1339,7 +1345,7 @@ export const ActionPickerControl: React.FC<ActionPickerControlProps> = ({
                         }
                         className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--bg-panel)] text-[11px] font-semibold text-[var(--accent)] cursor-pointer whitespace-nowrap shrink-0"
                       >
-                        <Wand2 className="w-3 h-3" />
+                        <Zap className="w-3 h-3" />
                         <span>Use built-in</span>
                       </button>
                     </div>

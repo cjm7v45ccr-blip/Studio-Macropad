@@ -2220,7 +2220,7 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
           </span>
         </button>
 
-        {showHoldRow && holdSlot && (
+        {showHoldRow && holdSlot && (holdBinding.value || isHoldSelected || isHoldFlashed) && (
           <button
             type="button"
             aria-label={`Key ${index + 1} Hold: ${holdInfo.fullLabel}`}
@@ -2259,38 +2259,34 @@ export const MacropadCanvas: React.FC<MacropadCanvasProps> = ({
             style={
               view3D
                 ? {
-                    transform: 'translateZ(14px)',
+                    transform: 'translateX(-50%) translateZ(16px)',
                     transformStyle: 'preserve-3d',
-                    zIndex: 25,
+                    zIndex: 30,
                     touchAction: 'manipulation'
                   }
                 : undefined
             }
-            className={`w-[86px] sm:w-[96px] xl:w-[106px] 2xl:w-[112px] px-2 py-1 rounded-lg bg-[#1E2128] border items-center justify-between gap-1 text-left select-none transition-all duration-150 cursor-pointer ${
-              isHoldFlashed || isHoldSelected || isSelected || holdBinding.value
-                ? 'flex'
-                : 'hidden group-hover:flex'
-            } ${
+            className={`absolute left-1/2 -bottom-2 z-30 ${
+              view3D ? '' : '-translate-x-1/2'
+            } flex w-[80px] sm:w-[90px] xl:w-[98px] px-1.5 py-0.5 rounded-md bg-[#181A20]/95 border shadow-md items-center justify-between gap-1 text-left select-none transition-colors duration-150 cursor-pointer ${
               isHoldFlashed
-                ? 'border-[#F2A33A] bg-[#F2A33A]/15 text-[#ECEAE4]'
+                ? 'border-[#F2A33A] bg-[#251E15] text-[#ECEAE4]'
                 : isHoldSelected
-                ? 'border-[var(--accent)] bg-[rgba(var(--accent-rgb),0.16)] text-[#ECEAE4]'
+                ? 'border-[var(--accent)] bg-[#221D16] text-[#ECEAE4]'
                 : holdConflict
                 ? 'border-[#F2A33A]/75 text-[#F2A33A]'
-                : holdBinding.value
-                ? 'border-[#ECEAE4]/12 hover:border-[#ECEAE4]/30 text-[#ECEAE4]'
-                : 'border-[#ECEAE4]/8 hover:border-[#ECEAE4]/22 text-[#A3A6AD]/75'
+                : 'border-[#ECEAE4]/18 hover:border-[#ECEAE4]/35 text-[#ECEAE4]'
             }`}
           >
             <span
-              className={`font-mono text-[9px] font-medium shrink-0 tabular-nums ${
+              className={`font-mono text-[8px] font-medium shrink-0 tabular-nums ${
                 isHoldFlashed || isHoldSelected ? 'text-[#F2A33A]' : 'text-[#A3A6AD]'
               }`}
             >
               Hold
             </span>
             <span
-              className={`text-[10px] font-medium truncate ${
+              className={`text-[9px] font-medium truncate ${
                 holdBinding.value ? 'text-[#ECEAE4]' : 'text-[#A3A6AD]/65 font-mono'
               }`}
             >

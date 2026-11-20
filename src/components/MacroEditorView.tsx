@@ -40,6 +40,7 @@ import {
   isGenericMacroName,
   isSupportedFirmwareKey,
   normalizeBrowserKeyToFirmware,
+  parseActionKeyValue,
   parseFirmwareShortcut,
   parseMacroStepTag,
   parseSingleActionKeyValue,
@@ -97,12 +98,13 @@ import {
   RotateCcw,
   RotateCw,
   Bluetooth,
-  Wand2,
+  ListChecks,
   Download,
   Upload,
   Undo2,
   Redo2,
-  Sparkles,
+  Workflow,
+  Zap,
   Gauge,
   Layers,
   MoreHorizontal
@@ -2338,14 +2340,21 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       cardRepeatConfig,
                       customMacros
                     );
+                    const parsedCardAction = parseActionKeyValue(
+                      cardAction,
+                      cardRepeatConfig
+                    );
                     const normCardName = cardName.trim().toLowerCase();
                     const normShort = cardActionDesc.shortLabel.trim().toLowerCase();
                     const normFull = cardActionDesc.fullLabel.trim().toLowerCase();
+                    const normPretty = parsedCardAction.prettyLabel.trim().toLowerCase();
                     const showActionPreviewBadge =
                       showAdvancedIds ||
                       stepsForMacro.length > 1 ||
-                      (normShort !== normCardName &&
+                      (normPretty !== normCardName &&
+                        normShort !== normCardName &&
                         normFull !== normCardName &&
+                        !normCardName.includes(normPretty) &&
                         !normCardName.includes(normShort));
 
                     return (
@@ -2402,7 +2411,6 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                                 repeatConfig={cardRepeatConfig}
                                 maxSteps={2}
                                 showRawId={showAdvancedIds}
-                                customMacros={customMacros}
                               />
                             </div>
                           )}
@@ -2749,7 +2757,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                 title="Normalize macro names and merge canonical duplicates"
                 className="studio-btn flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer whitespace-nowrap shrink-0"
               >
-                <Wand2 className="w-3 h-3 text-[var(--accent)]" />
+                <ListChecks className="w-3 h-3 text-[var(--text-secondary)]" />
                 <span>Clean Library</span>
               </button>
             )}
@@ -2930,7 +2938,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                         }`}
                         title="Build multi-field login flows or multi-line command sequences"
                       >
-                        <Sparkles className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                        <Workflow className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                         <span>Smart Flow</span>
                       </button>
 
@@ -3128,7 +3136,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
               <div className="studio-panel p-4 rounded-2xl space-y-4 animate-panel-in">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-[var(--accent)]" />
+                    <Workflow className="w-4 h-4 text-[var(--accent)]" />
                     <span className="text-xs font-bold text-[var(--text-primary)]">
                       Smart Flow Builder
                     </span>
@@ -3476,7 +3484,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
             {optimization.canOptimize && isSequenceValid && (
               <div className="px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex items-start justify-between gap-3 text-xs">
                 <div className="flex items-start gap-2 min-w-0 text-[var(--text-secondary)]">
-                  <Wand2 className="w-3.5 h-3.5 text-[var(--accent)] shrink-0 mt-0.5" />
+                  <Zap className="w-3.5 h-3.5 text-[var(--accent)] shrink-0 mt-0.5" />
                   <span className="leading-relaxed break-words">{optimization.reasons.join(' · ')}</span>
                 </div>
                 <button
@@ -3618,7 +3626,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                     className="studio-btn group text-left p-3.5 rounded-xl cursor-pointer flex items-start gap-3"
                   >
                     <div className="studio-well w-8 h-8 rounded-lg text-[var(--accent)] flex items-center justify-center shrink-0">
-                      <Sparkles className="w-4 h-4" />
+                      <Workflow className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-semibold text-[var(--text-primary)]">
@@ -5361,7 +5369,7 @@ export const MacroEditorView: React.FC<MacroEditorViewProps> = ({
                       }}
                       className="w-full px-3 py-2 text-left flex items-center gap-2 text-[var(--text-primary)] hover:bg-[var(--bg-input)] cursor-pointer whitespace-nowrap"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
+                      <Zap className="w-3.5 h-3.5 text-[var(--accent)]" />
                       <span>BertoSense suggestions…</span>
                     </button>
 

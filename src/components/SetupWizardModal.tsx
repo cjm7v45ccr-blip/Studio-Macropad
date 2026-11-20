@@ -614,7 +614,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
       aria-modal="true"
       aria-labelledby="setup-wizard-title"
     >
-      <div className="studio-popover w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col max-h-[92dvh] animate-popover-in">
+      <div className="studio-popover w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col h-[min(740px,90dvh)] animate-popover-in">
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
@@ -1144,7 +1144,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     type="button"
                     disabled={!connection.connected || wifiBusy || !wifiSsid.trim()}
                     onClick={handleSaveWifi}
-                    className="px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-40 hover:opacity-90 cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+                    className={`px-4 py-2 rounded-lg text-xs disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
+                      connection.connected && telemetry?.wifiConnected
+                        ? 'studio-btn text-[var(--text-primary)] font-medium'
+                        : 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:opacity-90'
+                    }`}
                   >
                     {wifiBusy && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
                     <span>{wifiBusy ? 'Connecting…' : 'Connect Wi-Fi'}</span>
@@ -1219,25 +1223,41 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1">
-                  <input
-                    type="text"
-                    disabled={!connection.connected || tvBusy}
-                    value={tvIp}
-                    onChange={e => setTvIp(e.target.value)}
-                    placeholder="TV IP (e.g. 192.168.1.50)"
-                    aria-label="SmartCast TV IP"
-                    className="sm:col-span-2 px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
-                  />
-                  <input
-                    type="number"
-                    disabled={!connection.connected || tvBusy}
-                    value={tvPort}
-                    onChange={e => setTvPort(e.target.value)}
-                    placeholder="7345"
-                    aria-label="SmartCast TV Port"
-                    className="px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] tabular-nums disabled:opacity-50"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 items-end">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label
+                      htmlFor="wizard-tv-ip"
+                      className="block text-[11px] text-[var(--text-muted)]"
+                    >
+                      IP Address
+                    </label>
+                    <input
+                      id="wizard-tv-ip"
+                      type="text"
+                      disabled={!connection.connected || tvBusy}
+                      value={tvIp}
+                      onChange={e => setTvIp(e.target.value)}
+                      placeholder="192.168.1.50"
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="wizard-tv-port"
+                      className="block text-[11px] text-[var(--text-muted)]"
+                    >
+                      Port
+                    </label>
+                    <input
+                      id="wizard-tv-port"
+                      type="number"
+                      disabled={!connection.connected || tvBusy}
+                      value={tvPort}
+                      onChange={e => setTvPort(e.target.value)}
+                      placeholder="7345"
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs font-mono text-[var(--text-primary)] tabular-nums disabled:opacity-50"
+                    />
+                  </div>
                   <button
                     type="button"
                     disabled={!connection.connected || tvBusy || !tvIp.trim()}

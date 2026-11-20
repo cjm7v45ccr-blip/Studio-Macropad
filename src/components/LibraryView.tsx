@@ -1121,9 +1121,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         }
         description={
           pendingAction?.kind === 'curated_preset' || pendingAction?.kind === 'my_preset'
-            ? `Review the ${controlCount} control changes that will be written to ${formatProfileLabel(pendingAction.targetProfile)}.`
+            ? `Review the control changes that will be written to ${formatProfileLabel(pendingAction.targetProfile)}.`
             : pendingAction?.kind === 'copy_profile'
-            ? `All ${controlCount} controls on ${formatProfileLabel(pendingAction.target)} will be overwritten with ${formatProfileLabel(pendingAction.source)}'s bindings.`
+            ? `Review the bindings that will overwrite ${formatProfileLabel(pendingAction.target)} from ${formatProfileLabel(pendingAction.source)}.`
             : `This restores all ${controlCount * 4} controls across Device 1, Device 2, Device 3, and Smart TV to factory defaults. Wi-Fi and TV pairing are preserved.`
         }
         confirmLabel={
@@ -1131,7 +1131,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             ? 'Reset All 4 Profiles'
             : pendingAction?.kind === 'copy_profile'
             ? `Copy ${formatProfileLabel(pendingAction.source)} → ${formatProfileLabel(pendingAction.target)}`
-            : `Apply Preset (${controlCount} Controls)`
+            : `Apply to ${formatProfileLabel(pendingAction?.targetProfile || activeProfileId)}`
         }
         tone={pendingAction?.kind === 'reset_all' ? 'danger' : 'accent'}
         requireWord={pendingAction?.kind === 'reset_all' ? 'RESET' : undefined}

@@ -266,6 +266,11 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
     }
   }, [hasKeyHold, assignSlot]);
 
+  const closeCommandPalette = useCallback(() => {
+    setIsOpen(false);
+    setQuery('');
+  }, []);
+
   const openCommandPalette = useCallback((initialTab?: SearchFilterTab) => {
     if (initialTab) setActiveTab(initialTab);
     setIsOpen(true);
@@ -289,6 +294,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         e.stopPropagation();
         setIsOpen(prev => {
           if (prev && document.activeElement === modalInputRef.current) {
+            setQuery('');
             return false;
           }
           requestAnimationFrame(() => {
@@ -726,9 +732,9 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       }
 
       onAssignSlot(assignProfile, assignSlot, entry.binding);
-      setIsOpen(false);
+      closeCommandPalette();
     },
-    [assignProfile, assignSlot, customMacroBySignature, onAssignSlot, onSaveMacro]
+    [assignProfile, assignSlot, closeCommandPalette, customMacroBySignature, onAssignSlot, onSaveMacro]
   );
 
   const handleOpenInBuilder = useCallback(
@@ -741,9 +747,9 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         repeatConfig: entry.binding?.repeatConfig,
         stepsOverride: entry.stepsOverride
       });
-      setIsOpen(false);
+      closeCommandPalette();
     },
-    [onOpenInMacroEditor]
+    [closeCommandPalette, onOpenInMacroEditor]
   );
 
   const handleCreateNewMacro = useCallback(() => {
@@ -752,39 +758,35 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
       name: query.trim() || 'New Smart Action',
       action: activeHostOs === 'mac' ? 'SHORTCUT:cmd:space' : 'SHORTCUT:ctrl:space'
     });
-    setIsOpen(false);
-  }, [activeHostOs, onOpenInMacroEditor, query]);
+    closeCommandPalette();
+  }, [activeHostOs, closeCommandPalette, onOpenInMacroEditor, query]);
 
   const handlePrimaryAction = useCallback(
     (entry: SearchResultEntry) => {
       if (entry.kind === 'assigned') {
         if (entry.assignedProfileId && entry.assignedControlId) {
           onJumpToControl(entry.assignedProfileId, entry.assignedControlId);
-          setIsOpen(false);
+          closeCommandPalette();
         }
         return;
       }
       if (entry.kind === 'preset') {
         if (entry.presetMode && entry.presetBindings) {
           onApplyProfilePreset(entry.presetMode, entry.presetBindings, entry.title);
-          setIsOpen(false);
+          closeCommandPalette();
         }
         return;
       }
       handleAssignEntry(entry);
     },
-    [handleAssignEntry, onApplyProfilePreset, onJumpToControl]
+    [closeCommandPalette, handleAssignEntry, onApplyProfilePreset, onJumpToControl]
   );
 
   const handleModalInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      if (query) {
-        setQuery('');
-      } else {
-        setIsOpen(false);
-      }
+      closeCommandPalette();
       return;
     }
 
@@ -877,7 +879,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
         <span className="flex items-center gap-2 min-w-0 flex-1">
           <Search className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors shrink-0" />
           <span className="text-xs text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] truncate transition-colors">
-            {query ? `Search: "${query}"` : 'Search macros, actions & presets…'}
+            {isOpen && query ? `Search: "${query}"` : 'Search macros, actions & presets…'}
           </span>
         </span>
         <span className="flex items-center gap-1.5 shrink-0">
@@ -894,7 +896,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
           aria-modal="true"
           aria-labelledby="global-macro-search-title"
           className="fixed inset-0 z-50 flex items-start justify-center pt-10 sm:pt-16 px-3 sm:px-4 pb-4 bg-black/65 backdrop-blur-md animate-in fade-in duration-150"
-          onClick={() => setIsOpen(false)}
+          onClick={closeCommandPalette}
         >
           <div
             onClick={e => e.stopPropagation()}
@@ -946,7 +948,7 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
 
               <button
                 type="button"
-                onClick={() => setIsOpen(false)}
+                onClick={closeCommandPalette}
                 aria-label="Close command palette"
                 title="Close (Esc)"
                 className="px-2 py-1 rounded-lg bg-[var(--bg-input)] hover:bg-[var(--bg-panel)] border border-[var(--border-subtle)] font-mono text-[10px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0"
@@ -1102,8 +1104,8 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                       title={entry.action ? `${entry.title} — ${entry.action}` : entry.title}
                       onMouseEnter={() => setHighlightedIndex(idx)}
                       onClick={() => handlePrimaryAction(entry)}
-                      className={`px-4 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
-                        isHighlighted ? 'bg-[rgba(var(--accent-rgb),0.10)]' : ''
+                      className={`group px-4 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                        isHighlighted ? 'bg-[var(--bg-selected)]' : 'hover:bg-[var(--bg-hover)]'
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -1163,7 +1165,11 @@ export const GlobalMacroSearch: React.FC<GlobalMacroSearchProps> = ({
                       </div>
 
                       <div
-                        className="flex items-center gap-1.5 shrink-0"
+                        className={`items-center gap-1.5 shrink-0 ${
+                          isHighlighted
+                            ? 'flex'
+                            : 'hidden group-hover:flex group-focus-within:flex'
+                        }`}
                         onClick={e => e.stopPropagation()}
                       >
                         {entry.binding && entry.action && (

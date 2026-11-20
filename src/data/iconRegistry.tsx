@@ -72,7 +72,11 @@ import {
   CheckSquare,
   CircleOff,
   X,
-  Square
+  Square,
+  Film,
+  Home,
+  Info,
+  Star
 } from 'lucide-react';
 import { ActionBinding, CustomMacroItem } from '../types/studio';
 import {
@@ -165,9 +169,13 @@ export const ICON_LIBRARY: IconEntry[] = [
   { id: 'zap', label: 'Macro', category: 'System', keywords: ['macro', 'multi', 'sequence', 'automation', 'bolt'], component: Zap },
   { id: 'mouse', label: 'Click', category: 'System', keywords: ['mouse', 'click', 'select', 'ads_click'], component: MousePointerClick },
   { id: 'monitor', label: 'Desktop / Display', category: 'System', keywords: ['monitor', 'display', 'desktop', 'tv', 'desktop_windows'], component: Monitor },
-  { id: 'tv', label: 'Smart TV', category: 'System', keywords: ['tv', 'remote', 'hdmi', 'netflix', 'live_tv'], component: Tv },
+  { id: 'tv', label: 'Smart TV', category: 'System', keywords: ['tv', 'remote', 'hdmi', 'live_tv'], component: Tv },
+  { id: 'film', label: 'Streaming / Film', category: 'Stream & Calls', keywords: ['netflix', 'film', 'movie', 'cinema', 'stream'], component: Film },
+  { id: 'home', label: 'Home', category: 'System', keywords: ['home', 'tv', 'start', 'dashboard', 'menu'], component: Home },
+  { id: 'info', label: 'Info', category: 'System', keywords: ['info', 'details', 'channel', 'banner', 'help'], component: Info },
+  { id: 'star', label: 'Featured / Star', category: 'Media', keywords: ['disney', 'star', 'favorite', 'featured'], component: Star },
   { id: 'check-square', label: 'OK / Select All', category: 'System', keywords: ['ok', 'select', 'check', 'check_box'], component: CheckSquare },
-  { id: 'sparkles', label: 'Info / Streaming', category: 'System', keywords: ['disney', 'info', 'effect', 'auto_awesome'], component: Sparkles },
+  { id: 'sparkles', label: 'Effect / Highlight', category: 'Creative', keywords: ['effect', 'highlight'], component: Sparkles },
 
   // Navigation
   { id: 'arrow-up', label: 'Up', category: 'Navigation', keywords: ['up', 'arrow', 'channel', 'keyboard_arrow_up'], component: ArrowUp },
