@@ -2,6 +2,7 @@
 #include <esp_mac.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
@@ -34,7 +35,7 @@
 #ifdef FIRMWARE_VERSION
 #undef FIRMWARE_VERSION
 #endif
-#define FIRMWARE_VERSION "4.10.1"
+#define FIRMWARE_VERSION "4.13.0"
 #ifndef SETUP_AP_PREFIX
 #define SETUP_AP_PREFIX "BertoPad"
 #endif
@@ -43,6 +44,10 @@
 #define BASE_SLOT_COUNT 11   // original controls: b1..b8, dial, enc_cw, enc_ccw
 #define SLOT_COUNT 27        // + push_cw/push_ccw (dial chords) + dial2/e2_cw/e2_ccw (second encoder) + b1h..b8h (key hold) + g_shake/g_down/g_up (motion)
 #define KEY_HOLD_MS 500
+#ifndef API_ALLOWED_ORIGIN
+#define API_ALLOWED_ORIGIN "*"   // set to your web app's origin (e.g. "https://app.example.com") in config.h to lock CORS
+#endif
+#define IDLE_CPU_MHZ 80          // CPU speed while the screen sleeps (0 = never change it)
 #ifndef BLE_MANAGER_ENABLED
 #define BLE_MANAGER_ENABLED 1   // 0 = build without pairing / disconnect / forget management (set in config.h)
 #endif      // hold a key this long to fire its hold action
@@ -93,7 +98,8 @@ const char* const DEFAULT_TV_BINDINGS[SLOT_COUNT] = {
 
 const char* const SUPPORTED_ACTIONS[] = {
   "MEDIA:PLAY_PAUSE", "MEDIA:MUTE", "MEDIA:VOL_UP", "MEDIA:VOL_DOWN",
-  "MEDIA:NEXT", "MEDIA:PREV", "KEY:F13", "KEY:F14", "KEY:F15", "KEY:F16",
+  "MEDIA:NEXT", "MEDIA:PREV", "MEDIA:BRIGHT_UP", "MEDIA:BRIGHT_DOWN",
+  "KEY:F13", "KEY:F14", "KEY:F15", "KEY:F16",
   "MACRO:COPY", "MACRO:PASTE", "MACRO:CUT", "MACRO:UNDO", "MACRO:REDO",
   "MACRO:SELECT_ALL", "MACRO:SAVE", "MACRO:SPOTLIGHT", "MACRO:LOCK",
   "MACRO:NEW_TAB", "MACRO:CLOSE_TAB", "TV:POWER", "TV:VOL_UP",
@@ -131,7 +137,7 @@ String tv_bindings[SLOT_COUNT];
 
 PadMode currentMode = MODE_BLE;
 uint8_t currentBleSlot = 0; // 0 = Device 1, 1 = Device 2, 2 = Device 3
-String bleDeviceName = "BertoPad 1";
+String bleDeviceName = "BertoPad";
 
 bool inSetupMode = false;
 bool setup_done = false;
@@ -151,8 +157,8 @@ unsigned long lastEnc2AccelTime = 0;
 bool keyHoldPending[8] = {false};     // key is down and has a hold action: tap fires on release, hold after KEY_HOLD_MS
 bool keyHoldFired[8] = {false};
 unsigned long keyPressAt[8] = {0};
-uint16_t dispDimSec = 60;             // OLED dims after this many idle seconds (0 = never)
-uint16_t dispOffSec = 300;            // OLED turns off after this many idle seconds (0 = never)
+uint16_t dispDimSec = 30;             // OLED dims after this many idle seconds (0 = never)
+uint16_t dispOffSec = 120;            // OLED turns off after this many idle seconds (0 = never)
 uint8_t dispContrast = 255;           // 0-255
 unsigned long lastActivity = 0;
 bool dispDimmed = false, dispOff = false;
@@ -178,11 +184,17 @@ struct MotionDetector {
     float dx = gx - pgx, dy = gy - pgy, dz = gz - pgz;
     lastJerk = sqrtf(dx * dx + dy * dy + dz * dz);
     pgx = gx; pgy = gy; pgz = gz;
-    // Shake: 4 sharp impulses within 800 ms, then a 1.5 s cooldown
-    if (now >= cooldownUntil && lastJerk > shakeThreshold() && now - lastPeak >= 60) {
-      lastPeak = now;
-      if (peaks == 0 || now - windowStart > 800) { windowStart = now; peaks = 0; }
-      if (++peaks >= 4) { ev |= EV_SHAKE; peaks = 0; cooldownUntil = now + 1500; }
+    // Shake: 4 sharp impulses within 800 ms, then a 1.5 s cooldown (rollover-safe)
+    if ((cooldownUntil == 0 || (int32_t)(now - cooldownUntil) >= 0) &&
+        lastJerk > shakeThreshold() && (lastPeak == 0 || (uint32_t)(now - lastPeak) >= 60)) {
+      lastPeak = now ? now : 1;
+      if (peaks == 0 || (uint32_t)(now - windowStart) > 800) { windowStart = now; peaks = 0; }
+      if (++peaks >= 4) {
+        ev |= EV_SHAKE;
+        peaks = 0;
+        cooldownUntil = now + 1500;
+        if (cooldownUntil == 0) cooldownUntil = 1;
+      }
     }
     // Face-down / face-up, with hold times so a quick tilt never counts
     orient = orient * 0.8f + (gx * rx + gy * ry + gz * rz) * 0.2f;
@@ -201,12 +213,50 @@ struct MotionDetector {
   }
 };
 MotionDetector motionDet;
+
+// Live orientation for the app's 3D model: tilt (pitch / roll) from gravity + gyro, turn (yaw) from the gyro.
+struct MotionOrient {
+  float roll = 0, pitch = 0, yaw = 0;   // degrees, sensor frame
+  float roll0 = 0, pitch0 = 0;          // zero offsets set by "zero"
+  float bx = 0, by = 0, bz = 0;         // gyro bias in deg/s, learned automatically while the pad sits still
+  float lastMag = 1.0f;
+  int stillCount = 0;
+  bool init = false;
+  float p() const { return pitch - pitch0; }
+  float r() const { return roll - roll0; }
+  float y() const { return yaw; }
+  void zero() { pitch0 = pitch; roll0 = roll; yaw = 0; }
+  static float wrap(float a) { while (a > 180.0f) a -= 360.0f; while (a < -180.0f) a += 360.0f; return a; }
+  // ax..az in g, gx..gz in deg/s, dt in seconds
+  void update(float ax, float ay, float az, float gx, float gy, float gz, float dt) {
+    const float R2D = 57.29578f;
+    float accRoll = atan2f(ay, az) * R2D;
+    float accPitch = atan2f(-ax, sqrtf(ay * ay + az * az)) * R2D;
+    float mag = sqrtf(ax * ax + ay * ay + az * az);
+    if (!init) { roll = accRoll; pitch = accPitch; yaw = 0; lastMag = mag; init = true; return; }
+    bool accelStable = fabsf(mag - 1.0f) < 0.05f && fabsf(mag - lastMag) < 0.02f;
+    lastMag = mag;
+    bool slow = fabsf(gx) < 6.0f && fabsf(gy) < 6.0f && fabsf(gz) < 6.0f;
+    if (accelStable && slow) { if (stillCount < 1000) stillCount++; } else stillCount = 0;
+    if (stillCount >= 10) { bx += 0.02f * (gx - bx); by += 0.02f * (gy - by); bz += 0.02f * (gz - bz); }   // learn the gyro bias while still
+    roll  = wrap(roll  + (gx - bx) * dt);
+    pitch = wrap(pitch + (gy - by) * dt);
+    roll  = wrap(roll  + 0.02f * wrap(accRoll  - roll));    // gravity slowly corrects the gyro drift
+    pitch = wrap(pitch + 0.02f * wrap(accPitch - pitch));
+    if (stillCount < 10) yaw = wrap(yaw + (gz - bz) * dt);  // gravity cannot correct yaw, so hold it while still
+  }
+};
+MotionOrient motionOri;
+uint8_t motionStreamHz = 0;            // orientation events per second (0 = off); the app re-sends every few seconds
+uint32_t motionStreamUntil = 0, motionLastStreamMs = 0, motionLastUs = 0;
 bool motionPresent = false, motionEnabled = true, motionWake = true;
 uint8_t motionSens = 3, mpuAddr = 0x68, motionWho = 0, motionFails = 0;
 uint32_t motionLastPoll = 0;
 int pendingBleSlot = -1;            // host being previewed while Mode is held and the dial is turned
 uint8_t otaLastPct = 255;           // last OTA progress percentage drawn on the OLED
-uint32_t blePairUntil = 0, bleConnectedAt = 0, bleRestartAt = 0;   // pairing window end, link age, delayed reboot
+uint32_t blePairUntil = 0, bleConnectedAt = 0, bleRestartAt = 0;   // pairing window end, link age
+int hostChordKey = -1; uint32_t hostChordStart = 0; uint8_t hostChordStage = 0;   // Mode + K1/K2/K3 = Host 1/2/3
+bool cpuSlowed = false; uint32_t cpuActiveMhz = 240;
 bool bleHoldOff = false;            // advertising paused by the app
 bool bleTrusted = false;            // the connected host is a bonded (paired) one
 bool bleWasConnected = false, bleRecordedConn = false;
@@ -221,7 +271,7 @@ String setupPass = "";
 Preferences prefs;
 WebServer server(80);
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-BleKeyboard bleKeyboard("BertoPad 1", "BertoPad", 100);
+BleKeyboard bleKeyboard("BertoPad", "BertoPad", 100);   // one name for all three Hosts
 WiFiClientSecure tvClient;
 unsigned long lastTvKeepAlive = 0;
 
@@ -294,51 +344,50 @@ Button buttons[] = {
 };
 
 // -----------------------------------------------------------------------------
-// Logitech M720-Style Virtual MAC & Multi-Host Switching
+// Multi-Host switching: one Bluetooth identity, the active Host decides which computer may type
 // -----------------------------------------------------------------------------
-void setSlotMacAddress(uint8_t slot) {
-  uint8_t gen = 0;
-  prefs.begin("config", true);
-  gen = prefs.getUChar((String("ble_gen") + String(slot)).c_str(), 0);
-  prefs.end();
-  if (slot == 0 && gen == 0) return; // Slot 0 uses the default factory eFuse MAC until it is forgotten
-  uint64_t efuse = ESP.getEfuseMac();
-  uint8_t baseMac[6];
-  baseMac[0] = (uint8_t)(efuse);
-  baseMac[1] = (uint8_t)(efuse >> 8);
-  baseMac[2] = (uint8_t)(efuse >> 16);
-  baseMac[3] = (uint8_t)(efuse >> 24);
-  baseMac[4] = (uint8_t)((efuse >> 32) + gen * 3);          // forgetting a slot gives it a fresh Bluetooth identity
-  baseMac[5] = (uint8_t)((efuse >> 40) + (slot * 4));
-  baseMac[0] &= ~0x01; // Ensure unicast
-  esp_base_mac_addr_set(baseMac);
-}
+
 
 void renderScreen();
 
 void switchBleDevice(uint8_t newSlot) {
   if (newSlot >= MAX_BLE_SLOTS) return;
+  char msg[24];
   if (newSlot == currentBleSlot) {
-    char msg[24];
     snprintf(msg, sizeof(msg), "%s Active", dev_names[currentBleSlot].c_str());
     strncpy(toastMessage, msg, sizeof(toastMessage) - 1);
+    toastMessage[sizeof(toastMessage) - 1] = '\0';
     toastExpiry = millis() + 700;
-    renderScreen();
+    if (toastExpiry == 0) toastExpiry = 1;
+    screenDirty = true;
     return;
   }
-
+  // 1. remember the new Host (no reboot, no MAC change)
   prefs.begin("config", false);
   prefs.putUChar("ble_slot", newSlot);
   prefs.end();
-
-  char msg[24];
+  currentBleSlot = newSlot;
+  if (currentMode != MODE_BLE) setActiveMode(MODE_BLE);
+  blePairUntil = 0; bleHoldOff = false; bleTrusted = false;
+  // 2. drop the current computer
+  NimBLEServer* srv = NimBLEDevice::getServer();
+  if (srv) {
+    std::vector<uint16_t> peers = srv->getPeerDevices();
+    for (size_t k = 0; k < peers.size(); ++k) srv->disconnect(peers[k]);
+  }
+  // 3. keep advertising so this Host's computer can reconnect
+  NimBLEDevice::startAdvertising();
+  // 4. show the new Host
   snprintf(msg, sizeof(msg), "%s...", dev_names[newSlot].c_str());
   strncpy(toastMessage, msg, sizeof(toastMessage) - 1);
+  toastMessage[sizeof(toastMessage) - 1] = '\0';
   toastExpiry = millis() + 1500;
-  renderScreen();
-  delay(350);
-  ESP.restart(); // Reboots into the new Bluetooth identity & profile
+  if (toastExpiry == 0) toastExpiry = 1;
+  screenDirty = true;
+  wakeDisplay();
+  emitEvent(String("{\"event\":\"ble\",\"state\":\"switched\",\"slot\":") + String(newSlot + 1) + "}");
 }
+
 
 // -----------------------------------------------------------------------------
 // Bounded JSON Helpers
@@ -359,7 +408,7 @@ String jsonQuote(const String& value) {
 }
 
 void addCorsHeaders() {
-  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Origin", API_ALLOWED_ORIGIN);
   server.sendHeader("Access-Control-Allow-Headers", "Content-Type, X-Pad-Token");
   server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   server.sendHeader("Access-Control-Allow-Private-Network", "true");
@@ -394,13 +443,57 @@ bool requestBody(String& body) {
   return true;
 }
 
+// Locates a JSON key outside string literals and returns the index right after its ':'
+int findJsonKeyValuePos(const String& body, const char* key) {
+  const size_t klen = strlen(key);
+  const int n = (int)body.length();
+  bool inStr = false, esc = false;
+  for (int i = 0; i < n; ++i) {
+    char c = body[i];
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (c == '\\') { esc = true; continue; }
+      if (c == '\"') inStr = false;
+      continue;
+    }
+    if (c == '\"') {
+      // Check if this string token is a key (preceded by '{' or ',' after whitespace)
+      int prev = i - 1;
+      while (prev >= 0 && isspace((unsigned char)body[prev])) --prev;
+      bool isKeySpot = (prev >= 0 && (body[prev] == '{' || body[prev] == ','));
+      int start = i + 1;
+      int end = start;
+      bool kEsc = false;
+      while (end < n) {
+        char kc = body[end];
+        if (kEsc) { kEsc = false; ++end; continue; }
+        if (kc == '\\') { kEsc = true; ++end; continue; }
+        if (kc == '\"') break;
+        ++end;
+      }
+      if (end >= n) return -1;
+      int afterQuote = end + 1;
+      while (afterQuote < n && isspace((unsigned char)body[afterQuote])) ++afterQuote;
+      if (isKeySpot && afterQuote < n && body[afterQuote] == ':' &&
+          (size_t)(end - start) == klen && strncmp(body.c_str() + start, key, klen) == 0) {
+        return afterQuote + 1;
+      }
+      i = end; // advance to closing quote of this non-matching string
+    }
+  }
+  return -1;
+}
+
+static int hexNibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+  if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+  return -1;
+}
+
 bool jsonString(const String& body, const char* key, String& out, size_t maxLength) {
-  String needle = "\"" + String(key) + "\"";
-  int keyPos = body.indexOf(needle);
-  if (keyPos < 0) return false;
-  int colon = body.indexOf(':', keyPos + needle.length());
-  if (colon < 0) return false;
-  int pos = colon + 1;
+  int pos = findJsonKeyValuePos(body, key);
+  if (pos < 0) return false;
   while (pos < (int)body.length() && isspace((unsigned char)body[pos])) ++pos;
   if (pos >= (int)body.length() || body[pos] != '\"') return false;
   ++pos;
@@ -409,12 +502,35 @@ bool jsonString(const String& body, const char* key, String& out, size_t maxLeng
   for (; pos < (int)body.length(); ++pos) {
     char c = body[pos];
     if (escaped) {
-      if (c != '\\' && c != '\"' && c != '/' && c != 'n' && c != 'r' && c != 't') return false;
-      if (c == 'n') value += '\n';
-      else if (c == 'r') value += '\r';
-      else if (c == 't') value += '\t';
-      else value += c;
       escaped = false;
+      if (c == '\\' || c == '\"' || c == '/') {
+        if (value.length() >= maxLength) return false;
+        value += c;
+      } else if (c == 'n') {
+        if (value.length() >= maxLength) return false;
+        value += '\n';
+      } else if (c == 'r') {
+        if (value.length() >= maxLength) return false;
+        value += '\r';
+      } else if (c == 't') {
+        if (value.length() >= maxLength) return false;
+        value += '\t';
+      } else if (c == 'b' || c == 'f') {
+        // Ignore backspace/formfeed control chars safely
+      } else if (c == 'u') {
+        if (pos + 4 >= (int)body.length()) return false;
+        int h0 = hexNibble(body[pos + 1]), h1 = hexNibble(body[pos + 2]);
+        int h2 = hexNibble(body[pos + 3]), h3 = hexNibble(body[pos + 4]);
+        if (h0 < 0 || h1 < 0 || h2 < 0 || h3 < 0) return false;
+        uint16_t code = (uint16_t)((h0 << 12) | (h1 << 8) | (h2 << 4) | h3);
+        pos += 4;
+        if (code == '\n' || code == '\r' || code == '\t' || (code >= 0x20 && code <= 0x7E)) {
+          if (value.length() >= maxLength) return false;
+          value += (char)code;
+        }
+      } else {
+        return false;
+      }
       continue;
     }
     if (c == '\\') { escaped = true; continue; }
@@ -426,19 +542,22 @@ bool jsonString(const String& body, const char* key, String& out, size_t maxLeng
 }
 
 bool jsonInt(const String& body, const char* key, int& out) {
-  String needle = "\"" + String(key) + "\"";
-  int keyPos = body.indexOf(needle);
-  if (keyPos < 0) return false;
-  int colon = body.indexOf(':', keyPos + needle.length());
-  if (colon < 0) return false;
-  int pos = colon + 1;
+  int pos = findJsonKeyValuePos(body, key);
+  if (pos < 0) return false;
   while (pos < (int)body.length() && isspace((unsigned char)body[pos])) ++pos;
   bool quoted = pos < (int)body.length() && body[pos] == '\"';
   if (quoted) ++pos;
+  bool neg = false;
+  if (pos < (int)body.length() && body[pos] == '-') { neg = true; ++pos; }
   int start = pos;
-  while (pos < (int)body.length() && isdigit((unsigned char)body[pos])) ++pos;
+  int64_t accum = 0;
+  while (pos < (int)body.length() && isdigit((unsigned char)body[pos])) {
+    accum = accum * 10 + (body[pos] - '0');
+    if (accum > 2147483647LL) return false;
+    ++pos;
+  }
   if (start == pos || (quoted && (pos >= (int)body.length() || body[pos] != '\"'))) return false;
-  out = body.substring(start, pos).toInt();
+  out = neg ? -(int)accum : (int)accum;
   return true;
 }
 
@@ -446,12 +565,8 @@ bool jsonInt(const String& body, const char* key, int& out) {
 bool jsonFlag(const String& body, const char* key, bool& out) {
   int v = 0;
   if (jsonInt(body, key, v)) { out = (v != 0); return true; }
-  String needle = "\"" + String(key) + "\"";
-  int k = body.indexOf(needle);
-  if (k < 0) return false;
-  int colon = body.indexOf(':', k + needle.length());
-  if (colon < 0) return false;
-  int pos = colon + 1;
+  int pos = findJsonKeyValuePos(body, key);
+  if (pos < 0) return false;
   while (pos < (int)body.length() && isspace((unsigned char)body[pos])) ++pos;
   if (body.startsWith("true", pos))  { out = true;  return true; }
   if (body.startsWith("false", pos)) { out = false; return true; }
@@ -495,34 +610,61 @@ bool parseRepeat(const String& s, int& countOut) {
   return true;
 }
 
+// Returns true if the substring starting at `pos` begins with a macro step token.
+// Allows literal "||" inside TEXT: steps (e.g. "TEXT:npm run build || echo fail")
+// unless followed by an actual macro keyword like "||DELAY:200" or "||KEY:F13".
+static bool startsWithStepToken(const String& act, int pos) {
+  while (pos < (int)act.length() && isspace((unsigned char)act[pos])) ++pos;
+  if (pos >= (int)act.length()) return true; // trailing "||" at end of string
+  static const char* const pfx[] = {
+    "MEDIA:", "KEY:", "MACRO:", "WIN:", "TV:", "APP:", "BLE:",
+    "SHORTCUT:", "TEXT:", "TVKEY:", "TVAPP:", "DELAY:", "REPEAT:"
+  };
+  for (size_t i = 0; i < sizeof(pfx) / sizeof(pfx[0]); ++i) {
+    if (act.startsWith(pfx[i], pos)) return true;
+  }
+  if (act.startsWith("END", pos)) {
+    int after = pos + 3;
+    if (act.startsWith("END_REPEAT", pos)) after = pos + 10;
+    while (after < (int)act.length() && isspace((unsigned char)act[after])) ++after;
+    if (after >= (int)act.length() || act.startsWith("||", after)) return true;
+  }
+  return false;
+}
+
 void splitMacro(const String& act, std::vector<String>& out) {
   int start = 0;
-  while (start < (int)act.length()) {
-    int idx = act.indexOf("||", start);
-    out.push_back(trimMacroStep(idx >= 0 ? act.substring(start, idx) : act.substring(start)));
-    if (idx < 0) break;
+  const int len = (int)act.length();
+  while (start <= len) {
+    int s = start;
+    while (s < len && isspace((unsigned char)act[s])) ++s;
+    bool isText = act.startsWith("TEXT:", s);
+    int searchFrom = start;
+    int idx = -1;
+    while (true) {
+      int cand = act.indexOf("||", searchFrom);
+      if (cand < 0) break;
+      if (!isText || startsWithStepToken(act, cand + 2)) {
+        idx = cand;
+        break;
+      }
+      searchFrom = cand + 2;
+    }
+    if (idx < 0) {
+      out.push_back(trimMacroStep(act.substring(start)));
+      break;
+    }
+    out.push_back(trimMacroStep(act.substring(start, idx)));
     start = idx + 2;
+    if (start == len) {
+      out.push_back(""); // preserve empty trailing step so validation rejects trailing "||"
+      break;
+    }
   }
 }
 
-bool isSupportedAction(const String& action) {
-  if (action == "" || action == "NONE") return true; // Unassigned is valid
+bool isSingleSupportedAction(const String& action) {
   if (action.length() < 3 || action.length() > MAX_ACTION_LEN) return false;
-
-  // Validate multi-step macros (REPEAT/END blocks must be balanced)
-  if (action.indexOf("||") >= 0) {
-    std::vector<String> steps;
-    splitMacro(action, steps);
-    int depth = 0, n = 0;
-    for (size_t k = 0; k < steps.size(); ++k) {
-      const String& sub = steps[k];
-      if (parseRepeat(sub, n)) { if (++depth > MAX_REPEAT_DEPTH) return false; continue; }
-      if (sub == "END") { if (depth == 0) return false; --depth; continue; }
-      if (!isSupportedAction(sub)) return false;
-    }
-    return depth == 0;
-  }
-
   if (action.startsWith("DELAY:")) { int ms = 0; return parseDelayMs(action, ms); }
   for (size_t i = 0; i < SUPPORTED_ACTION_COUNT; ++i) if (action == SUPPORTED_ACTIONS[i]) return true;
   if (action.startsWith("SHORTCUT:")) {
@@ -544,8 +686,41 @@ bool isSupportedAction(const String& action) {
   return false;
 }
 
+bool isSupportedAction(const String& action) {
+  if (action == "" || action == "NONE") return true; // Unassigned is valid at top level
+  if (action.length() < 3 || action.length() > MAX_ACTION_LEN) return false;
+
+  if (action.indexOf("||") >= 0) {
+    std::vector<String> steps;
+    splitMacro(action, steps);
+    if (steps.size() == 1) return isSingleSupportedAction(steps[0]);
+    int depth = 0, n = 0;
+    int bodyStepsAtDepth[MAX_REPEAT_DEPTH + 1] = {0};
+    for (size_t k = 0; k < steps.size(); ++k) {
+      const String& sub = steps[k];
+      if (sub.length() == 0) return false; // Reject empty "||" segments
+      if (parseRepeat(sub, n)) {
+        if (++depth > MAX_REPEAT_DEPTH) return false;
+        bodyStepsAtDepth[depth] = 0;
+        continue;
+      }
+      if (sub == "END" || sub == "END_REPEAT") {
+        if (depth == 0 || bodyStepsAtDepth[depth] == 0) return false; // Reject unmatched or empty REPEAT..END
+        --depth;
+        bodyStepsAtDepth[depth]++;
+        continue;
+      }
+      if (!isSingleSupportedAction(sub)) return false;
+      bodyStepsAtDepth[depth]++;
+    }
+    return depth == 0 && bodyStepsAtDepth[0] > 0;
+  }
+
+  return isSingleSupportedAction(action);
+}
+
 bool jsonHasKey(const String& body, const char* key) {
-  return body.indexOf("\"" + String(key) + "\"") >= 0;
+  return findJsonKeyValuePos(body, key) >= 0;
 }
 
 int slotIndex(const String& slot) {
@@ -630,13 +805,22 @@ void bumpRev() {
   emitEvent("{\"event\":\"config\",\"rev\":" + String(config_rev) + "}");
 }
 
-void saveProfile(const String& profile) {
+void saveProfile(const String& profile, bool bump = true) {
   String* bindings = profileBindings(profile);
+  String pfx = String(profilePrefix(profile));
   prefs.begin("matrix", false);
-  prefs.putString((String(profilePrefix(profile)) + "name").c_str(), profileName(profile));
-  for (int i = 0; i < SLOT_COUNT; ++i) prefs.putString((String(profilePrefix(profile)) + SLOT_IDS[i]).c_str(), bindings[i]);
+  String nameKey = pfx + "name";
+  if (prefs.getString(nameKey.c_str(), "") != profileName(profile)) {
+    prefs.putString(nameKey.c_str(), profileName(profile));
+  }
+  for (int i = 0; i < SLOT_COUNT; ++i) {
+    String slotKey = pfx + SLOT_IDS[i];
+    if (prefs.getString(slotKey.c_str(), "\x01") != bindings[i]) {
+      prefs.putString(slotKey.c_str(), bindings[i]);
+    }
+  }
   prefs.end();
-  bumpRev();
+  if (bump) bumpRev();
 }
 
 void saveBinding(const String& profile, int index, const String& action) {
@@ -648,7 +832,7 @@ void saveBinding(const String& profile, int index, const String& action) {
   bumpRev();
 }
 
-void resetProfile(const String& profile) {
+void resetProfile(const String& profile, bool bump = true) {
   String* bindings = profileBindings(profile);
   const char* const* defaults = (profile == "TV" ? DEFAULT_TV_BINDINGS : DEFAULT_BLANK_BINDINGS);
   for (int i = 0; i < SLOT_COUNT; ++i) bindings[i] = defaults[i];
@@ -658,7 +842,7 @@ void resetProfile(const String& profile) {
     int idx = profileToHostIndex(profile);
     dev_names[idx] = String("Device ") + String(idx + 1);
   }
-  saveProfile(profile);
+  saveProfile(profile, bump);
 }
 
 bool tvIsConfigured() { return stored_tv_ip.length() > 0 || stored_tv_auth.length() > 0; }
@@ -713,6 +897,7 @@ void showToast(const char* msg, unsigned long durationMs = 1000) {
   strncpy(toastMessage, msg, sizeof(toastMessage) - 1);
   toastMessage[sizeof(toastMessage) - 1] = '\0';
   toastExpiry = millis() + durationMs;
+  if (toastExpiry == 0) toastExpiry = 1;
   screenDirty = true;
   wakeDisplay();
 }
@@ -725,6 +910,7 @@ void applyDisplayContrast() {
 
 void wakeDisplay() {
   lastActivity = millis();
+  if (cpuSlowed) { setCpuFrequencyMhz(cpuActiveMhz); cpuSlowed = false; }
   if (dispOff) { display.ssd1306_command(SSD1306_DISPLAYON); dispOff = false; screenDirty = true; }
   if (dispDimmed) { display.dim(false); applyDisplayContrast(); dispDimmed = false; }
 }
@@ -734,7 +920,11 @@ void updateDisplayPower() {
   if (dispDimSec == 0 && dispOffSec == 0) return;
   unsigned long idle = millis() - lastActivity;
   if (!dispOff && dispOffSec > 0 && idle >= (unsigned long)dispOffSec * 1000UL) {
-    display.ssd1306_command(SSD1306_DISPLAYOFF); dispOff = true; return;
+    display.ssd1306_command(SSD1306_DISPLAYOFF); dispOff = true;
+    if (IDLE_CPU_MHZ > 0 && !cpuSlowed && getCpuFrequencyMhz() > IDLE_CPU_MHZ) {   // saves power; Wi-Fi and Bluetooth still work at 80 MHz
+      cpuActiveMhz = getCpuFrequencyMhz(); setCpuFrequencyMhz(IDLE_CPU_MHZ); cpuSlowed = true;
+    }
+    return;
   }
   if (!dispDimmed && !dispOff && dispDimSec > 0 && idle >= (unsigned long)dispDimSec * 1000UL) {
     display.dim(true); dispDimmed = true;
@@ -757,7 +947,8 @@ bool applyDisplaySettings(const String& body) {
 
 // ---- Status LEDs: PWM brightness, follow the OLED sleep state, breathe while waiting for Bluetooth ----
 #define LED_BRIGHT_MAX 160
-#define LED_BRIGHT_DIM 25
+#define LED_BRIGHT_DIM 45
+#define LED_BRIGHT_SLEEP 22   // faint glow while the screen sleeps: a lit LED still means "connected"
 void ledWrite(uint8_t which, uint8_t level) {
   uint8_t duty = (uint8_t)(((uint16_t)level * level) / 255);   // gamma curve for an even-looking fade
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
@@ -782,8 +973,7 @@ void updateStatusLeds(bool ble, bool wifi) {
   uint32_t now = millis();
   if (now - last < 20) return;
   last = now;
-  if (dispOff) { ledWrite(0, 0); ledWrite(1, 0); return; }
-  const uint8_t maxB = dispDimmed ? LED_BRIGHT_DIM : LED_BRIGHT_MAX;
+  const uint8_t maxB = dispOff ? LED_BRIGHT_SLEEP : (dispDimmed ? LED_BRIGHT_DIM : LED_BRIGHT_MAX);
   if (blePairUntil) ledWrite(0, ((now / 125) % 2) ? maxB : 0);   // fast blink = pairing mode
   else if (bleHoldOff) ledWrite(0, 0);
   else if (ble) ledWrite(0, maxB);
@@ -792,51 +982,93 @@ void updateStatusLeds(bool ble, bool wifi) {
   ledWrite(1, wifi ? maxB : 0);
 }
 
-// ---- Bluetooth management: pairing mode, disconnect, forget one profile's pairing ----
+// ---- Bluetooth management: ONE Bluetooth identity, three Hosts (switching never reboots) ----
 #if BLE_MANAGER_ENABLED
-static bool bleListHas(const String& list, const String& addr) {
-  int start = 0;
-  while (start <= (int)list.length()) {
-    int c = list.indexOf(',', start);
-    String item = (c < 0) ? list.substring(start) : list.substring(start, c);
-    if (item.length() > 0 && item.equalsIgnoreCase(addr)) return true;
-    if (c < 0) break;
-    start = c + 1;
-  }
-  return false;
+#define BLE_ADDR_LEN 18
+#define BLE_HOSTS_PER_SLOT 3
+static char bleBook[MAX_BLE_SLOTS][BLE_HOSTS_PER_SLOT][BLE_ADDR_LEN];   // which computers belong to which Host (fixed buffers, no heap)
+static uint8_t bleBookCount[MAX_BLE_SLOTS];
+
+static void bleAddrChars(const NimBLEAddress& a, char* out) {
+  std::string t = a.toString();
+  strncpy(out, t.c_str(), BLE_ADDR_LEN - 1);
+  out[BLE_ADDR_LEN - 1] = 0;
 }
 
-static String bleBondKey(uint8_t slot) { return String("bond_s") + String(slot); }
+static int bleBookFind(uint8_t slot, const char* a) {
+  for (uint8_t i = 0; i < bleBookCount[slot]; ++i) if (strcasecmp(bleBook[slot][i], a) == 0) return i;
+  return -1;
+}
 
-String bleReadBonds(uint8_t slot) {
-  prefs.begin("config", true);
-  String v = prefs.getString(bleBondKey(slot).c_str(), "");
+static int bleBookOwner(const char* a) {
+  for (uint8_t s2 = 0; s2 < MAX_BLE_SLOTS; ++s2) if (bleBookFind(s2, a) >= 0) return s2;
+  return -1;
+}
+
+static void bleBookSave(uint8_t slot) {
+  char buf[BLE_HOSTS_PER_SLOT * BLE_ADDR_LEN + 1];
+  buf[0] = 0;
+  for (uint8_t i = 0; i < bleBookCount[slot]; ++i) { if (i) strcat(buf, ","); strcat(buf, bleBook[slot][i]); }
+  char key[12];
+  snprintf(key, sizeof(key), "bond_s%u", (unsigned)slot);
+  prefs.begin("config", false);
+  prefs.putString(key, buf);
   prefs.end();
-  return v;
 }
 
-int bleBondCount(uint8_t slot) {
-  String v = bleReadBonds(slot);
-  if (v.length() == 0) return 0;
-  int n = 1;
-  for (unsigned i = 0; i < v.length(); ++i) if (v[i] == ',') n++;
-  return n;
-}
-
-// Remembers which profile a host paired with, so "forget" can remove only that profile's pairing.
-// Returns true when the host was not known to any profile before.
-bool bleRecordPeer(uint8_t slot, const String& addr) {
-  bool known = false;
-  for (uint8_t i = 0; i < MAX_BLE_SLOTS; ++i) if (bleListHas(bleReadBonds(i), addr)) known = true;
-  String mine = bleReadBonds(slot);
-  if (!bleListHas(mine, addr)) {
-    mine = (mine.length() > 0) ? (mine + "," + addr) : addr;
-    while (mine.length() > 3 * 17 + 2) mine = mine.substring(mine.indexOf(',') + 1);   // keep the newest 3 hosts
-    prefs.begin("config", false);
-    prefs.putString(bleBondKey(slot).c_str(), mine);
+static void bleBookLoad() {
+  for (uint8_t s2 = 0; s2 < MAX_BLE_SLOTS; ++s2) {
+    char key[12];
+    snprintf(key, sizeof(key), "bond_s%u", (unsigned)s2);
+    prefs.begin("config", true);
+    String v = prefs.getString(key, "");
     prefs.end();
+    bleBookCount[s2] = 0;
+    const char* p = v.c_str();
+    while (*p && bleBookCount[s2] < BLE_HOSTS_PER_SLOT) {
+      const char* c = strchr(p, ',');
+      size_t len = c ? (size_t)(c - p) : strlen(p);
+      if (len == BLE_ADDR_LEN - 1) {
+        memcpy(bleBook[s2][bleBookCount[s2]], p, len);
+        bleBook[s2][bleBookCount[s2]][len] = 0;
+        bleBookCount[s2]++;
+      }
+      p += len;
+      if (*p == ',') ++p;
+    }
   }
-  return !known;
+}
+
+static bool bleBookAdd(uint8_t slot, const char* a) {                    // true when newly added to this Host
+  if (bleBookFind(slot, a) >= 0) return false;
+  if (bleBookCount[slot] >= BLE_HOSTS_PER_SLOT) {                        // keep the newest ones
+    for (uint8_t i = 0; i + 1 < bleBookCount[slot]; ++i) strcpy(bleBook[slot][i], bleBook[slot][i + 1]);
+    bleBookCount[slot]--;
+  }
+  strncpy(bleBook[slot][bleBookCount[slot]], a, BLE_ADDR_LEN - 1);
+  bleBook[slot][bleBookCount[slot]][BLE_ADDR_LEN - 1] = 0;
+  bleBookCount[slot]++;
+  bleBookSave(slot);
+  return true;
+}
+
+static void bleBookClear(uint8_t slot) { bleBookCount[slot] = 0; bleBookSave(slot); }
+
+static void bleBookKeepOnly(uint8_t slot, const char* a) {
+  bleBookCount[slot] = 0;
+  bleBookAdd(slot, a);
+}
+
+// Removes the Bluetooth keys of this Host's computers (except `keep`). Other Hosts are untouched.
+static int bleDeleteBondsOf(uint8_t slot, const char* keep) {
+  int removed = 0;
+  char buf[BLE_ADDR_LEN];
+  for (int i = NimBLEDevice::getNumBonds() - 1; i >= 0; --i) {
+    NimBLEAddress a = NimBLEDevice::getBondedAddress(i);
+    bleAddrChars(a, buf);
+    if (bleBookFind(slot, buf) >= 0 && !(keep && strcasecmp(buf, keep) == 0)) { if (NimBLEDevice::deleteBond(a)) removed++; }
+  }
+  return removed;
 }
 
 static void bleDropAllLinks() {
@@ -846,30 +1078,18 @@ static void bleDropAllLinks() {
   for (size_t i = 0; i < peers.size(); ++i) srv->disconnect(peers[i]);
 }
 
-// A real Easy-Switch channel holds one computer: when a NEW host pairs, the profile's older hosts are removed.
-static void bleReplaceOlderHosts(uint8_t slot, const String& keep) {
-  String rec = bleReadBonds(slot);
-  for (int i = NimBLEDevice::getNumBonds() - 1; i >= 0; --i) {
-    NimBLEAddress a = NimBLEDevice::getBondedAddress(i);
-    String s = String(a.toString().c_str());
-    if (!s.equalsIgnoreCase(keep) && bleListHas(rec, s)) NimBLEDevice::deleteBond(a);
-  }
-  prefs.begin("config", false);
-  prefs.putString(bleBondKey(slot).c_str(), keep);
-  prefs.end();
-}
-
+// Typing is only allowed to a paired computer that belongs to the active Host.
 bool bleLinkUsable() { return bleKeyboard.isConnected() && (!bleStrict || bleTrusted); }
 
 String bleStatusFields() {
-  String s = String(",\"connected\":") + (bleKeyboard.isConnected() ? "true" : "false") +
-             ",\"trusted\":" + (bleTrusted ? "true" : "false") +
-             ",\"pairing\":" + (blePairUntil ? "true" : "false") +
-             ",\"pair_seconds\":" + String(((int32_t)(blePairUntil - millis()) > 0 && blePairUntil) ? (uint32_t)((blePairUntil - millis()) / 1000) : 0) +
-             ",\"paused\":" + (bleHoldOff ? "true" : "false") +
-             ",\"strict\":" + (bleStrict ? "true" : "false") + ",\"paired\":[";
-  for (uint8_t i = 0; i < MAX_BLE_SLOTS; ++i) s += String(i ? "," : "") + String(bleBondCount(i));
-  return s + "]";
+  String s2 = String(",\"connected\":") + (bleKeyboard.isConnected() ? "true" : "false") +
+              ",\"trusted\":" + (bleTrusted ? "true" : "false") +
+              ",\"pairing\":" + (blePairUntil ? "true" : "false") +
+              ",\"pair_seconds\":" + String(((int32_t)(blePairUntil - millis()) > 0 && blePairUntil) ? (uint32_t)((blePairUntil - millis()) / 1000) : 0) +
+              ",\"paused\":" + (bleHoldOff ? "true" : "false") +
+              ",\"strict\":" + (bleStrict ? "true" : "false") + ",\"paired\":[";
+  for (uint8_t i = 0; i < MAX_BLE_SLOTS; ++i) s2 += String(i ? "," : "") + String(bleBookCount[i]);
+  return s2 + "]";
 }
 
 // cmd: disconnect | connect | pair | forget | settings
@@ -883,7 +1103,7 @@ bool bleCommand(const String& cmd, const String& body, String& msg) {
     bleDropAllLinks();
     if (stayOff) NimBLEDevice::getAdvertising()->stop();
     showToast(stayOff ? "BLE Paused" : "BLE Disconnected", 900);
-    msg = had ? "Disconnected from the host." : "No host was connected.";
+    msg = had ? "Disconnected from the computer." : "No computer was connected.";
     if (stayOff) msg += " Bluetooth stays hidden until you press Connect or start pairing.";
     emitEvent(String("{\"event\":\"ble\",\"state\":\"") + (stayOff ? "paused" : "disconnected") + "\"}");
     return true;
@@ -892,7 +1112,7 @@ bool bleCommand(const String& cmd, const String& body, String& msg) {
     bleHoldOff = false;
     NimBLEDevice::startAdvertising();
     showToast("BLE Visible", 900);
-    msg = "Bluetooth is visible again. Paired hosts reconnect on their own.";
+    msg = "Bluetooth is visible again. Paired computers reconnect on their own.";
     emitEvent("{\"event\":\"ble\",\"state\":\"visible\"}");
     return true;
   }
@@ -923,35 +1143,33 @@ bool bleCommand(const String& cmd, const String& body, String& msg) {
     if (!jsonHasKey(body, "strict") || !jsonFlag(body, "strict", v)) { msg = "Send strict as true or false."; return false; }
     bleStrict = v;
     prefs.begin("config", false); prefs.putBool("ble_strict", bleStrict); prefs.end();
-    msg = bleStrict ? "Only paired hosts can connect outside pairing mode." : "Any host may connect (strict mode off).";
+    msg = bleStrict ? "Only paired computers of the active Host can connect outside pairing mode." : "Any computer may connect (strict mode off).";
     return true;
   }
   if (cmd == "forget") {
     String confirm;
-    if (!jsonString(body, "confirm", confirm, 8) || confirm != "FORGET") { msg = "Confirmation required to forget this pairing."; return false; }
+    if (!jsonString(body, "confirm", confirm, 8) || confirm != "FORGET") { msg = "Confirmation required to forget this Host."; return false; }
     int slot = currentBleSlot + 1;
     if (jsonHasKey(body, "slot") && (!jsonInt(body, "slot", slot) || slot < 1 || slot > MAX_BLE_SLOTS)) { msg = "Slot must be 1, 2 or 3."; return false; }
     uint8_t sIdx = (uint8_t)(slot - 1);
     bool active = (sIdx == currentBleSlot);
     if (active) bleDropAllLinks();
-    String rec = bleReadBonds(sIdx);
-    int removed = 0;
-    for (int i = NimBLEDevice::getNumBonds() - 1; i >= 0; --i) {
-      NimBLEAddress a = NimBLEDevice::getBondedAddress(i);
-      if (bleListHas(rec, String(a.toString().c_str()))) { if (NimBLEDevice::deleteBond(a)) removed++; }
-    }
-    prefs.begin("config", false);
-    String genKey = String("ble_gen") + String(sIdx);
-    prefs.putUChar(genKey.c_str(), prefs.getUChar(genKey.c_str(), 0) + 1);   // new Bluetooth identity for this profile
-    prefs.remove(bleBondKey(sIdx).c_str());
-    if (active) prefs.putBool("pair_boot", true);                            // open pairing right after the restart
-    prefs.end();
+    int removed = bleDeleteBondsOf(sIdx, nullptr);
+    bleBookClear(sIdx);
     bool alsoBindings = false;
     jsonFlag(body, "bindings", alsoBindings);
     if (alsoBindings) resetProfile(String("HOST") + String(slot));
-    msg = String("Forgot the pairing for Device ") + String(slot) + " (" + String(removed) + " host" + (removed == 1 ? "" : "s") +
-          " removed). Remove the old \"BertoPad " + String(slot) + "\" from that computer's Bluetooth list, then pair again.";
-    if (active) { msg += " The pad restarts now."; bleRestartAt = millis() + 600; if (bleRestartAt == 0) bleRestartAt = 1; }
+    msg = String("Forgot Host ") + String(slot) + " (" + String(removed) + " computer" + (removed == 1 ? "" : "s") +
+          " removed). Remove \"" + bleDeviceName + "\" from that computer's Bluetooth list too.";
+    if (active) {                                    // ready to pair a new computer right away
+      bleHoldOff = false;
+      blePairUntil = millis() + 120000UL;
+      NimBLEDevice::startAdvertising();
+      msg += " Pairing is open for 120 s.";
+    }
+    char tmsg[24];
+    snprintf(tmsg, sizeof(tmsg), "Host %d forgotten", slot);
+    showToast(tmsg, 1500);
     emitEvent(String("{\"event\":\"ble\",\"state\":\"forgot\",\"slot\":") + String(slot) + "}");
     return true;
   }
@@ -959,14 +1177,13 @@ bool bleCommand(const String& cmd, const String& body, String& msg) {
   return false;
 }
 
-// Runs every 250 ms: pairing window, advertising pause, recording which profile each host belongs to,
-// and dropping unknown hosts that connect outside pairing mode.
+// Runs every 100 ms: pairing window, advertising pause, and the Host rules:
+// only paired computers that belong to the ACTIVE Host may stay connected, so the other Hosts wait their turn.
 void bleManagerTick() {
   static uint32_t last = 0;
   uint32_t now = millis();
-  if (now - last < 250) return;
+  if (now - last < 100) return;
   last = now;
-  if (bleRestartAt && (int32_t)(now - bleRestartAt) >= 0) ESP.restart();
   if (blePairUntil && (int32_t)(now - blePairUntil) >= 0) {
     blePairUntil = 0;
     showToast("Pairing off", 900);
@@ -983,39 +1200,48 @@ void bleManagerTick() {
     if (adv && adv->isAdvertising()) adv->stop();   // the keyboard library restarts advertising after a disconnect
   }
   bool connected = bleKeyboard.isConnected();
-  if (connected && !bleWasConnected) { bleConnectedAt = now; bleRecordedConn = false; }
+  if (connected && !bleWasConnected) bleConnectedAt = now;
   bleWasConnected = connected;
+  {
+    static uint8_t lastPhase = 0xFF;                 // blink the active Host box while waiting or pairing
+    uint8_t phase = (now / 500) % 2;
+    if ((blePairUntil || (currentMode == MODE_BLE && !(connected && bleTrusted))) && phase != lastPhase) { lastPhase = phase; screenDirty = true; }
+  }
   if (!connected) { bleTrusted = false; return; }
 
   NimBLEServer* srv = NimBLEDevice::getServer();
   if (!srv || srv->getConnectedCount() == 0) { bleTrusted = true; return; }   // cannot inspect the link: fail open
-  bool anyBonded = false;
+  bool trusted = false;
   for (size_t i = 0; i < srv->getConnectedCount(); ++i) {
     auto info = srv->getPeerInfo(i);
-    if (NimBLEDevice::isBonded(info.getIdAddress())) {
-      String a = String(info.getIdAddress().toString().c_str());
-      bool mine = (blePairUntil || !bleRecordedConn) ? bleListHas(bleReadBonds(currentBleSlot), a) : true;
-      if (blePairUntil && mine) {                       // pairing a NEW host: the old one must not take the link back
+    NimBLEAddress id = info.getIdAddress();
+    if (!NimBLEDevice::isBonded(id)) {                                  // not paired (yet)
+      if (bleStrict && !blePairUntil && now - bleConnectedAt > 4000) {
         srv->disconnect(info.getConnHandle());
-        continue;
+        emitEvent("{\"event\":\"ble\",\"state\":\"rejected\"}");
       }
-      anyBonded = true;
-      if (!bleRecordedConn) {
-        bleRecordPeer(currentBleSlot, a);
-        bleRecordedConn = true;
-        if (blePairUntil && !mine) {                    // a new host just paired
-          blePairUntil = 0;
-          bleReplaceOlderHosts(currentBleSlot, a);
-          showToast("Paired!", 1200);
-          emitEvent("{\"event\":\"ble\",\"state\":\"paired\"}");
-        }
+      continue;
+    }
+    char addr[BLE_ADDR_LEN];
+    bleAddrChars(id, addr);
+    bool mine = bleBookFind(currentBleSlot, addr) >= 0;
+    int owner = bleBookOwner(addr);
+    if (blePairUntil && mine) { srv->disconnect(info.getConnHandle()); continue; }                    // pairing a NEW computer: the old one must not take the link back
+    if (!mine && owner >= 0 && owner != currentBleSlot) { srv->disconnect(info.getConnHandle()); continue; }   // belongs to another Host: it waits its turn
+    trusted = true;
+    if (!mine) {                                                        // new computer for this Host (or one paired before 4.10)
+      bool wasPairing = blePairUntil != 0;
+      bleBookAdd(currentBleSlot, addr);
+      if (wasPairing) {
+        blePairUntil = 0;
+        bleDeleteBondsOf(currentBleSlot, addr);                         // one computer per Host, like a real Easy-Switch channel
+        bleBookKeepOnly(currentBleSlot, addr);
+        showToast("Paired!", 1200);
+        emitEvent("{\"event\":\"ble\",\"state\":\"paired\"}");
       }
-    } else if (bleStrict && !blePairUntil && now - bleConnectedAt > 4000) {
-      srv->disconnect(info.getConnHandle());           // unknown host outside pairing mode
-      emitEvent("{\"event\":\"ble\",\"state\":\"rejected\"}");
     }
   }
-  bleTrusted = anyBonded;
+  bleTrusted = trusted;
 }
 #else
 bool bleLinkUsable() { return bleKeyboard.isConnected(); }
@@ -1038,9 +1264,10 @@ bool mpuBegin() {
     if (Wire.endTransmission() != 0) continue;
     if (!mpuWrite(0x6B, 0x01)) continue;               // wake from sleep, PLL clock
     delay(10);
-    mpuWrite(0x6C, 0x07);                              // gyro axes in standby (accelerometer only)
+    mpuWrite(0x6C, 0x00);                              // gyro + accelerometer on
     mpuWrite(0x1A, 0x03);                              // 44 Hz low-pass filter
     mpuWrite(0x1C, 0x08);                              // +-4 g range (8192 LSB per g)
+    mpuWrite(0x1B, 0x08);                              // gyro +-500 deg/s (65.5 LSB per deg/s)
     Wire.beginTransmission(mpuAddr); Wire.write(0x75); Wire.endTransmission(false);
     Wire.requestFrom((int)mpuAddr, 1);
     motionWho = Wire.available() ? Wire.read() : 0;
@@ -1050,6 +1277,16 @@ bool mpuBegin() {
 }
 
 static int16_t mpuReadS16() { uint8_t hi = Wire.read(); uint8_t lo = Wire.read(); return (int16_t)((hi << 8) | lo); }
+
+bool mpuReadAll(int16_t& ax, int16_t& ay, int16_t& az, int16_t& gx, int16_t& gy, int16_t& gz) {
+  Wire.beginTransmission(mpuAddr); Wire.write(0x3B);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom((int)mpuAddr, 14) != 14) return false;
+  ax = mpuReadS16(); ay = mpuReadS16(); az = mpuReadS16();
+  mpuReadS16();                                                  // temperature (not needed here)
+  gx = mpuReadS16(); gy = mpuReadS16(); gz = mpuReadS16();
+  return true;
+}
 
 bool mpuRead(int16_t& ax, int16_t& ay, int16_t& az, int16_t& temp) {
   Wire.beginTransmission(mpuAddr); Wire.write(0x3B);
@@ -1073,10 +1310,25 @@ void motionUpdate() {
   uint32_t now = millis();
   if (now - motionLastPoll < 20) return;               // 50 Hz
   motionLastPoll = now;
-  int16_t ax, ay, az, t;
-  if (!mpuRead(ax, ay, az, t)) { if (++motionFails >= 50) motionPresent = false; return; } // sensor unplugged: stop polling
+  int16_t ax, ay, az, gx, gy, gz;
+  if (!mpuReadAll(ax, ay, az, gx, gy, gz)) { if (++motionFails >= 50) motionPresent = false; return; } // sensor unplugged: stop polling
   motionFails = 0;
-  const float k = 1.0f / 8192.0f;
+  const float k = 1.0f / 8192.0f, gk = 1.0f / 65.5f;
+  uint32_t us = micros();
+  float dtS = motionLastUs ? (us - motionLastUs) * 1e-6f : 0.02f;
+  motionLastUs = us;
+  if (dtS < 0.005f) dtS = 0.005f; else if (dtS > 0.1f) dtS = 0.1f;
+  motionOri.update(ax * k, ay * k, az * k, gx * gk, gy * gk, gz * gk, dtS);
+  if (motionStreamHz > 0 && (int32_t)(now - motionStreamUntil) < 0) {          // live view for the app's 3D model
+    if (now - motionLastStreamMs >= 1000UL / motionStreamHz) {
+      motionLastStreamMs = now;
+      char ob[80];
+      snprintf(ob, sizeof(ob), "{\"event\":\"orient\",\"p\":%.1f,\"r\":%.1f,\"y\":%.1f}", motionOri.p(), motionOri.r(), motionOri.y());
+      if (events_enabled && !otaActive) Serial.println(ob);
+    }
+  } else if (motionStreamHz > 0) {
+    motionStreamHz = 0;                                                        // the app stopped sending keep-alives
+  }
   int ev = motionDet.update(ax * k, ay * k, az * k, now);
   // Pick-up wake only while the screen is dim/off, so desk vibration can't keep it lit forever
   if (motionWake && (dispDimmed || dispOff) && motionDet.lastJerk > motionDet.wakeThreshold()) wakeDisplay();
@@ -1120,6 +1372,29 @@ bool applyMotionSettings(const String& body) {
   prefs.putBool("mot_en", motionEnabled); prefs.putBool("mot_wake", motionWake); prefs.putUChar("mot_sens", motionSens);
   prefs.end();
   return true;
+}
+
+bool motionZero(String& msg) {
+  if (!motionPresent) { msg = "No motion sensor detected. Check the GY-521 wiring."; return false; }
+  motionOri.zero();
+  msg = "Orientation zeroed. Tilt and turn are now measured from here.";
+  return true;
+}
+
+bool applyMotionStream(const String& body, String& msg) {
+  if (!motionPresent) { msg = "No motion sensor detected. Check the GY-521 wiring."; return false; }
+  int hz = 30;
+  if (jsonHasKey(body, "hz") && (!jsonInt(body, "hz", hz) || hz < 0 || hz > 60)) { msg = "hz must be 0-60."; return false; }
+  motionStreamHz = (uint8_t)hz;
+  motionStreamUntil = millis() + 5000UL;      // keep-alive: the stream stops by itself 5 s after the last request
+  if (hz > 0) events_enabled = true;
+  msg = hz > 0 ? "Streaming orientation. Send this again every few seconds to keep it running." : "Orientation stream stopped.";
+  return true;
+}
+
+String motionOrientJson() {
+  if (!motionPresent) return "{\"ok\":false,\"message\":\"No motion sensor detected. Check the GY-521 wiring.\"}";
+  return String("{\"ok\":true,\"p\":") + String(motionOri.p(), 1) + ",\"r\":" + String(motionOri.r(), 1) + ",\"y\":" + String(motionOri.y(), 1) + "}";
 }
 
 String motionReadJson() {
@@ -1179,6 +1454,43 @@ void sendBleKey(uint8_t key) {
 // Vizio HTTPS Direct Connection Engine
 // -----------------------------------------------------------------------------
 SemaphoreHandle_t tvMutex = nullptr;
+
+void lockTvMutex() {
+  if (tvMutex) xSemaphoreTake(tvMutex, portMAX_DELAY);
+}
+
+void unlockTvMutex() {
+  if (tvMutex) xSemaphoreGive(tvMutex);
+}
+
+void updateTvConfigLocked(const String& host, int port, const String& token, bool updateToken) {
+  lockTvMutex();
+  if (host.length() > 0 && host != stored_tv_ip) tvClient.stop();
+  if (port > 0 && port != stored_tv_port) tvClient.stop();
+  if (host.length() > 0) stored_tv_ip = host;
+  if (port > 0) stored_tv_port = port;
+  if (updateToken) {
+    stored_tv_auth = token;
+    stored_tv_auth.trim();
+  }
+  unlockTvMutex();
+}
+
+void clearTvConfigLocked() {
+  lockTvMutex();
+  tvClient.stop();
+  pairingReqToken = 0;
+  stored_tv_ip = "";
+  stored_tv_port = DEFAULT_TV_PORT;
+  stored_tv_auth = "";
+  unlockTvMutex();
+}
+
+void stopTvClientLocked() {
+  lockTvMutex();
+  tvClient.stop();
+  unlockTvMutex();
+}
 
 String sendVizioRequestUnlocked(const char* method, const String& path, const String& payload, int portOverride = 0) {
   if (WiFi.status() != WL_CONNECTED || !validHost(stored_tv_ip)) return "";
@@ -1303,6 +1615,14 @@ void pressKey(const String& k) {
     bleKeyboard.press(KEY_RIGHT_ARROW);
   } else if (k == "capslock") {
     bleKeyboard.press(KEY_CAPS_LOCK);
+  } else if (k == "prtsc" || k == "printscreen") {
+    bleKeyboard.press(KEY_PRINT_SCREEN);
+  } else if (k == "scrolllock") {
+    bleKeyboard.press(KEY_SCROLL_LOCK);
+  } else if (k == "pause") {
+    bleKeyboard.press(KEY_PAUSE);
+  } else if (k == "numlock") {
+    bleKeyboard.press(KEY_NUM_LOCK);
   } else if (k.startsWith("f") && k.length() >= 2) {
     int fnum = k.substring(1).toInt();
     if (fnum >= 1 && fnum <= 12) bleKeyboard.press(KEY_F1 + (fnum - 1));
@@ -1361,17 +1681,19 @@ static bool macroActive = false;
 static bool macroAborted = false;
 static bool macroSnapDown[16];
 static unsigned long macroLowSince[16];
+static String macroAbortSerialBuf = "";
 
 void macroBegin() {
   macroActive = true;
   macroAborted = false;
+  macroAbortSerialBuf = "";
   for (size_t i = 0; i < kButtonCount; ++i) {
     macroSnapDown[i] = (digitalRead(buttons[i].pin) == LOW); // held at start (e.g. the trigger key) never aborts
     macroLowSince[i] = 0;
   }
 }
 
-// A NEW press on any pad button (key, Mode or dial) while a macro runs stops it.
+// A NEW press on any pad button (key, Mode or dial) or a USB Serial abort packet stops a running macro.
 bool macroPollAbort() {
   if (!macroActive) return false;
   if (macroAborted) return true;
@@ -1381,6 +1703,25 @@ bool macroPollAbort() {
     if (macroSnapDown[i]) continue;
     if (macroLowSince[i] == 0) macroLowSince[i] = now;
     else if (now - macroLowSince[i] >= 15) { macroAborted = true; return true; } // 15 ms debounce
+  }
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+    if (c == 0x1B) { // Raw ESC byte on Serial aborts active macro
+      macroAborted = true;
+      macroAbortSerialBuf = "";
+      return true;
+    }
+    if (c == '\n') {
+      if (macroAbortSerialBuf.indexOf("/api/macro/cancel") >= 0 || macroAbortSerialBuf.indexOf("\"cancel\"") >= 0) {
+        macroAborted = true;
+        macroAbortSerialBuf = "";
+        Serial.println("{\"ok\":true,\"message\":\"Macro execution cancelled.\"}");
+        return true;
+      }
+      macroAbortSerialBuf = "";
+    } else if (c != '\r' && macroAbortSerialBuf.length() < 256) {
+      macroAbortSerialBuf += c;
+    }
   }
   return false;
 }
@@ -1411,6 +1752,7 @@ void interruptibleDelay(unsigned long ms) {
     long rem = (long)(end - millis());
     if (rem <= 0) break;
     delay(rem > 5 ? (unsigned long)5 : (unsigned long)rem);
+    yield();
   }
 }
 
@@ -1426,6 +1768,7 @@ bool executeText(const String& act) {
     char c = act[i];
     if (c == '\r') continue;
     bleKeyboard.write((uint8_t)c);
+    interruptibleDelay(8); // Pace BLE HID reports so host OS buffer never drops characters
   }
   return true;
 }
@@ -1450,37 +1793,39 @@ bool executeAction(const String& act) {
   if (act.indexOf("||") >= 0) {
     std::vector<String> steps;
     splitMacro(act, steps);
-    MacroScope scope;
-    struct Frame { size_t start; int remaining; } stack[MAX_REPEAT_DEPTH];
-    int depth = 0, executed = 0, n = 0;
-    const size_t total = steps.size();
-    if (events_enabled) emitEvent(String("{\"event\":\"macro\",\"state\":\"start\",\"steps\":") + String((unsigned)total) + "}");
-    size_t i = 0;
-    while (i < total && !macroAborted) {
-      if (macroPollAbort()) break;
-      const String& s = steps[i];
-      if (parseRepeat(s, n)) {
-        if (depth < MAX_REPEAT_DEPTH) { stack[depth].start = i + 1; stack[depth].remaining = n; ++depth; }
-        ++i; continue;
-      }
-      if (s == "END") {
-        if (depth > 0) {
-          if (--stack[depth - 1].remaining > 0) { i = stack[depth - 1].start; continue; }
-          --depth;
-        }
-        ++i; continue;
-      }
-      if (s.length() > 0) {
+    if (steps.size() > 1) {
+      MacroScope scope;
+      struct Frame { size_t start; int remaining; } stack[MAX_REPEAT_DEPTH];
+      int depth = 0, executed = 0, n = 0;
+      const size_t total = steps.size();
+      if (events_enabled) emitEvent(String("{\"event\":\"macro\",\"state\":\"start\",\"steps\":") + String((unsigned)total) + "}");
+      size_t i = 0;
+      while (i < total && !macroAborted) {
+        if (macroPollAbort()) break;
         if (++executed > MAX_MACRO_STEPS) break;
-        if (events_enabled) emitEvent(String("{\"event\":\"macro\",\"state\":\"step\",\"step\":") + String((unsigned)(i + 1)) +
-                                      ",\"of\":" + String((unsigned)total) + ",\"kind\":" + jsonQuote(actionKind(s)) + "}");
-        executeAction(s);
-        interruptibleDelay(50); // Pause between macro steps
+        const String& s = steps[i];
+        if (parseRepeat(s, n)) {
+          if (depth < MAX_REPEAT_DEPTH) { stack[depth].start = i + 1; stack[depth].remaining = n; ++depth; }
+          ++i; continue;
+        }
+        if (s == "END" || s == "END_REPEAT") {
+          if (depth > 0) {
+            if (--stack[depth - 1].remaining > 0) { i = stack[depth - 1].start; continue; }
+            --depth;
+          }
+          ++i; continue;
+        }
+        if (s.length() > 0) {
+          if (events_enabled) emitEvent(String("{\"event\":\"macro\",\"state\":\"step\",\"step\":") + String((unsigned)(i + 1)) +
+                                        ",\"of\":" + String((unsigned)total) + ",\"kind\":" + jsonQuote(actionKind(s)) + "}");
+          executeAction(s);
+          interruptibleDelay(50); // Pause between macro steps
+        }
+        ++i;
       }
-      ++i;
+      if (events_enabled && !macroAborted) emitEvent("{\"event\":\"macro\",\"state\":\"end\"}");
+      return true;
     }
-    if (events_enabled && !macroAborted) emitEvent("{\"event\":\"macro\",\"state\":\"end\"}");
-    return true;
   }
   // ------------------------------------------------------------
 
@@ -1509,6 +1854,22 @@ bool executeAction(const String& act) {
   else if (act == "MEDIA:VOL_DOWN") { sendBleMedia(KEY_MEDIA_VOLUME_DOWN); showToast("Vol -"); }
   else if (act == "MEDIA:NEXT") { sendBleMedia(KEY_MEDIA_NEXT_TRACK); showToast("Next Track"); }
   else if (act == "MEDIA:PREV") { sendBleMedia(KEY_MEDIA_PREVIOUS_TRACK); showToast("Prev Track"); }
+  else if (act == "MEDIA:BRIGHT_UP") {
+#ifdef KEY_MEDIA_BRIGHTNESS_UP
+    sendBleMedia(KEY_MEDIA_BRIGHTNESS_UP);
+#else
+    bleKeyboard.press(KEY_F2); delay(10); bleKeyboard.release(KEY_F2);
+#endif
+    showToast("Bright +");
+  }
+  else if (act == "MEDIA:BRIGHT_DOWN") {
+#ifdef KEY_MEDIA_BRIGHTNESS_DOWN
+    sendBleMedia(KEY_MEDIA_BRIGHTNESS_DOWN);
+#else
+    bleKeyboard.press(KEY_F1); delay(10); bleKeyboard.release(KEY_F1);
+#endif
+    showToast("Bright -");
+  }
   else if (act == "KEY:F13") { sendBleKey(KEY_F13); showToast("F13"); }
   else if (act == "KEY:F14") { sendBleKey(KEY_F14); showToast("F14"); }
   else if (act == "KEY:F15") { sendBleKey(KEY_F15); showToast("F15"); }
@@ -1598,11 +1959,12 @@ String buildStatusJson() {
                 ",\"setup_done\":" + String(setup_done ? "true" : "false") + 
                 ",\"setupMode\":" + String(inSetupMode ? "true" : "false") + 
                 ",\"api_version\":" + String(API_VERSION) + ",\"rev\":" + String(config_rev) +
-                ",\"capabilities\":[\"delay\",\"repeat\",\"macro_abort\",\"macro_trace\",\"push_turn\",\"encoder_accel\",\"diagnostics\",\"tv_toggle\"" + String(ENCODER2_ENABLED ? ",\"encoder2\"" : "") + ",\"key_hold\",\"display_power\",\"nvs_stats\"" + String(motionPresent ? ",\"motion\"" : "") + String(BLE_MANAGER_ENABLED ? ",\"ble_manage\"" : "") + "],";
-  json += "\"device\":{\"id\":" + jsonQuote(deviceId()) + ",\"name\":\"BertoPad\",\"firmware\":\"" FIRMWARE_VERSION "\",\"connection_type\":" + jsonQuote(wifi ? "USB + Wi-Fi" : "USB") + "},";
+                ",\"capabilities\":[\"delay\",\"repeat\",\"macro_abort\",\"macro_trace\",\"push_turn\",\"encoder_accel\",\"diagnostics\",\"tv_toggle\"" + String(ENCODER2_ENABLED ? ",\"encoder2\"" : "") + ",\"key_hold\",\"display_power\",\"nvs_stats\",\"wifi_ota\"" + String(motionPresent ? ",\"motion\",\"motion_orient\"" : "") + String(BLE_MANAGER_ENABLED ? ",\"ble_manage\"" : "") + "],";
+  json += "\"device\":{\"id\":" + jsonQuote(deviceId()) + ",\"name\":\"BertoPad\",\"firmware\":\"" FIRMWARE_VERSION "\",\"connection_type\":" + jsonQuote(wifi ? "USB + Wi-Fi" : "USB") + ",\"setup_mode\":" + String(inSetupMode ? "true" : "false") + "},";
   json += "\"connection\":{\"wifi_connected\":" + String(wifi ? "true" : "false") + ",\"ip\":" + jsonQuote(wifi ? WiFi.localIP().toString() : WiFi.softAPIP().toString()) + ",\"ble_connected\":" + String(bleKeyboard.isConnected() ? "true" : "false") + "},";
   json += "\"ble\":{\"active_host\":" + String(currentBleSlot + 1) + ",\"max_hosts\":" + String(MAX_BLE_SLOTS) + ",\"device_name\":" + jsonQuote(bleDeviceName) + bleStatusFields() + "},";
   json += "\"diagnostics\":{\"free_heap\":" + String(ESP.getFreeHeap()) + ",\"http_api_enabled\":" + String(api_token.length() > 0 ? "true" : "false") + ",\"events_enabled\":" + String(events_enabled ? "true" : "false") +
+          ",\"setup_mode\":" + String(inSetupMode ? "true" : "false") +
           ",\"boot_reason\":" + jsonQuote(bootReason) + ",\"abnormal_resets\":" + String(abnormalResets) +
           ",\"last_abnormal_reset\":" + jsonQuote(lastAbnormalReset) + ",\"min_free_heap\":" + String(ESP.getMinFreeHeap()) +
           "," + nvsStatsJson() + ",\"uptime_s\":" + String((unsigned long)(millis() / 1000)) + "},\"encoder\":{\"accel\":" + String(encoderAccelEnabled ? "true" : "false") +
@@ -1622,11 +1984,13 @@ String buildStatusJson() {
     json += "\"mac_" + String(SLOT_IDS[i]) + "\":" + jsonQuote(dev_bindings[currentBleSlot][i]) + ",";
   }
   json += "\"mac_dial\":" + jsonQuote(dev_bindings[currentBleSlot][8]) + ",";
+  json += "\"mac_dial2\":" + jsonQuote(dev_bindings[currentBleSlot][13]) + ",";
 
   for (int i = 0; i < 8; ++i) {
     json += "\"tv_" + String(SLOT_IDS[i]) + "\":" + jsonQuote(tv_bindings[i]) + ",";
   }
-  json += "\"tv_dial\":" + jsonQuote(tv_bindings[8]) + "}";
+  json += "\"tv_dial\":" + jsonQuote(tv_bindings[8]) + ",";
+  json += "\"tv_dial2\":" + jsonQuote(tv_bindings[13]) + "}";
   return json;
 }
 
@@ -1739,7 +2103,7 @@ bool applyConfigImport(const String& body, int& skipped) {
   String impTvName;
   if (jsonString(body, "tv_name", impTvName, 20) && validAlias(impTvName)) tv_name = impTvName;
   for (int i = 0; i < SLOT_COUNT; ++i) importBinding(body, String("tv_") + SLOT_IDS[i], tv_bindings[i], skipped);
-  saveProfile("TV");
+  saveProfile("TV", false);
 
   // Restore 3 Devices
   for (int h = 0; h < 3; ++h) {
@@ -1747,8 +2111,9 @@ bool applyConfigImport(const String& body, int& skipped) {
     String hName;
     if (jsonString(body, (pfx + "name").c_str(), hName, 20) && validAlias(hName)) dev_names[h] = hName;
     for (int i = 0; i < SLOT_COUNT; ++i) importBinding(body, pfx + SLOT_IDS[i], dev_bindings[h][i], skipped);
-    saveProfile(String("HOST") + String(h + 1));
+    saveProfile(String("HOST") + String(h + 1), false);
   }
+  bumpRev();
   return true;
 }
 
@@ -1789,8 +2154,7 @@ void handleSaveTvConfig() {
   if (!jsonString(body, "tv_ip", host, 63) || !jsonInt(body, "tv_port", port) || !jsonString(body, "token", token, 128) || !validHost(host) || port < 1 || port > 65535) {
     sendError(422, "invalid_tv_config", "Enter a valid TV host and port. The token may be blank until pairing is complete."); return;
   }
-  stored_tv_ip = host; stored_tv_port = port;
-  if (token.length() > 0) { stored_tv_auth = token; stored_tv_auth.trim(); }
+  updateTvConfigLocked(host, port, token, token.length() > 0);
   prefs.begin("config", false); prefs.putString("tv_ip", stored_tv_ip); prefs.putInt("tv_port", stored_tv_port); prefs.putString("tv_auth", stored_tv_auth); prefs.end();
   sendJson(200, "{\"ok\":true,\"message\":\"TV configuration saved.\"}");
 }
@@ -1811,7 +2175,7 @@ void handlePairStart() {
   if (!jsonString(body, "tv_ip", host, 63) || !jsonInt(body, "tv_port", port) || !validHost(host) || port < 1 || port > 65535) {
     sendError(422, "invalid_tv_config", "Enter a valid TV host and port before requesting a PIN."); return;
   }
-  stored_tv_ip = host; stored_tv_port = port;
+  updateTvConfigLocked(host, port, "", false);
   String response = sendVizioRequestRaw("PUT", "/pairing/start", "{\"DEVICE_ID\":\"esp32_macropad\",\"DEVICE_NAME\":\"BertoPad\"}", stored_tv_port);
   int tokenPos = response.indexOf("\"PAIRING_REQ_TOKEN\":");
   if (tokenPos < 0) { sendError(502, "pairing_start_failed", "The TV did not issue a pairing request. Check its host and network access."); return; }
@@ -1831,7 +2195,9 @@ void handlePairSubmit() {
   if (tokenPos < 0) { sendError(400, "pairing_rejected", "The TV rejected that PIN. Request a new one and try again."); return; }
   int start = tokenPos + 14; int end = response.indexOf('"', start);
   if (end <= start) { sendError(502, "pairing_response_invalid", "The TV returned an invalid pairing response."); return; }
-  stored_tv_auth = response.substring(start, end); stored_tv_auth.trim(); pairingReqToken = 0;
+  String newAuth = response.substring(start, end);
+  updateTvConfigLocked("", 0, newAuth, true);
+  pairingReqToken = 0;
   prefs.begin("config", false); prefs.putString("tv_auth", stored_tv_auth); prefs.end();
   sendJson(200, "{\"ok\":true,\"message\":\"TV pairing completed and stored on the device.\"}");
 }
@@ -1840,7 +2206,7 @@ void handleForgetTv() {
   String body, confirm;
   if (!requestBody(body)) return;
   if (!jsonString(body, "confirm", confirm, 8) || confirm != "FORGET") { sendError(422, "confirmation_required", "Type the confirmation value before forgetting this TV configuration."); return; }
-  tvClient.stop(); pairingReqToken = 0; stored_tv_ip = ""; stored_tv_port = DEFAULT_TV_PORT; stored_tv_auth = "";
+  clearTvConfigLocked();
   prefs.begin("config", false); prefs.remove("tv_ip"); prefs.remove("tv_port"); prefs.remove("tv_auth"); prefs.end();
   sendJson(200, "{\"ok\":true,\"message\":\"TV host and pairing token removed from BertoPad.\"}");
 }
@@ -1849,10 +2215,11 @@ void handleResetDeviceSettings() {
   String body, confirm;
   if (!requestBody(body)) return;
   if (!jsonString(body, "confirm", confirm, 8) || confirm != "RESET") { sendError(422, "confirmation_required", "Type the confirmation value before restoring profile defaults."); return; }
-  resetProfile("HOST1"); 
-  resetProfile("HOST2"); 
-  resetProfile("HOST3"); 
-  resetProfile("TV");
+  resetProfile("HOST1", false); 
+  resetProfile("HOST2", false); 
+  resetProfile("HOST3", false); 
+  resetProfile("TV", false);
+  bumpRev();
   sendJson(200, "{\"ok\":true,\"message\":\"All profiles restored to blank defaults.\"}");
 }
 
@@ -1921,6 +2288,24 @@ void handleMotionCalibrate() {
   sendJson(ok ? 200 : 409, String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":" + jsonQuote(msg) + "}");
 }
 
+void handleMotionZero() {
+  if (!requireAuth()) return;
+  String msg; bool ok = motionZero(msg);
+  sendJson(ok ? 200 : 409, String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":" + jsonQuote(msg) + "}");
+}
+
+void handleMotionStream() {
+  String body;
+  if (!requestBody(body)) return;
+  String msg; bool ok = applyMotionStream(body, msg);
+  sendJson(ok ? 200 : 422, String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":" + jsonQuote(msg) + "}");
+}
+
+void handleMotionOrient() {
+  if (!requireAuth()) return;
+  sendJson(200, motionOrientJson());
+}
+
 void handleMotionRead() {
   if (!requireAuth()) return;
   sendJson(200, motionReadJson());
@@ -1950,6 +2335,139 @@ void handleEncoderSettings() {
   sendJson(200, "{\"ok\":true,\"message\":\"Encoder settings saved.\"}");
 }
 
+void performWifiOta(const String& url) {
+  if (WiFi.status() != WL_CONNECTED) {
+    emitEvent("{\"event\":\"ota\",\"phase\":\"error\",\"ok\":false,\"message\":\"Wi-Fi disconnected.\"}");
+    return;
+  }
+  const esp_partition_t* target = esp_ota_get_next_update_partition(NULL);
+  if (target == NULL) {
+    emitEvent("{\"event\":\"ota\",\"phase\":\"error\",\"ok\":false,\"message\":\"No OTA partition found in layout.\"}");
+    return;
+  }
+
+  if (bleKeyboard.isConnected()) bleKeyboard.releaseAll();
+  otaActive = true;
+  otaLastActivity = millis();
+  stopTvClientLocked();
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(14, 16);
+  display.println("DOWNLOADING FW");
+  display.setCursor(10, 36);
+  display.println("Connecting over Wi-Fi...");
+  display.display();
+
+  emitEvent("{\"event\":\"ota\",\"phase\":\"downloading\",\"percent\":10,\"message\":\"Connecting to firmware host...\"}");
+
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setTimeout(30000);
+
+  if (!http.begin(client, url)) {
+    otaActive = false;
+    emitEvent("{\"event\":\"ota\",\"phase\":\"error\",\"ok\":false,\"message\":\"Could not open connection to firmware URL.\"}");
+    showToast("OTA Connect Fail", 2000);
+    screenDirty = true;
+    return;
+  }
+
+  int httpCode = http.GET();
+  if (httpCode != HTTP_CODE_OK) {
+    otaActive = false;
+    http.end();
+    String err = "HTTP error " + String(httpCode);
+    emitEvent(String("{\"event\":\"ota\",\"phase\":\"error\",\"ok\":false,\"message\":") + jsonQuote(err) + "}");
+    showToast("OTA Download Fail", 2000);
+    screenDirty = true;
+    return;
+  }
+
+  int contentLength = http.getSize();
+  if (contentLength > 0 && (size_t)contentLength > target->size) {
+    otaActive = false;
+    http.end();
+    emitEvent("{\"event\":\"ota\",\"phase\":\"error\",\"ok\":false,\"message\":\"Firmware image is larger than the OTA partition.\"}");
+    showToast("Image Too Large", 2000);
+    screenDirty = true;
+    return;
+  }
+
+  size_t updateSize = (contentLength > 0) ? (size_t)contentLength : UPDATE_SIZE_UNKNOWN;
+  if (!Update.begin(updateSize, U_FLASH)) {
+    otaActive = false;
+    http.end();
+    String err = "Update.begin failed: " + String(Update.errorString());
+    emitEvent(String("{\"event\":\"ota\",\"phase\":\"error\",\"ok\":false,\"message\":") + jsonQuote(err) + "}");
+    showToast("Flash Init Fail", 2000);
+    screenDirty = true;
+    return;
+  }
+
+  WiFiClient* stream = http.getStreamPtr();
+  static uint8_t buff[1024];
+  size_t written = 0;
+  uint8_t lastPct = 0;
+  unsigned long lastProgressTime = millis();
+
+  while (http.connected() && (written < (size_t)contentLength || contentLength <= 0)) {
+    size_t sizeAvailable = stream->available();
+    if (sizeAvailable) {
+      int c = stream->readBytes(buff, ((sizeAvailable > sizeof(buff)) ? sizeof(buff) : sizeAvailable));
+      if (c > 0) {
+        Update.write(buff, c);
+        written += c;
+        lastProgressTime = millis();
+
+        if (contentLength > 0) {
+          uint8_t pct = (uint8_t)(((uint64_t)written * 100ULL) / (uint64_t)contentLength);
+          if (pct != lastPct && (pct % 5 == 0 || pct >= 100)) {
+            lastPct = pct;
+            display.fillRect(14, 50, 100, 8, SSD1306_BLACK);
+            display.drawRect(14, 50, 100, 8, SSD1306_WHITE);
+            display.fillRect(16, 52, (pct * 96) / 100, 4, SSD1306_WHITE);
+            display.display();
+            emitEvent(String("{\"event\":\"ota\",\"phase\":\"flashing\",\"percent\":") + String(pct) +
+                      ",\"message\":\"Flashing " + String(pct) + "%...\"}");
+          }
+        }
+      }
+    } else {
+      if (millis() - lastProgressTime > 15000) {
+        break;
+      }
+      delay(5);
+    }
+    yield();
+  }
+  http.end();
+
+  if (Update.end(true)) {
+    emitEvent("{\"event\":\"ota\",\"phase\":\"complete\",\"percent\":100,\"message\":\"Update complete! Rebooting...\"}");
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(16, 20);
+    display.println("UPDATE COMPLETE!");
+    display.setCursor(28, 38);
+    display.println("Rebooting...");
+    display.display();
+    delay(800);
+    ESP.restart();
+  } else {
+    otaActive = false;
+    String err = "Update failed: " + String(Update.errorString());
+    emitEvent(String("{\"event\":\"ota\",\"phase\":\"error\",\"ok\":false,\"message\":") + jsonQuote(err) + "}");
+    showToast("Update Failed", 2500);
+    screenDirty = true;
+  }
+}
+
 void setupWebServer() {
   server.on("/", HTTP_GET, []() { server.send(200, "text/plain", "BertoPad: Web portal available or use USB Web Serial."); });
   server.on("/api/status", HTTP_GET, sendStatus);
@@ -1977,11 +2495,19 @@ void setupWebServer() {
   server.on("/api/motion/set", HTTP_POST, handleMotionSettings);
   server.on("/api/motion/calibrate", HTTP_POST, handleMotionCalibrate);
   server.on("/api/motion/read", HTTP_GET, handleMotionRead);
+  server.on("/api/motion/orient", HTTP_GET, handleMotionOrient);
+  server.on("/api/motion/zero", HTTP_POST, handleMotionZero);
+  server.on("/api/motion/stream", HTTP_POST, handleMotionStream);
   server.on("/api/ble/disconnect", HTTP_POST, []() { handleBleHttp("disconnect"); });
   server.on("/api/ble/connect",    HTTP_POST, []() { handleBleHttp("connect"); });
   server.on("/api/ble/pair",       HTTP_POST, []() { handleBleHttp("pair"); });
   server.on("/api/ble/forget",     HTTP_POST, []() { handleBleHttp("forget"); });
   server.on("/api/ble/settings",   HTTP_POST, []() { handleBleHttp("settings"); });
+  server.on("/api/diagnostics/clear", HTTP_POST, []() {
+    if (!requireAuth()) return;
+    clearDiagnosticsLog();
+    sendJson(200, "{\"ok\":true,\"message\":\"Reset log cleared.\"}");
+  });
 
   server.on("/api/setup/complete", HTTP_POST, []() {
     if (!requireAuth()) return;
@@ -2021,8 +2547,36 @@ void setupWebServer() {
       return;
     }
     sendJson(200, "{\"ok\":true,\"message\":\"Switching BLE host...\"}");
-    delay(200);
     switchBleDevice(slot - 1);
+  });
+
+  server.on("/api/macro/cancel", HTTP_POST, []() {
+    if (!requireAuth()) return;
+    macroAborted = true;
+    bleKeyboard.releaseAll();
+    sendJson(200, "{\"ok\":true,\"message\":\"Macro execution cancelled.\"}");
+  });
+
+  server.on("/api/ota/start", HTTP_POST, []() {
+    if (!requireAuth()) return;
+    String body;
+    if (!requestBody(body)) return;
+    if (WiFi.status() != WL_CONNECTED) {
+      sendError(400, "wifi_offline", "MacroPad Wi-Fi is offline. Connect Wi-Fi first or use USB.");
+      return;
+    }
+    const esp_partition_t* target = esp_ota_get_next_update_partition(NULL);
+    if (target == NULL) {
+      sendError(400, "no_ota_partition", "No OTA partition found in layout. Use direct USB flash.");
+      return;
+    }
+    String url = "";
+    if (!jsonString(body, "url", url, 512) || (!url.startsWith("http://") && !url.startsWith("https://"))) {
+      sendError(422, "invalid_url", "Missing or invalid firmware URL.");
+      return;
+    }
+    sendJson(200, "{\"ok\":true,\"message\":\"OTA download starting over Wi-Fi...\"}");
+    performWifiOta(url);
   });
 
   static const char* headerKeys[] = { "X-Pad-Token" };
@@ -2043,6 +2597,34 @@ void processSerialPacket(const String& body) {
 
   if (path == "/api/status" || path == "/api/device") {
     Serial.println(buildStatusJson());
+    return;
+  }
+
+  if (path == "/api/macro/cancel") {
+    macroAborted = true;
+    bleKeyboard.releaseAll();
+    Serial.println("{\"ok\":true,\"message\":\"Macro execution cancelled.\"}");
+    return;
+  }
+
+  if (path == "/api/ota/start") {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("{\"ok\":false,\"message\":\"MacroPad Wi-Fi is offline. Connect Wi-Fi first or use USB Serial Flash.\"}");
+      return;
+    }
+    const esp_partition_t* target = esp_ota_get_next_update_partition(NULL);
+    if (target == NULL) {
+      Serial.println("{\"ok\":false,\"message\":\"Update.begin failed: No OTA partition in this board's layout. Use direct USB flash instead.\"}");
+      return;
+    }
+    String url = "";
+    if (!jsonString(body, "url", url, 512) || (!url.startsWith("http://") && !url.startsWith("https://"))) {
+      Serial.println("{\"ok\":false,\"message\":\"Missing or invalid firmware URL.\"}");
+      return;
+    }
+    Serial.println("{\"ok\":true,\"message\":\"OTA download starting over Wi-Fi...\"}");
+    Serial.flush();
+    performWifiOta(url);
     return;
   }
 
@@ -2086,7 +2668,7 @@ void processSerialPacket(const String& body) {
     otaActive = true;
     otaLastActivity = millis();
     server.stop();
-    tvClient.stop();
+    stopTvClientLocked();
     WiFi.disconnect(true);
     NimBLEDevice::deinit(true);
     delay(100);
@@ -2229,7 +2811,11 @@ void processSerialPacket(const String& body) {
         jsonString(body, "slot", slot, 8) && slotIndex(slot) >= 0 &&
         jsonString(body, "action", action, MAX_ACTION_LEN) && isSupportedAction(action)) {
       saveBinding(profile, slotIndex(slot), action);
-      Serial.println("{\"ok\":true,\"message\":\"Assignment saved.\"}");
+      if (!setup_done) {
+        setup_done = true;
+        prefs.begin("config", false); prefs.putBool("setup_done", true); prefs.end();
+      }
+      Serial.println(String("{\"ok\":true,\"rev\":") + String(config_rev) + ",\"message\":\"Assignment saved.\"}");
     } else {
       Serial.println("{\"ok\":false,\"message\":\"Invalid assignment.\"}");
     }
@@ -2242,7 +2828,7 @@ void processSerialPacket(const String& body) {
       String* bindings = profileBindings(profile);
       for (int i = 0; i < SLOT_COUNT; ++i) bindings[i] = values[i];
       saveProfile(profile);
-      Serial.println("{\"ok\":true,\"message\":\"Profile saved to device.\"}");
+      Serial.println(String("{\"ok\":true,\"rev\":") + String(config_rev) + ",\"message\":\"Profile saved to device.\"}");
     } else {
       Serial.println("{\"ok\":false,\"message\":\"Invalid profile payload.\"}");
     }
@@ -2295,7 +2881,8 @@ void processSerialPacket(const String& body) {
 
   if (path == "/api/wifi") {
     String ssid, pass;
-    if (jsonString(body, "ssid", ssid, 32) && jsonString(body, "pass", pass, 63)) {
+    if (jsonString(body, "ssid", ssid, 32) && jsonString(body, "pass", pass, 63) &&
+        validSsid(ssid) && validPass(pass)) {
       stored_ssid = ssid; stored_pass = pass;
       prefs.begin("config", false); prefs.putString("ssid", stored_ssid); prefs.putString("pass", stored_pass); prefs.end();
       WiFi.mode(WIFI_STA); WiFi.begin(stored_ssid.c_str(), stored_pass.c_str());
@@ -2308,13 +2895,15 @@ void processSerialPacket(const String& body) {
 
   if (path == "/api/token/save") {
     String host, token;
-    int port = 7345;
-    jsonString(body, "tv_ip", host, 63);
-    jsonInt(body, "tv_port", port);
-    jsonString(body, "token", token, 128);
-    if (host.length() > 0) stored_tv_ip = host;
-    if (port > 0) stored_tv_port = port;
-    if (token.length() > 0) { stored_tv_auth = token; stored_tv_auth.trim(); }
+    int port = DEFAULT_TV_PORT;
+    bool hasHost = jsonString(body, "tv_ip", host, 63);
+    bool hasPort = jsonInt(body, "tv_port", port);
+    bool hasToken = jsonString(body, "token", token, 128);
+    if ((hasHost && !validHost(host)) || (hasPort && (port < 1 || port > 65535)) || (!hasHost && !hasToken)) {
+      Serial.println("{\"ok\":false,\"message\":\"Enter a valid TV host and port (1-65535).\"}");
+      return;
+    }
+    updateTvConfigLocked(hasHost ? host : "", hasPort ? port : 0, token, hasToken && token.length() > 0);
     prefs.begin("config", false); prefs.putString("tv_ip", stored_tv_ip); prefs.putInt("tv_port", stored_tv_port); prefs.putString("tv_auth", stored_tv_auth); prefs.end();
     Serial.println("{\"ok\":true,\"message\":\"TV settings saved.\"}");
     return;
@@ -2342,7 +2931,7 @@ void processSerialPacket(const String& body) {
     String host; int port = DEFAULT_TV_PORT;
     jsonString(body, "tv_ip", host, 63); jsonInt(body, "tv_port", port);
     if (validHost(host) && port >= 1 && port <= 65535) {
-      stored_tv_ip = host; stored_tv_port = port;
+      updateTvConfigLocked(host, port, "", false);
       String response = sendVizioRequestRaw("PUT", "/pairing/start", "{\"DEVICE_ID\":\"esp32_macropad\",\"DEVICE_NAME\":\"BertoPad\"}", stored_tv_port);
       int tokenPos = response.indexOf("\"PAIRING_REQ_TOKEN\":");
       if (tokenPos >= 0) {
@@ -2366,7 +2955,9 @@ void processSerialPacket(const String& body) {
       if (tokenPos >= 0) {
         int start = tokenPos + 14; int end = response.indexOf('"', start);
         if (end > start) {
-          stored_tv_auth = response.substring(start, end); stored_tv_auth.trim(); pairingReqToken = 0;
+          String newAuth = response.substring(start, end);
+          updateTvConfigLocked("", 0, newAuth, true);
+          pairingReqToken = 0;
           prefs.begin("config", false); prefs.putString("tv_auth", stored_tv_auth); prefs.end();
           Serial.println("{\"ok\":true,\"message\":\"TV pairing completed and stored.\"}");
           return;
@@ -2380,7 +2971,7 @@ void processSerialPacket(const String& body) {
   if (path == "/api/tv/forget") {
     String confirm;
     if (jsonString(body, "confirm", confirm, 8) && confirm == "FORGET") {
-      tvClient.stop(); pairingReqToken = 0; stored_tv_ip = ""; stored_tv_port = DEFAULT_TV_PORT; stored_tv_auth = "";
+      clearTvConfigLocked();
       prefs.begin("config", false); prefs.remove("tv_ip"); prefs.remove("tv_port"); prefs.remove("tv_auth"); prefs.end();
       Serial.println("{\"ok\":true,\"message\":\"TV configuration removed.\"}");
       return;
@@ -2392,8 +2983,9 @@ void processSerialPacket(const String& body) {
   if (path == "/api/device/reset-settings") {
     String confirm;
     if (jsonString(body, "confirm", confirm, 8) && confirm == "RESET") {
-      resetProfile("HOST1"); resetProfile("HOST2"); resetProfile("HOST3"); resetProfile("TV");
-      Serial.println("{\"ok\":true,\"message\":\"Profiles restored to blank defaults.\"}");
+      resetProfile("HOST1", false); resetProfile("HOST2", false); resetProfile("HOST3", false); resetProfile("TV", false);
+      bumpRev();
+      Serial.println(String("{\"ok\":true,\"rev\":") + String(config_rev) + ",\"message\":\"Profiles restored to blank defaults.\"}");
       return;
     }
     Serial.println("{\"ok\":false,\"message\":\"Confirmation required to reset profiles.\"}");
@@ -2417,11 +3009,14 @@ void processSerialPacket(const String& body) {
 
   if (path == "/api/test/key") {
     int cs = 0, cd = 0;
-    if (jsonInt(body, "codeset", cs) && jsonInt(body, "code", cd)) {
-      dispatchKey(cs, cd);
-      Serial.println("{\"ok\":true,\"message\":\"TV key queued.\"}");
+    if (!tv_enabled) {
+      Serial.println("{\"ok\":false,\"message\":\"TV mode is turned off on the pad.\"}");
+    } else if (!jsonInt(body, "codeset", cs) || !jsonInt(body, "code", cd) || !tvIsConfigured() || WiFi.status() != WL_CONNECTED) {
+      Serial.println("{\"ok\":false,\"message\":\"Configure the TV and connect Wi-Fi before sending key commands.\"}");
+    } else if (!dispatchKey(cs, cd)) {
+      Serial.println("{\"ok\":false,\"message\":\"The TV command queue is busy. Try again.\"}");
     } else {
-      Serial.println("{\"ok\":false,\"message\":\"Invalid key codes.\"}");
+      Serial.println("{\"ok\":true,\"message\":\"TV key queued.\"}");
     }
     return;
   }
@@ -2429,13 +3024,22 @@ void processSerialPacket(const String& body) {
   if (path == "/api/test/app") {
     String action, appId, msg = "";
     int ns = 5;
-    if (jsonString(body, "appId", appId, 8)) {
+    if (!tv_enabled) {
+      Serial.println("{\"ok\":false,\"message\":\"TV mode is turned off on the pad.\"}");
+      return;
+    }
+    if (jsonString(body, "action", action, 128) && isSupportedAction(action) && action.startsWith("APP:")) {
+      if (executeAction(action)) Serial.println("{\"ok\":true,\"message\":\"Streaming app launch queued.\"}");
+      else Serial.println(String("{\"ok\":false,\"message\":") + jsonQuote(tvUnavailableMsg()) + "}");
+      return;
+    }
+    if (jsonString(body, "appId", appId, 8) && tvIsConfigured() && WiFi.status() == WL_CONNECTED) {
       jsonInt(body, "nameSpace", ns);
       jsonString(body, "message", msg, 64);
-      dispatchApp(appId.c_str(), ns, msg.c_str());
-      Serial.println("{\"ok\":true,\"message\":\"TV app queued.\"}");
+      if (dispatchApp(appId.c_str(), ns, msg.c_str())) Serial.println("{\"ok\":true,\"message\":\"TV app queued.\"}");
+      else Serial.println("{\"ok\":false,\"message\":\"The TV command queue is busy. Try again.\"}");
     } else {
-      Serial.println("{\"ok\":false,\"message\":\"Invalid app parameters.\"}");
+      Serial.println("{\"ok\":false,\"message\":\"Invalid app parameters or TV unavailable.\"}");
     }
     return;
   }
@@ -2463,6 +3067,23 @@ void processSerialPacket(const String& body) {
         return;
       }
     }
+  }
+
+  if (path == "/api/motion/zero") {
+    String msg; bool ok = motionZero(msg);
+    Serial.println(String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":" + jsonQuote(msg) + "}");
+    return;
+  }
+
+  if (path == "/api/motion/stream") {
+    String msg; bool ok = applyMotionStream(body, msg);
+    Serial.println(String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":" + jsonQuote(msg) + "}");
+    return;
+  }
+
+  if (path == "/api/motion/orient") {
+    Serial.println(motionOrientJson());
+    return;
   }
 
   if (path == "/api/motion/set") {
@@ -2540,16 +3161,19 @@ void processSerialPacket(const String& body) {
     return;
   }
 
-  Serial.println("{\"ok\":true,\"message\":\"Command received.\"}");
+  Serial.println("{\"ok\":false,\"error\":\"not_found\",\"message\":\"This API route does not exist.\"}");
 }
 
 bool isDeviceConfigured() {
   if (setup_done) return true;
-  if (stored_ssid.length() > 0) return true;
+  if (stored_ssid.length() > 0 || tvIsConfigured()) return true;
   for (int h = 0; h < 3; ++h) {
     for (int i = 0; i < SLOT_COUNT; ++i) {
       if (dev_bindings[h][i].length() > 0) return true;
     }
+  }
+  for (int i = 0; i < SLOT_COUNT; ++i) {
+    if (tv_bindings[i] != DEFAULT_TV_BINDINGS[i]) return true;
   }
   return false;
 }
@@ -2573,23 +3197,31 @@ void renderScreen() {
   display.clearDisplay();
   if (inSetupMode) {
     display.fillRect(0, 0, 128, 12, SSD1306_WHITE);
-    display.setTextColor(SSD1306_BLACK); display.setTextSize(1); display.setCursor(18, 2); display.print("USB SETUP MODE");
-    display.setTextColor(SSD1306_WHITE); display.setCursor(0, 18);
-    display.println("1. Connect USB cable");
-    display.println("2. Open Web App");
-    display.println("3. Click 'Connect USB'");
+    display.setTextColor(SSD1306_BLACK); display.setTextSize(1); display.setCursor(20, 2); display.print("STUDIO SETUP");
+    display.setTextColor(SSD1306_WHITE); display.setCursor(0, 16);
+    display.println("studio-macropad");
+    display.println(".vercel.app");
+    display.setCursor(0, 36);
+    display.println("1. Connect USB");
+    display.println("2. Click Connect Pad");
     display.setCursor(0, 54);
-    display.println("(Press Mode to exit)");
+    display.println("(Hold Mode to toggle)");
     display.display(); screenDirty = false; return;
   }
 
   if (currentMode == MODE_BLE) {
     display.drawBitmap(0, 0, bitmap_mode_mac, 128, 64, SSD1306_WHITE);
-    // Upper-right badge: shows [D1], [D2], or [D3] for active device
-    display.fillRect(104, 1, 23, 9, SSD1306_BLACK);
-    display.drawRect(104, 1, 23, 9, SSD1306_WHITE);
-    display.setTextColor(SSD1306_WHITE); display.setTextSize(1); display.setCursor(108, 2);
-    display.print("D"); display.print(currentBleSlot + 1);
+    // Upper-right host selector [1][2][3]: the active Host is filled (it blinks while waiting for the computer or pairing)
+    bool linkUp = bleKeyboard.isConnected() && (!bleStrict || bleTrusted);
+    bool blinkOn = ((millis() / 500) % 2) == 0;
+    for (int h = 0; h < MAX_BLE_SLOTS; ++h) {
+      int bx = 98 + h * 10;
+      bool solid = (h == currentBleSlot) && (blePairUntil ? blinkOn : (linkUp || blinkOn));
+      display.fillRect(bx, 1, 9, 11, solid ? SSD1306_WHITE : SSD1306_BLACK);
+      if (!solid) display.drawRect(bx, 1, 9, 11, SSD1306_WHITE);
+      display.setTextColor(solid ? SSD1306_BLACK : SSD1306_WHITE); display.setTextSize(1);
+      display.setCursor(bx + 2, 3); display.print(h + 1);
+    }
   } else {
     display.drawBitmap(0, 0, bitmap_mode_tv, 128, 64, SSD1306_WHITE);
   }
@@ -2618,7 +3250,7 @@ void renderScreen() {
     display.setCursor((128 - (int)strlen(pbuf) * 6) / 2, 55); display.print(pbuf);
   }
 
-  if (millis() < toastExpiry) {
+  if (toastExpiry != 0 && (int32_t)(millis() - toastExpiry) < 0) {
     int width = min(116, (int)strlen(toastMessage) * 6 + 12); int x = (128 - width) / 2;
     display.fillRect(x, 46, width, 15, SSD1306_BLACK); display.drawRect(x, 46, width, 15, SSD1306_WHITE);
     display.setTextColor(SSD1306_WHITE); display.setTextSize(1); display.setCursor(x + 6, 50); display.print(toastMessage);
@@ -2710,8 +3342,8 @@ void loadConfiguration() {
   if (currentBleSlot >= MAX_BLE_SLOTS) currentBleSlot = 0;
   setup_done = prefs.getBool("setup_done", false);
   encoderAccelEnabled = prefs.getBool("enc_accel", true);
-  dispDimSec = prefs.getUShort("disp_dim", 60);
-  dispOffSec = prefs.getUShort("disp_off", 300);
+  dispDimSec = prefs.getUShort("disp_dim", 30);
+  dispOffSec = prefs.getUShort("disp_off", 120);
   dispContrast = prefs.getUChar("disp_con", 255);
   motionEnabled = prefs.getBool("mot_en", true);
   motionWake = prefs.getBool("mot_wake", true);
@@ -2816,22 +3448,15 @@ void setup() {
     emitSetupStatus();
   }
 
-  // Set Virtual MAC and Device Name for active slot
-  setSlotMacAddress(currentBleSlot);
-  bleDeviceName = "BertoPad " + String(currentBleSlot + 1);
-  bleKeyboard.setName(bleDeviceName.c_str());
-
   NimBLEDevice::setSecurityAuth(true, false, true); 
   NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT); 
   bleKeyboard.begin();
 #if BLE_MANAGER_ENABLED
   {
-    prefs.begin("config", false);
+    prefs.begin("config", true);
     bleStrict = prefs.getBool("ble_strict", true);
-    bool pairBoot = prefs.getBool("pair_boot", false);
-    if (pairBoot) prefs.putBool("pair_boot", false);
     prefs.end();
-    if (pairBoot) { blePairUntil = millis() + 120000UL; if (blePairUntil == 0) blePairUntil = 1; }   // reopened pairing after "forget"
+    bleBookLoad();
   }
 #endif
 
@@ -2947,8 +3572,17 @@ void loop() {
       if (reading == HIGH && events_enabled) emitEvent(String("{\"event\":\"release\",\"slot\":\"") + buttonSlotName(i) + "\"}");
       if (buttons[i].pin == PIN_BTN_MODE) {
         if (reading == LOW) { if (!inputLockout) modeBtnPressStart = now; }  // short press fires on release
-        else if (pendingBleSlot >= 0) { int target = pendingBleSlot; pendingBleSlot = -1; screenDirty = true; switchBleDevice(target); }
-        else if (modeBtnPressStart > 0) { modeBtnPressStart = 0; handleButtonPress(PIN_BTN_MODE); }
+        else {
+#if BLE_MANAGER_ENABLED
+          if (hostChordKey >= 0) {
+            if (hostChordStage == 0) switchBleDevice((uint8_t)hostChordKey);
+            hostChordKey = -1;
+            hostChordStage = 0;
+          } else
+#endif
+          if (pendingBleSlot >= 0) { int target = pendingBleSlot; pendingBleSlot = -1; screenDirty = true; switchBleDevice(target); }
+          else if (modeBtnPressStart > 0) { modeBtnPressStart = 0; handleButtonPress(PIN_BTN_MODE); }
+        }
       } else if (buttons[i].pin == PIN_ENC_SW) {
         // Dial click fires on release so "hold + turn" can act as a chord instead
         if (reading == LOW) {
@@ -2966,12 +3600,23 @@ void loop() {
         // without one the key fires instantly on press, exactly as before.
         if (reading == LOW) {
           if (!inputLockout) {
+#if BLE_MANAGER_ENABLED
+            if (i < MAX_BLE_SLOTS && digitalRead(PIN_BTN_MODE) == LOW) {   // Mode + K1/K2/K3 = Host 1/2/3
+              modeBtnPressStart = 0; hostChordKey = (int)i; hostChordStart = now; hostChordStage = 0;
+            } else
+#endif
             if (keyHasHold((int)i)) { keyHoldPending[i] = true; keyHoldFired[i] = false; keyPressAt[i] = now; }
             else handleButtonPress(buttons[i].pin);
           }
         } else {
-          if (keyHoldPending[i] && !keyHoldFired[i]) handleButtonPress(buttons[i].pin);
-          keyHoldPending[i] = false;
+#if BLE_MANAGER_ENABLED
+          if (hostChordKey == (int)i) {                                    // released: a quick tap switches Host
+            if (hostChordStage == 0) switchBleDevice((uint8_t)i);
+            hostChordKey = -1;
+          } else
+#endif
+          { if (keyHoldPending[i] && !keyHoldFired[i]) handleButtonPress(buttons[i].pin);
+            keyHoldPending[i] = false; }
         }
       } else if (reading == LOW && !inputLockout) {
         handleButtonPress(buttons[i].pin);
@@ -2988,6 +3633,30 @@ void loop() {
     if (!anyDown) inputLockout = false;
   }
 
+#if BLE_MANAGER_ENABLED
+  if (hostChordKey >= 0) {                                   // Mode + K1/K2/K3 held: 2 s = pair here, 8 s = forget this Host
+    if (digitalRead(PIN_BTN_MODE) != LOW) {                  // Require Mode to remain held for the entire chord
+      if (hostChordStage == 0) switchBleDevice((uint8_t)hostChordKey);
+      hostChordKey = -1;
+      hostChordStage = 0;
+    } else {
+      uint32_t held = now - hostChordStart;
+      String chordMsg;
+      if (hostChordStage == 0 && held >= 2000) {
+        hostChordStage = 1;
+        switchBleDevice((uint8_t)hostChordKey);
+        bleCommand("pair", "{}", chordMsg);
+      } else if (hostChordStage == 1 && held >= 5000) {
+        hostChordStage = 2;
+        showToast("Forget in 3s...", 1500);
+      } else if (hostChordStage == 2 && held >= 8000) {
+        hostChordStage = 3;
+        bleCommand("forget", String("{\"confirm\":\"FORGET\",\"slot\":") + String(hostChordKey + 1) + "}", chordMsg);
+      }
+    }
+  }
+#endif
+
   for (int k = 0; k < 8; ++k) {
     if (inputLockout) { keyHoldPending[k] = false; continue; }
     if (keyHoldPending[k] && !keyHoldFired[k] && buttons[k].currentState == LOW && now - keyPressAt[k] >= KEY_HOLD_MS) {
@@ -3001,7 +3670,7 @@ void loop() {
     modeBtnPressStart = 0; 
     screenDirty = true; 
   }
-  if (toastExpiry > 0 && now >= toastExpiry) { 
+  if (toastExpiry != 0 && (int32_t)(now - toastExpiry) >= 0) { 
     toastExpiry = 0; 
     screenDirty = true; 
   }
